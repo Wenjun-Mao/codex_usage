@@ -1,0 +1,28 @@
+[project]
+name = "codex-usage"
+version = "0.1.0"
+description = "Local Codex session token usage analyzer"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic-settings>=2.12.0",
+]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["codex_usage*"]
+
+[project.scripts]
+codex-usage = "codex_usage.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

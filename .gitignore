@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+.pytest_cache/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.egg-info/
+
+# Virtual environments
+.venv
+
+# Local Codex session samples and generated reports
+*.jsonl
+!tests/fixtures/**/*.jsonl
+output/
+vscode_plugin_example/
