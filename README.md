@@ -50,10 +50,12 @@ npm run build
 npm test
 ```
 
-Run it from an Extension Development Host and use `Codex Usage: Open Dashboard`. The extension invokes:
+Run it from an Extension Development Host and use `Codex Usage: Open Dashboard`. The extension uses the same Python reporting core; packaged Windows VSIX builds include that core as a bundled executable.
+
+The local extension also supports quick range switching, multi-project filtering, and a self-contained Windows VSIX:
 
 ```powershell
-uv run codex-usage report --range <range> --output <globalStorage>/report.html
+cd extensions/vscode
+npm run package:vsix:win
+code --install-extension ..\..\output\codex-usage-dashboard-win32-x64.vsix --force
 ```
-
-For local development, `uv` must be available on `PATH`. Marketplace publishing should wait until the Python runtime and dependency distribution strategy is settled.

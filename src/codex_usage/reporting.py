@@ -29,12 +29,14 @@ def summary_payload(
     sessions_dirs: list[Path],
     files_scanned: int,
     subscription_usd: float | None,
+    project_keys: list[str] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "generated_at": generated_at.isoformat(),
         "pricing_as_of": PRICING_AS_OF,
         "range": range_name,
         "group_by": group_by,
+        "project_keys": project_keys or [],
         "sessions_dirs": [str(path) for path in sessions_dirs],
         "files_scanned": files_scanned,
         "total": total.to_dict(),
@@ -121,6 +123,7 @@ def render_html_report(
     sessions_dirs: list[Path],
     files_scanned: int,
     subscription_usd: float | None,
+    project_keys: list[str] | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     view_model = build_report_view_model(
@@ -142,6 +145,7 @@ def render_html_report(
             f"of ${subscription_usd:.2f} subscription.</p>"
         )
     partial_cost_html = _partial_cost_notice(view_model)
+    project_filter_label = _project_filter_label(project_keys)
 
     body = f"""<!doctype html>
 <html lang="en">
@@ -212,6 +216,7 @@ def render_html_report(
   <main>
     <h1>Codex Usage Report</h1>
     <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())} | Range: {html.escape(range_name)} | Pricing as of {PRICING_AS_OF}</div>
+    <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
     <div class="muted summary-line">Sessions: {html.escape(', '.join(str(path) for path in sessions_dirs))} | Files scanned: {files_scanned}</div>
     {_render_kpis(view_model)}
     {partial_cost_html}
@@ -238,6 +243,13 @@ def subscription_comparison(cost_usd: float, subscription_usd: float) -> dict[st
         "difference_usd": round(cost_usd - subscription_usd, 6),
         "percent_of_subscription": percent,
     }
+
+
+def _project_filter_label(project_keys: list[str] | None) -> str:
+    selected = [key for key in project_keys or [] if key]
+    if not selected:
+        return "All Projects"
+    return ", ".join(selected)
 
 
 def _write_csv_rows(rows: list[AggregateRow], handle: TextIO) -> None:

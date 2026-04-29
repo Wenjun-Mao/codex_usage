@@ -11,10 +11,15 @@
   "categories": [
     "Other"
   ],
+  "extensionKind": [
+    "ui"
+  ],
   "activationEvents": [
     "onCommand:codexUsage.openDashboard",
     "onCommand:codexUsage.refreshDashboard",
-    "onCommand:codexUsage.openSettings"
+    "onCommand:codexUsage.openSettings",
+    "onCommand:codexUsage.selectRange",
+    "onCommand:codexUsage.selectProjects"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -30,6 +35,14 @@
       {
         "command": "codexUsage.openSettings",
         "title": "Codex Usage: Open Settings"
+      },
+      {
+        "command": "codexUsage.selectRange",
+        "title": "Codex Usage: Select Range"
+      },
+      {
+        "command": "codexUsage.selectProjects",
+        "title": "Codex Usage: Select Projects"
       }
     ],
     "configuration": {
@@ -62,23 +75,30 @@
           "minimum": 0,
           "description": "Optional monthly subscription amount for API-equivalent cost comparison."
         },
-        "codexUsage.projectRoot": {
-          "type": "string",
-          "default": "",
-          "description": "Path to the Python project root. Leave empty for local development inference from extensions/vscode."
+        "codexUsage.projectKeys": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Project keys selected for dashboard filtering. Leave empty to show all projects."
         }
       }
     }
   },
   "scripts": {
+    "build:python:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ..\\..\\scripts\\build-windows-exe.ps1",
     "build": "tsc -p .",
     "watch": "tsc -watch -p .",
     "test": "npm run build && node --test test/*.test.js",
+    "package:vsix": "npm run package:vsix:win",
+    "package:vsix:win": "npm run build:python:win && vsce package --target win32-x64 --out ../../output/codex-usage-dashboard-win32-x64.vsix --allow-missing-repository",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.1",
     "typescript": "^5.7.2"
   }
 }

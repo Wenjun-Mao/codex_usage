@@ -2,7 +2,13 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_usage.aggregation import aggregate_records, filter_records_by_range, resolve_timezone, summarize_records
+from codex_usage.aggregation import (
+    aggregate_records,
+    filter_records_by_project_keys,
+    filter_records_by_range,
+    resolve_timezone,
+    summarize_records,
+)
 from codex_usage.parser import parse_session_file
 
 
@@ -59,6 +65,31 @@ def test_project_grouping_falls_back_to_cwd_when_git_missing(tmp_path: Path) -> 
     assert record.project_label == "Demo"
 
 
+def test_project_filter_supports_empty_single_multiple_and_unmatched_keys(tmp_path: Path) -> None:
+    first = _write_session(
+        tmp_path / "first",
+        [
+            _session_meta(cwd="/repo/first"),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+    second = _write_session(
+        tmp_path / "second",
+        [
+            _session_meta(cwd="/repo/second"),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=75)),
+        ],
+    )
+    records = parse_session_file(first) + parse_session_file(second)
+
+    assert summarize_records(filter_records_by_project_keys(records, [])).usage.total_tokens == 175
+    assert summarize_records(filter_records_by_project_keys(records, ["/repo/first"])).usage.total_tokens == 100
+    assert summarize_records(filter_records_by_project_keys(records, ["/repo/first", "/repo/second"])).usage.total_tokens == 175
+    assert filter_records_by_project_keys(records, ["/repo/missing"]) == []
+
+
 def test_aggregation_by_day_and_hour_for_spanning_session(tmp_path: Path) -> None:
     path = _write_session(
         tmp_path,
@@ -102,6 +133,7 @@ def test_filter_records_by_month(tmp_path: Path) -> None:
 
 
 def _write_session(tmp_path: Path, rows: list[dict]) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     path = tmp_path / "session.jsonl"
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
     return path

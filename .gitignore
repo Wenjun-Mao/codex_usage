@@ -16,6 +16,7 @@ node_modules/
 extensions/vscode/node_modules/
 extensions/vscode/out/
 extensions/vscode/.vscode-test/
+extensions/vscode/bin/
 
 # Local Codex session samples and generated reports
 *.jsonl

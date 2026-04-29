@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -88,6 +89,13 @@ def filter_records_by_range(
         start, end = today_start, tomorrow_start
 
     return [record for record in records if start <= record.timestamp.astimezone(timezone) < end]
+
+
+def filter_records_by_project_keys(records: list[UsageRecord], project_keys: Sequence[str] | None) -> list[UsageRecord]:
+    selected = {key.strip() for key in project_keys or [] if key.strip()}
+    if not selected:
+        return records
+    return [record for record in records if record.project_key in selected]
 
 
 def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinfo) -> list[AggregateRow]:

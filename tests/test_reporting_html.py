@@ -27,11 +27,13 @@ def test_dashboard_report_contains_inline_svg_sections_without_external_assets(t
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
         subscription_usd=20.0,
+        project_keys=["repo"],
     )
 
     html = output.read_text(encoding="utf-8")
 
     assert "Codex Usage Report" in html
+    assert "Projects: repo" in html
     assert "Daily Cost Trend" in html
     assert "Hourly Heatmap" in html
     assert "Project Breakdown" in html
@@ -65,6 +67,7 @@ def test_dashboard_report_has_empty_states(tmp_path: Path) -> None:
     html = output.read_text(encoding="utf-8")
 
     assert "No Codex usage was found for this report range." in html
+    assert "Projects: All Projects" in html
     assert "No daily usage found for this range." in html
     assert html.count("<svg") == 4
 

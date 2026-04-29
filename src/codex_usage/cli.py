@@ -9,6 +9,7 @@ from codex_usage.aggregation import (
     GROUP_CHOICES,
     RANGE_CHOICES,
     aggregate_records,
+    filter_records_by_project_keys,
     filter_records_by_range,
     resolve_timezone,
     summarize_records,
@@ -80,6 +81,7 @@ def handle_summary(args: argparse.Namespace) -> int:
         sessions_dirs=context.session_dirs,
         files_scanned=len(context.files),
         subscription_usd=context.subscription_usd,
+        project_keys=context.project_keys,
     )
     if args.json:
         print_json(payload)
@@ -114,6 +116,7 @@ def handle_report(args: argparse.Namespace) -> int:
         sessions_dirs=context.session_dirs,
         files_scanned=len(context.files),
         subscription_usd=context.subscription_usd,
+        project_keys=context.project_keys,
     )
     print(f"Wrote {output_path}")
     return 0
@@ -128,12 +131,14 @@ class _Context:
         records,
         timezone,
         subscription_usd: float | None,
+        project_keys: list[str],
     ) -> None:
         self.session_dirs = session_dirs
         self.files = files
         self.records = records
         self.timezone = timezone
         self.subscription_usd = subscription_usd
+        self.project_keys = project_keys
 
 
 def _load_context(args: argparse.Namespace) -> _Context:
@@ -142,7 +147,9 @@ def _load_context(args: argparse.Namespace) -> _Context:
     session_dirs = find_session_dirs(args.sessions_dir, settings)
     files = collect_jsonl_files(session_dirs)
     records = parse_session_files(files)
-    filtered_records = filter_records_by_range(records, args.range_name, timezone)
+    project_keys = _normalize_project_keys(args.project_key)
+    range_records = filter_records_by_range(records, args.range_name, timezone)
+    filtered_records = filter_records_by_project_keys(range_records, project_keys)
     subscription_usd = args.subscription_usd if args.subscription_usd is not None else settings.subscription_usd
     return _Context(
         session_dirs=session_dirs,
@@ -150,6 +157,7 @@ def _load_context(args: argparse.Namespace) -> _Context:
         records=filtered_records,
         timezone=timezone,
         subscription_usd=subscription_usd,
+        project_keys=project_keys,
     )
 
 
@@ -157,6 +165,22 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--sessions-dir", type=Path, help="Path to the Codex sessions directory.")
     parser.add_argument("--timezone", help="IANA timezone name, for example America/Toronto.")
     parser.add_argument("--subscription-usd", type=float, help="Monthly subscription cost for comparison.")
+    parser.add_argument(
+        "--project-key",
+        action="append",
+        help="Filter usage to a project key. Repeat to include multiple projects.",
+    )
+
+
+def _normalize_project_keys(values: list[str] | None) -> list[str]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        key = value.strip()
+        if key and key not in seen:
+            selected.append(key)
+            seen.add(key)
+    return selected
 
 
 if __name__ == "__main__":
