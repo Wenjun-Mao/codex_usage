@@ -11,6 +11,12 @@ wheels/
 # Virtual environments
 .venv
 
+# JavaScript / VS Code extension generated files
+node_modules/
+extensions/vscode/node_modules/
+extensions/vscode/out/
+extensions/vscode/.vscode-test/
+
 # Local Codex session samples and generated reports
 *.jsonl
 !tests/fixtures/**/*.jsonl

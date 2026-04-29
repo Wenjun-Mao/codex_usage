@@ -1,0 +1,84 @@
+{
+  "name": "codex-usage-dashboard",
+  "displayName": "Codex Usage Dashboard",
+  "description": "Local dashboard for Codex token usage from session JSONL logs.",
+  "publisher": "local-codex-usage",
+  "version": "0.0.1",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:codexUsage.openDashboard",
+    "onCommand:codexUsage.refreshDashboard",
+    "onCommand:codexUsage.openSettings"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexUsage.openDashboard",
+        "title": "Codex Usage: Open Dashboard"
+      },
+      {
+        "command": "codexUsage.refreshDashboard",
+        "title": "Codex Usage: Refresh Dashboard"
+      },
+      {
+        "command": "codexUsage.openSettings",
+        "title": "Codex Usage: Open Settings"
+      }
+    ],
+    "configuration": {
+      "title": "Codex Usage",
+      "properties": {
+        "codexUsage.range": {
+          "type": "string",
+          "enum": [
+            "today",
+            "yesterday",
+            "7d",
+            "30d",
+            "month",
+            "all"
+          ],
+          "default": "30d",
+          "description": "Time range used when generating the dashboard report."
+        },
+        "codexUsage.sessionsDir": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to the Codex sessions directory. Leave empty to use Python CLI auto-discovery."
+        },
+        "codexUsage.subscriptionUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": 0,
+          "description": "Optional monthly subscription amount for API-equivalent cost comparison."
+        },
+        "codexUsage.projectRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Python project root. Leave empty for local development inference from extensions/vscode."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "npm run build && node --test test/*.test.js",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.7.2"
+  }
+}
