@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from codex_usage.models import TokenUsage, UsageRecord
@@ -46,7 +46,9 @@ class UsageSummary:
 
 def resolve_timezone(name: str | None) -> tzinfo:
     if not name:
-        return datetime.now().astimezone().tzinfo or ZoneInfo("UTC")
+        return datetime.now().astimezone().tzinfo or UTC
+    if name.casefold() in {"utc", "etc/utc", "z"}:
+        return UTC
     try:
         return ZoneInfo(name)
     except ZoneInfoNotFoundError as exc:

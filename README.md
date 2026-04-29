@@ -27,6 +27,18 @@ The parser reads cumulative `total_token_usage` records and charges only the pos
 
 Project grouping uses `git.repository_url` when present, then normalized `cwd`, then the session id.
 
+## Dashboard Report
+
+`codex-usage report` writes a self-contained HTML dashboard with inline SVG charts:
+
+- KPI strip for total tokens, API-equivalent cost, cache hit share, and unpriced tokens
+- daily API-equivalent cost trend
+- hourly cost heatmap
+- top project breakdown
+- model mix
+
+The report uses no remote assets, JavaScript, or Python chart libraries. That keeps it easy to open locally now and easier to reuse later inside a VS Code webview.
+
 ## VS Code Extension Direction
 
 The MVP is Python-first. A future VS Code extension should stay thin: TypeScript handles commands, status bar, and webviews, then invokes this CLI with `--json`. VS Code extensions run in Node.js or a browser WebWorker, so a normal extension cannot be pure Python.
