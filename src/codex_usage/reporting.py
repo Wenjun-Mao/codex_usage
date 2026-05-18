@@ -15,7 +15,7 @@ from codex_usage.charts import (
     render_model_mix_svg,
     render_project_breakdown_svg,
 )
-from codex_usage.pricing import PRICING_AS_OF
+from codex_usage.pricing import PRICING_AS_OF, PRICING_METHOD
 from codex_usage.report_view import ReportViewModel, build_report_view_model
 
 
@@ -34,6 +34,7 @@ def summary_payload(
     payload: dict[str, object] = {
         "generated_at": generated_at.isoformat(),
         "pricing_as_of": PRICING_AS_OF,
+        "pricing_method": PRICING_METHOD,
         "range": range_name,
         "group_by": group_by,
         "project_keys": project_keys or [],
@@ -73,7 +74,8 @@ def render_terminal(
 ) -> str:
     lines = [
         f"Codex usage summary ({range_name}, by {group_by})",
-        f"Files scanned: {files_scanned} | Usage events: {total.record_count} | Pricing as of: {PRICING_AS_OF}",
+        f"Files scanned: {files_scanned} | Usage events: {total.record_count} | Pricing table as of: {PRICING_AS_OF}",
+        "Pricing uses rates effective at each usage event.",
         "",
         _format_row(
             "TOTAL",
@@ -82,7 +84,9 @@ def render_terminal(
             total.usage.cached_input_tokens,
             total.usage.output_tokens,
             total.cost.total_usd,
+            total.credits.total_credits,
             total.cost.unpriced_tokens,
+            total.credits.unpriced_tokens,
         ),
         "",
     ]
@@ -104,7 +108,9 @@ def render_terminal(
                 row.usage.cached_input_tokens,
                 row.usage.output_tokens,
                 row.cost.total_usd,
+                row.credits.total_credits,
                 row.cost.unpriced_tokens,
+                row.credits.unpriced_tokens,
             )
         )
     return "\n".join(lines)
@@ -144,7 +150,7 @@ def render_html_report(
             f"<p class=\"notice\">API-equivalent cost is {comparison['percent_of_subscription']:.1f}% "
             f"of ${subscription_usd:.2f} subscription.</p>"
         )
-    partial_cost_html = _partial_cost_notice(view_model)
+    pricing_notice_html = _pricing_notice(view_model)
     project_filter_label = _project_filter_label(project_keys)
 
     body = f"""<!doctype html>
@@ -215,11 +221,12 @@ def render_html_report(
 <body>
   <main>
     <h1>Codex Usage Report</h1>
-    <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())} | Range: {html.escape(range_name)} | Pricing as of {PRICING_AS_OF}</div>
+    <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())} | Range: {html.escape(range_name)} | Pricing table as of {PRICING_AS_OF}</div>
+    <div class="muted summary-line">Pricing uses rates effective at each usage event.</div>
     <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
     <div class="muted summary-line">Sessions: {html.escape(', '.join(str(path) for path in sessions_dirs))} | Files scanned: {files_scanned}</div>
     {_render_kpis(view_model)}
-    {partial_cost_html}
+    {pricing_notice_html}
     {comparison_html}
     {_empty_report_notice(view_model)}
     <div class="dashboard-grid">
@@ -266,7 +273,9 @@ def _write_csv_rows(rows: list[AggregateRow], handle: TextIO) -> None:
             "output_tokens",
             "reasoning_output_tokens",
             "cost_usd",
+            "codex_credits",
             "unpriced_tokens",
+            "credit_unpriced_tokens",
         ],
     )
     writer.writeheader()
@@ -283,7 +292,9 @@ def _write_csv_rows(rows: list[AggregateRow], handle: TextIO) -> None:
                 "output_tokens": row.usage.output_tokens,
                 "reasoning_output_tokens": row.usage.reasoning_output_tokens,
                 "cost_usd": f"{row.cost.total_usd:.6f}",
+                "codex_credits": f"{row.credits.total_credits:.6f}",
                 "unpriced_tokens": row.cost.unpriced_tokens,
+                "credit_unpriced_tokens": row.credits.unpriced_tokens,
             }
         )
 
@@ -301,13 +312,20 @@ def _render_kpis(view_model: ReportViewModel) -> str:
     return "<section class=\"kpis\" aria-label=\"Usage summary\">" + "".join(cards) + "</section>"
 
 
-def _partial_cost_notice(view_model: ReportViewModel) -> str:
-    if not view_model.has_partial_cost:
-        return ""
-    return (
-        "<p class=\"notice warn\">Cost is partial because "
-        f"{_fmt_int(view_model.total.cost.unpriced_tokens)} tokens came from models without checked-in USD API rates.</p>"
-    )
+def _pricing_notice(view_model: ReportViewModel) -> str:
+    notices = []
+    if view_model.has_partial_cost:
+        notices.append(
+            "<p class=\"notice\">API USD excludes "
+            f"{_fmt_int(view_model.total.cost.unpriced_tokens)} tokens from models without API USD rates. "
+            "Codex credit estimates are shown separately.</p>"
+        )
+    if view_model.no_price_data_tokens:
+        notices.append(
+            "<p class=\"notice warn\">No price data is available for "
+            f"{_fmt_int(view_model.no_price_data_tokens)} tokens; these models have neither API USD nor Codex credit rates.</p>"
+        )
+    return "".join(notices)
 
 
 def _empty_report_notice(view_model: ReportViewModel) -> str:
@@ -329,14 +347,25 @@ def _chart_section(title: str, svg: str, table_html: str) -> str:
 def _format_header() -> str:
     return (
         f"{'Label':<34} {'Total':>14} {'Input':>14} {'Cached':>14} "
-        f"{'Output':>14} {'Cost':>11} {'Unpriced':>14}"
+        f"{'Output':>14} {'Cost':>11} {'Credits':>12} {'API Excl.':>14} {'No Credit':>14}"
     )
 
 
-def _format_row(label: str, total: int, input_tokens: int, cached: int, output: int, cost: float, unpriced: int) -> str:
+def _format_row(
+    label: str,
+    total: int,
+    input_tokens: int,
+    cached: int,
+    output: int,
+    cost: float,
+    credits: float,
+    unpriced: int,
+    credit_unpriced: int,
+) -> str:
     return (
         f"{label[:34]:<34} {_fmt_int(total):>14} {_fmt_int(input_tokens):>14} "
-        f"{_fmt_int(cached):>14} {_fmt_int(output):>14} ${cost:>10.4f} {_fmt_int(unpriced):>14}"
+        f"{_fmt_int(cached):>14} {_fmt_int(output):>14} ${cost:>10.4f} "
+        f"{_fmt_credits(credits):>12} {_fmt_int(unpriced):>14} {_fmt_int(credit_unpriced):>14}"
     )
 
 
@@ -355,15 +384,17 @@ def _table_section(title: str, rows: list[AggregateRow]) -> str:
             f"<td class=\"num\">{_fmt_int(row.usage.cached_input_tokens)}</td>"
             f"<td class=\"num\">{_fmt_int(row.usage.output_tokens)}</td>"
             f"<td class=\"num\">${row.cost.total_usd:.4f}</td>"
+            f"<td class=\"num\">{_fmt_credits(row.credits.total_credits)}</td>"
             f"<td class=\"num\">{_fmt_int(row.cost.unpriced_tokens)}</td>"
+            f"<td class=\"num\">{_fmt_int(row.credits.unpriced_tokens)}</td>"
             f"<td><div class=\"bar-wrap\"><div class=\"bar\" style=\"width:{width}%\"></div></div></td>"
             "</tr>"
         )
     return (
         f"<h3>{html.escape(title)}</h3><div class=\"table-wrap\">"
         "<table><thead><tr><th>Label</th><th class=\"num\">Total</th><th class=\"num\">Input</th>"
-        "<th class=\"num\">Cached</th><th class=\"num\">Output</th><th class=\"num\">Cost</th>"
-        "<th class=\"num\">Unpriced</th><th>Share</th>"
+        "<th class=\"num\">Cached</th><th class=\"num\">Output</th><th class=\"num\">API Cost</th>"
+        "<th class=\"num\">Codex Credits</th><th class=\"num\">API Excl.</th><th class=\"num\">No Credit Rate</th><th>Share</th>"
         "</tr></thead><tbody>"
         + "".join(table_rows)
         + "</tbody></table></div>"
@@ -372,3 +403,9 @@ def _table_section(title: str, rows: list[AggregateRow]) -> str:
 
 def _fmt_int(value: int) -> str:
     return f"{value:,}"
+
+
+def _fmt_credits(value: float) -> str:
+    if value >= 1_000:
+        return f"{value:,.0f}"
+    return f"{value:,.1f}"

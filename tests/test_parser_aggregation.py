@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import codex_usage.pricing as pricing
 from codex_usage.aggregation import (
     aggregate_records,
     filter_records_by_project_keys,
@@ -9,7 +10,9 @@ from codex_usage.aggregation import (
     resolve_timezone,
     summarize_records,
 )
+from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.parser import parse_session_file
+from codex_usage.pricing import EffectiveModelRate, ModelRate
 
 
 def test_parser_uses_positive_cumulative_deltas(tmp_path: Path) -> None:
@@ -47,6 +50,68 @@ def test_parser_tracks_model_changes_within_session(tmp_path: Path) -> None:
     rows = aggregate_records(records, "model", resolve_timezone("UTC"))
 
     assert {row.key: row.usage.total_tokens for row in rows} == {"gpt-5.4": 100, "gpt-5.5": 75}
+
+
+def test_aggregation_accumulates_api_cost_and_codex_credits(tmp_path: Path) -> None:
+    path = _write_session(
+        tmp_path,
+        [
+            _session_meta(cwd="/repo/demo"),
+            _turn_context(model="gpt-5.3-codex"),
+            _token("2026-04-29T10:00:00Z", _usage(total=1_100_000, input_tokens=1_000_000, cached=250_000, output=100_000)),
+        ],
+    )
+
+    records = parse_session_file(path)
+    total = summarize_records(records)
+    rows = aggregate_records(records, "model", resolve_timezone("UTC"))
+
+    assert total.cost.total_usd == 2.75625
+    assert total.cost.unpriced_tokens == 0
+    assert total.credits.total_credits == 68.90625
+    assert total.credits.unpriced_tokens == 0
+    assert rows[0].to_dict()["cost"]["total_usd"] == 2.75625
+    assert rows[0].to_dict()["credits"]["total_credits"] == 68.90625
+
+
+def test_aggregation_prices_records_with_rates_effective_at_each_timestamp(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        pricing,
+        "API_PRICING_USD_SCHEDULE",
+        (
+            EffectiveModelRate(
+                model_key="gpt-test-effective",
+                effective_from=datetime(1970, 1, 1, tzinfo=UTC),
+                rate=ModelRate(input_per_1m=1.0, cached_input_per_1m=0.1, output_per_1m=10.0),
+            ),
+            EffectiveModelRate(
+                model_key="gpt-test-effective",
+                effective_from=datetime(2026, 8, 18, tzinfo=UTC),
+                rate=ModelRate(input_per_1m=2.0, cached_input_per_1m=0.2, output_per_1m=20.0),
+            ),
+        ),
+    )
+    records = [
+        UsageRecord(
+            timestamp=datetime(2026, 8, 17, 12, tzinfo=UTC),
+            usage=TokenUsage(input_tokens=1_000_000, output_tokens=100_000, total_tokens=1_100_000),
+            session_id="before",
+            file_path=tmp_path / "before.jsonl",
+            model="gpt-test-effective",
+        ),
+        UsageRecord(
+            timestamp=datetime(2026, 8, 18, 12, tzinfo=UTC),
+            usage=TokenUsage(input_tokens=1_000_000, output_tokens=100_000, total_tokens=1_100_000),
+            session_id="after",
+            file_path=tmp_path / "after.jsonl",
+            model="gpt-test-effective",
+        ),
+    ]
+
+    total = summarize_records(records)
+
+    assert total.cost.total_usd == 6.0
+    assert total.cost.unpriced_tokens == 0
 
 
 def test_project_grouping_falls_back_to_cwd_when_git_missing(tmp_path: Path) -> None:

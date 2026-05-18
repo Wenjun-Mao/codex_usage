@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from codex_usage.models import TokenUsage
 
 
-PRICING_AS_OF = "2026-04-29"
+PRICING_AS_OF = "2026-05-18"
+PRICING_METHOD = "effective_dated"
+BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -13,6 +16,13 @@ class ModelRate:
     input_per_1m: float
     cached_input_per_1m: float
     output_per_1m: float
+
+
+@dataclass(frozen=True)
+class EffectiveModelRate:
+    model_key: str
+    effective_from: datetime
+    rate: ModelRate
 
 
 @dataclass(frozen=True)
@@ -42,31 +52,106 @@ class CostBreakdown:
         }
 
 
-API_PRICING_USD_PER_1M: dict[str, ModelRate] = {
-    "gpt-5.5": ModelRate(input_per_1m=5.00, cached_input_per_1m=0.50, output_per_1m=30.00),
-    "gpt-5.4-mini": ModelRate(input_per_1m=0.75, cached_input_per_1m=0.075, output_per_1m=4.50),
-    "gpt-5.4": ModelRate(input_per_1m=2.50, cached_input_per_1m=0.25, output_per_1m=15.00),
-}
+@dataclass(frozen=True)
+class CreditBreakdown:
+    uncached_input_credits: float = 0.0
+    cached_input_credits: float = 0.0
+    output_credits: float = 0.0
+    total_credits: float = 0.0
+    unpriced_tokens: int = 0
 
-CODEX_CREDIT_RATES_PER_1M: dict[str, ModelRate] = {
-    "gpt-5.5": ModelRate(input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0),
-    "gpt-5.4-mini": ModelRate(input_per_1m=18.75, cached_input_per_1m=1.875, output_per_1m=113.0),
-    "gpt-5.4": ModelRate(input_per_1m=62.5, cached_input_per_1m=6.25, output_per_1m=375.0),
-    "gpt-5.3-codex": ModelRate(input_per_1m=43.75, cached_input_per_1m=4.375, output_per_1m=350.0),
-    "gpt-5.2": ModelRate(input_per_1m=43.75, cached_input_per_1m=4.375, output_per_1m=350.0),
-}
+    def add(self, other: "CreditBreakdown") -> "CreditBreakdown":
+        return CreditBreakdown(
+            uncached_input_credits=self.uncached_input_credits + other.uncached_input_credits,
+            cached_input_credits=self.cached_input_credits + other.cached_input_credits,
+            output_credits=self.output_credits + other.output_credits,
+            total_credits=self.total_credits + other.total_credits,
+            unpriced_tokens=self.unpriced_tokens + other.unpriced_tokens,
+        )
+
+    def to_dict(self) -> dict[str, float | int]:
+        return {
+            "uncached_input_credits": round(self.uncached_input_credits, 6),
+            "cached_input_credits": round(self.cached_input_credits, 6),
+            "output_credits": round(self.output_credits, 6),
+            "total_credits": round(self.total_credits, 6),
+            "unpriced_tokens": self.unpriced_tokens,
+        }
 
 
-def rate_for_model(model: str) -> ModelRate | None:
+def _effective_rate(
+    model_key: str,
+    *,
+    input_per_1m: float,
+    cached_input_per_1m: float,
+    output_per_1m: float,
+    effective_from: datetime = BASELINE_EFFECTIVE_FROM,
+) -> EffectiveModelRate:
+    return EffectiveModelRate(
+        model_key=model_key,
+        effective_from=effective_from,
+        rate=ModelRate(
+            input_per_1m=input_per_1m,
+            cached_input_per_1m=cached_input_per_1m,
+            output_per_1m=output_per_1m,
+        ),
+    )
+
+
+API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate("gpt-5.5", input_per_1m=5.00, cached_input_per_1m=0.50, output_per_1m=30.00),
+    _effective_rate("gpt-5.4-mini", input_per_1m=0.75, cached_input_per_1m=0.075, output_per_1m=4.50),
+    _effective_rate("gpt-5.4", input_per_1m=2.50, cached_input_per_1m=0.25, output_per_1m=15.00),
+    _effective_rate("gpt-5.3-codex", input_per_1m=1.75, cached_input_per_1m=0.175, output_per_1m=14.00),
+    _effective_rate("gpt-5.3", input_per_1m=1.75, cached_input_per_1m=0.175, output_per_1m=14.00),
+)
+
+CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate("gpt-5.5", input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0),
+    _effective_rate("gpt-5.4-mini", input_per_1m=18.75, cached_input_per_1m=1.875, output_per_1m=113.0),
+    _effective_rate("gpt-5.4", input_per_1m=62.5, cached_input_per_1m=6.25, output_per_1m=375.0),
+    _effective_rate("gpt-5.3-codex", input_per_1m=43.75, cached_input_per_1m=4.375, output_per_1m=350.0),
+    _effective_rate("gpt-5.2", input_per_1m=43.75, cached_input_per_1m=4.375, output_per_1m=350.0),
+)
+
+
+def rate_for_model(model: str, at: datetime | None = None) -> ModelRate | None:
+    return _rate_for_model(API_PRICING_USD_SCHEDULE, model, at)
+
+
+def credit_rate_for_model(model: str, at: datetime | None = None) -> ModelRate | None:
+    return _rate_for_model(CODEX_CREDIT_RATE_SCHEDULE, model, at)
+
+
+def _rate_for_model(
+    schedule: tuple[EffectiveModelRate, ...],
+    model: str,
+    at: datetime | None = None,
+) -> ModelRate | None:
     normalized = model.casefold()
-    for known_model in sorted(API_PRICING_USD_PER_1M, key=len, reverse=True):
-        if known_model in normalized:
-            return API_PRICING_USD_PER_1M[known_model]
+    effective_at = _normalize_effective_at(at)
+    matching_keys = sorted(
+        {entry.model_key for entry in schedule if entry.model_key in normalized},
+        key=len,
+        reverse=True,
+    )
+    for model_key in matching_keys:
+        candidates = [
+            entry
+            for entry in schedule
+            if entry.model_key == model_key
+            and (effective_at is None or _normalize_effective_at(entry.effective_from) <= effective_at)
+        ]
+        if candidates:
+            return max(
+                candidates,
+                key=lambda entry: _normalize_effective_at(entry.effective_from) or BASELINE_EFFECTIVE_FROM,
+            ).rate
     return None
 
 
-def estimate_cost(usage: TokenUsage, model: str) -> CostBreakdown | None:
-    rate = rate_for_model(model)
+def estimate_cost(usage: TokenUsage, model: str, at: datetime | None = None) -> CostBreakdown | None:
+    rate = rate_for_model(model, at=at)
     if rate is None:
         return None
 
@@ -79,3 +164,27 @@ def estimate_cost(usage: TokenUsage, model: str) -> CostBreakdown | None:
         output_usd=output_usd,
         total_usd=uncached_input_usd + cached_input_usd + output_usd,
     )
+
+
+def estimate_codex_credits(usage: TokenUsage, model: str, at: datetime | None = None) -> CreditBreakdown | None:
+    rate = credit_rate_for_model(model, at=at)
+    if rate is None:
+        return None
+
+    uncached_input_credits = usage.uncached_input_tokens / 1_000_000 * rate.input_per_1m
+    cached_input_credits = usage.cached_input_tokens / 1_000_000 * rate.cached_input_per_1m
+    output_credits = usage.output_tokens / 1_000_000 * rate.output_per_1m
+    return CreditBreakdown(
+        uncached_input_credits=uncached_input_credits,
+        cached_input_credits=cached_input_credits,
+        output_credits=output_credits,
+        total_credits=uncached_input_credits + cached_input_credits + output_credits,
+    )
+
+
+def _normalize_effective_at(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

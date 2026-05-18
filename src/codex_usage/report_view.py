@@ -38,7 +38,9 @@ class BreakdownPoint:
     label: str
     total_tokens: int
     cost_usd: float
+    total_credits: float
     unpriced_tokens: int
+    credit_unpriced_tokens: int
     record_count: int
 
 
@@ -66,6 +68,18 @@ class ReportViewModel:
     @property
     def has_partial_cost(self) -> bool:
         return self.total.cost.unpriced_tokens > 0
+
+    @property
+    def has_codex_credit_estimates(self) -> bool:
+        return self.total.credits.total_credits > 0
+
+    @property
+    def no_price_data_tokens(self) -> int:
+        return sum(
+            row.usage.total_tokens
+            for row in self.model_rows
+            if row.cost.unpriced_tokens > 0 and row.credits.unpriced_tokens > 0
+        )
 
 
 def build_report_view_model(
@@ -102,11 +116,20 @@ def _build_kpis(total: UsageSummary) -> list[KpiCard]:
     cache_share = total.usage.cached_input_tokens / total.usage.input_tokens if total.usage.input_tokens else 0
     priced_tokens = max(0, total.usage.total_tokens - total.cost.unpriced_tokens)
     priced_share = priced_tokens / total.usage.total_tokens if total.usage.total_tokens else 0
+    credit_priced_tokens = max(0, total.usage.total_tokens - total.credits.unpriced_tokens)
+    credit_priced_share = credit_priced_tokens / total.usage.total_tokens if total.usage.total_tokens else 0
+    credit_detail = f"{credit_priced_share:.0%} of tokens credit-priced"
+    api_excluded_detail = "models without USD API rates"
+    if total.cost.unpriced_tokens and total.credits.unpriced_tokens == 0:
+        api_excluded_detail = "covered by Codex credit rates"
+    elif total.credits.unpriced_tokens:
+        api_excluded_detail = f"{_fmt_int(total.credits.unpriced_tokens)} without credit rates"
     return [
         KpiCard("Total Tokens", _fmt_int(total.usage.total_tokens), f"{_fmt_int(total.record_count)} usage events"),
         KpiCard("API-Equivalent Cost", f"${total.cost.total_usd:,.2f}", f"{priced_share:.0%} of tokens priced"),
+        KpiCard("Codex Credits", _fmt_credits(total.credits.total_credits), credit_detail),
         KpiCard("Cache Hit Share", f"{cache_share:.1%}", f"{_fmt_int(total.usage.cached_input_tokens)} cached input"),
-        KpiCard("Unpriced Tokens", _fmt_int(total.cost.unpriced_tokens), "models without USD API rates"),
+        KpiCard("API-Excluded Tokens", _fmt_int(total.cost.unpriced_tokens), api_excluded_detail),
     ]
 
 
@@ -143,7 +166,9 @@ def _breakdown_point(row: AggregateRow) -> BreakdownPoint:
         label=row.label,
         total_tokens=row.usage.total_tokens,
         cost_usd=row.cost.total_usd,
+        total_credits=row.credits.total_credits,
         unpriced_tokens=row.cost.unpriced_tokens,
+        credit_unpriced_tokens=row.credits.unpriced_tokens,
         record_count=row.record_count,
     )
 
@@ -157,3 +182,9 @@ def _short_day_label(value: str) -> str:
 
 def _fmt_int(value: int) -> str:
     return f"{value:,}"
+
+
+def _fmt_credits(value: float) -> str:
+    if value >= 1_000:
+        return f"{value:,.0f}"
+    return f"{value:,.1f}"

@@ -3,6 +3,7 @@ name = "codex-usage"
 version = "0.1.0"
 description = "Local Codex session token usage analyzer"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
     "pydantic-settings>=2.12.0",

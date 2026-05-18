@@ -122,11 +122,14 @@ def _render_horizontal_bars(title: str, points: list[BreakdownPoint], *, value_k
         chunks.append(f'<text class="bar-label" x="{left - 10}" y="{y + 20}" text-anchor="end">{_esc(label)}</text>')
         chunks.append(
             f'<rect class="breakdown-bar" x="{left}" y="{y + 5}" width="{bar_width:.2f}" height="20" rx="4">'
-            f'<title>{_esc(point.label)}: {_fmt_int(point.total_tokens)} {value_kind}, ${point.cost_usd:.4f}</title></rect>'
+            f'<title>{_esc(point.label)}: {_fmt_int(point.total_tokens)} {value_kind}, '
+            f'${point.cost_usd:.4f}, {_fmt_credits(point.total_credits)} credits</title></rect>'
         )
-        value_text = f"{_fmt_compact(point.total_tokens)} | ${point.cost_usd:.2f}"
+        value_text = f"{_fmt_compact(point.total_tokens)} | ${point.cost_usd:.2f} | {_fmt_credits(point.total_credits)} cr"
         if point.unpriced_tokens:
-            value_text += f" | {_fmt_compact(point.unpriced_tokens)} unpriced"
+            value_text += f" | {_fmt_compact(point.unpriced_tokens)} API excl."
+        if point.credit_unpriced_tokens:
+            value_text += f" | {_fmt_compact(point.credit_unpriced_tokens)} no credit"
         chunks.append(f'<text class="value-label" x="{left + inner_width + 10}" y="{y + 20}">{_esc(value_text)}</text>')
     chunks.append("</svg>")
     return "".join(chunks)
@@ -195,3 +198,9 @@ def _fmt_compact(value: int) -> str:
     if value >= 1_000:
         return f"{value / 1_000:.1f}K"
     return str(value)
+
+
+def _fmt_credits(value: float) -> str:
+    if value >= 1_000:
+        return f"{value:,.0f}"
+    return f"{value:,.1f}"

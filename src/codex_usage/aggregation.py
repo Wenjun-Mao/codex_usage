@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from codex_usage.models import TokenUsage, UsageRecord
-from codex_usage.pricing import CostBreakdown, estimate_cost
+from codex_usage.pricing import CostBreakdown, CreditBreakdown, estimate_codex_credits, estimate_cost
 
 
 RANGE_CHOICES = ("today", "yesterday", "7d", "30d", "month", "all")
@@ -19,6 +19,7 @@ class AggregateRow:
     label: str
     usage: TokenUsage
     cost: CostBreakdown
+    credits: CreditBreakdown = field(default_factory=CreditBreakdown)
     record_count: int = 0
 
     def to_dict(self) -> dict[str, object]:
@@ -28,6 +29,7 @@ class AggregateRow:
             "record_count": self.record_count,
             "usage": self.usage.to_dict(),
             "cost": self.cost.to_dict(),
+            "credits": self.credits.to_dict(),
         }
 
 
@@ -36,12 +38,14 @@ class UsageSummary:
     usage: TokenUsage
     cost: CostBreakdown
     record_count: int
+    credits: CreditBreakdown = field(default_factory=CreditBreakdown)
 
     def to_dict(self) -> dict[str, object]:
         return {
             "record_count": self.record_count,
             "usage": self.usage.to_dict(),
             "cost": self.cost.to_dict(),
+            "credits": self.credits.to_dict(),
         }
 
 
@@ -102,20 +106,21 @@ def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinf
     if group_by not in GROUP_CHOICES:
         raise ValueError(f"Unknown grouping: {group_by}")
 
-    buckets: dict[str, tuple[str, TokenUsage, CostBreakdown, int]] = {}
+    buckets: dict[str, tuple[str, TokenUsage, CostBreakdown, CreditBreakdown, int]] = {}
     for record in records:
         key, label = _bucket_key(record, group_by, timezone)
-        _, usage, cost, count = buckets.get(key, (label, TokenUsage(), CostBreakdown(), 0))
+        _, usage, cost, credits, count = buckets.get(key, (label, TokenUsage(), CostBreakdown(), CreditBreakdown(), 0))
         buckets[key] = (
             label,
             usage.add(record.usage),
             cost.add(_record_cost(record)),
+            credits.add(_record_credits(record)),
             count + 1,
         )
 
     rows = [
-        AggregateRow(key=key, label=label, usage=usage, cost=cost, record_count=count)
-        for key, (label, usage, cost, count) in buckets.items()
+        AggregateRow(key=key, label=label, usage=usage, cost=cost, credits=credits, record_count=count)
+        for key, (label, usage, cost, credits, count) in buckets.items()
     ]
     if group_by in {"day", "hour"}:
         return sorted(rows, key=lambda row: row.key)
@@ -125,10 +130,12 @@ def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinf
 def summarize_records(records: list[UsageRecord]) -> UsageSummary:
     usage = TokenUsage()
     cost = CostBreakdown()
+    credits = CreditBreakdown()
     for record in records:
         usage = usage.add(record.usage)
         cost = cost.add(_record_cost(record))
-    return UsageSummary(usage=usage, cost=cost, record_count=len(records))
+        credits = credits.add(_record_credits(record))
+    return UsageSummary(usage=usage, cost=cost, credits=credits, record_count=len(records))
 
 
 def _bucket_key(record: UsageRecord, group_by: str, timezone: tzinfo) -> tuple[str, str]:
@@ -147,7 +154,14 @@ def _bucket_key(record: UsageRecord, group_by: str, timezone: tzinfo) -> tuple[s
 
 
 def _record_cost(record: UsageRecord) -> CostBreakdown:
-    cost = estimate_cost(record.usage, record.model)
+    cost = estimate_cost(record.usage, record.model, at=record.timestamp)
     if cost is not None:
         return cost
     return CostBreakdown(unpriced_tokens=record.usage.total_tokens)
+
+
+def _record_credits(record: UsageRecord) -> CreditBreakdown:
+    credits = estimate_codex_credits(record.usage, record.model, at=record.timestamp)
+    if credits is not None:
+        return credits
+    return CreditBreakdown(unpriced_tokens=record.usage.total_tokens)

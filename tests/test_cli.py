@@ -72,8 +72,12 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
         text=True,
     )
     payload = json.loads(json_result.stdout)
+    assert payload["pricing_method"] == "effective_dated"
     assert payload["total"]["usage"]["total_tokens"] == 120
+    assert "cost" in payload["total"]
+    assert "credits" in payload["total"]
     assert payload["rows"][0]["label"] == "demo"
+    assert "credits" in payload["rows"][0]
 
     csv_result = subprocess.run(
         [
@@ -94,6 +98,7 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
         text=True,
     )
     assert "total_tokens" in csv_result.stdout
+    assert "codex_credits" in csv_result.stdout
     assert "120" in csv_result.stdout
 
     report_path = tmp_path / "report.html"

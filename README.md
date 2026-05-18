@@ -27,11 +27,13 @@ The parser reads cumulative `total_token_usage` records and charges only the pos
 
 Project grouping uses `git.repository_url` when present, then normalized `cwd`, then the session id.
 
+Pricing uses checked-in effective-dated rate schedules. Each usage event is priced with the API USD and Codex credit rates active at that event's timestamp, so future price changes can be added without rewriting historical reports.
+
 ## Dashboard Report
 
 `codex-usage report` writes a self-contained HTML dashboard with inline SVG charts:
 
-- KPI strip for total tokens, API-equivalent cost, cache hit share, and unpriced tokens
+- KPI strip for total tokens, API-equivalent cost, Codex credits, cache hit share, and API-excluded tokens
 - daily API-equivalent cost trend
 - hourly cost heatmap
 - top project breakdown

@@ -5,6 +5,7 @@
   "publisher": "local-codex-usage",
   "version": "0.0.1",
   "private": true,
+  "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
   },
