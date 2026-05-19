@@ -17,6 +17,7 @@ from codex_usage.charts import (
 )
 from codex_usage.pricing import PRICING_AS_OF, PRICING_METHOD
 from codex_usage.report_view import ReportViewModel, build_report_view_model
+from codex_usage.report_theme import normalize_report_theme, report_css
 
 
 def summary_payload(
@@ -130,8 +131,10 @@ def render_html_report(
     files_scanned: int,
     subscription_usd: float | None,
     project_keys: list[str] | None = None,
+    theme: str = "auto",
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    theme = normalize_report_theme(theme)
     view_model = build_report_view_model(
         generated_at=generated_at,
         range_name=range_name,
@@ -154,68 +157,13 @@ def render_html_report(
     project_filter_label = _project_filter_label(project_keys)
 
     body = f"""<!doctype html>
-<html lang="en">
+<html lang="en" data-codex-theme="{html.escape(theme)}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Codex Usage Report</title>
   <style>
-    :root {{
-      --bg: #fafafa;
-      --text: #1f2933;
-      --muted: #667085;
-      --border: #d8dee4;
-      --surface: #ffffff;
-      --surface-soft: #f3f6f8;
-      --accent: #0f766e;
-      --accent-strong: #0d9488;
-      --accent-warm: #c2410c;
-      --warn: #b42318;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.4;
-    }}
-    main {{ max-width: 1180px; margin: 0 auto; padding: 24px; }}
-    h1 {{ font-size: 26px; margin: 0 0 4px; letter-spacing: 0; }}
-    h2 {{ font-size: 17px; margin: 0 0 10px; letter-spacing: 0; }}
-    h3 {{ font-size: 14px; margin: 18px 0 8px; letter-spacing: 0; }}
-    table {{ border-collapse: collapse; width: 100%; margin-top: 10px; background: var(--surface); }}
-    th, td {{ border-bottom: 1px solid var(--border); padding: 7px 8px; text-align: left; vertical-align: top; }}
-    th {{ font-weight: 650; background: var(--surface-soft); }}
-    .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
-    .muted {{ color: var(--muted); font-size: 13px; }}
-    .summary-line {{ margin-top: 4px; }}
-    .kpis {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 20px 0 18px; }}
-    .kpi {{ border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px; min-height: 92px; }}
-    .kpi-label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; }}
-    .kpi-value {{ display: block; font-size: 23px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }}
-    .kpi-detail {{ color: var(--muted); font-size: 12px; margin-top: 4px; }}
-    .notice {{ border-left: 4px solid var(--accent-warm); background: #fff7ed; padding: 9px 12px; margin: 10px 0; }}
-    .notice.warn {{ border-left-color: var(--warn); background: #fef3f2; }}
-    .dashboard-grid {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 18px; }}
-    .section {{ border-top: 1px solid var(--border); padding-top: 18px; }}
-    .chart-scroll {{ overflow-x: auto; padding-bottom: 4px; }}
-    .chart-svg {{ display: block; width: 100%; height: auto; min-width: 680px; }}
-    .axis-line {{ stroke: var(--border); stroke-width: 1; }}
-    .axis-label {{ fill: var(--muted); font-size: 11px; }}
-    .bar-label {{ fill: var(--text); font-size: 12px; }}
-    .value-label {{ fill: var(--muted); font-size: 12px; }}
-    .cost-bar {{ fill: var(--accent); }}
-    .cost-bar:hover, .breakdown-bar:hover {{ fill: var(--accent-strong); }}
-    .breakdown-bar {{ fill: var(--accent-warm); }}
-    .heat-cell {{ stroke: #ffffff; stroke-width: 1; }}
-    .empty-chart {{ fill: var(--muted); font-size: 14px; }}
-    .table-wrap {{ overflow-x: auto; }}
-    @media (max-width: 720px) {{
-      main {{ padding: 16px; }}
-      .kpi-value {{ font-size: 20px; }}
-      th, td {{ padding: 6px; }}
-    }}
+{report_css()}
   </style>
 </head>
 <body>

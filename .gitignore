@@ -17,6 +17,7 @@ extensions/vscode/node_modules/
 extensions/vscode/out/
 extensions/vscode/.vscode-test/
 extensions/vscode/bin/
+extensions/vscode/media/ChatGPT Image*.png
 
 # Local Codex session samples and generated reports
 *.jsonl

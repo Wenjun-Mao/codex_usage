@@ -8,8 +8,12 @@ const {
   bundledExecutablePath,
   injectWebviewControls,
   injectWebviewCsp,
+  normalizeTheme,
   normalizeRange,
   parseProjectChoices,
+  renderErrorHtml,
+  renderLoadingHtml,
+  WEBVIEW_COMMANDS,
 } = require("../out/core");
 
 test("buildReportArgs includes optional CLI arguments for the bundled executable", () => {
@@ -19,6 +23,7 @@ test("buildReportArgs includes optional CLI arguments for the bundled executable
     sessionsDir: "C:/Users/example/.codex/sessions",
     subscriptionUsd: 20,
     projectKeys: ["repo-a", "repo-b"],
+    theme: "night",
   });
 
   assert.deepEqual(args, [
@@ -27,6 +32,8 @@ test("buildReportArgs includes optional CLI arguments for the bundled executable
     "all",
     "--output",
     "C:/tmp/report.html",
+    "--theme",
+    "night",
     "--sessions-dir",
     "C:/Users/example/.codex/sessions",
     "--subscription-usd",
@@ -68,6 +75,14 @@ test("normalizeRange falls back to 30d for unknown settings", () => {
   assert.equal(normalizeRange("month"), "month");
   assert.equal(normalizeRange("nonsense"), "30d");
   assert.equal(normalizeRange(undefined), "30d");
+});
+
+test("normalizeTheme falls back to auto for unknown settings", () => {
+  assert.equal(normalizeTheme("day"), "day");
+  assert.equal(normalizeTheme("night"), "night");
+  assert.equal(normalizeTheme("auto"), "auto");
+  assert.equal(normalizeTheme("midnight"), "auto");
+  assert.equal(normalizeTheme(undefined), "auto");
 });
 
 test("bundledExecutablePath resolves Windows x64 executable and rejects unsupported platforms", () => {
@@ -118,11 +133,29 @@ test("parseProjectChoices reads project rows for QuickPick", () => {
 
 test("injectWebviewControls adds command links without scripts or external URLs", () => {
   const html = "<!doctype html><html><head><title>Report</title></head><body><main><h1>Report</h1></main></body></html>";
-  const out = injectWebviewControls(html, { range: "7d", projectKeys: ["repo-a", "repo-b"] });
+  const out = injectWebviewControls(html, { range: "7d", projectKeys: ["repo-a", "repo-b"], theme: "night" });
 
   assert.match(out, /codex-usage-actions/);
   assert.match(out, /command:codexUsage.selectRange/);
+  assert.match(out, /command:codexUsage.selectTheme/);
   assert.match(out, /Projects: 2 selected/);
+  assert.match(out, /Theme: Night/);
   assert.doesNotMatch(out, /<script/i);
   assert.doesNotMatch(out, /https:/);
+});
+
+test("webview command allowlist includes theme selector", () => {
+  assert.ok(WEBVIEW_COMMANDS.includes("codexUsage.selectTheme"));
+});
+
+test("loading and error HTML are script-free and themeable", () => {
+  const loading = renderLoadingHtml();
+  const error = renderErrorHtml("boom");
+
+  assert.match(loading, /data-codex-theme="auto"/);
+  assert.match(error, /data-codex-theme="auto"/);
+  assert.match(loading, /body\.vscode-dark/);
+  assert.match(error, /body\.vscode-dark/);
+  assert.doesNotMatch(loading, /<script/i);
+  assert.doesNotMatch(error, /<script/i);
 });

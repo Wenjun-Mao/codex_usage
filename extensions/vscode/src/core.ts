@@ -2,9 +2,12 @@ import * as path from "path";
 
 export const RANGE_VALUES = ["today", "yesterday", "7d", "30d", "month", "all"] as const;
 export type ReportRange = (typeof RANGE_VALUES)[number];
+export const THEME_VALUES = ["auto", "day", "night"] as const;
+export type ReportTheme = (typeof THEME_VALUES)[number];
 export const WEBVIEW_COMMANDS = [
   "codexUsage.selectRange",
   "codexUsage.selectProjects",
+  "codexUsage.selectTheme",
   "codexUsage.refreshDashboard",
   "codexUsage.openSettings",
 ] as const;
@@ -15,6 +18,7 @@ export type ReportCommandOptions = {
   sessionsDir?: string;
   subscriptionUsd?: number | null;
   projectKeys?: string[];
+  theme?: string;
 };
 
 export type SummaryCommandOptions = {
@@ -30,6 +34,7 @@ export type ExtensionSettings = {
   sessionsDir?: string;
   subscriptionUsd?: number | null;
   projectKeys: string[];
+  theme: ReportTheme;
 };
 
 export type ProjectChoice = {
@@ -44,12 +49,19 @@ export type ProjectChoice = {
 export type WebviewControlState = {
   range: ReportRange;
   projectKeys: string[];
+  theme: ReportTheme;
 };
 
 export function normalizeRange(value: unknown): ReportRange {
   return typeof value === "string" && RANGE_VALUES.includes(value as ReportRange)
     ? (value as ReportRange)
     : "30d";
+}
+
+export function normalizeTheme(value: unknown): ReportTheme {
+  return typeof value === "string" && THEME_VALUES.includes(value as ReportTheme)
+    ? (value as ReportTheme)
+    : "auto";
 }
 
 export function normalizeProjectKeys(values: unknown): string[] {
@@ -73,7 +85,15 @@ export function normalizeProjectKeys(values: unknown): string[] {
 }
 
 export function buildReportArgs(options: ReportCommandOptions): string[] {
-  const args = ["report", "--range", normalizeRange(options.range), "--output", options.outputPath];
+  const args = [
+    "report",
+    "--range",
+    normalizeRange(options.range),
+    "--output",
+    options.outputPath,
+    "--theme",
+    normalizeTheme(options.theme),
+  ];
   appendCommonArgs(args, options);
   appendProjectKeyArgs(args, options.projectKeys);
   return args;
@@ -218,18 +238,34 @@ export function injectWebviewCsp(reportHtml: string, cspSource: string): string 
 export function renderErrorHtml(message: string): string {
   const escaped = escapeHtml(message);
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-codex-theme="auto">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 24px; color: #1f2937; }
-    .error { border-left: 4px solid #b42318; background: #fef3f2; padding: 12px; }
+${basicWebviewCss()}
+    .error { border-left: 4px solid var(--danger); background: var(--warn-bg); padding: 12px; }
   </style>
 </head>
 <body>
   <h1>Codex Usage Dashboard</h1>
   <div class="error">${escaped}</div>
+</body>
+</html>`;
+}
+
+export function renderLoadingHtml(): string {
+  return `<!doctype html>
+<html lang="en" data-codex-theme="auto">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+${basicWebviewCss()}
+  </style>
+</head>
+<body>
+  Generating Codex usage dashboard...
 </body>
 </html>`;
 }
@@ -256,10 +292,21 @@ function renderWebviewControls(state: WebviewControlState): string {
     '<nav class="codex-usage-actions" aria-label="Codex Usage dashboard controls">' +
     `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` +
     `<a href="command:codexUsage.selectProjects">Projects: ${escapeHtml(projectFilterLabel(state.projectKeys))}</a>` +
+    `<a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(themeLabel(state.theme))}</a>` +
     '<a href="command:codexUsage.refreshDashboard">Refresh</a>' +
     '<a href="command:codexUsage.openSettings">Settings</a>' +
     "</nav>"
   );
+}
+
+function themeLabel(theme: ReportTheme): string {
+  if (theme === "day") {
+    return "Day";
+  }
+  if (theme === "night") {
+    return "Night";
+  }
+  return "Auto";
 }
 
 function projectFilterLabel(projectKeys: string[]): string {
@@ -283,4 +330,36 @@ function numberValue(value: unknown): number {
 
 function formatInt(value: number): string {
   return Math.round(value).toLocaleString("en-US");
+}
+
+function basicWebviewCss(): string {
+  return `    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --text: #0a0b0d;
+      --muted: #5b616e;
+      --danger: #cf202f;
+      --warn-bg: #fef3f2;
+    }
+    body.vscode-dark {
+      color-scheme: dark;
+      --bg: var(--vscode-editor-background, #0d0f12);
+      --text: var(--vscode-editor-foreground, #eef2f6);
+      --muted: var(--vscode-descriptionForeground, #a7b0bc);
+      --danger: #ff6b78;
+      --warn-bg: rgba(255, 107, 120, 0.14);
+    }
+    body.vscode-high-contrast {
+      --bg: var(--vscode-editor-background, #000000);
+      --text: var(--vscode-editor-foreground, #ffffff);
+      --muted: var(--vscode-editor-foreground, #ffffff);
+      --danger: var(--vscode-errorForeground, #ffffff);
+      --warn-bg: transparent;
+    }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      margin: 24px;
+      background: var(--bg);
+      color: var(--text);
+    }`;
 }

@@ -32,11 +32,17 @@ def test_dashboard_report_contains_inline_svg_sections_without_external_assets(t
         files_scanned=1,
         subscription_usd=20.0,
         project_keys=["repo"],
+        theme="night",
     )
 
     html = output.read_text(encoding="utf-8")
 
     assert "Codex Usage Report" in html
+    assert '<html lang="en" data-codex-theme="night">' in html
+    assert "--bg: #f7f8fa" in html
+    assert "--night-bg: #0d0f12" in html
+    assert "body.vscode-dark" in html
+    assert "body.vscode-high-contrast" in html
     assert "Projects: repo" in html
     assert "Daily Cost Trend" in html
     assert "Hourly Heatmap" in html
@@ -52,6 +58,38 @@ def test_dashboard_report_contains_inline_svg_sections_without_external_assets(t
     assert "<script" not in html
     assert " src=" not in html
     assert " href=" not in html
+
+
+def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
+    output = tmp_path / "report.html"
+    total = UsageSummary(
+        usage=TokenUsage(input_tokens=1_000, cached_input_tokens=500, output_tokens=100, total_tokens=1_100),
+        cost=CostBreakdown(total_usd=1.75),
+        credits=CreditBreakdown(total_credits=14.25),
+        record_count=4,
+    )
+
+    render_html_report(
+        output_path=output,
+        generated_at=datetime(2026, 4, 29, 12, tzinfo=UTC),
+        range_name="all",
+        total=total,
+        daily_rows=[_row("2026-04-29", "2026-04-29", 1_100, cost=1.75, credits=14.25)],
+        hourly_rows=[_row("2026-04-29 10:00", "2026-04-29 10:00", 700, cost=0.75, credits=9.0)],
+        project_rows=[],
+        model_rows=[],
+        sessions_dirs=[Path("sessions")],
+        files_scanned=1,
+        subscription_usd=None,
+        theme="auto",
+    )
+
+    html = output.read_text(encoding="utf-8")
+
+    assert '<html lang="en" data-codex-theme="auto">' in html
+    assert "heat-cell heat-" in html
+    assert "#edf2f7" not in html
+    assert "--heat-0" in html
 
 
 def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> None:

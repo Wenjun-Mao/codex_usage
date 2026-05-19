@@ -77,7 +77,7 @@ def render_hourly_heatmap_svg(cells: list[HourlyCell]) -> str:
         for hour in range(24):
             cell = by_key.get((day, hour))
             value = cell.cost_usd if cell else 0.0
-            fill = _heat_color(value / max_cost if max_cost else 0)
+            heat_class = _heat_class(value / max_cost if max_cost else 0)
             x = left + hour * cell_size
             title_text = (
                 f"{day} {hour:02d}:00: ${value:.4f}, {_fmt_int(cell.total_tokens)} tokens"
@@ -85,7 +85,7 @@ def render_hourly_heatmap_svg(cells: list[HourlyCell]) -> str:
                 else f"{day} {hour:02d}:00: no usage"
             )
             chunks.append(
-                f'<rect x="{x}" y="{y}" width="20" height="20" rx="3" fill="{fill}" class="heat-cell">'
+                f'<rect x="{x}" y="{y}" width="20" height="20" rx="3" class="heat-cell {heat_class}">'
                 f'<title>{_esc(title_text)}</title></rect>'
             )
     chunks.append(f'<text class="axis-label" x="{left}" y="{height - 4}">Darker cells mean higher API-equivalent cost.</text>')
@@ -153,20 +153,12 @@ def _svg_open(width: int, height: int, title: str) -> str:
     )
 
 
-def _heat_color(ratio: float) -> str:
+def _heat_class(ratio: float) -> str:
     ratio = max(0.0, min(1.0, ratio))
     if ratio == 0:
-        return "#edf2f7"
-    if ratio < 0.5:
-        return _mix((224, 242, 254), (8, 145, 178), ratio * 2)
-    return _mix((8, 145, 178), (220, 38, 38), (ratio - 0.5) * 2)
-
-
-def _mix(a: tuple[int, int, int], b: tuple[int, int, int], ratio: float) -> str:
-    r = round(a[0] + (b[0] - a[0]) * ratio)
-    g = round(a[1] + (b[1] - a[1]) * ratio)
-    blue = round(a[2] + (b[2] - a[2]) * ratio)
-    return f"#{r:02x}{g:02x}{blue:02x}"
+        return "heat-0"
+    bucket = min(5, max(1, int(ratio * 5 + 0.999)))
+    return f"heat-{bucket}"
 
 
 def _short_day(value: str) -> str:

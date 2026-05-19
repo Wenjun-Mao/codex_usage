@@ -23,6 +23,7 @@ from codex_usage.reporting import (
     summary_payload,
     write_csv,
 )
+from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.settings import get_settings
 
 
@@ -60,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser = subparsers.add_parser("report", help="Write a self-contained HTML report.")
     _add_common_options(report_parser)
     report_parser.add_argument("--range", dest="range_name", choices=RANGE_CHOICES, default="30d")
+    report_parser.add_argument("--theme", choices=REPORT_THEME_CHOICES, default=None)
     report_parser.add_argument("--output", type=Path, default=Path("output/report.html"))
     report_parser.set_defaults(handler=handle_report)
 
@@ -117,6 +119,7 @@ def handle_report(args: argparse.Namespace) -> int:
         files_scanned=len(context.files),
         subscription_usd=context.subscription_usd,
         project_keys=context.project_keys,
+        theme=normalize_report_theme(args.theme or get_settings().theme),
     )
     print(f"Wrote {output_path}")
     return 0

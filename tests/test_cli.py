@@ -112,6 +112,8 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
             str(sessions),
             "--range",
             "all",
+            "--theme",
+            "night",
             "--output",
             str(report_path),
         ],
@@ -119,7 +121,9 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert "Codex Usage Report" in report_path.read_text(encoding="utf-8")
+    report_html = report_path.read_text(encoding="utf-8")
+    assert "Codex Usage Report" in report_html
+    assert 'data-codex-theme="night"' in report_html
 
 
 def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
@@ -219,6 +223,28 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
     report_html = report_path.read_text(encoding="utf-8")
     assert "Projects: /repo/missing" in report_html
     assert "No Codex usage was found for this report range." in report_html
+
+
+def test_cli_report_rejects_unknown_theme(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "codex_usage.cli",
+            "report",
+            "--range",
+            "all",
+            "--theme",
+            "midnight",
+            "--output",
+            str(tmp_path / "report.html"),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "invalid choice" in result.stderr
 
 
 def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:

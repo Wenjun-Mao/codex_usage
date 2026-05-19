@@ -1,15 +1,33 @@
 {
   "name": "codex-usage-dashboard",
   "displayName": "Codex Usage Dashboard",
-  "description": "Local dashboard for Codex token usage from session JSONL logs.",
+  "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
   "publisher": "local-codex-usage",
-  "version": "0.0.1",
+  "version": "0.1.3",
   "private": true,
+  "preview": true,
   "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Wenjun-Mao/codex_usage.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Wenjun-Mao/codex_usage/issues"
+  },
+  "homepage": "https://github.com/Wenjun-Mao/codex_usage#readme",
+  "keywords": [
+    "codex",
+    "tokens",
+    "usage",
+    "dashboard",
+    "cost"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
   "extensionKind": [
@@ -20,7 +38,8 @@
     "onCommand:codexUsage.refreshDashboard",
     "onCommand:codexUsage.openSettings",
     "onCommand:codexUsage.selectRange",
-    "onCommand:codexUsage.selectProjects"
+    "onCommand:codexUsage.selectProjects",
+    "onCommand:codexUsage.selectTheme"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -44,6 +63,10 @@
       {
         "command": "codexUsage.selectProjects",
         "title": "Codex Usage: Select Projects"
+      },
+      {
+        "command": "codexUsage.selectTheme",
+        "title": "Codex Usage: Select Theme"
       }
     ],
     "configuration": {
@@ -83,6 +106,16 @@
             "type": "string"
           },
           "description": "Project keys selected for dashboard filtering. Leave empty to show all projects."
+        },
+        "codexUsage.theme": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "day",
+            "night"
+          ],
+          "default": "auto",
+          "description": "Dashboard theme. Auto follows the active VS Code theme in the extension and system preference for standalone HTML."
         }
       }
     }

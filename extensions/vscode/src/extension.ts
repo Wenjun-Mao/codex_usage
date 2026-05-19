@@ -11,9 +11,12 @@ import {
   injectWebviewCsp,
   normalizeProjectKeys,
   normalizeRange,
+  normalizeTheme,
   parseProjectChoices,
   renderErrorHtml,
+  renderLoadingHtml,
   RANGE_VALUES,
+  THEME_VALUES,
   WEBVIEW_COMMANDS,
 } from "./core";
 
@@ -43,6 +46,9 @@ export function activate(context: vscode.ExtensionContext) {
   const selectProjectsCommand = vscode.commands.registerCommand("codexUsage.selectProjects", async () => {
     await selectProjectSettings(context);
   });
+  const selectThemeCommand = vscode.commands.registerCommand("codexUsage.selectTheme", async () => {
+    await selectThemeSetting();
+  });
   const settingsWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
     if (!event.affectsConfiguration("codexUsage")) {
       return;
@@ -59,6 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
     openSettingsCommand,
     selectRangeCommand,
     selectProjectsCommand,
+    selectThemeCommand,
     settingsWatcher,
     output,
     statusItem,
@@ -101,6 +108,7 @@ async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: v
       sessionsDir: settings.sessionsDir,
       subscriptionUsd: settings.subscriptionUsd,
       projectKeys: settings.projectKeys,
+      theme: settings.theme,
     });
     await runCodexUsage(executablePath, args);
     const reportHtml = await fs.readFile(reportPath, "utf8");
@@ -128,6 +136,23 @@ async function selectRangeSetting(): Promise<void> {
     return;
   }
   await vscode.workspace.getConfiguration("codexUsage").update("range", selected.range, vscode.ConfigurationTarget.Global);
+}
+
+async function selectThemeSetting(): Promise<void> {
+  const settings = readSettings();
+  const items = THEME_VALUES.map((theme) => ({
+    label: themeLabel(theme),
+    description: theme === settings.theme ? "Current" : "",
+    theme,
+    picked: theme === settings.theme,
+  }));
+  const selected = await vscode.window.showQuickPick(items, {
+    placeHolder: "Select Codex usage dashboard theme",
+  });
+  if (!selected || selected.theme === settings.theme) {
+    return;
+  }
+  await vscode.workspace.getConfiguration("codexUsage").update("theme", selected.theme, vscode.ConfigurationTarget.Global);
 }
 
 async function selectProjectSettings(context: vscode.ExtensionContext): Promise<void> {
@@ -185,6 +210,7 @@ function readSettings(): ExtensionSettings {
     sessionsDir: config.get<string>("sessionsDir", ""),
     subscriptionUsd: typeof subscription === "number" ? subscription : null,
     projectKeys: normalizeProjectKeys(config.get<string[]>("projectKeys", [])),
+    theme: normalizeTheme(config.get<string>("theme", "auto")),
   };
 }
 
@@ -271,31 +297,30 @@ function renderWebviewHtml(rawHtml: string, webview: vscode.Webview, settings: E
   const withControls = injectWebviewControls(rawHtml, {
     range: settings.range,
     projectKeys: settings.projectKeys,
+    theme: settings.theme,
   });
   return injectWebviewCsp(withControls, webview.cspSource);
 }
 
 function updateStatusItem(settings: ExtensionSettings): void {
   const projectCount = settings.projectKeys.length;
-  statusItem.text = projectCount > 0 ? `Codex Usage: ${settings.range} (${projectCount})` : `Codex Usage: ${settings.range}`;
+  const theme = themeLabel(settings.theme);
+  statusItem.text =
+    projectCount > 0
+      ? `Codex Usage: ${settings.range} (${projectCount})`
+      : `Codex Usage: ${settings.range}`;
   statusItem.tooltip =
     projectCount > 0
-      ? `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: ${projectCount} selected.`
-      : `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: All Projects.`;
+      ? `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: ${projectCount} selected. Theme: ${theme}.`
+      : `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: All Projects. Theme: ${theme}.`;
 }
 
-function renderLoadingHtml(): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 24px; color: #667085; }
-  </style>
-</head>
-<body>
-  Generating Codex usage dashboard...
-</body>
-</html>`;
+function themeLabel(theme: ExtensionSettings["theme"]): string {
+  if (theme === "day") {
+    return "Day";
+  }
+  if (theme === "night") {
+    return "Night";
+  }
+  return "Auto";
 }

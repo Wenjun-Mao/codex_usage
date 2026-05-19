@@ -10,6 +10,7 @@ class AppSettings(BaseSettings):
     sessions_dir: Path | None = None
     timezone: str | None = None
     subscription_usd: float | None = None
+    theme: str = "auto"
     output_dir: Path = Path("output")
 
     model_config = SettingsConfigDict(
