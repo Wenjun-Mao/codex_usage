@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.5 - Canonical Project Identity
+
+- Resolve missing project git metadata from local `.git/config` when `cwd` points inside a repository.
+- Canonicalize common HTTPS and SSH git remotes so path-only fork sessions combine with repo-keyed sessions.
+- Keep path aliases for project filtering compatibility with previously saved selections.
+
+## 0.1.4 - Fork Accounting Fix
+
+- Fixed forked Codex session files so imported parent transcript replay is not counted as fresh usage.
+- Treat the first root token snapshot in a forked session file as inherited context when no prior baseline exists.
+
 ## 0.1.3 - Theme Beta
 
 - Added auto, day, and night dashboard themes.

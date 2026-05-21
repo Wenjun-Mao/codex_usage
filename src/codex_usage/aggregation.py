@@ -99,7 +99,7 @@ def filter_records_by_project_keys(records: list[UsageRecord], project_keys: Seq
     selected = {key.strip() for key in project_keys or [] if key.strip()}
     if not selected:
         return records
-    return [record for record in records if record.project_key in selected]
+    return [record for record in records if record.project_key in selected or any(alias in selected for alias in record.project_aliases)]
 
 
 def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinfo) -> list[AggregateRow]:

@@ -78,6 +78,7 @@ class SessionMetadata:
     source: str = ""
     cli_version: str = ""
     model_provider: str = ""
+    forked_from_id: str = ""
     git_repository_url: str = ""
     git_branch: str = ""
     git_commit_hash: str = ""
@@ -95,6 +96,7 @@ class UsageRecord:
     collaboration_mode: str = ""
     project_key: str = UNKNOWN
     project_label: str = UNKNOWN
+    project_aliases: tuple[str, ...] = ()
     cwd: str = ""
     git_repository_url: str = ""
     git_branch: str = ""
@@ -110,6 +112,7 @@ class UsageRecord:
             "collaboration_mode": self.collaboration_mode,
             "project_key": self.project_key,
             "project_label": self.project_label,
+            "project_aliases": list(self.project_aliases),
             "cwd": self.cwd,
             "git_repository_url": self.git_repository_url,
             "git_branch": self.git_branch,

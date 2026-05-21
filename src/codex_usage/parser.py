@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from codex_usage.models import UNKNOWN, SessionMetadata, TokenUsage, UsageRecord
+from codex_usage.project_identity import resolve_project_identity
 
 
 def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
@@ -20,6 +21,9 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
     metadata = SessionMetadata(session_id=path.stem, file_path=path)
     records: list[UsageRecord] = []
     previous_usage: TokenUsage | None = None
+    root_session_id = ""
+    root_session_is_fork = False
+    counted_root_fork_usage = False
     current_model = UNKNOWN
     current_turn_id = ""
     current_effort = ""
@@ -37,6 +41,9 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
 
             if event_type == "session_meta":
                 metadata = _parse_session_metadata(payload, path, event_timestamp)
+                if not root_session_id:
+                    root_session_id = metadata.session_id
+                    root_session_is_fork = bool(metadata.forked_from_id)
                 continue
 
             if event_type == "turn_context":
@@ -62,16 +69,25 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
                 continue
 
             total_usage = TokenUsage.from_mapping(info.get("total_token_usage"))
+            had_previous_usage = previous_usage is not None
             delta = total_usage.positive_delta(previous_usage)
             previous_usage = total_usage
             if delta is None:
+                continue
+
+            is_root_session = not root_session_id or metadata.session_id == root_session_id
+            if root_session_is_fork and not is_root_session:
+                continue
+            # Fork files can replay imported parent history before actual fork work. A first root
+            # snapshot without a prior baseline is inherited context, not newly consumed tokens.
+            if root_session_is_fork and is_root_session and not counted_root_fork_usage and not had_previous_usage:
                 continue
 
             timestamp = event_timestamp or metadata.timestamp
             if timestamp is None:
                 continue
 
-            project_key, project_label = project_identity(metadata)
+            project_identity = resolve_project_identity(metadata)
             records.append(
                 UsageRecord(
                     timestamp=timestamp,
@@ -82,13 +98,16 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
                     turn_id=current_turn_id,
                     effort=current_effort,
                     collaboration_mode=current_mode,
-                    project_key=project_key,
-                    project_label=project_label,
+                    project_key=project_identity.key,
+                    project_label=project_identity.label,
+                    project_aliases=project_identity.aliases,
                     cwd=metadata.cwd,
-                    git_repository_url=metadata.git_repository_url,
+                    git_repository_url=metadata.git_repository_url or project_identity.git_repository_url,
                     git_branch=metadata.git_branch,
                 )
             )
+            if root_session_is_fork and is_root_session:
+                counted_root_fork_usage = True
 
     return records
 
@@ -108,16 +127,6 @@ def parse_timestamp(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
-
-
-def project_identity(metadata: SessionMetadata) -> tuple[str, str]:
-    if metadata.git_repository_url:
-        repo = metadata.git_repository_url.strip()
-        return _normalize_repo_url(repo), _label_from_repo_url(repo)
-    if metadata.cwd:
-        cwd = metadata.cwd.strip()
-        return _normalize_path_text(cwd), _label_from_path_text(cwd)
-    return metadata.session_id, metadata.session_id
 
 
 def _parse_json_line(raw_line: str) -> dict[str, Any] | None:
@@ -142,6 +151,7 @@ def _parse_session_metadata(payload: dict[str, Any], path: Path, timestamp: date
         source=str(payload.get("source") or ""),
         cli_version=str(payload.get("cli_version") or ""),
         model_provider=str(payload.get("model_provider") or ""),
+        forked_from_id=str(payload.get("forked_from_id") or ""),
         git_repository_url=str(git.get("repository_url") or ""),
         git_branch=str(git.get("branch") or ""),
         git_commit_hash=str(git.get("commit_hash") or ""),
@@ -175,21 +185,3 @@ def _extract_collaboration_mode(payload: dict[str, Any]) -> str:
     if isinstance(collaboration_mode, dict) and collaboration_mode.get("mode"):
         return str(collaboration_mode["mode"])
     return ""
-
-
-def _normalize_repo_url(value: str) -> str:
-    return value.strip().removesuffix(".git").casefold()
-
-
-def _label_from_repo_url(value: str) -> str:
-    cleaned = value.strip().rstrip("/").removesuffix(".git")
-    return cleaned.rsplit("/", 1)[-1] or cleaned
-
-
-def _normalize_path_text(value: str) -> str:
-    return value.replace("\\", "/").rstrip("/").casefold()
-
-
-def _label_from_path_text(value: str) -> str:
-    cleaned = value.replace("\\", "/").rstrip("/")
-    return cleaned.rsplit("/", 1)[-1] or cleaned

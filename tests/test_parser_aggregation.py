@@ -52,6 +52,52 @@ def test_parser_tracks_model_changes_within_session(tmp_path: Path) -> None:
     assert {row.key: row.usage.total_tokens for row in rows} == {"gpt-5.4": 100, "gpt-5.5": 75}
 
 
+def test_parser_ignores_imported_parent_usage_in_forked_session_file(tmp_path: Path) -> None:
+    path = _write_session(
+        tmp_path,
+        [
+            _session_meta(cwd="/repo/fork", session_id="fork-session", forked_from_id="parent-session"),
+            _turn_context(model="gpt-5.5"),
+            _session_meta(
+                cwd="/repo/parent",
+                repo="https://github.com/example/parent.git",
+                session_id="parent-session",
+            ),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=1_000)),
+            _token("2026-04-29T10:01:00Z", _usage(total=2_000)),
+            _session_meta(cwd="/repo/fork", session_id="fork-session", forked_from_id="parent-session"),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:02:00Z", _usage(total=2_100)),
+            _token("2026-04-29T10:03:00Z", _usage(total=2_300)),
+        ],
+    )
+
+    records = parse_session_file(path)
+
+    assert [record.session_id for record in records] == ["fork-session", "fork-session"]
+    assert [record.project_key for record in records] == ["/repo/fork", "/repo/fork"]
+    assert [record.usage.total_tokens for record in records] == [100, 200]
+    assert summarize_records(records).usage.total_tokens == 300
+
+
+def test_parser_treats_first_root_token_count_in_forked_file_as_baseline(tmp_path: Path) -> None:
+    path = _write_session(
+        tmp_path,
+        [
+            _session_meta(cwd="/repo/fork", session_id="fork-session", forked_from_id="parent-session"),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=2_000)),
+            _token("2026-04-29T10:01:00Z", _usage(total=2_300)),
+        ],
+    )
+
+    records = parse_session_file(path)
+
+    assert [record.session_id for record in records] == ["fork-session"]
+    assert [record.usage.total_tokens for record in records] == [300]
+
+
 def test_aggregation_accumulates_api_cost_and_codex_credits(tmp_path: Path) -> None:
     path = _write_session(
         tmp_path,
@@ -130,6 +176,128 @@ def test_project_grouping_falls_back_to_cwd_when_git_missing(tmp_path: Path) -> 
     assert record.project_label == "Demo"
 
 
+def test_project_grouping_resolves_missing_git_url_from_cwd_git_config(tmp_path: Path) -> None:
+    repo = tmp_path / "Persona_Generators"
+    nested = repo / "src" / "feature"
+    git_dir = repo / ".git"
+    nested.mkdir(parents=True)
+    git_dir.mkdir()
+    (git_dir / "config").write_text(
+        "\n".join(
+            [
+                "[core]",
+                "\trepositoryformatversion = 0",
+                '[remote "origin"]',
+                "\turl = https://github.com/Wenjun-Mao/persona_generators.git",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    path = _write_session(
+        tmp_path / "session",
+        [
+            _session_meta(cwd=str(nested)),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+
+    record = parse_session_file(path)[0]
+
+    assert record.project_key == "https://github.com/wenjun-mao/persona_generators"
+    assert record.project_label == "persona_generators"
+    assert _normalized_path(str(nested)) in record.project_aliases
+
+
+def test_project_grouping_prefers_json_git_url_over_cwd_git_config(tmp_path: Path) -> None:
+    repo = tmp_path / "demo"
+    git_dir = repo / ".git"
+    repo.mkdir()
+    git_dir.mkdir()
+    (git_dir / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/example/from-cwd.git\n',
+        encoding="utf-8",
+    )
+    path = _write_session(
+        tmp_path / "session",
+        [
+            _session_meta(cwd=str(repo), repo="https://github.com/example/from-json.git"),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+
+    record = parse_session_file(path)[0]
+
+    assert record.project_key == "https://github.com/example/from-json"
+    assert _normalized_path(str(repo)) in record.project_aliases
+
+
+def test_project_grouping_normalizes_ssh_git_remotes(tmp_path: Path) -> None:
+    repo = tmp_path / "demo"
+    git_dir = repo / ".git"
+    repo.mkdir()
+    git_dir.mkdir()
+    (git_dir / "config").write_text(
+        '[remote "origin"]\n\turl = git@github.com:Wenjun-Mao/persona_generators.git\n',
+        encoding="utf-8",
+    )
+    path = _write_session(
+        tmp_path / "session",
+        [
+            _session_meta(cwd=str(repo)),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+
+    record = parse_session_file(path)[0]
+
+    assert record.project_key == "https://github.com/wenjun-mao/persona_generators"
+
+
+def test_project_aggregation_combines_json_git_url_and_cwd_resolved_repo(tmp_path: Path) -> None:
+    repo = tmp_path / "persona_generators"
+    git_dir = repo / ".git"
+    repo.mkdir()
+    git_dir.mkdir()
+    (git_dir / "config").write_text(
+        '[remote "origin"]\n\turl = git@github.com:Wenjun-Mao/persona_generators.git\n',
+        encoding="utf-8",
+    )
+    first = _write_session(
+        tmp_path / "first",
+        [
+            _session_meta(
+                cwd=str(repo),
+                repo="https://github.com/Wenjun-Mao/persona_generators.git",
+                session_id="session-1",
+            ),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+    second = _write_session(
+        tmp_path / "second",
+        [
+            _session_meta(cwd=str(repo), session_id="session-2"),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=75)),
+        ],
+    )
+    records = parse_session_file(first) + parse_session_file(second)
+
+    rows = aggregate_records(records, "project", resolve_timezone("UTC"))
+
+    assert [(row.key, row.usage.total_tokens) for row in rows] == [
+        ("https://github.com/wenjun-mao/persona_generators", 175)
+    ]
+    assert summarize_records(
+        filter_records_by_project_keys(records, ["https://github.com/wenjun-mao/persona_generators"])
+    ).usage.total_tokens == 175
+    assert summarize_records(filter_records_by_project_keys(records, [_normalized_path(str(repo))])).usage.total_tokens == 175
+
+
 def test_project_filter_supports_empty_single_multiple_and_unmatched_keys(tmp_path: Path) -> None:
     first = _write_session(
         tmp_path / "first",
@@ -204,20 +372,23 @@ def _write_session(tmp_path: Path, rows: list[dict]) -> Path:
     return path
 
 
-def _session_meta(cwd: str = "/repo/demo", repo: str = "") -> dict:
+def _session_meta(cwd: str = "/repo/demo", repo: str = "", session_id: str = "session-1", forked_from_id: str = "") -> dict:
     git = {"repository_url": repo, "branch": "main"} if repo else {}
+    payload = {
+        "id": session_id,
+        "timestamp": "2026-04-29T09:59:00Z",
+        "cwd": cwd,
+        "source": "vscode",
+        "originator": "codex_vscode",
+        "cli_version": "0.1.0",
+        "git": git,
+    }
+    if forked_from_id:
+        payload["forked_from_id"] = forked_from_id
     return {
         "timestamp": "2026-04-29T09:59:00Z",
         "type": "session_meta",
-        "payload": {
-            "id": "session-1",
-            "timestamp": "2026-04-29T09:59:00Z",
-            "cwd": cwd,
-            "source": "vscode",
-            "originator": "codex_vscode",
-            "cli_version": "0.1.0",
-            "git": git,
-        },
+        "payload": payload,
     }
 
 
@@ -255,3 +426,7 @@ def _usage(total: int, input_tokens: int | None = None, cached: int = 0, output:
         "reasoning_output_tokens": 0,
         "total_tokens": total,
     }
+
+
+def _normalized_path(value: str) -> str:
+    return value.replace("\\", "/").rstrip("/").casefold()
