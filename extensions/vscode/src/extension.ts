@@ -15,6 +15,7 @@ import {
   buildTransitionSuggestArgs,
   bundledExecutablePath,
   candidateSessionDirs,
+  extensionVersionLabel,
   injectWebviewControls,
   injectWebviewCsp,
   normalizeProjectKeys,
@@ -142,7 +143,12 @@ async function openOrRefreshDashboard(context: vscode.ExtensionContext): Promise
     panel.reveal(vscode.ViewColumn.One);
   }
 
-  panel.webview.html = renderWebviewHtml(renderLoadingHtml(), panel.webview, readSettings(context));
+  panel.webview.html = renderWebviewHtml(
+    renderLoadingHtml(),
+    panel.webview,
+    readSettings(context),
+    extensionVersionLabel(context.extension.packageJSON),
+  );
   await refreshDashboard(context, panel);
 }
 
@@ -162,11 +168,21 @@ async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: v
     });
     await runCodexUsage(executablePath, args);
     const reportHtml = await fs.readFile(reportPath, "utf8");
-    targetPanel.webview.html = renderWebviewHtml(reportHtml, targetPanel.webview, settings);
+    targetPanel.webview.html = renderWebviewHtml(
+      reportHtml,
+      targetPanel.webview,
+      settings,
+      extensionVersionLabel(context.extension.packageJSON),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
-    targetPanel.webview.html = renderWebviewHtml(renderErrorHtml(message), targetPanel.webview, settings);
+    targetPanel.webview.html = renderWebviewHtml(
+      renderErrorHtml(message),
+      targetPanel.webview,
+      settings,
+      extensionVersionLabel(context.extension.packageJSON),
+    );
     void vscode.window.showErrorMessage(`Codex Usage failed: ${message}`);
   }
 }
@@ -509,11 +525,17 @@ function threadQuickPickItems(choices: ReturnType<typeof parseThreadChoices>): T
   }));
 }
 
-function renderWebviewHtml(rawHtml: string, webview: vscode.Webview, settings: ExtensionSettings): string {
+function renderWebviewHtml(
+  rawHtml: string,
+  webview: vscode.Webview,
+  settings: ExtensionSettings,
+  versionLabel: string,
+): string {
   const withControls = injectWebviewControls(rawHtml, {
     range: settings.range,
     projectKeys: settings.projectKeys,
     theme: settings.theme,
+    versionLabel,
   });
   return injectWebviewCsp(withControls, webview.cspSource);
 }

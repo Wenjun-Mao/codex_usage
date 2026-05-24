@@ -13,6 +13,7 @@ const {
   buildTransitionSuggestArgs,
   bundledExecutablePath,
   candidateSessionDirs,
+  extensionVersionLabel,
   injectWebviewControls,
   injectWebviewCsp,
   normalizeSyncSettings,
@@ -349,16 +350,29 @@ test("parseSyncStatusSummary counts states and memory warnings", () => {
 
 test("injectWebviewControls adds command links without scripts or external URLs", () => {
   const html = "<!doctype html><html><head><title>Report</title></head><body><main><h1>Report</h1></main></body></html>";
-  const out = injectWebviewControls(html, { range: "7d", projectKeys: ["repo-a", "repo-b"], theme: "night" });
+  const out = injectWebviewControls(html, {
+    range: "7d",
+    projectKeys: ["repo-a", "repo-b"],
+    theme: "night",
+    versionLabel: "v0.1.9",
+  });
 
   assert.match(out, /codex-usage-actions/);
+  assert.match(out, /codex-usage-version/);
   assert.match(out, /command:codexUsage.selectRange/);
   assert.match(out, /command:codexUsage.selectTheme/);
   assert.match(out, /command:codexUsage.reviewProjectTransitions/);
   assert.match(out, /Projects: 2 selected/);
   assert.match(out, /Theme: Night/);
+  assert.match(out, />v0\.1\.9<\/span>/);
   assert.doesNotMatch(out, /<script/i);
   assert.doesNotMatch(out, /https:/);
+});
+
+test("extensionVersionLabel reads package metadata", () => {
+  assert.equal(extensionVersionLabel({ version: "0.1.9" }), "v0.1.9");
+  assert.equal(extensionVersionLabel({ version: " " }), "");
+  assert.equal(extensionVersionLabel({}), "");
 });
 
 test("webview command allowlist includes dashboard commands", () => {

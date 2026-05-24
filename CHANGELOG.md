@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.10 - Version Label
+
+- Added the installed extension version to the dashboard action strip so beta installs are easier to confirm.
+
 ## 0.1.9 - Settings Cleanup
 
 - Removed manual VS Code settings for project aliases, project keys, sessions directory, and subscription comparison.

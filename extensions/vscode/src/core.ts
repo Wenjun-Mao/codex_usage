@@ -110,6 +110,7 @@ export type WebviewControlState = {
   range: ReportRange;
   projectKeys: string[];
   theme: ReportTheme;
+  versionLabel?: string;
 };
 
 export const PROJECT_KEYS_STATE_KEY = "projectKeys";
@@ -202,6 +203,14 @@ export function selectSessionDirsForWatcher(
   }
   const existing = candidates.find((candidate) => exists(candidate));
   return [existing ?? candidates[0]];
+}
+
+export function extensionVersionLabel(packageJson: unknown): string {
+  if (!isRecord(packageJson) || typeof packageJson.version !== "string") {
+    return "";
+  }
+  const version = packageJson.version.trim();
+  return version ? `v${version}` : "";
 }
 
 export function buildReportArgs(options: ReportCommandOptions): string[] {
@@ -501,6 +510,12 @@ export function injectWebviewControls(reportHtml: string, state: WebviewControlS
     .codex-usage-actions a:hover {
       background: var(--vscode-toolbar-hoverBackground, var(--surface-soft));
     }
+    .codex-usage-version {
+      margin-left: auto;
+      color: var(--vscode-descriptionForeground, var(--muted));
+      font-size: 12px;
+      white-space: nowrap;
+    }
   </style>`;
 
   let html = reportHtml
@@ -585,6 +600,9 @@ function escapeHtml(value: string): string {
 }
 
 function renderWebviewControls(state: WebviewControlState): string {
+  const version = state.versionLabel?.trim()
+    ? `<span class="codex-usage-version" aria-label="Codex Usage extension version">${escapeHtml(state.versionLabel.trim())}</span>`
+    : "";
   return (
     '<nav class="codex-usage-actions" aria-label="Codex Usage dashboard controls">' +
     `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` +
@@ -593,6 +611,7 @@ function renderWebviewControls(state: WebviewControlState): string {
     '<a href="command:codexUsage.reviewProjectTransitions">Transitions</a>' +
     '<a href="command:codexUsage.refreshDashboard">Refresh</a>' +
     '<a href="command:codexUsage.openSettings">Settings</a>' +
+    version +
     "</nav>"
   );
 }
