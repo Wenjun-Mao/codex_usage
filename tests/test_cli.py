@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -7,7 +8,8 @@ from codex_usage.cli import _normalize_thread_ids
 
 
 def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
-    sessions = tmp_path / "sessions"
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
     day = sessions / "2026" / "04" / "29"
     day.mkdir(parents=True)
     (day / "session.jsonl").write_text(
@@ -55,24 +57,9 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    json_result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "codex_usage.cli",
-            "summary",
-            "--sessions-dir",
-            str(sessions),
-            "--range",
-            "all",
-            "--by",
-            "project",
-            "--json",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    env = {"CODEX_HOME": str(codex_home)}
+
+    json_result = _run_cli(["summary", "--range", "all", "--by", "project", "--json"], env=env)
     payload = json.loads(json_result.stdout)
     assert payload["pricing_method"] == "effective_dated"
     assert payload["total"]["usage"]["total_tokens"] == 120
@@ -81,37 +68,15 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
     assert payload["rows"][0]["label"] == "demo"
     assert "credits" in payload["rows"][0]
 
-    csv_result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "codex_usage.cli",
-            "summary",
-            "--sessions-dir",
-            str(sessions),
-            "--range",
-            "all",
-            "--by",
-            "day",
-            "--csv",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    csv_result = _run_cli(["summary", "--range", "all", "--by", "day", "--csv"], env=env)
     assert "total_tokens" in csv_result.stdout
     assert "codex_credits" in csv_result.stdout
     assert "120" in csv_result.stdout
 
     report_path = tmp_path / "report.html"
-    subprocess.run(
+    _run_cli(
         [
-            sys.executable,
-            "-m",
-            "codex_usage.cli",
             "report",
-            "--sessions-dir",
-            str(sessions),
             "--range",
             "all",
             "--theme",
@@ -119,9 +84,7 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
             "--output",
             str(report_path),
         ],
-        check=True,
-        capture_output=True,
-        text=True,
+        env=env,
     )
     report_html = report_path.read_text(encoding="utf-8")
     assert "Codex Usage Report" in report_html
@@ -129,23 +92,24 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
 
 
 def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
-    sessions = tmp_path / "sessions"
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
     day = sessions / "2026" / "04" / "29"
     day.mkdir(parents=True)
     _write_session(day / "first.jsonl", "session-1", "/repo/first", 100)
     _write_session(day / "second.jsonl", "session-2", "/repo/second", 75)
+    env = {"CODEX_HOME": str(codex_home)}
 
     all_result = _run_cli(
         [
             "summary",
-            "--sessions-dir",
-            str(sessions),
             "--range",
             "all",
             "--by",
             "project",
             "--json",
-        ]
+        ],
+        env=env,
     )
     all_payload = json.loads(all_result.stdout)
     assert all_payload["project_keys"] == []
@@ -154,8 +118,6 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
     single_result = _run_cli(
         [
             "summary",
-            "--sessions-dir",
-            str(sessions),
             "--range",
             "all",
             "--by",
@@ -163,7 +125,8 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
             "--project-key",
             "/repo/first",
             "--json",
-        ]
+        ],
+        env=env,
     )
     single_payload = json.loads(single_result.stdout)
     assert single_payload["project_keys"] == ["/repo/first"]
@@ -173,8 +136,6 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
     multi_result = _run_cli(
         [
             "summary",
-            "--sessions-dir",
-            str(sessions),
             "--range",
             "all",
             "--by",
@@ -184,7 +145,8 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
             "--project-key",
             "/repo/second",
             "--json",
-        ]
+        ],
+        env=env,
     )
     multi_payload = json.loads(multi_result.stdout)
     assert multi_payload["project_keys"] == ["/repo/first", "/repo/second"]
@@ -193,8 +155,6 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
     unmatched_result = _run_cli(
         [
             "summary",
-            "--sessions-dir",
-            str(sessions),
             "--range",
             "all",
             "--by",
@@ -202,7 +162,8 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
             "--project-key",
             "/repo/missing",
             "--json",
-        ]
+        ],
+        env=env,
     )
     unmatched_payload = json.loads(unmatched_result.stdout)
     assert unmatched_payload["total"]["usage"]["total_tokens"] == 0
@@ -212,15 +173,14 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
     _run_cli(
         [
             "report",
-            "--sessions-dir",
-            str(sessions),
             "--range",
             "all",
             "--project-key",
             "/repo/missing",
             "--output",
             str(report_path),
-        ]
+        ],
+        env=env,
     )
     report_html = report_path.read_text(encoding="utf-8")
     assert "Projects: /repo/missing" in report_html
@@ -249,6 +209,19 @@ def test_cli_report_rejects_unknown_theme(tmp_path: Path) -> None:
     assert "invalid choice" in result.stderr
 
 
+def test_cli_help_no_longer_exposes_removed_manual_options() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "codex_usage.cli", "summary", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "--sessions-dir" not in result.stdout
+    assert "--subscription-usd" not in result.stdout
+    assert "--project-key" in result.stdout
+
+
 def test_cli_threads_and_sync_commands(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex"
     sessions = codex_home / "sessions"
@@ -264,12 +237,11 @@ def test_cli_threads_and_sync_commands(tmp_path: Path) -> None:
     threads_result = _run_cli(
         [
             "threads",
-            "--sessions-dir",
-            str(sessions),
             "--project-key",
             "/repo/first",
             "--json",
-        ]
+        ],
+        env={"CODEX_HOME": str(codex_home)},
     )
     threads_payload = json.loads(threads_result.stdout)
     assert [thread["thread_id"] for thread in threads_payload["threads"]] == ["thread-1"]
@@ -279,13 +251,12 @@ def test_cli_threads_and_sync_commands(tmp_path: Path) -> None:
         [
             "sync",
             "export",
-            "--sessions-dir",
-            str(sessions),
             "--sync-dir",
             str(sync_dir),
             "--thread-id",
             "thread-1",
-        ]
+        ],
+        env={"CODEX_HOME": str(codex_home)},
     )
     assert json.loads(export_result.stdout)["exported"] == ["thread-1"]
 
@@ -293,32 +264,31 @@ def test_cli_threads_and_sync_commands(tmp_path: Path) -> None:
         [
             "sync",
             "status",
-            "--sessions-dir",
-            str(sessions),
             "--sync-dir",
             str(sync_dir),
             "--thread-id",
             "thread-1",
             "--json",
-        ]
+        ],
+        env={"CODEX_HOME": str(codex_home)},
     )
     assert json.loads(status_result.stdout)["threads"][0]["state"] == "synced"
 
-    imported_sessions = tmp_path / "imported" / "sessions"
+    imported_home = tmp_path / "imported"
     import_result = _run_cli(
         [
             "sync",
             "import",
-            "--sessions-dir",
-            str(imported_sessions),
             "--sync-dir",
             str(sync_dir),
             "--thread-id",
             "thread-1",
-        ]
+        ],
+        env={"CODEX_HOME": str(imported_home)},
     )
     assert json.loads(import_result.stdout)["imported"] == ["thread-1"]
-    assert (tmp_path / "imported" / "session_index.jsonl").is_file()
+    assert (imported_home / "sessions").is_dir()
+    assert (imported_home / "session_index.jsonl").is_file()
 
 
 def test_normalize_thread_ids_preserves_case_and_slashes() -> None:
@@ -327,12 +297,19 @@ def test_normalize_thread_ids_preserves_case_and_slashes() -> None:
     assert thread_ids == ["Owner/Repo", "owner/repo", "thread-1"]
 
 
-def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
+def _run_cli(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    merged_env = os.environ.copy()
+    merged_env.pop("CODEX_USAGE_SESSIONS_DIR", None)
+    merged_env.pop("CODEX_USAGE_SUBSCRIPTION_USD", None)
+    merged_env.pop("CODEX_USAGE_PROJECT_ALIASES", None)
+    if env:
+        merged_env.update(env)
     return subprocess.run(
         [sys.executable, "-m", "codex_usage.cli", *args],
         check=True,
         capture_output=True,
         text=True,
+        env=merged_env,
     )
 
 

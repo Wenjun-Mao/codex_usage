@@ -1,9 +1,9 @@
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const test = require("node:test");
+const packageJson = require("../package.json");
 
 const {
-  buildCodexUsageEnv,
   buildReportArgs,
   buildSummaryArgs,
   buildSyncExportArgs,
@@ -12,18 +12,20 @@ const {
   buildThreadsArgs,
   buildTransitionSuggestArgs,
   bundledExecutablePath,
+  candidateSessionDirs,
   injectWebviewControls,
   injectWebviewCsp,
-  normalizeProjectAliases,
   normalizeSyncSettings,
   normalizeTheme,
   normalizeRange,
   parseProjectChoices,
+  readProjectKeysState,
   parseSyncStatusSummary,
   parseThreadChoices,
   parseTransitionChoices,
   renderErrorHtml,
   renderLoadingHtml,
+  selectSessionDirsForWatcher,
   WEBVIEW_COMMANDS,
 } = require("../out/core");
 
@@ -31,8 +33,6 @@ test("buildReportArgs includes optional CLI arguments for the bundled executable
   const args = buildReportArgs({
     range: "all",
     outputPath: "C:/tmp/report.html",
-    sessionsDir: "C:/Users/example/.codex/sessions",
-    subscriptionUsd: 20,
     projectKeys: ["repo-a", "repo-b"],
     theme: "night",
   });
@@ -45,10 +45,6 @@ test("buildReportArgs includes optional CLI arguments for the bundled executable
     "C:/tmp/report.html",
     "--theme",
     "night",
-    "--sessions-dir",
-    "C:/Users/example/.codex/sessions",
-    "--subscription-usd",
-    "20",
     "--project-key",
     "repo-a",
     "--project-key",
@@ -61,7 +57,6 @@ test("buildSummaryArgs includes project JSON arguments and project filters", () 
   const args = buildSummaryArgs({
     range: "30d",
     groupBy: "project",
-    sessionsDir: "/tmp/sessions",
     projectKeys: ["alpha", " beta "],
   });
 
@@ -72,8 +67,6 @@ test("buildSummaryArgs includes project JSON arguments and project filters", () 
     "--by",
     "project",
     "--json",
-    "--sessions-dir",
-    "/tmp/sessions",
     "--project-key",
     "alpha",
     "--project-key",
@@ -83,19 +76,15 @@ test("buildSummaryArgs includes project JSON arguments and project filters", () 
 });
 
 test("sync CLI argument builders use bundled executable subcommands only", () => {
-  assert.deepEqual(buildThreadsArgs({ sessionsDir: "C:/codex/sessions", projectKeys: ["repo-a"] }), [
+  assert.deepEqual(buildThreadsArgs({ projectKeys: ["repo-a"] }), [
     "threads",
     "--json",
-    "--sessions-dir",
-    "C:/codex/sessions",
     "--project-key",
     "repo-a",
   ]);
-  assert.deepEqual(buildSyncExportArgs({ sessionsDir: "C:/codex/sessions", syncDir: "D:/sync", threadIds: ["t1", "t2"] }), [
+  assert.deepEqual(buildSyncExportArgs({ syncDir: "D:/sync", threadIds: ["t1", "t2"] }), [
     "sync",
     "export",
-    "--sessions-dir",
-    "C:/codex/sessions",
     "--sync-dir",
     "D:/sync",
     "--thread-id",
@@ -125,14 +114,7 @@ test("sync CLI argument builders use bundled executable subcommands only", () =>
 });
 
 test("transition suggestion args use bundled executable subcommands only", () => {
-  assert.deepEqual(buildTransitionSuggestArgs({ sessionsDir: "C:/codex/sessions" }), [
-    "transitions",
-    "suggest",
-    "--json",
-    "--sessions-dir",
-    "C:/codex/sessions",
-  ]);
-  assert.deepEqual(buildTransitionSuggestArgs({ sessionsDir: " " }), ["transitions", "suggest", "--json"]);
+  assert.deepEqual(buildTransitionSuggestArgs(), ["transitions", "suggest", "--json"]);
 });
 
 test("usage arg builders disable automatic project transitions when configured", () => {
@@ -212,23 +194,36 @@ test("normalizeSyncSettings trims folder and thread ids with safe defaults", () 
   });
 });
 
-test("project alias settings produce CLI environment overrides", () => {
-  assert.deepEqual(
-    normalizeProjectAliases({
-      " https://github.com/example/old.git ": " https://github.com/example/new.git ",
-      empty: "",
-      same: "same",
-      bad: 123,
-    }),
-    {
-      "https://github.com/example/old.git": "https://github.com/example/new.git",
+test("project keys are normalized from extension global state", () => {
+  const state = {
+    get(key, fallback) {
+      return key === "projectKeys" ? [" repo-a ", "", "repo-a", "repo-b"] : fallback;
     },
-  );
+  };
 
-  assert.deepEqual(buildCodexUsageEnv({ old: "new" }), {
-    CODEX_USAGE_PROJECT_ALIASES: JSON.stringify({ old: "new" }),
+  assert.deepEqual(readProjectKeysState(state), ["repo-a", "repo-b"]);
+});
+
+test("session directory candidates are discovered without a user setting", () => {
+  const dirs = candidateSessionDirs({
+    codexHome: "C:/Users/example/.codex",
+    userProfile: "C:/Users/example",
+    homeDir: "C:/Users/example",
   });
-  assert.deepEqual(buildCodexUsageEnv({}), {});
+
+  assert.deepEqual(dirs, [
+    path.join("C:/Users/example/.codex", "sessions"),
+  ]);
+});
+
+test("watcher session directory selection follows discovery precedence", () => {
+  const candidates = ["C:/codex/sessions", "C:/Users/example/.codex/sessions"];
+
+  assert.deepEqual(selectSessionDirsForWatcher(candidates, true, () => false), ["C:/codex/sessions"]);
+  assert.deepEqual(selectSessionDirsForWatcher(candidates, false, (dir) => dir.includes("Users")), [
+    "C:/Users/example/.codex/sessions",
+  ]);
+  assert.deepEqual(selectSessionDirsForWatcher(candidates, false, () => false), ["C:/codex/sessions"]);
 });
 
 test("bundledExecutablePath resolves Windows x64 executable and rejects unsupported platforms", () => {
@@ -375,6 +370,15 @@ test("webview command allowlist includes dashboard commands", () => {
     "codexUsage.refreshDashboard",
     "codexUsage.openSettings",
   ]);
+});
+
+test("package metadata no longer contributes removed manual settings", () => {
+  const properties = packageJson.contributes.configuration.properties;
+
+  assert.equal(properties["codexUsage.sessionsDir"], undefined);
+  assert.equal(properties["codexUsage.subscriptionUsd"], undefined);
+  assert.equal(properties["codexUsage.projectKeys"], undefined);
+  assert.equal(properties["codexUsage.projectAliases"], undefined);
 });
 
 test("loading and error HTML are script-free and themeable", () => {

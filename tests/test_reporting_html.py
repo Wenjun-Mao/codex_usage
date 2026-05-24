@@ -31,7 +31,6 @@ def test_dashboard_report_contains_inline_svg_sections_without_external_assets(t
         ],
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
-        subscription_usd=20.0,
         project_keys=["repo"],
         theme="night",
     )
@@ -81,7 +80,6 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
         model_rows=[],
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
-        subscription_usd=None,
         theme="auto",
     )
 
@@ -119,7 +117,6 @@ def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:
         model_rows=[],
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
-        subscription_usd=None,
         project_transitions=[transition.to_dict()],
     )
 
@@ -151,7 +148,6 @@ def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> 
         model_rows=[_row("unknown", "unknown", 25, unpriced=25, credit_unpriced=25)],
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
-        subscription_usd=None,
     )
 
     html = output.read_text(encoding="utf-8")
@@ -174,7 +170,6 @@ def test_dashboard_report_has_empty_states(tmp_path: Path) -> None:
         model_rows=[],
         sessions_dirs=[Path("sessions")],
         files_scanned=0,
-        subscription_usd=None,
     )
 
     html = output.read_text(encoding="utf-8")

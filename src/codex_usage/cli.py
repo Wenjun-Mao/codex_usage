@@ -15,7 +15,7 @@ from codex_usage.aggregation import (
     resolve_timezone,
     summarize_records,
 )
-from codex_usage.discovery import collect_jsonl_files, find_session_dirs
+from codex_usage.discovery import collect_jsonl_files, default_session_dir, find_session_dirs
 from codex_usage.models import UsageRecord
 from codex_usage.parser import parse_session_files
 from codex_usage.project_identity import normalize_project_key
@@ -85,7 +85,6 @@ def build_parser() -> argparse.ArgumentParser:
     transitions_parser.set_defaults(handler=handle_subparser_help, help_parser=transitions_parser)
 
     suggest_parser = transitions_subparsers.add_parser("suggest", help="Suggest project transitions.")
-    _add_sessions_dir_option(suggest_parser)
     suggest_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     suggest_parser.set_defaults(handler=handle_transitions_suggest)
 
@@ -124,7 +123,6 @@ def handle_summary(args: argparse.Namespace) -> int:
         group_by=args.group_by,
         sessions_dirs=context.session_dirs,
         files_scanned=len(context.files),
-        subscription_usd=context.subscription_usd,
         project_keys=context.project_keys,
         project_transitions=_transition_dicts(context.project_transitions),
     )
@@ -140,7 +138,6 @@ def handle_summary(args: argparse.Namespace) -> int:
                 range_name=args.range_name,
                 group_by=args.group_by,
                 files_scanned=len(context.files),
-                subscription_usd=context.subscription_usd,
             )
         )
     return 0
@@ -160,7 +157,6 @@ def handle_report(args: argparse.Namespace) -> int:
         model_rows=aggregate_records(context.records, "model", context.timezone),
         sessions_dirs=context.session_dirs,
         files_scanned=len(context.files),
-        subscription_usd=context.subscription_usd,
         project_keys=context.project_keys,
         project_transitions=_transition_dicts(context.project_transitions),
         theme=normalize_report_theme(args.theme or get_settings().theme),
@@ -171,7 +167,7 @@ def handle_report(args: argparse.Namespace) -> int:
 
 def handle_threads(args: argparse.Namespace) -> int:
     settings = get_settings()
-    session_dirs = find_session_dirs(args.sessions_dir, settings)
+    session_dirs = find_session_dirs()
     project_keys = _normalize_project_keys(args.project_key)
     threads = list_threads(
         session_dirs,
@@ -188,7 +184,7 @@ def handle_threads(args: argparse.Namespace) -> int:
 
 
 def handle_transitions_suggest(args: argparse.Namespace) -> int:
-    session_dirs = _existing_session_dirs(args.sessions_dir)
+    session_dirs = _existing_session_dirs()
     files = collect_jsonl_files(session_dirs)
     records = parse_session_files(files)
     observations = collect_repo_path_observations(session_dirs, files)
@@ -219,7 +215,7 @@ def handle_subparser_help(args: argparse.Namespace) -> int:
 
 def handle_sync_export(args: argparse.Namespace) -> int:
     result = export_threads(
-        session_dirs=_existing_session_dirs(args.sessions_dir),
+        session_dirs=_existing_session_dirs(),
         sync_dir=args.sync_dir,
         thread_ids=_normalize_thread_ids(args.thread_id),
         machine_id=args.machine_id or _default_machine_id(),
@@ -230,7 +226,7 @@ def handle_sync_export(args: argparse.Namespace) -> int:
 
 def handle_sync_import(args: argparse.Namespace) -> int:
     result = import_threads(
-        session_dirs=_sync_session_dirs(args.sessions_dir, create=args.sessions_dir is not None),
+        session_dirs=_sync_session_dirs(create=True),
         sync_dir=args.sync_dir,
         thread_ids=_normalize_thread_ids(args.thread_id),
         conflict_policy=args.conflict_policy,
@@ -241,7 +237,7 @@ def handle_sync_import(args: argparse.Namespace) -> int:
 
 def handle_sync_status(args: argparse.Namespace) -> int:
     result = sync_status(
-        session_dirs=_existing_session_dirs(args.sessions_dir),
+        session_dirs=_existing_session_dirs(),
         sync_dir=args.sync_dir,
         thread_ids=_normalize_thread_ids(args.thread_id),
     )
@@ -261,7 +257,6 @@ class _Context:
         files: list[Path],
         records,
         timezone,
-        subscription_usd: float | None,
         project_keys: list[str],
         project_transitions: list[ProjectTransition],
     ) -> None:
@@ -269,7 +264,6 @@ class _Context:
         self.files = files
         self.records = records
         self.timezone = timezone
-        self.subscription_usd = subscription_usd
         self.project_keys = project_keys
         self.project_transitions = project_transitions
 
@@ -277,7 +271,7 @@ class _Context:
 def _load_context(args: argparse.Namespace) -> _Context:
     settings = get_settings()
     timezone = resolve_timezone(args.timezone or settings.timezone)
-    session_dirs = find_session_dirs(args.sessions_dir, settings)
+    session_dirs = find_session_dirs()
     files = collect_jsonl_files(session_dirs)
     records = parse_session_files(files)
     project_transitions: list[ProjectTransition] = []
@@ -289,22 +283,18 @@ def _load_context(args: argparse.Namespace) -> _Context:
     range_records = filter_records_by_range(records, args.range_name, timezone)
     filtered_records = filter_records_by_project_keys(range_records, project_keys)
     filtered_transitions = _filter_project_transitions(project_transitions, filtered_records)
-    subscription_usd = args.subscription_usd if args.subscription_usd is not None else settings.subscription_usd
     return _Context(
         session_dirs=session_dirs,
         files=files,
         records=filtered_records,
         timezone=timezone,
-        subscription_usd=subscription_usd,
         project_keys=project_keys,
         project_transitions=filtered_transitions,
     )
 
 
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
-    _add_sessions_dir_option(parser)
     parser.add_argument("--timezone", help="IANA timezone name, for example America/Toronto.")
-    parser.add_argument("--subscription-usd", type=float, help="Monthly subscription cost for comparison.")
     parser.add_argument(
         "--project-key",
         action="append",
@@ -318,7 +308,6 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_sync_options(parser: argparse.ArgumentParser) -> None:
-    _add_sessions_dir_option(parser)
     parser.add_argument("--sync-dir", type=Path, required=True, help="Bring-your-own local sync folder.")
     parser.add_argument(
         "--thread-id",
@@ -326,11 +315,6 @@ def _add_sync_options(parser: argparse.ArgumentParser) -> None:
         required=True,
         help="Codex thread id to sync. Repeat to include multiple threads.",
     )
-
-
-def _add_sessions_dir_option(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--sessions-dir", type=Path, help="Path to the Codex sessions directory.")
-
 
 def _normalize_project_keys(values: list[str] | None) -> list[str]:
     selected: list[str] = []
@@ -393,14 +377,17 @@ def _record_project_keys(record: UsageRecord) -> set[str]:
     return {key for key in (record.project_key, record.project_previous_key, *record.project_aliases) if key}
 
 
-def _existing_session_dirs(explicit: Path | None) -> list[Path]:
-    return find_session_dirs(explicit, get_settings())
+def _existing_session_dirs() -> list[Path]:
+    return find_session_dirs()
 
 
-def _sync_session_dirs(explicit: Path | None, *, create: bool) -> list[Path]:
-    if explicit is None:
-        return find_session_dirs(None, get_settings())
-    path = explicit.expanduser()
+def _sync_session_dirs(*, create: bool) -> list[Path]:
+    try:
+        return find_session_dirs()
+    except FileNotFoundError:
+        if not create:
+            raise
+    path = default_session_dir().expanduser()
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return [path]

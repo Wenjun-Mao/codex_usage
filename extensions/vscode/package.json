@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
   "publisher": "local-codex-usage",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "preview": true,
   "license": "MIT",
@@ -111,36 +111,6 @@
           "default": "30d",
           "description": "Time range used when generating the dashboard report."
         },
-        "codexUsage.sessionsDir": {
-          "type": "string",
-          "default": "",
-          "description": "Optional path to the Codex sessions directory. Leave empty to use Python CLI auto-discovery."
-        },
-        "codexUsage.subscriptionUsd": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "default": null,
-          "minimum": 0,
-          "description": "Optional monthly subscription amount for API-equivalent cost comparison."
-        },
-        "codexUsage.projectKeys": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "description": "Project keys selected for dashboard filtering. Leave empty to show all projects."
-        },
-        "codexUsage.projectAliases": {
-          "type": "object",
-          "default": {},
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "Optional project identity aliases. Keys are old project keys or paths, values are canonical project keys or repo URLs."
-        },
         "codexUsage.theme": {
           "type": "string",
           "enum": [
@@ -182,7 +152,7 @@
         "codexUsage.sync.autoPush": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically push selected thread updates after watched session files change when a sessions directory is configured."
+          "description": "Automatically push selected thread updates after watched Codex session files change."
         }
       }
     }

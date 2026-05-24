@@ -53,12 +53,11 @@ uv run codex-usage sync status --sync-dir D:\CodexSync --thread-id <thread-id> -
 
 By default, the tool looks for Codex sessions at:
 
-- `CODEX_USAGE_SESSIONS_DIR`
 - `CODEX_HOME/sessions`
 - `%USERPROFILE%\.codex\sessions`
 - `~/.codex/sessions`
 
-You can override discovery with `--sessions-dir` or the VS Code `codexUsage.sessionsDir` setting.
+Discovery uses the first existing location in that order. Set `CODEX_HOME` when you need to point the CLI at a different Codex home for testing or migration.
 
 Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser/system color-scheme preference. In VS Code, auto follows the active VS Code theme. You can force a report with `--theme day` or `--theme night`, or set `CODEX_USAGE_THEME`.
 
@@ -70,7 +69,6 @@ Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser
 - Cache hit share
 - Daily and hourly usage patterns
 - Project, model, and session rollups
-- Optional subscription comparison when you provide a monthly subscription amount
 
 The report uses no remote assets, JavaScript, or Python chart libraries. It is safe to open locally and is designed to fit inside a VS Code webview.
 The dashboard uses the same tokenized day/night design system as the VS Code extension, including dark-mode-friendly charts and tables.
@@ -85,14 +83,7 @@ The sync MVP copies only selected session JSONL files and matching `session_inde
 
 The parser reads cumulative `total_token_usage` records and counts only positive deltas between token-count events. This avoids double-counting repeated records while still allowing daily and hourly reports for long sessions.
 
-Project grouping uses `git.repository_url` when present, then normalized `cwd`, then the session id. If a repository is renamed or moved, you can map old keys to a canonical key with `CODEX_USAGE_PROJECT_ALIASES`:
-
-```powershell
-$env:CODEX_USAGE_PROJECT_ALIASES='{"https://github.com/example/old-name":"https://github.com/example/new-name.git"}'
-uv run codex-usage summary --range all --by project
-```
-
-The VS Code beta exposes the same behavior through `codexUsage.projectAliases`.
+Project grouping uses `git.repository_url` when present, local `.git/config` origin remotes resolved from `cwd` when needed, then normalized `cwd`, then the session id. Automatic project transition detection handles high-confidence repository switches within a thread without manual alias configuration.
 
 Pricing uses checked-in effective-dated rate schedules. Each usage event is priced with the API USD and Codex credit rates active at that event's timestamp, so future price changes can be added without rewriting historical reports.
 

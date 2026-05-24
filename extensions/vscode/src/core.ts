@@ -20,8 +20,6 @@ export type ProjectTransitionsSettings = {
 export type ReportCommandOptions = {
   range: string;
   outputPath: string;
-  sessionsDir?: string;
-  subscriptionUsd?: number | null;
   projectKeys?: string[];
   theme?: string;
   projectTransitions?: ProjectTransitionsSettings;
@@ -30,24 +28,16 @@ export type ReportCommandOptions = {
 export type SummaryCommandOptions = {
   range: string;
   groupBy?: string;
-  sessionsDir?: string;
-  subscriptionUsd?: number | null;
   projectKeys?: string[];
   projectTransitions?: ProjectTransitionsSettings;
 };
 
 export type ThreadsCommandOptions = {
-  sessionsDir?: string;
   projectKeys?: string[];
   projectTransitions?: ProjectTransitionsSettings;
 };
 
-export type TransitionSuggestCommandOptions = {
-  sessionsDir?: string;
-};
-
 export type SyncCommandOptions = {
-  sessionsDir?: string;
   syncDir: string;
   threadIds: string[];
 };
@@ -66,10 +56,7 @@ export type SyncSettings = {
 
 export type ExtensionSettings = {
   range: ReportRange;
-  sessionsDir?: string;
-  subscriptionUsd?: number | null;
   projectKeys: string[];
-  projectAliases: Record<string, string>;
   theme: ReportTheme;
   sync: SyncSettings;
   projectTransitions: ProjectTransitionsSettings;
@@ -125,6 +112,18 @@ export type WebviewControlState = {
   theme: ReportTheme;
 };
 
+export const PROJECT_KEYS_STATE_KEY = "projectKeys";
+
+export type GlobalStateReader = {
+  get<T>(key: string, defaultValue: T): T;
+};
+
+export type SessionDirDiscoveryOptions = {
+  codexHome?: string;
+  userProfile?: string;
+  homeDir?: string;
+};
+
 export function normalizeRange(value: unknown): ReportRange {
   return typeof value === "string" && RANGE_VALUES.includes(value as ReportRange)
     ? (value as ReportRange)
@@ -161,23 +160,8 @@ export function normalizeThreadIds(values: unknown): string[] {
   return normalizeProjectKeys(values);
 }
 
-export function normalizeProjectAliases(value: unknown): Record<string, string> {
-  if (!isRecord(value)) {
-    return {};
-  }
-  const aliases: Record<string, string> = {};
-  for (const [source, target] of Object.entries(value)) {
-    if (typeof target !== "string") {
-      continue;
-    }
-    const sourceKey = source.trim();
-    const targetKey = target.trim();
-    if (!sourceKey || !targetKey || sourceKey === targetKey) {
-      continue;
-    }
-    aliases[sourceKey] = targetKey;
-  }
-  return aliases;
+export function readProjectKeysState(state: GlobalStateReader): string[] {
+  return normalizeProjectKeys(state.get(PROJECT_KEYS_STATE_KEY, []));
 }
 
 export function normalizeSyncSettings(value: unknown): SyncSettings {
@@ -191,11 +175,33 @@ export function normalizeSyncSettings(value: unknown): SyncSettings {
   };
 }
 
-export function buildCodexUsageEnv(projectAliases: unknown): Record<string, string> {
-  const aliases = normalizeProjectAliases(projectAliases);
-  return Object.keys(aliases).length > 0
-    ? { CODEX_USAGE_PROJECT_ALIASES: JSON.stringify(aliases) }
-    : {};
+export function candidateSessionDirs(options: SessionDirDiscoveryOptions): string[] {
+  const candidates: string[] = [];
+  if (options.codexHome?.trim()) {
+    candidates.push(path.join(options.codexHome.trim(), "sessions"));
+  }
+  if (options.userProfile?.trim()) {
+    candidates.push(path.join(options.userProfile.trim(), ".codex", "sessions"));
+  }
+  if (options.homeDir?.trim()) {
+    candidates.push(path.join(options.homeDir.trim(), ".codex", "sessions"));
+  }
+  return dedupePaths(candidates);
+}
+
+export function selectSessionDirsForWatcher(
+  candidates: string[],
+  codexHomeSet: boolean,
+  exists: (dir: string) => boolean,
+): string[] {
+  if (candidates.length === 0) {
+    return [];
+  }
+  if (codexHomeSet) {
+    return [candidates[0]];
+  }
+  const existing = candidates.find((candidate) => exists(candidate));
+  return [existing ?? candidates[0]];
 }
 
 export function buildReportArgs(options: ReportCommandOptions): string[] {
@@ -208,7 +214,6 @@ export function buildReportArgs(options: ReportCommandOptions): string[] {
     "--theme",
     normalizeTheme(options.theme),
   ];
-  appendCommonArgs(args, options);
   appendProjectTransitionArgs(args, options);
   appendProjectKeyArgs(args, options.projectKeys);
   return args;
@@ -223,7 +228,6 @@ export function buildSummaryArgs(options: SummaryCommandOptions): string[] {
     options.groupBy?.trim() || "project",
     "--json",
   ];
-  appendCommonArgs(args, options);
   appendProjectTransitionArgs(args, options);
   appendProjectKeyArgs(args, options.projectKeys);
   return args;
@@ -231,15 +235,13 @@ export function buildSummaryArgs(options: SummaryCommandOptions): string[] {
 
 export function buildThreadsArgs(options: ThreadsCommandOptions): string[] {
   const args = ["threads", "--json"];
-  appendCommonArgs(args, options);
   appendProjectTransitionArgs(args, options);
   appendProjectKeyArgs(args, options.projectKeys);
   return args;
 }
 
-export function buildTransitionSuggestArgs(options: TransitionSuggestCommandOptions): string[] {
+export function buildTransitionSuggestArgs(): string[] {
   const args = ["transitions", "suggest", "--json"];
-  appendCommonArgs(args, options);
   return args;
 }
 
@@ -263,20 +265,7 @@ export function buildSyncStatusArgs(options: SyncCommandOptions): string[] {
   return args;
 }
 
-function appendCommonArgs(
-  args: string[],
-  options: ReportCommandOptions | SummaryCommandOptions | ThreadsCommandOptions | TransitionSuggestCommandOptions | SyncCommandOptions,
-): void {
-  if (options.sessionsDir?.trim()) {
-    args.push("--sessions-dir", options.sessionsDir.trim());
-  }
-  if ("subscriptionUsd" in options && typeof options.subscriptionUsd === "number" && Number.isFinite(options.subscriptionUsd)) {
-    args.push("--subscription-usd", String(options.subscriptionUsd));
-  }
-}
-
 function appendSyncArgs(args: string[], options: SyncCommandOptions): void {
-  appendCommonArgs(args, options);
   if (options.syncDir.trim()) {
     args.push("--sync-dir", options.syncDir.trim());
   }
@@ -677,6 +666,21 @@ function transitionDetail(options: {
 
 function formatInt(value: number): string {
   return Math.round(value).toLocaleString("en-US");
+}
+
+function dedupePaths(paths: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of paths) {
+    const normalized = candidate.replace(/[\\/]+$/, "");
+    const key = normalized.toLocaleLowerCase();
+    if (!normalized || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(normalized);
+  }
+  return out;
 }
 
 function basicWebviewCss(): string {

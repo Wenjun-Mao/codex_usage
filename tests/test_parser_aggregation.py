@@ -13,7 +13,6 @@ from codex_usage.aggregation import (
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.parser import parse_session_file, parse_session_files
 from codex_usage.pricing import EffectiveModelRate, ModelRate
-from codex_usage.settings import get_settings
 
 
 def test_parser_uses_positive_cumulative_deltas(tmp_path: Path) -> None:
@@ -297,12 +296,11 @@ def test_project_grouping_prefers_json_git_url_over_cwd_git_config(tmp_path: Pat
     assert _normalized_path(str(repo)) in record.project_aliases
 
 
-def test_project_aliases_rewrite_to_canonical_key_and_keep_old_key(monkeypatch, tmp_path: Path) -> None:
+def test_project_alias_env_no_longer_rewrites_project_identity(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv(
         "CODEX_USAGE_PROJECT_ALIASES",
         json.dumps({"https://github.com/example/signoz-stack.git": "https://github.com/example/ops-board.git"}),
     )
-    get_settings.cache_clear()
     path = _write_session(
         tmp_path / "session",
         [
@@ -312,13 +310,10 @@ def test_project_aliases_rewrite_to_canonical_key_and_keep_old_key(monkeypatch, 
         ],
     )
 
-    try:
-        record = parse_session_file(path)[0]
-    finally:
-        get_settings.cache_clear()
+    record = parse_session_file(path)[0]
 
-    assert record.project_key == "https://github.com/example/ops-board"
-    assert "https://github.com/example/signoz-stack" in record.project_aliases
+    assert record.project_key == "https://github.com/example/signoz-stack"
+    assert "https://github.com/example/ops-board" not in record.project_aliases
     assert "d:/projects/signoz-stack" in record.project_aliases
 
 

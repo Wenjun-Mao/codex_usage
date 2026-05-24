@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.9 - Settings Cleanup
+
+- Removed manual VS Code settings for project aliases, project keys, sessions directory, and subscription comparison.
+- Removed CLI/config support for manual sessions-dir, subscription, and project-alias overrides.
+- Moved selected dashboard projects into VS Code extension state while keeping `--project-key` filtering for reports, threads, and sync.
+- Simplified discovery to automatic Codex home locations and made `CODEX_HOME` authoritative for testing and sync import.
+- Kept automatic project identity and transition detection as the default path for renamed or moved repositories.
+
 ## 0.1.8 - Auto Project Transitions
 
 - Added automatic high-confidence project splits when timestamped Codex events reference verified local repository paths.

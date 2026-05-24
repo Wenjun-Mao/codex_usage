@@ -29,7 +29,6 @@ def summary_payload(
     group_by: str,
     sessions_dirs: list[Path],
     files_scanned: int,
-    subscription_usd: float | None,
     project_keys: list[str] | None = None,
     project_transitions: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
@@ -46,8 +45,6 @@ def summary_payload(
         "total": total.to_dict(),
         "rows": [row.to_dict() for row in rows],
     }
-    if subscription_usd is not None:
-        payload["subscription_comparison"] = subscription_comparison(total.cost.total_usd, subscription_usd)
     return payload
 
 
@@ -73,7 +70,6 @@ def render_terminal(
     range_name: str,
     group_by: str,
     files_scanned: int,
-    subscription_usd: float | None,
 ) -> str:
     lines = [
         f"Codex usage summary ({range_name}, by {group_by})",
@@ -93,14 +89,6 @@ def render_terminal(
         ),
         "",
     ]
-    if subscription_usd is not None:
-        comparison = subscription_comparison(total.cost.total_usd, subscription_usd)
-        lines.append(
-            f"API-equivalent cost is {comparison['percent_of_subscription']:.1f}% "
-            f"of ${subscription_usd:.2f} subscription."
-        )
-        lines.append("")
-
     lines.append(_format_header())
     for row in rows:
         lines.append(
@@ -131,7 +119,6 @@ def render_html_report(
     model_rows: list[AggregateRow],
     sessions_dirs: list[Path],
     files_scanned: int,
-    subscription_usd: float | None,
     project_keys: list[str] | None = None,
     project_transitions: list[dict[str, object]] | None = None,
     theme: str = "auto",
@@ -149,13 +136,6 @@ def render_html_report(
         sessions_dirs=sessions_dirs,
         files_scanned=files_scanned,
     )
-    comparison_html = ""
-    if subscription_usd is not None:
-        comparison = subscription_comparison(total.cost.total_usd, subscription_usd)
-        comparison_html = (
-            f"<p class=\"notice\">API-equivalent cost is {comparison['percent_of_subscription']:.1f}% "
-            f"of ${subscription_usd:.2f} subscription.</p>"
-        )
     pricing_notice_html = _pricing_notice(view_model)
     project_filter_label = _project_filter_label(project_keys)
     project_transitions_html = _project_transitions_section(project_transitions)
@@ -179,7 +159,6 @@ def render_html_report(
     <div class="muted summary-line">Sessions: {html.escape(', '.join(str(path) for path in sessions_dirs))} | Files scanned: {files_scanned}</div>
     {_render_kpis(view_model)}
     {pricing_notice_html}
-    {comparison_html}
     {_empty_report_notice(view_model)}
     {project_transitions_html}
     <div class="dashboard-grid">
@@ -193,16 +172,6 @@ def render_html_report(
 </html>"""
     output_path.write_text(body, encoding="utf-8")
     return output_path
-
-
-def subscription_comparison(cost_usd: float, subscription_usd: float) -> dict[str, float]:
-    percent = (cost_usd / subscription_usd * 100) if subscription_usd > 0 else 0.0
-    return {
-        "subscription_usd": round(subscription_usd, 2),
-        "api_equivalent_usd": round(cost_usd, 6),
-        "difference_usd": round(cost_usd - subscription_usd, 6),
-        "percent_of_subscription": percent,
-    }
 
 
 def _project_filter_label(project_keys: list[str] | None) -> str:

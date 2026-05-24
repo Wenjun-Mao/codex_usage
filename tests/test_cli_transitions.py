@@ -1,13 +1,14 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
 def test_cli_summary_and_report_apply_auto_project_transitions(tmp_path: Path) -> None:
-    sessions, source_key, target_key = _write_transition_fixture(tmp_path)
+    codex_home, source_key, target_key = _write_transition_fixture(tmp_path)
 
-    summary_result = _run_cli(["summary", "--sessions-dir", str(sessions), "--range", "all", "--by", "project", "--json"])
+    summary_result = _run_cli(["summary", "--range", "all", "--by", "project", "--json"], codex_home=codex_home)
 
     payload = json.loads(summary_result.stdout)
     rows_by_key = {row["key"]: row for row in payload["rows"]}
@@ -17,17 +18,18 @@ def test_cli_summary_and_report_apply_auto_project_transitions(tmp_path: Path) -
     assert payload["project_transitions"][0]["target_key"] == target_key
 
     report_path = tmp_path / "transition-report.html"
-    _run_cli(["report", "--sessions-dir", str(sessions), "--range", "all", "--output", str(report_path)])
+    _run_cli(["report", "--range", "all", "--output", str(report_path)], codex_home=codex_home)
     report_html = report_path.read_text(encoding="utf-8")
     assert "signoz-stack" in report_html
     assert "ops-board" in report_html
 
 
 def test_cli_summary_can_disable_auto_project_transitions(tmp_path: Path) -> None:
-    sessions, source_key, target_key = _write_transition_fixture(tmp_path)
+    codex_home, source_key, target_key = _write_transition_fixture(tmp_path)
 
     result = _run_cli(
-        ["summary", "--sessions-dir", str(sessions), "--range", "all", "--by", "project", "--no-auto-transitions", "--json"]
+        ["summary", "--range", "all", "--by", "project", "--no-auto-transitions", "--json"],
+        codex_home=codex_home,
     )
 
     payload = json.loads(result.stdout)
@@ -38,10 +40,11 @@ def test_cli_summary_can_disable_auto_project_transitions(tmp_path: Path) -> Non
 
 
 def test_cli_project_filter_matches_transition_target(tmp_path: Path) -> None:
-    sessions, _, target_key = _write_transition_fixture(tmp_path)
+    codex_home, _, target_key = _write_transition_fixture(tmp_path)
 
     result = _run_cli(
-        ["summary", "--sessions-dir", str(sessions), "--range", "all", "--by", "project", "--project-key", target_key, "--json"]
+        ["summary", "--range", "all", "--by", "project", "--project-key", target_key, "--json"],
+        codex_home=codex_home,
     )
 
     payload = json.loads(result.stdout)
@@ -51,11 +54,12 @@ def test_cli_project_filter_matches_transition_target(tmp_path: Path) -> None:
 
 
 def test_cli_summary_transition_metadata_follows_project_filter(tmp_path: Path) -> None:
-    sessions, _, target_key = _write_transition_fixture(tmp_path, include_second=True)
+    codex_home, _, target_key = _write_transition_fixture(tmp_path, include_second=True)
     other_target_key = "https://github.com/example/billing-console"
 
     result = _run_cli(
-        ["summary", "--sessions-dir", str(sessions), "--range", "all", "--by", "project", "--project-key", target_key, "--json"]
+        ["summary", "--range", "all", "--by", "project", "--project-key", target_key, "--json"],
+        codex_home=codex_home,
     )
 
     payload = json.loads(result.stdout)
@@ -64,9 +68,10 @@ def test_cli_summary_transition_metadata_follows_project_filter(tmp_path: Path) 
 
 
 def test_cli_transitions_suggest_json(tmp_path: Path) -> None:
-    sessions, source_key, target_key = _write_transition_fixture(tmp_path)
+    codex_home, source_key, target_key = _write_transition_fixture(tmp_path)
+    sessions = codex_home / "sessions"
 
-    result = _run_cli(["transitions", "suggest", "--sessions-dir", str(sessions), "--json"])
+    result = _run_cli(["transitions", "suggest", "--json"], codex_home=codex_home)
 
     payload = json.loads(result.stdout)
     assert payload["sessions_dirs"] == [str(sessions)]
@@ -89,12 +94,18 @@ def test_cli_transitions_without_subcommand_shows_transitions_help() -> None:
     assert "{summary,report,threads,transitions,sync}" not in result.stderr
 
 
-def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
+def _run_cli(args: list[str], *, codex_home: Path | None = None) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env.pop("CODEX_USAGE_SESSIONS_DIR", None)
+    env.pop("CODEX_USAGE_PROJECT_ALIASES", None)
+    if codex_home is not None:
+        env["CODEX_HOME"] = str(codex_home)
     return subprocess.run(
         [sys.executable, "-m", "codex_usage.cli", *args],
         check=True,
         capture_output=True,
         text=True,
+        env=env,
     )
 
 
@@ -124,7 +135,7 @@ def _write_transition_fixture(tmp_path: Path, *, include_second: bool = False) -
             billing_repo,
             source_url="https://github.com/example/inventory-api.git",
         )
-    return sessions, source_key, target_key
+    return codex_home, source_key, target_key
 
 
 def _write_transition_session(

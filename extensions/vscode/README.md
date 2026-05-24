@@ -33,10 +33,6 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 ## Settings
 
 - `codexUsage.range`: dashboard range, default `30d`.
-- `codexUsage.sessionsDir`: optional explicit Codex sessions directory.
-- `codexUsage.subscriptionUsd`: optional monthly subscription amount for comparison.
-- `codexUsage.projectKeys`: selected project filters. Leave empty to show all projects.
-- `codexUsage.projectAliases`: optional old-to-new project key map for renamed or moved repositories.
 - `codexUsage.theme`: `auto`, `day`, or `night`. Auto follows your active VS Code theme.
 - `codexUsage.projectTransitions.autoDetect`: automatically split usage after high-confidence local repository transitions.
 - `codexUsage.sync.enabled`: enable experimental selected-thread sync.
@@ -44,22 +40,11 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - `codexUsage.sync.threadIds`: selected Codex thread ids.
 - `codexUsage.sync.autoPull` / `codexUsage.sync.autoPush`: automatic sync behavior.
 
+Project filtering is managed with `Codex Usage: Select Projects` and is stored as extension UI state, not as a user setting.
+
 ## Experimental Sync
 
 Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected Codex session JSONL files and matching session index entries. It does not upload data itself and does not sync Codex auth, settings, caches, logs, or SQLite databases.
-
-## Project Aliases
-
-For renamed repositories, set `codexUsage.projectAliases` so historical logs and new logs group together:
-
-```json
-{
-  "https://github.com/example/old-name": "https://github.com/example/new-name.git",
-  "d:/old/local/path/old-name": "https://github.com/example/new-name.git"
-}
-```
-
-Both the old keys and the canonical key continue to work for project filtering.
 
 ## Project Transitions
 
@@ -87,11 +72,11 @@ Codex session logs can include project paths, repository URLs, branch names, mod
 
 ## Troubleshooting
 
-- If no usage appears, confirm Codex session files exist under `%USERPROFILE%\.codex\sessions` or set `codexUsage.sessionsDir`.
+- If no usage appears, confirm Codex session files exist under `CODEX_HOME\sessions`, `%USERPROFILE%\.codex\sessions`, or `~\.codex\sessions`.
 - If project filtering shows no choices, switch the range to `all` and run `Codex Usage: Select Projects` again.
 - If a project split looks surprising, run `Codex Usage: Review Project Transitions` to inspect the evidence, or disable `codexUsage.projectTransitions.autoDetect`.
 - If the dashboard theme is not what you expect, run `Codex Usage: Select Theme` and choose `auto`, `day`, or `night`.
-- If the dashboard says no sessions were found, check the configured sessions path and file permissions.
+- If the dashboard says no sessions were found, check the detected sessions path and file permissions.
 - If pricing looks stale, check the report header for the checked-in pricing table date.
 
 ## Development

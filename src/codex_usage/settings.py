@@ -3,16 +3,12 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
 class AppSettings(BaseSettings):
-    sessions_dir: Path | None = None
     timezone: str | None = None
-    subscription_usd: float | None = None
     theme: str = "auto"
-    project_aliases: dict[str, str] = Field(default_factory=dict)
     auto_project_transitions: bool = True
     output_dir: Path = Path("output")
 

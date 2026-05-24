@@ -1,10 +1,11 @@
 import * as fs from "fs/promises";
+import { existsSync } from "fs";
+import * as os from "os";
 import * as path from "path";
 import { spawn } from "child_process";
 import * as vscode from "vscode";
 import {
   ExtensionSettings,
-  buildCodexUsageEnv,
   buildReportArgs,
   buildSummaryArgs,
   buildSyncExportArgs,
@@ -13,19 +14,22 @@ import {
   buildThreadsArgs,
   buildTransitionSuggestArgs,
   bundledExecutablePath,
+  candidateSessionDirs,
   injectWebviewControls,
   injectWebviewCsp,
-  normalizeProjectAliases,
   normalizeProjectKeys,
   normalizeRange,
   normalizeSyncSettings,
   normalizeTheme,
+  PROJECT_KEYS_STATE_KEY,
   parseProjectChoices,
+  readProjectKeysState,
   parseSyncStatusSummary,
   parseThreadChoices,
   parseTransitionChoices,
   renderErrorHtml,
   renderLoadingHtml,
+  selectSessionDirsForWatcher,
   RANGE_VALUES,
   THEME_VALUES,
   WEBVIEW_COMMANDS,
@@ -34,14 +38,15 @@ import {
 let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
-let syncWatcher: vscode.FileSystemWatcher | undefined;
+let syncWatchers: vscode.FileSystemWatcher[] = [];
+let syncWatcherDisposables: vscode.Disposable[] = [];
 let syncDebounce: NodeJS.Timeout | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   output = vscode.window.createOutputChannel("Codex Usage");
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.command = "codexUsage.openDashboard";
-  updateStatusItem(readSettings());
+  updateStatusItem(readSettings(context));
   statusItem.show();
 
   const openDashboardCommand = vscode.commands.registerCommand("codexUsage.openDashboard", async () => {
@@ -54,13 +59,13 @@ export function activate(context: vscode.ExtensionContext) {
     await vscode.commands.executeCommand("workbench.action.openSettings", "codexUsage");
   });
   const selectRangeCommand = vscode.commands.registerCommand("codexUsage.selectRange", async () => {
-    await selectRangeSetting();
+    await selectRangeSetting(context);
   });
   const selectProjectsCommand = vscode.commands.registerCommand("codexUsage.selectProjects", async () => {
     await selectProjectSettings(context);
   });
   const selectThemeCommand = vscode.commands.registerCommand("codexUsage.selectTheme", async () => {
-    await selectThemeSetting();
+    await selectThemeSetting(context);
   });
   const reviewProjectTransitionsCommand = vscode.commands.registerCommand("codexUsage.reviewProjectTransitions", async () => {
     await reviewProjectTransitions(context);
@@ -81,7 +86,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (!event.affectsConfiguration("codexUsage")) {
       return;
     }
-    updateStatusItem(readSettings());
+    updateStatusItem(readSettings(context));
     configureSyncWatcher(context);
     if (panel) {
       void refreshDashboard(context, panel);
@@ -115,7 +120,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  syncWatcher?.dispose();
+  disposeSyncWatchers();
   if (syncDebounce) {
     clearTimeout(syncDebounce);
   }
@@ -137,28 +142,25 @@ async function openOrRefreshDashboard(context: vscode.ExtensionContext): Promise
     panel.reveal(vscode.ViewColumn.One);
   }
 
-  panel.webview.html = renderWebviewHtml(renderLoadingHtml(), panel.webview, readSettings());
+  panel.webview.html = renderWebviewHtml(renderLoadingHtml(), panel.webview, readSettings(context));
   await refreshDashboard(context, panel);
 }
 
 async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: vscode.WebviewPanel): Promise<void> {
-  const settings = readSettings();
+  const settings = readSettings(context);
   const reportPath = path.join(context.globalStorageUri.fsPath, "report.html");
 
   try {
     const executablePath = await resolveBundledExecutable(context);
     await fs.mkdir(context.globalStorageUri.fsPath, { recursive: true });
-    const env = buildCodexUsageEnv(settings.projectAliases);
     const args = buildReportArgs({
       range: settings.range,
       outputPath: reportPath,
-      sessionsDir: settings.sessionsDir,
-      subscriptionUsd: settings.subscriptionUsd,
       projectKeys: settings.projectKeys,
       theme: settings.theme,
       projectTransitions: settings.projectTransitions,
     });
-    await runCodexUsage(executablePath, args, env);
+    await runCodexUsage(executablePath, args);
     const reportHtml = await fs.readFile(reportPath, "utf8");
     targetPanel.webview.html = renderWebviewHtml(reportHtml, targetPanel.webview, settings);
   } catch (error) {
@@ -169,8 +171,8 @@ async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: v
   }
 }
 
-async function selectRangeSetting(): Promise<void> {
-  const settings = readSettings();
+async function selectRangeSetting(context: vscode.ExtensionContext): Promise<void> {
+  const settings = readSettings(context);
   const items = RANGE_VALUES.map((range) => ({
     label: range,
     description: range === settings.range ? "Current" : "",
@@ -186,8 +188,8 @@ async function selectRangeSetting(): Promise<void> {
   await vscode.workspace.getConfiguration("codexUsage").update("range", selected.range, vscode.ConfigurationTarget.Global);
 }
 
-async function selectThemeSetting(): Promise<void> {
-  const settings = readSettings();
+async function selectThemeSetting(context: vscode.ExtensionContext): Promise<void> {
+  const settings = readSettings(context);
   const items = THEME_VALUES.map((theme) => ({
     label: themeLabel(theme),
     description: theme === settings.theme ? "Current" : "",
@@ -204,7 +206,7 @@ async function selectThemeSetting(): Promise<void> {
 }
 
 async function selectProjectSettings(context: vscode.ExtensionContext): Promise<void> {
-  const settings = readSettings();
+  const settings = readSettings(context);
   try {
     const executablePath = await resolveBundledExecutable(context);
     const result = await vscode.window.withProgress(
@@ -217,11 +219,8 @@ async function selectProjectSettings(context: vscode.ExtensionContext): Promise<
           executablePath,
           buildSummaryArgs({
             range: settings.range,
-            sessionsDir: settings.sessionsDir,
-            subscriptionUsd: settings.subscriptionUsd,
             projectTransitions: settings.projectTransitions,
           }),
-          buildCodexUsageEnv(settings.projectAliases),
         ),
     );
     const choices = parseProjectChoices(result.stdout, settings.projectKeys);
@@ -242,9 +241,11 @@ async function selectProjectSettings(context: vscode.ExtensionContext): Promise<
       selected.length === 0 || selected.some((item) => item.allProjects)
         ? []
         : normalizeProjectKeys(selected.map((item) => item.projectKey));
-    await vscode.workspace
-      .getConfiguration("codexUsage")
-      .update("projectKeys", nextProjectKeys, vscode.ConfigurationTarget.Global);
+    await context.globalState.update(PROJECT_KEYS_STATE_KEY, nextProjectKeys);
+    updateStatusItem(readSettings(context));
+    if (panel) {
+      await refreshDashboard(context, panel);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
@@ -253,7 +254,7 @@ async function selectProjectSettings(context: vscode.ExtensionContext): Promise<
 }
 
 async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promise<void> {
-  const settings = readSettings();
+  const settings = readSettings(context);
   try {
     const executablePath = await resolveBundledExecutable(context);
     const result = await vscode.window.withProgress(
@@ -265,11 +266,9 @@ async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promi
         runCodexUsage(
           executablePath,
           buildThreadsArgs({
-            sessionsDir: settings.sessionsDir,
             projectKeys: settings.projectKeys,
             projectTransitions: settings.projectTransitions,
           }),
-          buildCodexUsageEnv(settings.projectAliases),
         ),
     );
     const choices = parseThreadChoices(result.stdout, settings.sync.threadIds);
@@ -294,7 +293,7 @@ async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promi
 }
 
 async function reviewProjectTransitions(context: vscode.ExtensionContext): Promise<void> {
-  const settings = readSettings();
+  const settings = readSettings(context);
   try {
     const executablePath = await resolveBundledExecutable(context);
     const result = await vscode.window.withProgress(
@@ -305,8 +304,7 @@ async function reviewProjectTransitions(context: vscode.ExtensionContext): Promi
       () =>
         runCodexUsage(
           executablePath,
-          buildTransitionSuggestArgs({ sessionsDir: settings.sessionsDir }),
-          buildCodexUsageEnv(settings.projectAliases),
+          buildTransitionSuggestArgs(),
         ),
     );
     const choices = parseTransitionChoices(result.stdout);
@@ -339,7 +337,7 @@ async function reviewProjectTransitions(context: vscode.ExtensionContext): Promi
 }
 
 async function syncNow(context: vscode.ExtensionContext, reason: string): Promise<void> {
-  const settings = readSettings();
+  const settings = readSettings(context);
   if (!syncIsConfigured(settings)) {
     return;
   }
@@ -351,14 +349,13 @@ async function syncNow(context: vscode.ExtensionContext, reason: string): Promis
         title: "Syncing Codex threads",
       },
       async () => {
-        const env = buildCodexUsageEnv(settings.projectAliases);
-        const status = await runCodexUsage(executablePath, syncStatusArgs(settings), env);
+        const status = await runCodexUsage(executablePath, syncStatusArgs(settings));
         const summary = parseSyncStatusSummary(status.stdout);
         if (summary.conflicts > 0) {
           throw new Error(`Codex sync has ${summary.conflicts} conflict${summary.conflicts === 1 ? "" : "s"}. Run Codex Usage: Sync Status.`);
         }
-        await runCodexUsage(executablePath, buildSyncImportArgs(syncOptions(settings)), env);
-        await runCodexUsage(executablePath, buildSyncExportArgs(syncOptions(settings)), env);
+        await runCodexUsage(executablePath, buildSyncImportArgs(syncOptions(settings)));
+        await runCodexUsage(executablePath, buildSyncExportArgs(syncOptions(settings)));
       },
     );
     void vscode.window.showInformationMessage(`Codex sync complete (${reason}).`);
@@ -370,14 +367,14 @@ async function syncNow(context: vscode.ExtensionContext, reason: string): Promis
 }
 
 async function showSyncStatus(context: vscode.ExtensionContext): Promise<void> {
-  const settings = readSettings();
+  const settings = readSettings(context);
   if (!syncIsConfigured(settings)) {
     void vscode.window.showInformationMessage("Codex sync is not configured. Set codexUsage.sync.dir and select sync threads.");
     return;
   }
   try {
     const executablePath = await resolveBundledExecutable(context);
-    const result = await runCodexUsage(executablePath, syncStatusArgs(settings), buildCodexUsageEnv(settings.projectAliases));
+    const result = await runCodexUsage(executablePath, syncStatusArgs(settings));
     const summary = parseSyncStatusSummary(result.stdout);
     output.appendLine(`[sync] ${summary.message}`);
     void vscode.window.showInformationMessage(`Codex sync status: ${summary.message}`);
@@ -389,7 +386,7 @@ async function showSyncStatus(context: vscode.ExtensionContext): Promise<void> {
 }
 
 async function openSyncFolder(): Promise<void> {
-  const settings = readSettings();
+  const settings = readSettings(undefined);
   if (!settings.sync.dir) {
     void vscode.window.showInformationMessage("Codex sync folder is not configured.");
     return;
@@ -398,9 +395,8 @@ async function openSyncFolder(): Promise<void> {
   await vscode.env.openExternal(vscode.Uri.file(settings.sync.dir));
 }
 
-function readSettings(): ExtensionSettings {
+function readSettings(context: vscode.ExtensionContext | undefined): ExtensionSettings {
   const config = vscode.workspace.getConfiguration("codexUsage");
-  const subscription = config.get<number | null>("subscriptionUsd", null);
   const sync = normalizeSyncSettings({
     enabled: config.get<boolean>("sync.enabled", false),
     dir: config.get<string>("sync.dir", ""),
@@ -410,10 +406,7 @@ function readSettings(): ExtensionSettings {
   });
   return {
     range: normalizeRange(config.get<string>("range", "30d")),
-    sessionsDir: config.get<string>("sessionsDir", ""),
-    subscriptionUsd: typeof subscription === "number" ? subscription : null,
-    projectKeys: normalizeProjectKeys(config.get<string[]>("projectKeys", [])),
-    projectAliases: normalizeProjectAliases(config.get<Record<string, string>>("projectAliases", {})),
+    projectKeys: context ? readProjectKeysState(context.globalState) : [],
     theme: normalizeTheme(config.get<string>("theme", "auto")),
     sync,
     projectTransitions: {
@@ -435,13 +428,13 @@ async function resolveBundledExecutable(context: vscode.ExtensionContext): Promi
   }
 }
 
-function runCodexUsage(executablePath: string, args: string[], extraEnv: Record<string, string> = {}): Promise<{ stdout: string; stderr: string }> {
+function runCodexUsage(executablePath: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   output.appendLine(`> ${executablePath} ${args.join(" ")}`);
   return new Promise((resolve, reject) => {
     const child = spawn(executablePath, args, {
       shell: false,
       windowsHide: true,
-      env: { ...process.env, ...extraEnv },
+      env: { ...process.env },
     });
 
     let stdout = "";
@@ -561,7 +554,6 @@ function syncIsConfigured(settings: ExtensionSettings): boolean {
 
 function syncOptions(settings: ExtensionSettings) {
   return {
-    sessionsDir: settings.sessionsDir,
     syncDir: settings.sync.dir,
     threadIds: settings.sync.threadIds,
   };
@@ -572,7 +564,7 @@ function syncStatusArgs(settings: ExtensionSettings): string[] {
 }
 
 async function syncOnFocus(context: vscode.ExtensionContext): Promise<void> {
-  const settings = readSettings();
+  const settings = readSettings(context);
   if (!syncIsConfigured(settings)) {
     return;
   }
@@ -583,14 +575,19 @@ async function syncOnFocus(context: vscode.ExtensionContext): Promise<void> {
 }
 
 function configureSyncWatcher(context: vscode.ExtensionContext): void {
-  syncWatcher?.dispose();
-  syncWatcher = undefined;
-  const settings = readSettings();
-  if (!settings.sync.enabled || !settings.sync.autoPush || !settings.sessionsDir?.trim()) {
+  disposeSyncWatchers();
+  const settings = readSettings(context);
+  if (!settings.sync.enabled || !settings.sync.autoPush) {
     return;
   }
-  syncWatcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(settings.sessionsDir.trim(), "**/*.jsonl"),
+  const sessionDirs = selectSessionDirsForWatcher(
+    candidateSessionDirs({
+      codexHome: process.env.CODEX_HOME,
+      userProfile: process.env.USERPROFILE,
+      homeDir: os.homedir(),
+    }),
+    Boolean(process.env.CODEX_HOME?.trim()),
+    existsSync,
   );
   const schedule = () => {
     if (syncDebounce) {
@@ -600,6 +597,21 @@ function configureSyncWatcher(context: vscode.ExtensionContext): void {
       void syncNow(context, "watch");
     }, 2000);
   };
-  syncWatcher.onDidCreate(schedule, null, context.subscriptions);
-  syncWatcher.onDidChange(schedule, null, context.subscriptions);
+  for (const sessionDir of sessionDirs) {
+    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(sessionDir, "**/*.jsonl"));
+    syncWatchers.push(watcher);
+    syncWatcherDisposables.push(watcher.onDidCreate(schedule));
+    syncWatcherDisposables.push(watcher.onDidChange(schedule));
+  }
+}
+
+function disposeSyncWatchers(): void {
+  for (const disposable of syncWatcherDisposables) {
+    disposable.dispose();
+  }
+  for (const watcher of syncWatchers) {
+    watcher.dispose();
+  }
+  syncWatcherDisposables = [];
+  syncWatchers = [];
 }

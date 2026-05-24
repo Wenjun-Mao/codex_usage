@@ -8,7 +8,8 @@ Codex Usage Dashboard is designed as a local-first tool.
 - Read-only local Codex `state_5.sqlite` thread evidence for automatic project transition detection, limited to thread id/timestamps and the `threads` field `cwd` when present.
 - Local Codex `session_index.jsonl` entries when experimental selected-thread sync is used.
 - Read-only local Codex SQLite memory diagnostics when sync status is requested.
-- Optional user-provided settings such as `codexUsage.sessionsDir`, `codexUsage.range`, `codexUsage.projectKeys`, and `codexUsage.subscriptionUsd`.
+- User settings for dashboard range, theme, transition detection, and experimental sync configuration.
+- Extension UI state for selected dashboard projects.
 
 ## What It Writes
 
