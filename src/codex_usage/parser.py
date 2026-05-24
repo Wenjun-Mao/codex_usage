@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -11,9 +12,23 @@ from codex_usage.project_identity import resolve_project_identity
 
 
 def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
-    records: list[UsageRecord] = []
+    records_by_file: list[list[UsageRecord]] = []
+    identity_by_session: dict[str, UsageRecord] = {}
     for path in paths:
-        records.extend(parse_session_file(path))
+        file_records = parse_session_file(path)
+        records_by_file.append(file_records)
+        for record in file_records:
+            if record.git_repository_url:
+                identity_by_session[record.session_id] = record
+
+    records: list[UsageRecord] = []
+    for file_records in records_by_file:
+        for record in file_records:
+            parent_identity = identity_by_session.get(record.parent_thread_id)
+            if parent_identity is not None and not record.git_repository_url:
+                records.append(_inherit_parent_project_identity(record, parent_identity))
+            else:
+                records.append(record)
     return records
 
 
@@ -104,6 +119,7 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
                     cwd=metadata.cwd,
                     git_repository_url=metadata.git_repository_url or project_identity.git_repository_url,
                     git_branch=metadata.git_branch,
+                    parent_thread_id=metadata.parent_thread_id,
                 )
             )
             if root_session_is_fork and is_root_session:
@@ -152,10 +168,49 @@ def _parse_session_metadata(payload: dict[str, Any], path: Path, timestamp: date
         cli_version=str(payload.get("cli_version") or ""),
         model_provider=str(payload.get("model_provider") or ""),
         forked_from_id=str(payload.get("forked_from_id") or ""),
+        parent_thread_id=_extract_parent_thread_id(payload),
+        memory_mode=str(payload.get("memory_mode") or ""),
+        has_base_instructions=payload.get("base_instructions") is not None,
         git_repository_url=str(git.get("repository_url") or ""),
         git_branch=str(git.get("branch") or ""),
         git_commit_hash=str(git.get("commit_hash") or ""),
     )
+
+
+def _inherit_parent_project_identity(record: UsageRecord, parent: UsageRecord) -> UsageRecord:
+    aliases = _dedupe_aliases([record.project_key, *record.project_aliases, *parent.project_aliases], parent.project_key)
+    return replace(
+        record,
+        project_key=parent.project_key,
+        project_label=parent.project_label,
+        project_aliases=aliases,
+        git_repository_url=parent.git_repository_url,
+        git_branch=parent.git_branch,
+    )
+
+
+def _dedupe_aliases(values: list[str], primary_key: str) -> tuple[str, ...]:
+    aliases: list[str] = []
+    seen = {primary_key}
+    for value in values:
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        aliases.append(value)
+    return tuple(aliases)
+
+
+def _extract_parent_thread_id(payload: dict[str, Any]) -> str:
+    source = payload.get("source")
+    if not isinstance(source, dict):
+        return ""
+    subagent = source.get("subagent")
+    if not isinstance(subagent, dict):
+        return ""
+    thread_spawn = subagent.get("thread_spawn")
+    if not isinstance(thread_spawn, dict):
+        return ""
+    return str(thread_spawn.get("parent_thread_id") or "")
 
 
 def _extract_model(payload: dict[str, Any]) -> str:

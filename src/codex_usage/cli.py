@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import socket
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +16,15 @@ from codex_usage.aggregation import (
     summarize_records,
 )
 from codex_usage.discovery import collect_jsonl_files, find_session_dirs
+from codex_usage.models import UsageRecord
 from codex_usage.parser import parse_session_files
+from codex_usage.project_identity import normalize_project_key
+from codex_usage.project_transitions import (
+    ProjectTransition,
+    apply_project_transitions,
+    collect_repo_path_observations,
+    infer_project_transitions,
+)
 from codex_usage.reporting import (
     print_json,
     render_html_report,
@@ -25,6 +34,7 @@ from codex_usage.reporting import (
 )
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.settings import get_settings
+from codex_usage.sync import export_threads, import_threads, list_threads, sync_status
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -65,6 +75,38 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--output", type=Path, default=Path("output/report.html"))
     report_parser.set_defaults(handler=handle_report)
 
+    threads_parser = subparsers.add_parser("threads", help="List Codex threads.")
+    _add_common_options(threads_parser)
+    threads_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    threads_parser.set_defaults(handler=handle_threads)
+
+    transitions_parser = subparsers.add_parser("transitions", help="Inspect inferred project transitions.")
+    transitions_subparsers = transitions_parser.add_subparsers(dest="transitions_command")
+    transitions_parser.set_defaults(handler=handle_subparser_help, help_parser=transitions_parser)
+
+    suggest_parser = transitions_subparsers.add_parser("suggest", help="Suggest project transitions.")
+    _add_sessions_dir_option(suggest_parser)
+    suggest_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    suggest_parser.set_defaults(handler=handle_transitions_suggest)
+
+    sync_parser = subparsers.add_parser("sync", help="Synchronize selected Codex threads.")
+    sync_subparsers = sync_parser.add_subparsers(dest="sync_command")
+
+    export_parser = sync_subparsers.add_parser("export", help="Export selected threads to a sync folder.")
+    _add_sync_options(export_parser)
+    export_parser.add_argument("--machine-id", default=None, help="Source machine id for sync manifests.")
+    export_parser.set_defaults(handler=handle_sync_export)
+
+    import_parser = sync_subparsers.add_parser("import", help="Import selected threads from a sync folder.")
+    _add_sync_options(import_parser)
+    import_parser.add_argument("--conflict-policy", choices=("skip", "remote"), default="skip")
+    import_parser.set_defaults(handler=handle_sync_import)
+
+    status_parser = sync_subparsers.add_parser("status", help="Show selected thread sync status.")
+    _add_sync_options(status_parser)
+    status_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    status_parser.set_defaults(handler=handle_sync_status)
+
     return parser
 
 
@@ -84,6 +126,7 @@ def handle_summary(args: argparse.Namespace) -> int:
         files_scanned=len(context.files),
         subscription_usd=context.subscription_usd,
         project_keys=context.project_keys,
+        project_transitions=_transition_dicts(context.project_transitions),
     )
     if args.json:
         print_json(payload)
@@ -119,9 +162,94 @@ def handle_report(args: argparse.Namespace) -> int:
         files_scanned=len(context.files),
         subscription_usd=context.subscription_usd,
         project_keys=context.project_keys,
+        project_transitions=_transition_dicts(context.project_transitions),
         theme=normalize_report_theme(args.theme or get_settings().theme),
     )
     print(f"Wrote {output_path}")
+    return 0
+
+
+def handle_threads(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    session_dirs = find_session_dirs(args.sessions_dir, settings)
+    project_keys = _normalize_project_keys(args.project_key)
+    threads = list_threads(
+        session_dirs,
+        project_keys=project_keys,
+        auto_transitions=_auto_project_transitions_enabled(args, settings),
+    )
+    payload = {"threads": [thread.to_dict() for thread in threads], "project_keys": project_keys}
+    if args.json:
+        print_json(payload)
+    else:
+        for thread in threads:
+            print(f"{thread.thread_id}\t{thread.title}\t{thread.project_label}\t{thread.updated_at}")
+    return 0
+
+
+def handle_transitions_suggest(args: argparse.Namespace) -> int:
+    session_dirs = _existing_session_dirs(args.sessions_dir)
+    files = collect_jsonl_files(session_dirs)
+    records = parse_session_files(files)
+    observations = collect_repo_path_observations(session_dirs, files)
+    transitions = infer_project_transitions(records, observations)
+
+    if args.json:
+        print_json(
+            {
+                "sessions_dirs": [str(path) for path in session_dirs],
+                "files_scanned": len(files),
+                "observations_count": len(observations),
+                "project_transitions": _transition_dicts(transitions),
+            }
+        )
+    else:
+        for transition in transitions:
+            print(
+                f"{transition.source_label} -> {transition.target_label} @ "
+                f"{transition.effective_from.isoformat()} {transition.confidence}"
+            )
+    return 0
+
+
+def handle_subparser_help(args: argparse.Namespace) -> int:
+    args.help_parser.print_help(sys.stderr)
+    return 2
+
+
+def handle_sync_export(args: argparse.Namespace) -> int:
+    result = export_threads(
+        session_dirs=_existing_session_dirs(args.sessions_dir),
+        sync_dir=args.sync_dir,
+        thread_ids=_normalize_thread_ids(args.thread_id),
+        machine_id=args.machine_id or _default_machine_id(),
+    )
+    print_json(result.to_dict())
+    return 0
+
+
+def handle_sync_import(args: argparse.Namespace) -> int:
+    result = import_threads(
+        session_dirs=_sync_session_dirs(args.sessions_dir, create=args.sessions_dir is not None),
+        sync_dir=args.sync_dir,
+        thread_ids=_normalize_thread_ids(args.thread_id),
+        conflict_policy=args.conflict_policy,
+    )
+    print_json(result.to_dict())
+    return 0
+
+
+def handle_sync_status(args: argparse.Namespace) -> int:
+    result = sync_status(
+        session_dirs=_existing_session_dirs(args.sessions_dir),
+        sync_dir=args.sync_dir,
+        thread_ids=_normalize_thread_ids(args.thread_id),
+    )
+    if args.json:
+        print_json(result.to_dict())
+    else:
+        for item in result.threads:
+            print(f"{item['thread_id']}\t{item['state']}\t{item.get('updated_at', '')}")
     return 0
 
 
@@ -135,6 +263,7 @@ class _Context:
         timezone,
         subscription_usd: float | None,
         project_keys: list[str],
+        project_transitions: list[ProjectTransition],
     ) -> None:
         self.session_dirs = session_dirs
         self.files = files
@@ -142,6 +271,7 @@ class _Context:
         self.timezone = timezone
         self.subscription_usd = subscription_usd
         self.project_keys = project_keys
+        self.project_transitions = project_transitions
 
 
 def _load_context(args: argparse.Namespace) -> _Context:
@@ -150,9 +280,15 @@ def _load_context(args: argparse.Namespace) -> _Context:
     session_dirs = find_session_dirs(args.sessions_dir, settings)
     files = collect_jsonl_files(session_dirs)
     records = parse_session_files(files)
+    project_transitions: list[ProjectTransition] = []
+    if _auto_project_transitions_enabled(args, settings):
+        observations = collect_repo_path_observations(session_dirs, files)
+        project_transitions = infer_project_transitions(records, observations)
+        records = apply_project_transitions(records, project_transitions)
     project_keys = _normalize_project_keys(args.project_key)
     range_records = filter_records_by_range(records, args.range_name, timezone)
     filtered_records = filter_records_by_project_keys(range_records, project_keys)
+    filtered_transitions = _filter_project_transitions(project_transitions, filtered_records)
     subscription_usd = args.subscription_usd if args.subscription_usd is not None else settings.subscription_usd
     return _Context(
         session_dirs=session_dirs,
@@ -161,11 +297,12 @@ def _load_context(args: argparse.Namespace) -> _Context:
         timezone=timezone,
         subscription_usd=subscription_usd,
         project_keys=project_keys,
+        project_transitions=filtered_transitions,
     )
 
 
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--sessions-dir", type=Path, help="Path to the Codex sessions directory.")
+    _add_sessions_dir_option(parser)
     parser.add_argument("--timezone", help="IANA timezone name, for example America/Toronto.")
     parser.add_argument("--subscription-usd", type=float, help="Monthly subscription cost for comparison.")
     parser.add_argument(
@@ -173,17 +310,107 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         action="append",
         help="Filter usage to a project key. Repeat to include multiple projects.",
     )
+    parser.add_argument(
+        "--no-auto-transitions",
+        action="store_true",
+        help="Disable automatic project transition inference.",
+    )
+
+
+def _add_sync_options(parser: argparse.ArgumentParser) -> None:
+    _add_sessions_dir_option(parser)
+    parser.add_argument("--sync-dir", type=Path, required=True, help="Bring-your-own local sync folder.")
+    parser.add_argument(
+        "--thread-id",
+        action="append",
+        required=True,
+        help="Codex thread id to sync. Repeat to include multiple threads.",
+    )
+
+
+def _add_sessions_dir_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--sessions-dir", type=Path, help="Path to the Codex sessions directory.")
 
 
 def _normalize_project_keys(values: list[str] | None) -> list[str]:
     selected: list[str] = []
     seen: set[str] = set()
     for value in values or []:
-        key = value.strip()
+        key = normalize_project_key(value)
         if key and key not in seen:
             selected.append(key)
             seen.add(key)
     return selected
+
+
+def _normalize_thread_ids(values: list[str] | None) -> list[str]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        thread_id = value.strip()
+        if not thread_id or thread_id in seen:
+            continue
+        selected.append(thread_id)
+        seen.add(thread_id)
+    return selected
+
+
+def _auto_project_transitions_enabled(args: argparse.Namespace, settings) -> bool:
+    return settings.auto_project_transitions and not getattr(args, "no_auto_transitions", False)
+
+
+def _transition_dicts(transitions: list[ProjectTransition]) -> list[dict[str, object]]:
+    return [transition.to_dict() for transition in transitions]
+
+
+def _filter_project_transitions(
+    transitions: list[ProjectTransition],
+    records: list[UsageRecord],
+) -> list[ProjectTransition]:
+    if not transitions or not records:
+        return []
+
+    keys_by_session: dict[str, set[str]] = {}
+    for record in records:
+        if not record.session_id:
+            continue
+        keys_by_session.setdefault(record.session_id, set()).update(_record_project_keys(record))
+
+    filtered: list[ProjectTransition] = []
+    for transition in transitions:
+        transition_sessions = set(transition.thread_ids) or set(keys_by_session)
+        matching_sessions = transition_sessions.intersection(keys_by_session)
+        if any(_transition_keys_represented(transition, keys_by_session[session_id]) for session_id in matching_sessions):
+            filtered.append(transition)
+    return filtered
+
+
+def _transition_keys_represented(transition: ProjectTransition, keys: set[str]) -> bool:
+    return transition.source_key in keys and transition.target_key in keys
+
+
+def _record_project_keys(record: UsageRecord) -> set[str]:
+    return {key for key in (record.project_key, record.project_previous_key, *record.project_aliases) if key}
+
+
+def _existing_session_dirs(explicit: Path | None) -> list[Path]:
+    return find_session_dirs(explicit, get_settings())
+
+
+def _sync_session_dirs(explicit: Path | None, *, create: bool) -> list[Path]:
+    if explicit is None:
+        return find_session_dirs(None, get_settings())
+    path = explicit.expanduser()
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return [path]
+
+
+def _default_machine_id() -> str:
+    try:
+        return socket.gethostname()
+    except OSError:
+        return "unknown-machine"
 
 
 if __name__ == "__main__":

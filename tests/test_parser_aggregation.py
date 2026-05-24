@@ -11,8 +11,9 @@ from codex_usage.aggregation import (
     summarize_records,
 )
 from codex_usage.models import TokenUsage, UsageRecord
-from codex_usage.parser import parse_session_file
+from codex_usage.parser import parse_session_file, parse_session_files
 from codex_usage.pricing import EffectiveModelRate, ModelRate
+from codex_usage.settings import get_settings
 
 
 def test_parser_uses_positive_cumulative_deltas(tmp_path: Path) -> None:
@@ -209,6 +210,69 @@ def test_project_grouping_resolves_missing_git_url_from_cwd_git_config(tmp_path:
     assert _normalized_path(str(nested)) in record.project_aliases
 
 
+def test_project_grouping_does_not_escape_external_project_boundary(tmp_path: Path) -> None:
+    enclosing_repo = tmp_path / "ContentShuttle"
+    external_project = enclosing_repo / "zz_external_projects" / "signoz-stack"
+    external_project.mkdir(parents=True)
+    git_dir = enclosing_repo / ".git"
+    git_dir.mkdir()
+    (git_dir / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/example/contentshuttle.git\n',
+        encoding="utf-8",
+    )
+    path = _write_session(
+        tmp_path / "session",
+        [
+            _session_meta(cwd=str(external_project)),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+
+    record = parse_session_file(path)[0]
+
+    assert record.project_key == _normalized_path(str(external_project))
+    assert record.project_label == "signoz-stack"
+
+
+def test_parse_session_files_uses_parent_project_for_subagent_without_git_metadata(tmp_path: Path) -> None:
+    enclosing_repo = tmp_path / "ContentShuttle"
+    child_cwd = enclosing_repo / "zz_external_projects" / "signoz-stack"
+    child_cwd.mkdir(parents=True)
+    git_dir = enclosing_repo / ".git"
+    git_dir.mkdir()
+    (git_dir / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/example/contentshuttle.git\n',
+        encoding="utf-8",
+    )
+    parent = _write_session(
+        tmp_path / "parent",
+        [
+            _session_meta(
+                cwd=str(child_cwd),
+                repo="https://github.com/example/signoz-stack.git",
+                session_id="parent-thread",
+            ),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+    child = _write_session(
+        tmp_path / "child",
+        [
+            _session_meta(cwd=str(child_cwd), session_id="child-thread", parent_thread_id="parent-thread"),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=75)),
+        ],
+    )
+
+    rows = aggregate_records(parse_session_files([parent, child]), "project", resolve_timezone("UTC"))
+
+    assert [(row.key, row.usage.total_tokens) for row in rows] == [
+        ("https://github.com/example/signoz-stack", 175)
+    ]
+
+
 def test_project_grouping_prefers_json_git_url_over_cwd_git_config(tmp_path: Path) -> None:
     repo = tmp_path / "demo"
     git_dir = repo / ".git"
@@ -231,6 +295,31 @@ def test_project_grouping_prefers_json_git_url_over_cwd_git_config(tmp_path: Pat
 
     assert record.project_key == "https://github.com/example/from-json"
     assert _normalized_path(str(repo)) in record.project_aliases
+
+
+def test_project_aliases_rewrite_to_canonical_key_and_keep_old_key(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(
+        "CODEX_USAGE_PROJECT_ALIASES",
+        json.dumps({"https://github.com/example/signoz-stack.git": "https://github.com/example/ops-board.git"}),
+    )
+    get_settings.cache_clear()
+    path = _write_session(
+        tmp_path / "session",
+        [
+            _session_meta(cwd="D:\\Projects\\signoz-stack", repo="https://github.com/example/signoz-stack.git"),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+
+    try:
+        record = parse_session_file(path)[0]
+    finally:
+        get_settings.cache_clear()
+
+    assert record.project_key == "https://github.com/example/ops-board"
+    assert "https://github.com/example/signoz-stack" in record.project_aliases
+    assert "d:/projects/signoz-stack" in record.project_aliases
 
 
 def test_project_grouping_normalizes_ssh_git_remotes(tmp_path: Path) -> None:
@@ -372,7 +461,13 @@ def _write_session(tmp_path: Path, rows: list[dict]) -> Path:
     return path
 
 
-def _session_meta(cwd: str = "/repo/demo", repo: str = "", session_id: str = "session-1", forked_from_id: str = "") -> dict:
+def _session_meta(
+    cwd: str = "/repo/demo",
+    repo: str = "",
+    session_id: str = "session-1",
+    forked_from_id: str = "",
+    parent_thread_id: str = "",
+) -> dict:
     git = {"repository_url": repo, "branch": "main"} if repo else {}
     payload = {
         "id": session_id,
@@ -385,6 +480,15 @@ def _session_meta(cwd: str = "/repo/demo", repo: str = "", session_id: str = "se
     }
     if forked_from_id:
         payload["forked_from_id"] = forked_from_id
+    if parent_thread_id:
+        payload["source"] = {
+            "subagent": {
+                "thread_spawn": {
+                    "parent_thread_id": parent_thread_id,
+                    "depth": 1,
+                }
+            }
+        }
     return {
         "timestamp": "2026-04-29T09:59:00Z",
         "type": "session_meta",

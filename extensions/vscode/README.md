@@ -11,6 +11,8 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - Supports quick range switching: today, yesterday, 7d, 30d, month, all.
 - Supports multi-project filtering from detected project keys.
 - Supports auto/day/night dashboard theme switching.
+- Detects high-confidence project transitions and can split dashboard usage after verified local repository changes.
+- Adds experimental selected-thread sync through a user-provided local sync folder.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, daily/hourly views, project breakdown, and model mix.
 - Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
 
@@ -21,6 +23,11 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - `Codex Usage: Select Range`
 - `Codex Usage: Select Projects`
 - `Codex Usage: Select Theme`
+- `Codex Usage: Review Project Transitions`
+- `Codex Usage: Select Sync Threads`
+- `Codex Usage: Sync Now`
+- `Codex Usage: Sync Status`
+- `Codex Usage: Open Sync Folder`
 - `Codex Usage: Open Settings`
 
 ## Settings
@@ -29,7 +36,36 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - `codexUsage.sessionsDir`: optional explicit Codex sessions directory.
 - `codexUsage.subscriptionUsd`: optional monthly subscription amount for comparison.
 - `codexUsage.projectKeys`: selected project filters. Leave empty to show all projects.
+- `codexUsage.projectAliases`: optional old-to-new project key map for renamed or moved repositories.
 - `codexUsage.theme`: `auto`, `day`, or `night`. Auto follows your active VS Code theme.
+- `codexUsage.projectTransitions.autoDetect`: automatically split usage after high-confidence local repository transitions.
+- `codexUsage.sync.enabled`: enable experimental selected-thread sync.
+- `codexUsage.sync.dir`: bring-your-own local sync folder.
+- `codexUsage.sync.threadIds`: selected Codex thread ids.
+- `codexUsage.sync.autoPull` / `codexUsage.sync.autoPush`: automatic sync behavior.
+
+## Experimental Sync
+
+Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected Codex session JSONL files and matching session index entries. It does not upload data itself and does not sync Codex auth, settings, caches, logs, or SQLite databases.
+
+## Project Aliases
+
+For renamed repositories, set `codexUsage.projectAliases` so historical logs and new logs group together:
+
+```json
+{
+  "https://github.com/example/old-name": "https://github.com/example/new-name.git",
+  "d:/old/local/path/old-name": "https://github.com/example/new-name.git"
+}
+```
+
+Both the old keys and the canonical key continue to work for project filtering.
+
+## Project Transitions
+
+Automatic project transition detection uses read-only evidence from local Codex session JSONL files and, when present, the local Codex `state_5.sqlite` `threads` field `cwd` plus thread timestamps. The extension does not upload this data, make network calls for transition detection, mutate SQLite, or sync SQLite databases.
+
+The dashboard transition table shows source, target, effective timestamp, and confidence. Use `Codex Usage: Review Project Transitions` for detailed evidence and thread ids.
 
 ## Windows Beta Install
 
@@ -45,7 +81,7 @@ After installation, run `Codex Usage: Open Dashboard` from the command palette.
 
 ## Privacy
 
-The extension reads local Codex session JSONL files and writes local HTML reports under VS Code extension storage. It does not upload session logs, does not include telemetry, and does not fetch live pricing.
+The extension reads local Codex session JSONL files and writes local HTML reports under VS Code extension storage. Automatic project transition detection can also read local `state_5.sqlite` thread `cwd` and timestamps as read-only evidence. It does not upload session logs, does not include telemetry, does not fetch live pricing, and does not sync or mutate SQLite databases.
 
 Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. See the repository `PRIVACY.md` for details.
 
@@ -53,6 +89,7 @@ Codex session logs can include project paths, repository URLs, branch names, mod
 
 - If no usage appears, confirm Codex session files exist under `%USERPROFILE%\.codex\sessions` or set `codexUsage.sessionsDir`.
 - If project filtering shows no choices, switch the range to `all` and run `Codex Usage: Select Projects` again.
+- If a project split looks surprising, run `Codex Usage: Review Project Transitions` to inspect the evidence, or disable `codexUsage.projectTransitions.autoDetect`.
 - If the dashboard theme is not what you expect, run `Codex Usage: Select Theme` and choose `auto`, `day`, or `night`.
 - If the dashboard says no sessions were found, check the configured sessions path and file permissions.
 - If pricing looks stale, check the report header for the checked-in pricing table date.

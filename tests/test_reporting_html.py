@@ -4,6 +4,7 @@ from pathlib import Path
 from codex_usage.aggregation import AggregateRow, UsageSummary
 from codex_usage.models import TokenUsage
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
+from codex_usage.project_transitions import ProjectTransition
 from codex_usage.reporting import render_html_report
 
 
@@ -92,6 +93,44 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     assert "--heat-0" in html
 
 
+def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:
+    output = tmp_path / "transitions.html"
+    total = UsageSummary(usage=TokenUsage(), cost=CostBreakdown(), credits=CreditBreakdown(), record_count=0)
+    effective_from = datetime(2026, 5, 23, 21, 6, 45, tzinfo=UTC)
+    transition = ProjectTransition(
+        source_key="https://github.com/example/signoz-stack",
+        source_label="signoz-stack",
+        target_key="https://github.com/example/ops-board",
+        target_label="ops-board",
+        effective_from=effective_from,
+        confidence=100,
+        evidence=("verified local repository switch",),
+        thread_ids=("thread-1",),
+    )
+
+    render_html_report(
+        output_path=output,
+        generated_at=datetime(2026, 5, 23, 22, tzinfo=UTC),
+        range_name="all",
+        total=total,
+        daily_rows=[],
+        hourly_rows=[],
+        project_rows=[],
+        model_rows=[],
+        sessions_dirs=[Path("sessions")],
+        files_scanned=1,
+        subscription_usd=None,
+        project_transitions=[transition.to_dict()],
+    )
+
+    html = output.read_text(encoding="utf-8")
+
+    assert "Project Transitions" in html
+    assert "signoz-stack" in html
+    assert "ops-board" in html
+    assert effective_from.isoformat() in html
+
+
 def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> None:
     output = tmp_path / "unknown.html"
     total = UsageSummary(
@@ -142,6 +181,7 @@ def test_dashboard_report_has_empty_states(tmp_path: Path) -> None:
 
     assert "No Codex usage was found for this report range." in html
     assert "Projects: All Projects" in html
+    assert "Project Transitions" not in html
     assert "No daily usage found for this range." in html
     assert html.count("<svg") == 4
 

@@ -31,6 +31,7 @@ def summary_payload(
     files_scanned: int,
     subscription_usd: float | None,
     project_keys: list[str] | None = None,
+    project_transitions: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "generated_at": generated_at.isoformat(),
@@ -39,6 +40,7 @@ def summary_payload(
         "range": range_name,
         "group_by": group_by,
         "project_keys": project_keys or [],
+        "project_transitions": project_transitions or [],
         "sessions_dirs": [str(path) for path in sessions_dirs],
         "files_scanned": files_scanned,
         "total": total.to_dict(),
@@ -131,6 +133,7 @@ def render_html_report(
     files_scanned: int,
     subscription_usd: float | None,
     project_keys: list[str] | None = None,
+    project_transitions: list[dict[str, object]] | None = None,
     theme: str = "auto",
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,6 +158,7 @@ def render_html_report(
         )
     pricing_notice_html = _pricing_notice(view_model)
     project_filter_label = _project_filter_label(project_keys)
+    project_transitions_html = _project_transitions_section(project_transitions)
 
     body = f"""<!doctype html>
 <html lang="en" data-codex-theme="{html.escape(theme)}">
@@ -177,6 +181,7 @@ def render_html_report(
     {pricing_notice_html}
     {comparison_html}
     {_empty_report_notice(view_model)}
+    {project_transitions_html}
     <div class="dashboard-grid">
       {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), _table_section("Daily Details", daily_rows))}
       {_chart_section("Hourly Heatmap", render_hourly_heatmap_svg(view_model.hourly_cells), _table_section("Hourly Details", hourly_rows))}
@@ -280,6 +285,34 @@ def _empty_report_notice(view_model: ReportViewModel) -> str:
     if view_model.has_usage:
         return ""
     return "<p class=\"notice\">No Codex usage was found for this report range.</p>"
+
+
+def _project_transitions_section(project_transitions: list[dict[str, object]] | None) -> str:
+    if not project_transitions:
+        return ""
+
+    rows = []
+    for transition in project_transitions:
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(transition.get('source_label', '')))}</td>"
+            f"<td>{html.escape(str(transition.get('target_label', '')))}</td>"
+            f"<td>{html.escape(str(transition.get('effective_from', '')))}</td>"
+            f"<td class=\"num\">{html.escape(str(transition.get('confidence', '')))}</td>"
+            "</tr>"
+        )
+
+    return (
+        "<section class=\"section\">"
+        "<h2>Project Transitions</h2>"
+        "<p class=\"muted\">Usage is split at verified local repository switch points.</p>"
+        "<div class=\"table-wrap\"><table>"
+        "<thead><tr><th>From</th><th>To</th><th>Effective From</th><th class=\"num\">Confidence</th></tr></thead>"
+        "<tbody>"
+        + "".join(rows)
+        + "</tbody></table></div>"
+        "</section>"
+    )
 
 
 def _chart_section(title: str, svg: str, table_html: str) -> str:

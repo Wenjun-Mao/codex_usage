@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.8 - Auto Project Transitions
+
+- Added automatic high-confidence project splits when timestamped Codex events reference verified local repository paths.
+- Added `codex-usage transitions suggest --json` for reviewing inferred transitions from the CLI.
+- Added `Codex Usage: Review Project Transitions` and the `codexUsage.projectTransitions.autoDetect` setting.
+- Added report transition metadata for source, target, effective timestamp, and confidence; detailed evidence and thread ids are available through the CLI and VS Code review command.
+- Updated sync and thread project awareness so selected threads use transition-aware project identity.
+
+## 0.1.6 - Experimental Selected-Thread Sync
+
+- Added dependency-light Codex thread sync commands backed by a user-provided local sync folder.
+- Added VS Code commands and settings for selecting threads, syncing now, checking status, and opening the sync folder.
+- Syncs selected session JSONL files and matching session index entries only; SQLite memory rows are detected but not synced.
+
 ## 0.1.5 - Canonical Project Identity
 
 - Resolve missing project git metadata from local `.git/config` when `cwd` points inside a repository.

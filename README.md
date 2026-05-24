@@ -28,7 +28,12 @@ Available commands:
 - `Codex Usage: Refresh Dashboard`
 - `Codex Usage: Select Range`
 - `Codex Usage: Select Projects`
+- `Codex Usage: Review Project Transitions`
 - `Codex Usage: Select Theme`
+- `Codex Usage: Select Sync Threads`
+- `Codex Usage: Sync Now`
+- `Codex Usage: Sync Status`
+- `Codex Usage: Open Sync Folder`
 - `Codex Usage: Open Settings`
 
 ## CLI Usage
@@ -40,6 +45,10 @@ uv run codex-usage summary --range all --by hour --json
 uv run codex-usage summary --range month --by model --csv output/monthly-models.csv
 uv run codex-usage report --range 30d --output output/report.html
 uv run codex-usage report --range all --theme night --output output/night-report.html
+uv run codex-usage transitions suggest --json
+uv run codex-usage threads --project-key https://github.com/example/demo --json
+uv run codex-usage sync export --sync-dir D:\CodexSync --thread-id <thread-id>
+uv run codex-usage sync status --sync-dir D:\CodexSync --thread-id <thread-id> --json
 ```
 
 By default, the tool looks for Codex sessions at:
@@ -66,21 +75,45 @@ Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser
 The report uses no remote assets, JavaScript, or Python chart libraries. It is safe to open locally and is designed to fit inside a VS Code webview.
 The dashboard uses the same tokenized day/night design system as the VS Code extension, including dark-mode-friendly charts and tables.
 
+## Experimental Thread Sync
+
+The Windows VS Code beta can sync selected Codex threads through a bring-your-own local sync folder such as OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Configure `codexUsage.sync.enabled`, `codexUsage.sync.dir`, and selected threads with `Codex Usage: Select Sync Threads`.
+
+The sync MVP copies only selected session JSONL files and matching `session_index.jsonl` entries. It does not sync `auth.json`, settings, caches, logs, or SQLite databases. If local memory database rows are detected for a selected thread, sync status reports that they are not synced by this beta.
+
 ## Accounting And Pricing
 
 The parser reads cumulative `total_token_usage` records and counts only positive deltas between token-count events. This avoids double-counting repeated records while still allowing daily and hourly reports for long sessions.
 
-Project grouping uses `git.repository_url` when present, then normalized `cwd`, then the session id.
+Project grouping uses `git.repository_url` when present, then normalized `cwd`, then the session id. If a repository is renamed or moved, you can map old keys to a canonical key with `CODEX_USAGE_PROJECT_ALIASES`:
+
+```powershell
+$env:CODEX_USAGE_PROJECT_ALIASES='{"https://github.com/example/old-name":"https://github.com/example/new-name.git"}'
+uv run codex-usage summary --range all --by project
+```
+
+The VS Code beta exposes the same behavior through `codexUsage.projectAliases`.
 
 Pricing uses checked-in effective-dated rate schedules. Each usage event is priced with the API USD and Codex credit rates active at that event's timestamp, so future price changes can be added without rewriting historical reports.
 
 The tool does not fetch live pricing. Cost and credit values are estimates based on the checked-in pricing table version shown in each report.
+
+## Project Transitions
+
+Codex can continue one thread after you ask it to work in another local repository. By default, reports apply automatic high-confidence transition detection when a timestamped Codex event references an existing local path, that path resolves to a repository with a `.git/config` origin remote, and the thread already has usage under a different source project. Usage before the transition timestamp stays with the source project; usage after the timestamp moves to the detected target project.
+
+The detector uses read-only evidence from local Codex session JSONL files and, when present, the local Codex `state_5.sqlite` `threads` field `cwd` plus thread timestamps. It does not upload this data, make network calls, mutate SQLite, or include SQLite databases in experimental sync.
+
+Casual repository name mentions do not split usage because the detector requires verified local path evidence. Dashboard reports show transition source, target, effective timestamp, and confidence. Detailed evidence text and thread ids are available through `codex-usage transitions suggest --json` and `Codex Usage: Review Project Transitions`.
+
+Use `uv run codex-usage transitions suggest --json` to review inferred transitions directly. Pass `--no-auto-transitions` to summary, report, or threads commands when you want the original project grouping without automatic splits.
 
 ## Privacy
 
 Codex Usage Dashboard is local-first:
 
 - It reads local Codex session JSONL files.
+- Project transition detection can also read local `state_5.sqlite` thread `cwd` and timestamps as read-only evidence.
 - It writes local reports.
 - It does not upload session logs.
 - It does not include telemetry.

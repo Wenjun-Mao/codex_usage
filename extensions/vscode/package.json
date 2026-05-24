@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
   "publisher": "local-codex-usage",
-  "version": "0.1.5",
+  "version": "0.1.8",
   "private": true,
   "preview": true,
   "license": "MIT",
@@ -39,7 +39,13 @@
     "onCommand:codexUsage.openSettings",
     "onCommand:codexUsage.selectRange",
     "onCommand:codexUsage.selectProjects",
-    "onCommand:codexUsage.selectTheme"
+    "onCommand:codexUsage.selectTheme",
+    "onCommand:codexUsage.reviewProjectTransitions",
+    "onCommand:codexUsage.selectSyncThreads",
+    "onCommand:codexUsage.syncNow",
+    "onCommand:codexUsage.syncStatus",
+    "onCommand:codexUsage.openSyncFolder",
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -67,6 +73,26 @@
       {
         "command": "codexUsage.selectTheme",
         "title": "Codex Usage: Select Theme"
+      },
+      {
+        "command": "codexUsage.reviewProjectTransitions",
+        "title": "Codex Usage: Review Project Transitions"
+      },
+      {
+        "command": "codexUsage.selectSyncThreads",
+        "title": "Codex Usage: Select Sync Threads"
+      },
+      {
+        "command": "codexUsage.syncNow",
+        "title": "Codex Usage: Sync Now"
+      },
+      {
+        "command": "codexUsage.syncStatus",
+        "title": "Codex Usage: Sync Status"
+      },
+      {
+        "command": "codexUsage.openSyncFolder",
+        "title": "Codex Usage: Open Sync Folder"
       }
     ],
     "configuration": {
@@ -107,6 +133,14 @@
           },
           "description": "Project keys selected for dashboard filtering. Leave empty to show all projects."
         },
+        "codexUsage.projectAliases": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional project identity aliases. Keys are old project keys or paths, values are canonical project keys or repo URLs."
+        },
         "codexUsage.theme": {
           "type": "string",
           "enum": [
@@ -116,6 +150,39 @@
           ],
           "default": "auto",
           "description": "Dashboard theme. Auto follows the active VS Code theme in the extension and system preference for standalone HTML."
+        },
+        "codexUsage.projectTransitions.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically split usage when high-confidence local repository transitions are detected."
+        },
+        "codexUsage.sync.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental selected-thread Codex sync."
+        },
+        "codexUsage.sync.dir": {
+          "type": "string",
+          "default": "",
+          "description": "Bring-your-own local sync folder, such as a OneDrive, Dropbox, Syncthing, or network drive folder."
+        },
+        "codexUsage.sync.threadIds": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Codex thread ids selected for experimental sync."
+        },
+        "codexUsage.sync.autoPull": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically pull selected thread updates when VS Code activates or gains focus."
+        },
+        "codexUsage.sync.autoPush": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically push selected thread updates after watched session files change when a sessions directory is configured."
         }
       }
     }

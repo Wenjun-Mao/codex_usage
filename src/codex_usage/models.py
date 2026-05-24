@@ -79,6 +79,9 @@ class SessionMetadata:
     cli_version: str = ""
     model_provider: str = ""
     forked_from_id: str = ""
+    parent_thread_id: str = ""
+    memory_mode: str = ""
+    has_base_instructions: bool = False
     git_repository_url: str = ""
     git_branch: str = ""
     git_commit_hash: str = ""
@@ -97,9 +100,13 @@ class UsageRecord:
     project_key: str = UNKNOWN
     project_label: str = UNKNOWN
     project_aliases: tuple[str, ...] = ()
+    project_previous_key: str = ""
+    project_previous_label: str = ""
+    project_transition_effective_from: str = ""
     cwd: str = ""
     git_repository_url: str = ""
     git_branch: str = ""
+    parent_thread_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -113,9 +120,13 @@ class UsageRecord:
             "project_key": self.project_key,
             "project_label": self.project_label,
             "project_aliases": list(self.project_aliases),
+            "project_previous_key": self.project_previous_key,
+            "project_previous_label": self.project_previous_label,
+            "project_transition_effective_from": self.project_transition_effective_from,
             "cwd": self.cwd,
             "git_repository_url": self.git_repository_url,
             "git_branch": self.git_branch,
+            "parent_thread_id": self.parent_thread_id,
             "usage": self.usage.to_dict(),
         }
 

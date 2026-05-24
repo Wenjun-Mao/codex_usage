@@ -8,9 +8,14 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.selectRange",
   "codexUsage.selectProjects",
   "codexUsage.selectTheme",
+  "codexUsage.reviewProjectTransitions",
   "codexUsage.refreshDashboard",
   "codexUsage.openSettings",
 ] as const;
+
+export type ProjectTransitionsSettings = {
+  autoDetect: boolean;
+};
 
 export type ReportCommandOptions = {
   range: string;
@@ -19,6 +24,7 @@ export type ReportCommandOptions = {
   subscriptionUsd?: number | null;
   projectKeys?: string[];
   theme?: string;
+  projectTransitions?: ProjectTransitionsSettings;
 };
 
 export type SummaryCommandOptions = {
@@ -27,6 +33,35 @@ export type SummaryCommandOptions = {
   sessionsDir?: string;
   subscriptionUsd?: number | null;
   projectKeys?: string[];
+  projectTransitions?: ProjectTransitionsSettings;
+};
+
+export type ThreadsCommandOptions = {
+  sessionsDir?: string;
+  projectKeys?: string[];
+  projectTransitions?: ProjectTransitionsSettings;
+};
+
+export type TransitionSuggestCommandOptions = {
+  sessionsDir?: string;
+};
+
+export type SyncCommandOptions = {
+  sessionsDir?: string;
+  syncDir: string;
+  threadIds: string[];
+};
+
+export type SyncImportCommandOptions = SyncCommandOptions & {
+  conflictPolicy?: string;
+};
+
+export type SyncSettings = {
+  enabled: boolean;
+  dir: string;
+  threadIds: string[];
+  autoPull: boolean;
+  autoPush: boolean;
 };
 
 export type ExtensionSettings = {
@@ -34,7 +69,10 @@ export type ExtensionSettings = {
   sessionsDir?: string;
   subscriptionUsd?: number | null;
   projectKeys: string[];
+  projectAliases: Record<string, string>;
   theme: ReportTheme;
+  sync: SyncSettings;
+  projectTransitions: ProjectTransitionsSettings;
 };
 
 export type ProjectChoice = {
@@ -44,6 +82,41 @@ export type ProjectChoice = {
   detail: string;
   totalTokens: number;
   picked: boolean;
+};
+
+export type ThreadChoice = {
+  threadId: string;
+  label: string;
+  description: string;
+  detail: string;
+  totalTokens: number;
+  picked: boolean;
+};
+
+export type TransitionChoice = {
+  label: string;
+  description: string;
+  detail: string;
+  picked: boolean;
+  transition: {
+    source_key: string;
+    source_label: string;
+    target_key: string;
+    target_label: string;
+    effective_from: string;
+    confidence: number;
+    evidence: string[];
+    thread_ids: string[];
+  };
+};
+
+export type SyncStatusSummary = {
+  total: number;
+  synced: number;
+  conflicts: number;
+  missing: number;
+  memoryWarnings: number;
+  message: string;
 };
 
 export type WebviewControlState = {
@@ -84,6 +157,47 @@ export function normalizeProjectKeys(values: unknown): string[] {
   return selected;
 }
 
+export function normalizeThreadIds(values: unknown): string[] {
+  return normalizeProjectKeys(values);
+}
+
+export function normalizeProjectAliases(value: unknown): Record<string, string> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const aliases: Record<string, string> = {};
+  for (const [source, target] of Object.entries(value)) {
+    if (typeof target !== "string") {
+      continue;
+    }
+    const sourceKey = source.trim();
+    const targetKey = target.trim();
+    if (!sourceKey || !targetKey || sourceKey === targetKey) {
+      continue;
+    }
+    aliases[sourceKey] = targetKey;
+  }
+  return aliases;
+}
+
+export function normalizeSyncSettings(value: unknown): SyncSettings {
+  const input = isRecord(value) ? value : {};
+  return {
+    enabled: input.enabled === true,
+    dir: typeof input.dir === "string" ? input.dir.trim() : "",
+    threadIds: normalizeThreadIds(input.threadIds),
+    autoPull: input.autoPull === false ? false : true,
+    autoPush: input.autoPush === false ? false : true,
+  };
+}
+
+export function buildCodexUsageEnv(projectAliases: unknown): Record<string, string> {
+  const aliases = normalizeProjectAliases(projectAliases);
+  return Object.keys(aliases).length > 0
+    ? { CODEX_USAGE_PROJECT_ALIASES: JSON.stringify(aliases) }
+    : {};
+}
+
 export function buildReportArgs(options: ReportCommandOptions): string[] {
   const args = [
     "report",
@@ -95,6 +209,7 @@ export function buildReportArgs(options: ReportCommandOptions): string[] {
     normalizeTheme(options.theme),
   ];
   appendCommonArgs(args, options);
+  appendProjectTransitionArgs(args, options);
   appendProjectKeyArgs(args, options.projectKeys);
   return args;
 }
@@ -109,16 +224,73 @@ export function buildSummaryArgs(options: SummaryCommandOptions): string[] {
     "--json",
   ];
   appendCommonArgs(args, options);
+  appendProjectTransitionArgs(args, options);
   appendProjectKeyArgs(args, options.projectKeys);
   return args;
 }
 
-function appendCommonArgs(args: string[], options: ReportCommandOptions | SummaryCommandOptions): void {
+export function buildThreadsArgs(options: ThreadsCommandOptions): string[] {
+  const args = ["threads", "--json"];
+  appendCommonArgs(args, options);
+  appendProjectTransitionArgs(args, options);
+  appendProjectKeyArgs(args, options.projectKeys);
+  return args;
+}
+
+export function buildTransitionSuggestArgs(options: TransitionSuggestCommandOptions): string[] {
+  const args = ["transitions", "suggest", "--json"];
+  appendCommonArgs(args, options);
+  return args;
+}
+
+export function buildSyncExportArgs(options: SyncCommandOptions): string[] {
+  const args = ["sync", "export"];
+  appendSyncArgs(args, options);
+  return args;
+}
+
+export function buildSyncImportArgs(options: SyncImportCommandOptions): string[] {
+  const args = ["sync", "import"];
+  appendSyncArgs(args, options);
+  const policy = options.conflictPolicy === "remote" ? "remote" : "skip";
+  args.push("--conflict-policy", policy);
+  return args;
+}
+
+export function buildSyncStatusArgs(options: SyncCommandOptions): string[] {
+  const args = ["sync", "status", "--json"];
+  appendSyncArgs(args, options);
+  return args;
+}
+
+function appendCommonArgs(
+  args: string[],
+  options: ReportCommandOptions | SummaryCommandOptions | ThreadsCommandOptions | TransitionSuggestCommandOptions | SyncCommandOptions,
+): void {
   if (options.sessionsDir?.trim()) {
     args.push("--sessions-dir", options.sessionsDir.trim());
   }
-  if (typeof options.subscriptionUsd === "number" && Number.isFinite(options.subscriptionUsd)) {
+  if ("subscriptionUsd" in options && typeof options.subscriptionUsd === "number" && Number.isFinite(options.subscriptionUsd)) {
     args.push("--subscription-usd", String(options.subscriptionUsd));
+  }
+}
+
+function appendSyncArgs(args: string[], options: SyncCommandOptions): void {
+  appendCommonArgs(args, options);
+  if (options.syncDir.trim()) {
+    args.push("--sync-dir", options.syncDir.trim());
+  }
+  for (const threadId of normalizeThreadIds(options.threadIds)) {
+    args.push("--thread-id", threadId);
+  }
+}
+
+function appendProjectTransitionArgs(
+  args: string[],
+  options: ReportCommandOptions | SummaryCommandOptions | ThreadsCommandOptions,
+): void {
+  if (options.projectTransitions?.autoDetect === false) {
+    args.push("--no-auto-transitions");
   }
 }
 
@@ -174,6 +346,142 @@ export function parseProjectChoices(summaryJson: string, selectedProjectKeys: st
     seen.add(key);
   }
   return choices;
+}
+
+export function parseThreadChoices(threadsJson: string, selectedThreadIds: string[] = []): ThreadChoice[] {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(threadsJson);
+  } catch (error) {
+    throw new Error(`Could not parse Codex thread JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (!isRecord(payload) || !Array.isArray(payload.threads)) {
+    throw new Error("Codex thread JSON did not contain a threads array.");
+  }
+
+  const selected = new Set(normalizeThreadIds(selectedThreadIds));
+  const seen = new Set<string>();
+  const choices: ThreadChoice[] = [];
+  for (const row of payload.threads) {
+    if (!isRecord(row) || typeof row.thread_id !== "string") {
+      continue;
+    }
+    const threadId = row.thread_id.trim();
+    if (!threadId || seen.has(threadId)) {
+      continue;
+    }
+    const label = typeof row.title === "string" && row.title.trim() ? row.title.trim() : threadId;
+    const project = typeof row.project_label === "string" && row.project_label.trim() ? row.project_label.trim() : "unknown";
+    const updated = typeof row.updated_at === "string" ? row.updated_at : "";
+    const totalTokens = numberValue(row.total_tokens);
+    choices.push({
+      threadId,
+      label,
+      totalTokens,
+      description: `${project} | ${formatInt(totalTokens)} tokens`,
+      detail: updated ? `${threadId} | ${updated}` : threadId,
+      picked: selected.has(threadId),
+    });
+    seen.add(threadId);
+  }
+  return choices;
+}
+
+export function parseTransitionChoices(transitionsJson: string): TransitionChoice[] {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(transitionsJson);
+  } catch (error) {
+    throw new Error(`Could not parse Codex transition JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (!isRecord(payload) || !Array.isArray(payload.project_transitions)) {
+    throw new Error("Codex transition JSON did not contain a project_transitions array.");
+  }
+
+  const choices: TransitionChoice[] = [];
+  for (const row of payload.project_transitions) {
+    if (!isRecord(row) || typeof row.source_key !== "string" || typeof row.target_key !== "string") {
+      continue;
+    }
+    const sourceKey = row.source_key.trim();
+    const targetKey = row.target_key.trim();
+    if (!sourceKey || !targetKey) {
+      continue;
+    }
+    const sourceLabel = stringValue(row.source_label) || sourceKey;
+    const targetLabel = stringValue(row.target_label) || targetKey;
+    const effectiveFrom = stringValue(row.effective_from);
+    const confidence = numberValue(row.confidence);
+    const evidence = stringArrayValue(row.evidence);
+    const threadIds = stringArrayValue(row.thread_ids);
+    choices.push({
+      label: `${sourceLabel} -> ${targetLabel}`,
+      description: `Confidence ${confidence}%`,
+      detail: transitionDetail({
+        effectiveFrom,
+        sourceKey,
+        targetKey,
+        evidence,
+        threadIds,
+      }),
+      picked: true,
+      transition: {
+        source_key: sourceKey,
+        source_label: sourceLabel,
+        target_key: targetKey,
+        target_label: targetLabel,
+        effective_from: effectiveFrom,
+        confidence,
+        evidence,
+        thread_ids: threadIds,
+      },
+    });
+  }
+  return choices;
+}
+
+export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(statusJson);
+  } catch (error) {
+    throw new Error(`Could not parse Codex sync status JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const rows = isRecord(payload) && Array.isArray(payload.threads) ? payload.threads : [];
+  let synced = 0;
+  let conflicts = 0;
+  let missing = 0;
+  let memoryWarnings = 0;
+  for (const row of rows) {
+    if (!isRecord(row)) {
+      continue;
+    }
+    const state = typeof row.state === "string" ? row.state : "";
+    if (state === "synced") {
+      synced += 1;
+    } else if (state === "conflict") {
+      conflicts += 1;
+    } else if (state === "missing") {
+      missing += 1;
+    }
+    if (numberValue(row.memory_database_rows) > 0) {
+      memoryWarnings += 1;
+    }
+  }
+  const total = rows.length;
+  const parts = [`${total} thread${total === 1 ? "" : "s"}`, `${synced} synced`];
+  if (conflicts) {
+    parts.push(`${conflicts} conflict${conflicts === 1 ? "" : "s"}`);
+  }
+  if (missing) {
+    parts.push(`${missing} missing`);
+  }
+  if (memoryWarnings) {
+    parts.push(`${memoryWarnings} memory warning${memoryWarnings === 1 ? "" : "s"}`);
+  }
+  return { total, synced, conflicts, missing, memoryWarnings, message: parts.join(", ") };
 }
 
 export function injectWebviewControls(reportHtml: string, state: WebviewControlState): string {
@@ -293,6 +601,7 @@ function renderWebviewControls(state: WebviewControlState): string {
     `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` +
     `<a href="command:codexUsage.selectProjects">Projects: ${escapeHtml(projectFilterLabel(state.projectKeys))}</a>` +
     `<a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(themeLabel(state.theme))}</a>` +
+    '<a href="command:codexUsage.reviewProjectTransitions">Transitions</a>' +
     '<a href="command:codexUsage.refreshDashboard">Refresh</a>' +
     '<a href="command:codexUsage.openSettings">Settings</a>' +
     "</nav>"
@@ -324,8 +633,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function stringArrayValue(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const strings: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const text = stringValue(item);
+    if (!text || seen.has(text)) {
+      continue;
+    }
+    strings.push(text);
+    seen.add(text);
+  }
+  return strings;
+}
+
 function numberValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function transitionDetail(options: {
+  effectiveFrom: string;
+  sourceKey: string;
+  targetKey: string;
+  evidence: string[];
+  threadIds: string[];
+}): string {
+  const parts = [
+    options.effectiveFrom ? `Effective: ${options.effectiveFrom}` : "",
+    `From: ${options.sourceKey}`,
+    `To: ${options.targetKey}`,
+    options.evidence.length > 0 ? `Evidence: ${options.evidence.join(" | ")}` : "",
+    options.threadIds.length > 0 ? `Threads: ${options.threadIds.join(", ")}` : "",
+  ].filter(Boolean);
+  return parts.join("\n");
 }
 
 function formatInt(value: number): string {
