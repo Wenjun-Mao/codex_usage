@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.13 - Sync Import Stability
+
+- Fixed sync import so already-identical local session files are not rewritten, avoiding Windows access-denied errors when Codex still has a session file open.
+
 ## 0.1.12 - Project-First Sync UX
 
 - Changed the sync setup flow to select projects before conversations.

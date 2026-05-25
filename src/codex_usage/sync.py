@@ -239,11 +239,13 @@ def import_threads(
             conflicts.append(thread_id)
             continue
 
-        if local_exists:
+        needs_session_copy = not (local_exists and local_hash == remote_hash)
+        if needs_session_copy and local_exists:
             _backup_file(target_path, backup_dir / thread_id / "session.jsonl")
             backup_created = True
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_copy(thread_dir / "session.jsonl", target_path)
+        if needs_session_copy:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_copy(thread_dir / "session.jsonl", target_path)
         local_threads.pop(thread_id, None)
         index_entry = _read_json_object(thread_dir / "index-entry.json")
         if index_entry is not None:

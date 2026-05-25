@@ -2,6 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+import codex_usage.sync as sync_module
 from codex_usage.sync import (
     export_threads,
     import_threads,
@@ -211,6 +212,41 @@ def test_import_thread_remote_overwrites_existing_thread_at_different_path(tmp_p
     assert "remote-repo" in existing_path.read_text(encoding="utf-8")
     assert not manifest_target.exists()
     assert _line_count(target_sessions.rglob("*.jsonl")) == 1
+
+
+def test_import_thread_does_not_replace_identical_existing_session(tmp_path: Path, monkeypatch) -> None:
+    source_home = tmp_path / "source"
+    target_home = tmp_path / "target"
+    sync_dir = tmp_path / "sync"
+    source_sessions = source_home / "sessions"
+    target_sessions = target_home / "sessions"
+    project = tmp_path / "repo"
+    _write_session(source_sessions, "thread-1", project, total=120)
+    _write_session(target_sessions, "thread-1", project, total=120)
+    _write_index(source_home, {"id": "thread-1", "thread_name": "Remote", "updated_at": "2026-04-29T10:05:00Z"})
+
+    export_threads(
+        session_dirs=[source_sessions],
+        sync_dir=sync_dir,
+        thread_ids=["thread-1"],
+        machine_id="source-machine",
+    )
+
+    def fail_if_session_copy_is_attempted(source: Path, target: Path) -> None:
+        raise AssertionError(f"identical session should not be replaced: {source} -> {target}")
+
+    monkeypatch.setattr(sync_module, "_atomic_copy", fail_if_session_copy_is_attempted)
+
+    import_result = import_threads(
+        session_dirs=[target_sessions],
+        sync_dir=sync_dir,
+        thread_ids=["thread-1"],
+        conflict_policy="skip",
+        backup_label="identical-noop",
+    )
+
+    assert import_result.imported == ["thread-1"]
+    assert import_result.conflicts == []
 
 
 def test_import_thread_rejects_manifest_path_traversal(tmp_path: Path) -> None:
