@@ -257,7 +257,7 @@ def test_import_thread_does_not_replace_identical_existing_session(tmp_path: Pat
     def fail_if_session_copy_is_attempted(source: Path, target: Path) -> None:
         raise AssertionError(f"identical session should not be replaced: {source} -> {target}")
 
-    monkeypatch.setattr(sync_module, "_atomic_copy", fail_if_session_copy_is_attempted)
+    monkeypatch.setattr(sync_module, "atomic_copy", fail_if_session_copy_is_attempted)
 
     import_result = import_threads(
         session_dirs=[target_sessions],

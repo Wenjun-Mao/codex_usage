@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 import sqlite3
-import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -19,6 +17,17 @@ from codex_usage.session_files import (
     timestamp_key,
 )
 from codex_usage.sync_constants import SYNC_METADATA_OVERHEAD_BYTES
+from codex_usage.sync_io import (
+    atomic_copy,
+    atomic_write_json,
+    atomic_write_text,
+    backup_file,
+    dedupe,
+    now_iso,
+    read_json_object,
+    save_conflict_candidate,
+    sha256_file,
+)
 from codex_usage.threads import ThreadInfo, list_threads
 
 
@@ -163,7 +172,7 @@ def plan_sync(*, session_dirs: list[Path], sync_dir: Path, thread_ids: list[str]
     local_threads = {thread.thread_id: thread for thread in list_threads(session_dirs)}
     statuses = [
         _plan_thread_sync(target_session_dir, sync_dir, thread_id, local_threads.get(thread_id)).to_dict()
-        for thread_id in _dedupe(thread_ids)
+        for thread_id in dedupe(thread_ids)
     ]
     return SyncStatus(threads=statuses)
 
@@ -175,7 +184,7 @@ def _plan_thread_sync(
     local_thread: ThreadInfo | None,
 ) -> SyncPlanItem:
     thread_dir = sync_dir / "threads" / thread_id
-    manifest = _read_json_object(thread_dir / "manifest.json") or {}
+    manifest = read_json_object(thread_dir / "manifest.json") or {}
     remote_path = thread_dir / "session.jsonl"
     relative_path = str(manifest.get("source_relative_path") or _fallback_session_relative_path(thread_id))
     manifest_target_path = _safe_session_target_path(target_session_dir, relative_path)
@@ -244,7 +253,7 @@ def export_threads(
     exported: list[str] = []
     skipped: list[str] = []
 
-    for thread_id in _dedupe(thread_ids):
+    for thread_id in dedupe(thread_ids):
         thread = threads.get(thread_id)
         if thread is None:
             skipped.append(thread_id)
@@ -257,13 +266,13 @@ def export_threads(
         thread_dir.mkdir(parents=True, exist_ok=True)
         session_dir = owning_session_dir(thread.session_path, session_dirs)
         relative_path = thread.session_path.relative_to(session_dir).as_posix()
-        session_hash = _sha256_file(thread.session_path)
+        session_hash = sha256_file(thread.session_path)
         manifest = {
             "sync_version": SYNC_VERSION,
             "thread_id": thread_id,
             "session_sha256": session_hash,
             "session_size_bytes": thread.session_bytes,
-            "exported_at": _now_iso(),
+            "exported_at": now_iso(),
             "updated_at": thread.updated_at,
             "machine_id": machine_id,
             "source_relative_path": relative_path,
@@ -272,10 +281,10 @@ def export_threads(
         }
         metadata = thread.to_dict()
         metadata["source_relative_path"] = relative_path
-        _atomic_copy(thread.session_path, thread_dir / "session.jsonl")
-        _atomic_write_json(thread_dir / "manifest.json", manifest)
-        _atomic_write_json(thread_dir / "metadata.json", metadata)
-        _atomic_write_json(thread_dir / "index-entry.json", index_entries.get(thread_id, _default_index_entry(thread)))
+        atomic_copy(thread.session_path, thread_dir / "session.jsonl")
+        atomic_write_json(thread_dir / "manifest.json", manifest)
+        atomic_write_json(thread_dir / "metadata.json", metadata)
+        atomic_write_json(thread_dir / "index-entry.json", index_entries.get(thread_id, _default_index_entry(thread)))
         local_snapshot = _snapshot_file(thread.session_path)
         remote_snapshot = _snapshot_file(thread_dir / "session.jsonl")
         _write_local_sync_state(
@@ -315,18 +324,18 @@ def import_threads(
         for item in plan_sync(session_dirs=[target_session_dir], sync_dir=sync_dir, thread_ids=thread_ids).threads
     }
 
-    for thread_id in _dedupe(thread_ids):
+    for thread_id in dedupe(thread_ids):
         plan_item = planned.get(thread_id, {})
         action = str(plan_item.get("action") or "")
         if action == "conflict" and conflict_policy != "remote":
-            _save_conflict_candidate(backup_dir, thread_id, sync_dir / "threads" / thread_id / "session.jsonl")
+            save_conflict_candidate(backup_dir, thread_id, sync_dir / "threads" / thread_id / "session.jsonl")
             conflicts.append(thread_id)
             continue
         if action not in {"pull", "none"} and conflict_policy != "remote":
             skipped.append(thread_id)
             continue
         thread_dir = sync_dir / "threads" / thread_id
-        manifest = _read_json_object(thread_dir / "manifest.json")
+        manifest = read_json_object(thread_dir / "manifest.json")
         if manifest is None or not (thread_dir / "session.jsonl").is_file():
             skipped.append(thread_id)
             continue
@@ -335,30 +344,30 @@ def import_threads(
         if target_path is None:
             skipped.append(thread_id)
             continue
-        remote_hash = _sha256_file(thread_dir / "session.jsonl")
+        remote_hash = sha256_file(thread_dir / "session.jsonl")
         local_thread = local_threads.get(thread_id)
         local_thread_path = local_thread.session_path if local_thread is not None else None
         if local_thread_path is not None and not _same_path(local_thread_path, target_path):
             if conflict_policy != "remote" and action != "pull":
-                _save_conflict_candidate(backup_dir, thread_id, thread_dir / "session.jsonl")
+                save_conflict_candidate(backup_dir, thread_id, thread_dir / "session.jsonl")
                 conflicts.append(thread_id)
                 continue
             target_path = local_thread_path
 
         local_exists = target_path.is_file()
-        local_hash = _sha256_file(target_path) if local_exists else ""
+        local_hash = sha256_file(target_path) if local_exists else ""
         if local_exists and local_hash != remote_hash and action not in {"pull", "none"} and conflict_policy != "remote":
-            _save_conflict_candidate(backup_dir, thread_id, thread_dir / "session.jsonl")
+            save_conflict_candidate(backup_dir, thread_id, thread_dir / "session.jsonl")
             conflicts.append(thread_id)
             continue
 
         needs_session_copy = not (local_exists and local_hash == remote_hash)
         if needs_session_copy and local_exists:
-            _backup_file(target_path, backup_dir / thread_id / "session.jsonl")
+            backup_file(target_path, backup_dir / thread_id / "session.jsonl")
             backup_created = True
         if needs_session_copy:
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            _atomic_copy(thread_dir / "session.jsonl", target_path)
+            atomic_copy(thread_dir / "session.jsonl", target_path)
         local_snapshot = _snapshot_file(target_path)
         remote_snapshot = _snapshot_file(thread_dir / "session.jsonl")
         _write_local_sync_state(
@@ -372,7 +381,7 @@ def import_threads(
             project_label=str(plan_item.get("project_label") or manifest.get("project_label") or ""),
         )
         local_threads.pop(thread_id, None)
-        index_entry = _read_json_object(thread_dir / "index-entry.json")
+        index_entry = read_json_object(thread_dir / "index-entry.json")
         if index_entry is not None:
             imported_entries.append(index_entry)
         imported.append(thread_id)
@@ -409,7 +418,7 @@ def _sync_state_path(session_dir: Path, sync_dir: Path, thread_id: str) -> Path:
 
 
 def _read_local_sync_state(session_dir: Path, sync_dir: Path, thread_id: str) -> LocalSyncState | None:
-    value = _read_json_object(_sync_state_path(session_dir, sync_dir, thread_id))
+    value = read_json_object(_sync_state_path(session_dir, sync_dir, thread_id))
     if value is None:
         return None
     state = LocalSyncState.from_dict(value)
@@ -443,9 +452,9 @@ def _write_local_sync_state(
         source_relative_path=source_relative_path,
         project_key=project_key,
         project_label=project_label,
-        synced_at=_now_iso(),
+        synced_at=now_iso(),
     )
-    _atomic_write_json(_sync_state_path(session_dir, sync_dir, thread_id), state.to_dict())
+    atomic_write_json(_sync_state_path(session_dir, sync_dir, thread_id), state.to_dict())
 
 
 def _safe_session_target_path(session_dir: Path, relative_path: str) -> Path | None:
@@ -475,7 +484,7 @@ def _same_path(left: Path, right: Path) -> bool:
 
 def _merge_index_entries(path: Path, new_entries: list[dict[str, Any]], backup_dir: Path) -> None:
     if path.is_file():
-        _backup_file(path, backup_dir / "session_index.jsonl")
+        backup_file(path, backup_dir / "session_index.jsonl")
     entries: dict[str, dict[str, Any]] = {}
     for entry in [*read_index_entries(path), *new_entries]:
         thread_id = str(entry.get("id") or "")
@@ -488,7 +497,7 @@ def _merge_index_entries(path: Path, new_entries: list[dict[str, Any]], backup_d
             entries[thread_id] = entry
     ordered = sorted(entries.values(), key=lambda item: timestamp_key(str(item.get("updated_at") or "")))
     path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(path, "".join(json.dumps(entry, separators=(",", ":")) + "\n" for entry in ordered))
+    atomic_write_text(path, "".join(json.dumps(entry, separators=(",", ":")) + "\n" for entry in ordered))
 
 
 def _memory_row_count(session_dir: Path, thread_id: str) -> int:
@@ -520,7 +529,7 @@ def _snapshot_file(path: Path | None) -> SyncFileSnapshot:
     return SyncFileSnapshot(
         path=path,
         exists=True,
-        sha256=_sha256_file(path),
+        sha256=sha256_file(path),
         size_bytes=file_size(path),
         updated_at=datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat().replace("+00:00", "Z"),
     )
@@ -552,80 +561,5 @@ def _prefix_relationship(local: SyncFileSnapshot, remote: SyncFileSnapshot) -> s
     return "diverged"
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
-def _atomic_copy(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(delete=False, dir=target.parent, prefix=f".{target.name}.", suffix=".tmp") as tmp:
-        tmp_path = Path(tmp.name)
-    try:
-        shutil.copy2(source, tmp_path)
-        tmp_path.replace(target)
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink()
-
-
-def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
-    _atomic_write_text(path, json.dumps(data, indent=2, sort_keys=True) + "\n")
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", delete=False, dir=path.parent, encoding="utf-8", prefix=f".{path.name}.", suffix=".tmp") as tmp:
-        tmp.write(text)
-        tmp_path = Path(tmp.name)
-    try:
-        tmp_path.replace(path)
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink()
-
-
-def _backup_file(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
-
-
-def _save_conflict_candidate(backup_dir: Path, thread_id: str, remote_path: Path) -> None:
-    _backup_file(remote_path, backup_dir / thread_id / "remote-conflict-session.jsonl")
-
-
-def _read_json_object(path: Path) -> dict[str, Any] | None:
-    if not path.is_file():
-        return None
-    try:
-        parsed = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
-
-
-def _parse_json_line(line: str) -> dict[str, Any] | None:
-    try:
-        parsed = json.loads(line)
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
-
-
-def _dedupe(values: list[str]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        item = value.strip()
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
