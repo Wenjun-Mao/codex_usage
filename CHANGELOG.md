@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.18 - Dashboard Action Strip Cleanup
+
+- Collapsed dashboard sync actions into one Sync menu to reduce top-bar crowding.
+- Removed project transition review from the dashboard action strip; it remains available through the Command Palette.
+- Kept Sync Now, Sync Status, Configure Sync, and Open Sync Folder available from the Sync menu.
+
 ## 0.1.17 - Persistent Usage Cache
 
 - Added a persistent local SQLite usage cache for faster dashboard refreshes, project pickers, and sync setup.
