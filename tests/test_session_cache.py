@@ -1,0 +1,155 @@
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+import codex_usage.session_cache as cache_module
+from codex_usage.session_cache import (
+    CACHE_DB_NAME,
+    CACHE_SCHEMA_VERSION,
+    load_cached_session_data,
+    resolve_cache_dir,
+)
+
+
+def test_first_cache_build_parses_and_stores_records(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+
+    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.files == [session_path]
+    assert data.stats.files_parsed == 1
+    assert data.stats.files_reused == 0
+    assert data.records[0].session_id == "thread-1"
+    assert data.records[0].usage.total_tokens == 100
+    assert (cache_dir / CACHE_DB_NAME).is_file()
+
+
+def test_unchanged_file_is_reused_without_reparse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    def fail_parse(_path: Path):
+        raise AssertionError("unchanged file should be loaded from cache")
+
+    monkeypatch.setattr(cache_module, "parse_session_file", fail_parse)
+    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.stats.files_reused == 1
+    assert data.records[0].usage.total_tokens == 100
+
+
+def test_changed_file_reparses_when_size_or_mtime_changes(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    _append_token_count(session_path, "2026-04-29T10:05:00Z", 150)
+    os.utime(session_path, None)
+
+    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.stats.files_parsed == 1
+    assert [record.usage.total_tokens for record in data.records] == [100, 50]
+
+
+def test_removed_file_deletes_cached_rows(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    first = _write_session(sessions, "thread-1", "/repo/one", 100)
+    _write_session(sessions, "thread-2", "/repo/two", 75)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    first.unlink()
+
+    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.stats.files_removed == 1
+    assert [record.session_id for record in data.records] == ["thread-2"]
+
+
+def test_schema_version_mismatch_rebuilds_cache(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    db_path = cache_dir / CACHE_DB_NAME
+
+    import sqlite3
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
+
+    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.stats.rebuilt is True
+    assert data.records[0].usage.total_tokens == 100
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute("select value from schema_meta where key = 'schema_version'").fetchone()
+    assert row == (str(CACHE_SCHEMA_VERSION),)
+
+
+def test_corrupt_file_records_error_and_keeps_other_files(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions, "thread-1", "/repo/good", 100)
+    bad = sessions / "2026" / "04" / "29" / "bad.jsonl"
+    bad.write_bytes(b'{"type": "session_meta", "payload": {"id": "bad"}}\n\xff\xfe\n')
+    cache_dir = tmp_path / "cache"
+
+    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert [record.session_id for record in data.records] == ["thread-1"]
+    assert data.stats.file_errors == 1
+    assert data.file_errors[str(bad)]
+
+
+def test_resolve_cache_dir_prefers_internal_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_cache = tmp_path / "env-cache"
+    monkeypatch.setenv("CODEX_USAGE_CACHE_DIR", str(env_cache))
+
+    assert resolve_cache_dir([tmp_path / "codex" / "sessions"]) == env_cache
+
+
+def _write_session(sessions: Path, session_id: str, cwd: str, total: int) -> Path:
+    day = sessions / "2026" / "04" / "29"
+    day.mkdir(parents=True, exist_ok=True)
+    path = day / f"{session_id}.jsonl"
+    rows = [
+        {
+            "timestamp": "2026-04-29T10:00:00Z",
+            "type": "session_meta",
+            "payload": {"id": session_id, "timestamp": "2026-04-29T10:00:00Z", "cwd": cwd},
+        },
+        {"timestamp": "2026-04-29T10:00:01Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
+        _token_count("2026-04-29T10:00:02Z", total),
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    return path
+
+
+def _append_token_count(path: Path, timestamp: str, total: int) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("\n" + json.dumps(_token_count(timestamp, total)))
+
+
+def _token_count(timestamp: str, total: int) -> dict[str, object]:
+    return {
+        "timestamp": timestamp,
+        "type": "event_msg",
+        "payload": {
+            "type": "token_count",
+            "info": {
+                "total_token_usage": {
+                    "input_tokens": total,
+                    "cached_input_tokens": 0,
+                    "output_tokens": 0,
+                    "reasoning_output_tokens": 0,
+                    "total_tokens": total,
+                }
+            },
+        },
+    }
