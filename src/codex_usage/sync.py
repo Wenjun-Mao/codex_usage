@@ -90,6 +90,106 @@ class SyncStatus:
         return {"threads": self.threads}
 
 
+@dataclass(frozen=True)
+class SyncFileSnapshot:
+    path: Path | None
+    exists: bool
+    sha256: str = ""
+    size_bytes: int = 0
+    updated_at: str = ""
+
+
+@dataclass(frozen=True)
+class LocalSyncState:
+    thread_id: str
+    sync_dir_fingerprint: str
+    base_sha256: str
+    base_size_bytes: int
+    base_updated_at: str
+    last_remote_sha256: str
+    last_local_sha256: str
+    source_relative_path: str
+    project_key: str
+    project_label: str
+    synced_at: str
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "LocalSyncState | None":
+        thread_id = str(value.get("thread_id") or "").strip()
+        fingerprint = str(value.get("sync_dir_fingerprint") or "").strip()
+        base_sha256 = str(value.get("base_sha256") or "").strip()
+        if not thread_id or not fingerprint or not base_sha256:
+            return None
+        return cls(
+            thread_id=thread_id,
+            sync_dir_fingerprint=fingerprint,
+            base_sha256=base_sha256,
+            base_size_bytes=int(value.get("base_size_bytes") or 0),
+            base_updated_at=str(value.get("base_updated_at") or ""),
+            last_remote_sha256=str(value.get("last_remote_sha256") or ""),
+            last_local_sha256=str(value.get("last_local_sha256") or ""),
+            source_relative_path=str(value.get("source_relative_path") or ""),
+            project_key=str(value.get("project_key") or ""),
+            project_label=str(value.get("project_label") or ""),
+            synced_at=str(value.get("synced_at") or ""),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "sync_version": SYNC_VERSION,
+            "thread_id": self.thread_id,
+            "sync_dir_fingerprint": self.sync_dir_fingerprint,
+            "base_sha256": self.base_sha256,
+            "base_size_bytes": self.base_size_bytes,
+            "base_updated_at": self.base_updated_at,
+            "last_remote_sha256": self.last_remote_sha256,
+            "last_local_sha256": self.last_local_sha256,
+            "source_relative_path": self.source_relative_path,
+            "project_key": self.project_key,
+            "project_label": self.project_label,
+            "synced_at": self.synced_at,
+        }
+
+
+@dataclass(frozen=True)
+class SyncPlanItem:
+    thread_id: str
+    state: str
+    action: str
+    reason: str
+    local_path: str
+    remote_path: str
+    local_sha256: str
+    remote_sha256: str
+    base_sha256: str
+    updated_at: str
+    source_relative_path: str
+    project_key: str
+    project_label: str
+    memory_database_rows: int
+
+    def to_dict(self) -> dict[str, object]:
+        value: dict[str, object] = {
+            "thread_id": self.thread_id,
+            "state": self.state,
+            "action": self.action,
+            "reason": self.reason,
+            "local_path": self.local_path,
+            "remote_path": self.remote_path,
+            "local_sha256": self.local_sha256,
+            "remote_sha256": self.remote_sha256,
+            "base_sha256": self.base_sha256,
+            "updated_at": self.updated_at,
+            "source_relative_path": self.source_relative_path,
+            "project_key": self.project_key,
+            "project_label": self.project_label,
+            "memory_database_rows": self.memory_database_rows,
+        }
+        if self.memory_database_rows:
+            value["memory_note"] = "memory database rows detected, not synced by this beta"
+        return value
+
+
 def list_threads(
     session_dirs: list[Path],
     project_keys: list[str] | None = None,
@@ -148,6 +248,75 @@ def list_threads(
     return sorted(threads.values(), key=lambda item: _timestamp_key(item.updated_at), reverse=True)
 
 
+def plan_sync(*, session_dirs: list[Path], sync_dir: Path, thread_ids: list[str]) -> SyncStatus:
+    target_session_dir = session_dirs[0]
+    local_threads = {thread.thread_id: thread for thread in list_threads(session_dirs)}
+    statuses = [
+        _plan_thread_sync(target_session_dir, sync_dir, thread_id, local_threads.get(thread_id)).to_dict()
+        for thread_id in _dedupe(thread_ids)
+    ]
+    return SyncStatus(threads=statuses)
+
+
+def _plan_thread_sync(
+    target_session_dir: Path,
+    sync_dir: Path,
+    thread_id: str,
+    local_thread: ThreadInfo | None,
+) -> SyncPlanItem:
+    thread_dir = sync_dir / "threads" / thread_id
+    manifest = _read_json_object(thread_dir / "manifest.json") or {}
+    remote_path = thread_dir / "session.jsonl"
+    relative_path = str(manifest.get("source_relative_path") or _fallback_session_relative_path(thread_id))
+    manifest_target_path = _safe_session_target_path(target_session_dir, relative_path)
+    local_path = local_thread.session_path if local_thread is not None else manifest_target_path
+    local = _snapshot_file(local_path)
+    remote = _snapshot_file(remote_path)
+    state_record = _read_local_sync_state(target_session_dir, sync_dir, thread_id)
+    base_hash = state_record.base_sha256 if state_record else ""
+    local_changed = local.exists and (not base_hash or local.sha256 != base_hash)
+    remote_changed = remote.exists and (not base_hash or remote.sha256 != base_hash)
+    relation = _prefix_relationship(local, remote)
+
+    if local.exists and remote.exists and local.sha256 == remote.sha256:
+        state, action, reason = "synced", "none", "local and remote match"
+    elif local.exists and not remote.exists:
+        state, action, reason = "local_only", "push", "local conversation is not in the sync folder"
+    elif remote.exists and not local.exists:
+        state, action, reason = "remote_only", "pull", "sync folder conversation is not local"
+    elif not local.exists and not remote.exists:
+        state, action, reason = "missing", "skip", "conversation is missing locally and remotely"
+    elif base_hash and local_changed and not remote_changed:
+        state, action, reason = "local_ahead", "push", "local changed since last sync"
+    elif base_hash and remote_changed and not local_changed:
+        state, action, reason = "remote_ahead", "pull", "remote changed since last sync"
+    elif relation == "remote_prefix_of_local":
+        state, action, reason = "fast_forward_push", "push", "local extends remote"
+    elif relation == "local_prefix_of_remote":
+        state, action, reason = "fast_forward_pull", "pull", "remote extends local"
+    else:
+        state, action, reason = "conflict", "conflict", "local and remote diverged"
+
+    project_key = local_thread.project_key if local_thread else str(manifest.get("project_key") or "")
+    project_label = local_thread.project_label if local_thread else str(manifest.get("project_label") or "")
+    return SyncPlanItem(
+        thread_id=thread_id,
+        state=state,
+        action=action,
+        reason=reason,
+        local_path=str(local.path) if local.path else "",
+        remote_path=str(remote.path) if remote.path else "",
+        local_sha256=local.sha256,
+        remote_sha256=remote.sha256,
+        base_sha256=base_hash,
+        updated_at=str(manifest.get("updated_at") or (local_thread.updated_at if local_thread else "")),
+        source_relative_path=relative_path,
+        project_key=project_key,
+        project_label=project_label,
+        memory_database_rows=_memory_row_count(target_session_dir, thread_id),
+    )
+
+
 def export_threads(
     *,
     session_dirs: list[Path],
@@ -157,6 +326,10 @@ def export_threads(
 ) -> ExportResult:
     sync_dir.mkdir(parents=True, exist_ok=True)
     threads = {thread.thread_id: thread for thread in list_threads(session_dirs)}
+    planned = {
+        item["thread_id"]: item
+        for item in plan_sync(session_dirs=session_dirs, sync_dir=sync_dir, thread_ids=thread_ids).threads
+    }
     index_entries = _load_all_index_entries(session_dirs)
     exported: list[str] = []
     skipped: list[str] = []
@@ -164,6 +337,10 @@ def export_threads(
     for thread_id in _dedupe(thread_ids):
         thread = threads.get(thread_id)
         if thread is None:
+            skipped.append(thread_id)
+            continue
+        plan_item = planned.get(thread_id, {})
+        if plan_item.get("action") not in {"push", "none"}:
             skipped.append(thread_id)
             continue
         thread_dir = sync_dir / "threads" / thread_id
@@ -175,6 +352,7 @@ def export_threads(
             "sync_version": SYNC_VERSION,
             "thread_id": thread_id,
             "session_sha256": session_hash,
+            "session_size_bytes": thread.session_bytes,
             "exported_at": _now_iso(),
             "updated_at": thread.updated_at,
             "machine_id": machine_id,
@@ -188,6 +366,18 @@ def export_threads(
         _atomic_write_json(thread_dir / "manifest.json", manifest)
         _atomic_write_json(thread_dir / "metadata.json", metadata)
         _atomic_write_json(thread_dir / "index-entry.json", index_entries.get(thread_id, _default_index_entry(thread)))
+        local_snapshot = _snapshot_file(thread.session_path)
+        remote_snapshot = _snapshot_file(thread_dir / "session.jsonl")
+        _write_local_sync_state(
+            session_dir,
+            sync_dir,
+            thread_id=thread_id,
+            local_snapshot=local_snapshot,
+            remote_snapshot=remote_snapshot,
+            source_relative_path=relative_path,
+            project_key=thread.project_key,
+            project_label=thread.project_label,
+        )
         exported.append(thread_id)
 
     return ExportResult(exported=exported, skipped=skipped)
@@ -265,38 +455,7 @@ def import_threads(
 
 
 def sync_status(*, session_dirs: list[Path], sync_dir: Path, thread_ids: list[str]) -> SyncStatus:
-    local_threads = {thread.thread_id: thread for thread in list_threads(session_dirs)}
-    statuses: list[dict[str, object]] = []
-    for thread_id in _dedupe(thread_ids):
-        thread_dir = sync_dir / "threads" / thread_id
-        manifest = _read_json_object(thread_dir / "manifest.json") or {}
-        local = local_threads.get(thread_id)
-        remote_path = thread_dir / "session.jsonl"
-        remote_hash = _sha256_file(remote_path) if remote_path.is_file() else ""
-        local_hash = _sha256_file(local.session_path) if local else ""
-        if local_hash and remote_hash and local_hash != remote_hash:
-            state = "conflict"
-        elif remote_hash and not local_hash:
-            state = "remote_only"
-        elif local_hash and not remote_hash:
-            state = "local_only"
-        elif local_hash and remote_hash:
-            state = "synced"
-        else:
-            state = "missing"
-        memory_rows = _memory_row_count(session_dirs[0], thread_id)
-        item: dict[str, object] = {
-            "thread_id": thread_id,
-            "state": state,
-            "local_sha256": local_hash,
-            "remote_sha256": remote_hash,
-            "updated_at": manifest.get("updated_at") or (local.updated_at if local else ""),
-            "memory_database_rows": memory_rows,
-        }
-        if memory_rows:
-            item["memory_note"] = "memory database rows detected, not synced by this beta"
-        statuses.append(item)
-    return SyncStatus(threads=statuses)
+    return plan_sync(session_dirs=session_dirs, sync_dir=sync_dir, thread_ids=thread_ids)
 
 
 def _read_session_metadata(path: Path) -> SessionMetadata | None:
@@ -356,6 +515,61 @@ def _normalize_project_filter_keys(project_keys: list[str] | None) -> list[str]:
         seen.add(key)
         selected.append(key)
     return selected
+
+
+def _sync_dir_fingerprint(sync_dir: Path) -> str:
+    normalized = str(sync_dir.resolve(strict=False)).replace("\\", "/").casefold()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _sync_state_path(session_dir: Path, sync_dir: Path, thread_id: str) -> Path:
+    return (
+        _codex_home_from_session_dir(session_dir)
+        / ".codex-sync-state"
+        / _sync_dir_fingerprint(sync_dir)
+        / "threads"
+        / f"{thread_id}.json"
+    )
+
+
+def _read_local_sync_state(session_dir: Path, sync_dir: Path, thread_id: str) -> LocalSyncState | None:
+    value = _read_json_object(_sync_state_path(session_dir, sync_dir, thread_id))
+    if value is None:
+        return None
+    state = LocalSyncState.from_dict(value)
+    if state is None or state.sync_dir_fingerprint != _sync_dir_fingerprint(sync_dir):
+        return None
+    return state
+
+
+def _write_local_sync_state(
+    session_dir: Path,
+    sync_dir: Path,
+    *,
+    thread_id: str,
+    local_snapshot: SyncFileSnapshot,
+    remote_snapshot: SyncFileSnapshot,
+    source_relative_path: str,
+    project_key: str,
+    project_label: str,
+) -> None:
+    base_hash = local_snapshot.sha256 or remote_snapshot.sha256
+    if not base_hash:
+        return
+    state = LocalSyncState(
+        thread_id=thread_id,
+        sync_dir_fingerprint=_sync_dir_fingerprint(sync_dir),
+        base_sha256=base_hash,
+        base_size_bytes=local_snapshot.size_bytes or remote_snapshot.size_bytes,
+        base_updated_at=local_snapshot.updated_at or remote_snapshot.updated_at,
+        last_remote_sha256=remote_snapshot.sha256,
+        last_local_sha256=local_snapshot.sha256,
+        source_relative_path=source_relative_path,
+        project_key=project_key,
+        project_label=project_label,
+        synced_at=_now_iso(),
+    )
+    _atomic_write_json(_sync_state_path(session_dir, sync_dir, thread_id), state.to_dict())
 
 
 def _safe_session_target_path(session_dir: Path, relative_path: str) -> Path | None:
@@ -489,6 +703,44 @@ def _codex_home_from_session_dir(session_dir: Path) -> Path:
 
 def _fallback_session_relative_path(thread_id: str) -> str:
     return f"synced/{thread_id}.jsonl"
+
+
+def _snapshot_file(path: Path | None) -> SyncFileSnapshot:
+    if path is None or not path.is_file():
+        return SyncFileSnapshot(path=path, exists=False)
+    return SyncFileSnapshot(
+        path=path,
+        exists=True,
+        sha256=_sha256_file(path),
+        size_bytes=_file_size(path),
+        updated_at=datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat().replace("+00:00", "Z"),
+    )
+
+
+def _is_byte_prefix(prefix_path: Path, full_path: Path) -> bool:
+    prefix_size = prefix_path.stat().st_size
+    full_size = full_path.stat().st_size
+    if prefix_size > full_size:
+        return False
+    with prefix_path.open("rb") as prefix, full_path.open("rb") as full:
+        while True:
+            prefix_chunk = prefix.read(1024 * 1024)
+            if not prefix_chunk:
+                return True
+            if full.read(len(prefix_chunk)) != prefix_chunk:
+                return False
+
+
+def _prefix_relationship(local: SyncFileSnapshot, remote: SyncFileSnapshot) -> str:
+    if not local.path or not remote.path or not local.exists or not remote.exists:
+        return ""
+    if local.sha256 == remote.sha256:
+        return "equal"
+    if _is_byte_prefix(remote.path, local.path):
+        return "remote_prefix_of_local"
+    if _is_byte_prefix(local.path, remote.path):
+        return "local_prefix_of_remote"
+    return "diverged"
 
 
 def _file_size(path: Path) -> int:

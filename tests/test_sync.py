@@ -7,6 +7,7 @@ from codex_usage.sync import (
     export_threads,
     import_threads,
     list_threads,
+    plan_sync,
     sync_status,
 )
 
@@ -268,6 +269,125 @@ def test_import_thread_rejects_manifest_path_traversal(tmp_path: Path) -> None:
     assert not any(target_sessions.rglob("*.jsonl"))
 
 
+def test_plan_sync_handles_first_sync_local_and_remote_only(tmp_path: Path) -> None:
+    local_home = tmp_path / "local"
+    remote_home = tmp_path / "remote"
+    sync_dir = tmp_path / "sync"
+    local_sessions = local_home / "sessions"
+    remote_sessions = remote_home / "sessions"
+    _write_session(local_sessions, "local-thread", tmp_path / "repo", total=120)
+    _write_session(remote_sessions, "remote-thread", tmp_path / "repo", total=220)
+
+    export_threads(
+        session_dirs=[remote_sessions],
+        sync_dir=sync_dir,
+        thread_ids=["remote-thread"],
+        machine_id="remote-machine",
+    )
+
+    plan = plan_sync(
+        session_dirs=[local_sessions],
+        sync_dir=sync_dir,
+        thread_ids=["local-thread", "remote-thread"],
+    )
+    rows = {item["thread_id"]: item for item in plan.threads}
+
+    assert rows["local-thread"]["state"] == "local_only"
+    assert rows["local-thread"]["action"] == "push"
+    assert rows["remote-thread"]["state"] == "remote_only"
+    assert rows["remote-thread"]["action"] == "pull"
+
+
+def test_plan_sync_uses_base_state_for_local_ahead_and_remote_ahead(tmp_path: Path) -> None:
+    home = tmp_path / "codex"
+    sync_dir = tmp_path / "sync"
+    sessions = home / "sessions"
+    session_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
+
+    export_threads(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="machine-a")
+    synced = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"])
+    assert synced.threads[0]["state"] == "synced"
+
+    _append_token_event(session_path, "2026-04-29T10:00:03Z", 180)
+    local_ahead = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"])
+    assert local_ahead.threads[0]["state"] == "local_ahead"
+    assert local_ahead.threads[0]["action"] == "push"
+
+    export_threads(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="machine-a")
+    remote_path = sync_dir / "threads" / "thread-1" / "session.jsonl"
+    _append_token_event(remote_path, "2026-04-29T10:00:04Z", 240)
+    remote_ahead = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"])
+
+    assert remote_ahead.threads[0]["state"] == "remote_ahead"
+    assert remote_ahead.threads[0]["action"] == "pull"
+
+
+def test_plan_sync_fast_forwards_prefix_changes_and_stops_on_divergence(tmp_path: Path) -> None:
+    home = tmp_path / "codex"
+    sync_dir = tmp_path / "sync"
+    sessions = home / "sessions"
+    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
+
+    export_threads(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="machine-a")
+    remote_path = sync_dir / "threads" / "thread-1" / "session.jsonl"
+
+    _append_token_event(local_path, "2026-04-29T10:00:03Z", 180)
+    fast_push = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"])
+    assert fast_push.threads[0]["state"] == "local_ahead"
+    assert fast_push.threads[0]["action"] == "push"
+
+    export_threads(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="machine-a")
+    local_path.write_bytes(remote_path.read_bytes())
+    _append_token_event(remote_path, "2026-04-29T10:00:04Z", 240)
+    fast_pull = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"])
+    assert fast_pull.threads[0]["state"] == "remote_ahead"
+    assert fast_pull.threads[0]["action"] == "pull"
+
+    _append_token_event(local_path, "2026-04-29T10:00:05Z", 300)
+    _append_token_event(remote_path, "2026-04-29T10:00:06Z", 360)
+    conflict = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"])
+
+    assert conflict.threads[0]["state"] == "conflict"
+    assert conflict.threads[0]["action"] == "conflict"
+    assert "diverged" in str(conflict.threads[0]["reason"])
+
+
+def test_plan_sync_without_base_state_uses_prefix_fallback(tmp_path: Path) -> None:
+    home = tmp_path / "codex"
+    sync_dir = tmp_path / "sync"
+    sessions = home / "sessions"
+    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
+
+    export_threads(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="machine-a")
+    state_root = home / ".codex-sync-state"
+    if state_root.exists():
+        import shutil
+
+        shutil.rmtree(state_root)
+    _append_token_event(local_path, "2026-04-29T10:00:03Z", 180)
+
+    plan = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"])
+
+    assert plan.threads[0]["state"] == "fast_forward_push"
+    assert plan.threads[0]["action"] == "push"
+
+
+def test_export_writes_sync_state_and_extended_manifest(tmp_path: Path) -> None:
+    home = tmp_path / "codex"
+    sync_dir = tmp_path / "sync"
+    sessions = home / "sessions"
+    session_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
+
+    export_threads(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="machine-a")
+
+    manifest = json.loads((sync_dir / "threads" / "thread-1" / "manifest.json").read_text(encoding="utf-8"))
+    status = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"]).threads[0]
+
+    assert manifest["session_size_bytes"] == session_path.stat().st_size
+    assert status["state"] == "synced"
+    assert status["base_sha256"] == status["local_sha256"] == status["remote_sha256"]
+
+
 def test_sync_status_reports_memory_database_rows_without_syncing_sqlite(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex"
     sessions = codex_home / "sessions"
@@ -371,6 +491,20 @@ def _write_session_jsonl(path: Path, thread_id: str, cwd: Path, total: int) -> N
         _token_count_event("2026-04-29T10:00:02Z", total),
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+
+
+def _append_token_event(path: Path, timestamp: str, total: int) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("\n" + json.dumps(_token_count_event(timestamp, total)))
+
+
+def _copy_remote_session_to_local(sync_dir: Path, sessions_dir: Path, thread_id: str) -> Path:
+    manifest = json.loads((sync_dir / "threads" / thread_id / "manifest.json").read_text(encoding="utf-8"))
+    relative_path = str(manifest["source_relative_path"])
+    target = sessions_dir / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes((sync_dir / "threads" / thread_id / "session.jsonl").read_bytes())
+    return target
 
 
 def _write_json(path: Path, value: dict[str, object]) -> None:
