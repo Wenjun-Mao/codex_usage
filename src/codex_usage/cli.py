@@ -35,7 +35,8 @@ from codex_usage.reporting import (
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.session_cache import CachedSessionData, load_cached_session_data, uncached_session_data
 from codex_usage.settings import get_settings
-from codex_usage.sync import export_threads, import_threads, list_threads, sync_status
+from codex_usage.sync import export_threads, import_threads, sync_status
+from codex_usage.threads import list_threads_from_cached_data
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -170,11 +171,11 @@ def handle_threads(args: argparse.Namespace) -> int:
     settings = get_settings()
     session_dirs = find_session_dirs()
     project_keys = _normalize_project_keys(args.project_key)
-    threads = list_threads(
+    data = _load_session_data(
         session_dirs,
-        project_keys=project_keys,
         auto_transitions=_auto_project_transitions_enabled(args, settings),
     )
+    threads = list_threads_from_cached_data(data, project_keys=project_keys)
     payload = {"threads": [thread.to_dict() for thread in threads], "project_keys": project_keys}
     if args.json:
         print_json(payload)

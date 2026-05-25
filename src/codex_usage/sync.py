@@ -10,51 +10,19 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
-from codex_usage.aggregation import filter_records_by_project_keys, summarize_records
-from codex_usage.models import SessionMetadata, UsageRecord
-from codex_usage.parser import parse_session_files, parse_timestamp
-from codex_usage.project_identity import ProjectIdentity, normalize_project_key, resolve_project_identity
-from codex_usage.project_transitions import (
-    apply_project_transitions,
-    collect_repo_path_observations,
-    infer_project_transitions,
+from codex_usage.session_files import (
+    codex_home_from_session_dir,
+    file_size,
+    load_all_index_entries,
+    owning_session_dir,
+    read_index_entries,
+    timestamp_key,
 )
+from codex_usage.sync_constants import SYNC_METADATA_OVERHEAD_BYTES
+from codex_usage.threads import ThreadInfo, list_threads
 
 
 SYNC_VERSION = 1
-SYNC_METADATA_OVERHEAD_BYTES = 4096
-
-
-@dataclass(frozen=True)
-class ThreadInfo:
-    thread_id: str
-    title: str
-    updated_at: str
-    session_path: Path
-    project_key: str
-    project_label: str
-    project_aliases: tuple[str, ...]
-    total_tokens: int
-    session_bytes: int
-    estimated_sync_bytes: int
-    memory_mode: str = ""
-    has_base_instructions: bool = False
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "thread_id": self.thread_id,
-            "title": self.title,
-            "updated_at": self.updated_at,
-            "session_path": str(self.session_path),
-            "project_key": self.project_key,
-            "project_label": self.project_label,
-            "project_aliases": list(self.project_aliases),
-            "total_tokens": self.total_tokens,
-            "session_bytes": self.session_bytes,
-            "estimated_sync_bytes": self.estimated_sync_bytes,
-            "memory_mode": self.memory_mode,
-            "has_base_instructions": self.has_base_instructions,
-        }
 
 
 @dataclass(frozen=True)
@@ -190,64 +158,6 @@ class SyncPlanItem:
         return value
 
 
-def list_threads(
-    session_dirs: list[Path],
-    project_keys: list[str] | None = None,
-    *,
-    auto_transitions: bool = True,
-) -> list[ThreadInfo]:
-    index_entries = _load_all_index_entries(session_dirs)
-    session_paths = [path for session_dir in session_dirs for path in sorted(session_dir.rglob("*.jsonl"))]
-    selected_project_keys = _normalize_project_filter_keys(project_keys)
-    parsed_records = parse_session_files(session_paths)
-    if auto_transitions:
-        observations = collect_repo_path_observations(session_dirs=session_dirs, session_files=session_paths)
-        transitions = infer_project_transitions(parsed_records, observations)
-        parsed_records = apply_project_transitions(parsed_records, transitions)
-
-    records_by_path: dict[Path, list[UsageRecord]] = {}
-    for record in parsed_records:
-        records_by_path.setdefault(record.file_path, []).append(record)
-
-    threads: dict[str, ThreadInfo] = {}
-    for session_dir in session_dirs:
-        for path in [item for item in session_paths if _owning_session_dir(item, session_dirs) == session_dir]:
-            metadata = _read_session_metadata(path)
-            if metadata is None:
-                continue
-            records = records_by_path.get(path, [])
-            identity = _thread_identity(metadata, records)
-            if selected_project_keys and not filter_records_by_project_keys(records, selected_project_keys):
-                aliases = {identity.key, *identity.aliases}
-                selected = set(selected_project_keys)
-                if not aliases.intersection(selected):
-                    continue
-
-            total = summarize_records(records).usage.total_tokens if records else 0
-            entry = index_entries.get(metadata.session_id, {})
-            updated_at = str(entry.get("updated_at") or _session_updated_at(path, metadata.timestamp))
-            title = str(entry.get("thread_name") or identity.label or metadata.session_id)
-            session_bytes = _file_size(path)
-            thread = ThreadInfo(
-                thread_id=metadata.session_id,
-                title=title,
-                updated_at=updated_at,
-                session_path=path,
-                project_key=identity.key,
-                project_label=identity.label,
-                project_aliases=identity.aliases,
-                total_tokens=total,
-                session_bytes=session_bytes,
-                estimated_sync_bytes=session_bytes + SYNC_METADATA_OVERHEAD_BYTES,
-                memory_mode=metadata.memory_mode,
-                has_base_instructions=metadata.has_base_instructions,
-            )
-            existing = threads.get(thread.thread_id)
-            if existing is None or _timestamp_key(thread.updated_at) >= _timestamp_key(existing.updated_at):
-                threads[thread.thread_id] = thread
-    return sorted(threads.values(), key=lambda item: _timestamp_key(item.updated_at), reverse=True)
-
-
 def plan_sync(*, session_dirs: list[Path], sync_dir: Path, thread_ids: list[str]) -> SyncStatus:
     target_session_dir = session_dirs[0]
     local_threads = {thread.thread_id: thread for thread in list_threads(session_dirs)}
@@ -330,7 +240,7 @@ def export_threads(
         item["thread_id"]: item
         for item in plan_sync(session_dirs=session_dirs, sync_dir=sync_dir, thread_ids=thread_ids).threads
     }
-    index_entries = _load_all_index_entries(session_dirs)
+    index_entries = load_all_index_entries(session_dirs)
     exported: list[str] = []
     skipped: list[str] = []
 
@@ -345,7 +255,7 @@ def export_threads(
             continue
         thread_dir = sync_dir / "threads" / thread_id
         thread_dir.mkdir(parents=True, exist_ok=True)
-        session_dir = _owning_session_dir(thread.session_path, session_dirs)
+        session_dir = owning_session_dir(thread.session_path, session_dirs)
         relative_path = thread.session_path.relative_to(session_dir).as_posix()
         session_hash = _sha256_file(thread.session_path)
         manifest = {
@@ -392,7 +302,7 @@ def import_threads(
     backup_label: str | None = None,
 ) -> ImportResult:
     target_session_dir = session_dirs[0]
-    target_home = _codex_home_from_session_dir(target_session_dir)
+    target_home = codex_home_from_session_dir(target_session_dir)
     backup_dir = target_home / ".codex-sync-backups" / (backup_label or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     imported: list[str] = []
     skipped: list[str] = []
@@ -483,65 +393,6 @@ def sync_status(*, session_dirs: list[Path], sync_dir: Path, thread_ids: list[st
     return plan_sync(session_dirs=session_dirs, sync_dir=sync_dir, thread_ids=thread_ids)
 
 
-def _read_session_metadata(path: Path) -> SessionMetadata | None:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                obj = _parse_json_line(line)
-                if obj is None or obj.get("type") != "session_meta":
-                    continue
-                payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
-                git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
-                return SessionMetadata(
-                    session_id=str(payload.get("id") or path.stem),
-                    file_path=path,
-                    timestamp=parse_timestamp(payload.get("timestamp")) or parse_timestamp(obj.get("timestamp")),
-                    cwd=str(payload.get("cwd") or ""),
-                    originator=str(payload.get("originator") or ""),
-                    source=str(payload.get("source") or ""),
-                    cli_version=str(payload.get("cli_version") or ""),
-                    model_provider=str(payload.get("model_provider") or ""),
-                    forked_from_id=str(payload.get("forked_from_id") or ""),
-                    parent_thread_id=_extract_parent_thread_id(payload),
-                    memory_mode=str(payload.get("memory_mode") or ""),
-                    has_base_instructions=payload.get("base_instructions") is not None,
-                    git_repository_url=str(git.get("repository_url") or ""),
-                    git_branch=str(git.get("branch") or ""),
-                    git_commit_hash=str(git.get("commit_hash") or ""),
-                )
-    except OSError:
-        return None
-    return None
-
-
-def _thread_identity(metadata: SessionMetadata, records: list[UsageRecord]) -> ProjectIdentity:
-    if records:
-        latest = max(records, key=_record_identity_key)
-        return ProjectIdentity(
-            key=latest.project_key,
-            label=latest.project_label,
-            aliases=latest.project_aliases,
-            git_repository_url=latest.git_repository_url,
-        )
-    return resolve_project_identity(metadata)
-
-
-def _record_identity_key(record: UsageRecord) -> tuple[datetime, str, str, str]:
-    return (record.timestamp, record.turn_id, record.project_key, record.project_label)
-
-
-def _normalize_project_filter_keys(project_keys: list[str] | None) -> list[str]:
-    selected: list[str] = []
-    seen: set[str] = set()
-    for value in project_keys or []:
-        key = normalize_project_key(value)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        selected.append(key)
-    return selected
-
-
 def _sync_dir_fingerprint(sync_dir: Path) -> str:
     normalized = str(sync_dir.resolve(strict=False)).replace("\\", "/").casefold()
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
@@ -549,7 +400,7 @@ def _sync_dir_fingerprint(sync_dir: Path) -> str:
 
 def _sync_state_path(session_dir: Path, sync_dir: Path, thread_id: str) -> Path:
     return (
-        _codex_home_from_session_dir(session_dir)
+        codex_home_from_session_dir(session_dir)
         / ".codex-sync-state"
         / _sync_dir_fingerprint(sync_dir)
         / "threads"
@@ -622,69 +473,26 @@ def _same_path(left: Path, right: Path) -> bool:
     return left.resolve(strict=False) == right.resolve(strict=False)
 
 
-def _extract_parent_thread_id(payload: dict[str, Any]) -> str:
-    source = payload.get("source")
-    if not isinstance(source, dict):
-        return ""
-    subagent = source.get("subagent")
-    if not isinstance(subagent, dict):
-        return ""
-    thread_spawn = subagent.get("thread_spawn")
-    if not isinstance(thread_spawn, dict):
-        return ""
-    return str(thread_spawn.get("parent_thread_id") or "")
-
-
-def _load_all_index_entries(session_dirs: list[Path]) -> dict[str, dict[str, Any]]:
-    entries: dict[str, dict[str, Any]] = {}
-    for session_dir in session_dirs:
-        for entry in _read_index_entries(_codex_home_from_session_dir(session_dir) / "session_index.jsonl"):
-            thread_id = str(entry.get("id") or "")
-            if not thread_id:
-                continue
-            existing = entries.get(thread_id)
-            if existing is None or _timestamp_key(str(entry.get("updated_at") or "")) >= _timestamp_key(
-                str(existing.get("updated_at") or "")
-            ):
-                entries[thread_id] = entry
-    return entries
-
-
-def _read_index_entries(path: Path) -> list[dict[str, Any]]:
-    entries: list[dict[str, Any]] = []
-    if not path.is_file():
-        return entries
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                obj = _parse_json_line(line)
-                if obj is not None:
-                    entries.append(obj)
-    except OSError:
-        return []
-    return entries
-
-
 def _merge_index_entries(path: Path, new_entries: list[dict[str, Any]], backup_dir: Path) -> None:
     if path.is_file():
         _backup_file(path, backup_dir / "session_index.jsonl")
     entries: dict[str, dict[str, Any]] = {}
-    for entry in [*_read_index_entries(path), *new_entries]:
+    for entry in [*read_index_entries(path), *new_entries]:
         thread_id = str(entry.get("id") or "")
         if not thread_id:
             continue
         existing = entries.get(thread_id)
-        if existing is None or _timestamp_key(str(entry.get("updated_at") or "")) >= _timestamp_key(
+        if existing is None or timestamp_key(str(entry.get("updated_at") or "")) >= timestamp_key(
             str(existing.get("updated_at") or "")
         ):
             entries[thread_id] = entry
-    ordered = sorted(entries.values(), key=lambda item: _timestamp_key(str(item.get("updated_at") or "")))
+    ordered = sorted(entries.values(), key=lambda item: timestamp_key(str(item.get("updated_at") or "")))
     path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write_text(path, "".join(json.dumps(entry, separators=(",", ":")) + "\n" for entry in ordered))
 
 
 def _memory_row_count(session_dir: Path, thread_id: str) -> int:
-    db_path = _codex_home_from_session_dir(session_dir) / "state_5.sqlite"
+    db_path = codex_home_from_session_dir(session_dir) / "state_5.sqlite"
     if not db_path.is_file():
         return 0
     try:
@@ -702,30 +510,6 @@ def _default_index_entry(thread: ThreadInfo) -> dict[str, str]:
     return {"id": thread.thread_id, "thread_name": thread.title, "updated_at": thread.updated_at}
 
 
-def _session_updated_at(path: Path, timestamp: datetime | None) -> str:
-    if timestamp is not None:
-        return timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z")
-    return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat().replace("+00:00", "Z")
-
-
-def _timestamp_key(value: str) -> datetime:
-    return parse_timestamp(value) or datetime.min.replace(tzinfo=UTC)
-
-
-def _owning_session_dir(path: Path, session_dirs: list[Path]) -> Path:
-    for session_dir in session_dirs:
-        try:
-            path.relative_to(session_dir)
-            return session_dir
-        except ValueError:
-            continue
-    return session_dirs[0]
-
-
-def _codex_home_from_session_dir(session_dir: Path) -> Path:
-    return session_dir.parent if session_dir.name.casefold() == "sessions" else session_dir.parent
-
-
 def _fallback_session_relative_path(thread_id: str) -> str:
     return f"synced/{thread_id}.jsonl"
 
@@ -737,7 +521,7 @@ def _snapshot_file(path: Path | None) -> SyncFileSnapshot:
         path=path,
         exists=True,
         sha256=_sha256_file(path),
-        size_bytes=_file_size(path),
+        size_bytes=file_size(path),
         updated_at=datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat().replace("+00:00", "Z"),
     )
 
@@ -766,13 +550,6 @@ def _prefix_relationship(local: SyncFileSnapshot, remote: SyncFileSnapshot) -> s
     if _is_byte_prefix(local.path, remote.path):
         return "local_prefix_of_remote"
     return "diverged"
-
-
-def _file_size(path: Path) -> int:
-    try:
-        return path.stat().st_size
-    except OSError:
-        return 0
 
 
 def _sha256_file(path: Path) -> str:

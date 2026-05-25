@@ -279,6 +279,7 @@ def test_cli_threads_and_sync_commands(tmp_path: Path) -> None:
     threads_payload = json.loads(threads_result.stdout)
     assert [thread["thread_id"] for thread in threads_payload["threads"]] == ["thread-1"]
     assert threads_payload["threads"][0]["title"] == "First thread"
+    assert "estimated_sync_bytes" in threads_payload["threads"][0]
 
     export_result = _run_cli(
         [
