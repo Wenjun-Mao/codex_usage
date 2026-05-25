@@ -30,6 +30,7 @@ Available commands:
 - `Codex Usage: Select Projects`
 - `Codex Usage: Review Project Transitions`
 - `Codex Usage: Select Theme`
+- `Codex Usage: Configure Sync`
 - `Codex Usage: Select Sync Threads`
 - `Codex Usage: Sync Now`
 - `Codex Usage: Sync Status`
@@ -75,7 +76,9 @@ The dashboard uses the same tokenized day/night design system as the VS Code ext
 
 ## Experimental Thread Sync
 
-The Windows VS Code beta can sync selected Codex threads through a bring-your-own local sync folder such as OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Configure `codexUsage.sync.enabled`, `codexUsage.sync.dir`, and selected threads with `Codex Usage: Select Sync Threads`.
+The Windows VS Code beta can sync selected Codex threads through a bring-your-own local sync folder such as OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Run `Codex Usage: Configure Sync` to choose a sync folder with a folder picker and then select the threads you want to sync.
+
+The sync folder path and selected thread ids are stored as local VS Code extension UI state, not as raw settings you need to edit by hand. You can later run `Codex Usage: Select Sync Threads` to change the selected threads or `Codex Usage: Open Sync Folder` to inspect the folder.
 
 The sync MVP copies only selected session JSONL files and matching `session_index.jsonl` entries. It does not sync `auth.json`, settings, caches, logs, or SQLite databases. If local memory database rows are detected for a selected thread, sync status reports that they are not synced by this beta.
 

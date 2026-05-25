@@ -23,8 +23,12 @@ import {
   normalizeSyncSettings,
   normalizeTheme,
   PROJECT_KEYS_STATE_KEY,
+  SYNC_DIR_STATE_KEY,
+  SYNC_THREAD_IDS_STATE_KEY,
   parseProjectChoices,
   readProjectKeysState,
+  readSyncDirState,
+  readSyncThreadIdsState,
   parseSyncStatusSummary,
   parseThreadChoices,
   parseTransitionChoices,
@@ -43,10 +47,11 @@ let syncWatchers: vscode.FileSystemWatcher[] = [];
 let syncWatcherDisposables: vscode.Disposable[] = [];
 let syncDebounce: NodeJS.Timeout | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   output = vscode.window.createOutputChannel("Codex Usage");
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.command = "codexUsage.openDashboard";
+  await migrateDeprecatedSyncSettings(context);
   updateStatusItem(readSettings(context));
   statusItem.show();
 
@@ -71,6 +76,9 @@ export function activate(context: vscode.ExtensionContext) {
   const reviewProjectTransitionsCommand = vscode.commands.registerCommand("codexUsage.reviewProjectTransitions", async () => {
     await reviewProjectTransitions(context);
   });
+  const configureSyncCommand = vscode.commands.registerCommand("codexUsage.configureSync", async () => {
+    await configureSync(context);
+  });
   const selectSyncThreadsCommand = vscode.commands.registerCommand("codexUsage.selectSyncThreads", async () => {
     await selectSyncThreadSettings(context);
   });
@@ -81,7 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
     await showSyncStatus(context);
   });
   const openSyncFolderCommand = vscode.commands.registerCommand("codexUsage.openSyncFolder", async () => {
-    await openSyncFolder();
+    await openSyncFolder(context);
   });
   const settingsWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
     if (!event.affectsConfiguration("codexUsage")) {
@@ -107,6 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
     selectProjectsCommand,
     selectThemeCommand,
     reviewProjectTransitionsCommand,
+    configureSyncCommand,
     selectSyncThreadsCommand,
     syncNowCommand,
     syncStatusCommand,
@@ -269,7 +278,7 @@ async function selectProjectSettings(context: vscode.ExtensionContext): Promise<
   }
 }
 
-async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promise<void> {
+async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promise<boolean> {
   const settings = readSettings(context);
   try {
     const executablePath = await resolveBundledExecutable(context);
@@ -290,22 +299,84 @@ async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promi
     const choices = parseThreadChoices(result.stdout, settings.sync.threadIds);
     if (choices.length === 0) {
       void vscode.window.showInformationMessage("No Codex threads were found for the selected dashboard projects.");
-      return;
+      return false;
     }
     const selected = await vscode.window.showQuickPick(threadQuickPickItems(choices), {
       canPickMany: true,
       placeHolder: "Select Codex threads to sync",
     });
     if (!selected) {
-      return;
+      return false;
     }
     const threadIds = selected.map((item) => item.threadId).filter((threadId): threadId is string => Boolean(threadId));
-    await vscode.workspace.getConfiguration("codexUsage").update("sync.threadIds", threadIds, vscode.ConfigurationTarget.Global);
+    await context.globalState.update(SYNC_THREAD_IDS_STATE_KEY, threadIds);
+    updateStatusItem(readSettings(context));
+    configureSyncWatcher(context);
+    if (panel) {
+      await refreshDashboard(context, panel);
+    }
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
     void vscode.window.showErrorMessage(`Codex Usage failed to load sync threads: ${message}`);
+    return false;
   }
+}
+
+async function configureSync(context: vscode.ExtensionContext): Promise<void> {
+  const settings = readSettings(context);
+  let syncDir = settings.sync.dir;
+  if (syncDir) {
+    const choice = await vscode.window.showQuickPick(
+      [
+        { label: "Keep Current Folder", description: syncDir, action: "keep" },
+        { label: "Choose Another Folder", description: "Pick a different sync folder", action: "choose" },
+      ],
+      { placeHolder: "Configure Codex sync folder" },
+    );
+    if (!choice) {
+      return;
+    }
+    if (choice.action === "choose") {
+      const selectedDir = await selectSyncFolder(context);
+      if (!selectedDir) {
+        return;
+      }
+      syncDir = selectedDir;
+    }
+  } else {
+    const selectedDir = await selectSyncFolder(context);
+    if (!selectedDir) {
+      return;
+    }
+    syncDir = selectedDir;
+  }
+
+  await vscode.workspace.getConfiguration("codexUsage").update("sync.enabled", true, vscode.ConfigurationTarget.Global);
+  output.appendLine(`[sync] Sync folder configured: ${syncDir}`);
+  await selectSyncThreadSettings(context);
+  updateStatusItem(readSettings(context));
+  configureSyncWatcher(context);
+  if (panel) {
+    await refreshDashboard(context, panel);
+  }
+}
+
+async function selectSyncFolder(context: vscode.ExtensionContext): Promise<string | undefined> {
+  const selected = await vscode.window.showOpenDialog({
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: false,
+    openLabel: "Use Sync Folder",
+    title: "Select Codex Sync Folder",
+  });
+  const folder = selected?.[0]?.fsPath?.trim();
+  if (!folder) {
+    return undefined;
+  }
+  await context.globalState.update(SYNC_DIR_STATE_KEY, folder);
+  return folder;
 }
 
 async function reviewProjectTransitions(context: vscode.ExtensionContext): Promise<void> {
@@ -355,6 +426,9 @@ async function reviewProjectTransitions(context: vscode.ExtensionContext): Promi
 async function syncNow(context: vscode.ExtensionContext, reason: string): Promise<void> {
   const settings = readSettings(context);
   if (!syncIsConfigured(settings)) {
+    if (reason === "manual") {
+      await offerConfigureSync(context, "Codex sync is not configured.");
+    }
     return;
   }
   try {
@@ -385,7 +459,7 @@ async function syncNow(context: vscode.ExtensionContext, reason: string): Promis
 async function showSyncStatus(context: vscode.ExtensionContext): Promise<void> {
   const settings = readSettings(context);
   if (!syncIsConfigured(settings)) {
-    void vscode.window.showInformationMessage("Codex sync is not configured. Set codexUsage.sync.dir and select sync threads.");
+    await offerConfigureSync(context, "Codex sync is not configured.");
     return;
   }
   try {
@@ -401,22 +475,57 @@ async function showSyncStatus(context: vscode.ExtensionContext): Promise<void> {
   }
 }
 
-async function openSyncFolder(): Promise<void> {
-  const settings = readSettings(undefined);
+async function openSyncFolder(context: vscode.ExtensionContext): Promise<void> {
+  let settings = readSettings(context);
   if (!settings.sync.dir) {
-    void vscode.window.showInformationMessage("Codex sync folder is not configured.");
+    const selectedDir = await selectSyncFolder(context);
+    if (!selectedDir) {
+      return;
+    }
+    settings = readSettings(context);
+    updateStatusItem(settings);
+    configureSyncWatcher(context);
+    if (panel) {
+      await refreshDashboard(context, panel);
+    }
+  }
+  if (!settings.sync.dir) {
     return;
   }
   await fs.mkdir(settings.sync.dir, { recursive: true });
   await vscode.env.openExternal(vscode.Uri.file(settings.sync.dir));
 }
 
+async function offerConfigureSync(context: vscode.ExtensionContext, message: string): Promise<void> {
+  const choice = await vscode.window.showInformationMessage(message, "Configure Sync");
+  if (choice === "Configure Sync") {
+    await configureSync(context);
+  }
+}
+
+async function migrateDeprecatedSyncSettings(context: vscode.ExtensionContext): Promise<void> {
+  const config = vscode.workspace.getConfiguration("codexUsage");
+  const existingDir = readSyncDirState(context.globalState);
+  const legacyDir = config.get<string>("sync.dir", "");
+  if (!existingDir && typeof legacyDir === "string" && legacyDir.trim()) {
+    await context.globalState.update(SYNC_DIR_STATE_KEY, legacyDir.trim());
+  }
+
+  const existingThreadIds = readSyncThreadIdsState(context.globalState);
+  const legacyThreadIds = normalizeSyncSettings({
+    threadIds: config.get<string[]>("sync.threadIds", []),
+  }).threadIds;
+  if (existingThreadIds.length === 0 && legacyThreadIds.length > 0) {
+    await context.globalState.update(SYNC_THREAD_IDS_STATE_KEY, legacyThreadIds);
+  }
+}
+
 function readSettings(context: vscode.ExtensionContext | undefined): ExtensionSettings {
   const config = vscode.workspace.getConfiguration("codexUsage");
   const sync = normalizeSyncSettings({
     enabled: config.get<boolean>("sync.enabled", false),
-    dir: config.get<string>("sync.dir", ""),
-    threadIds: config.get<string[]>("sync.threadIds", []),
+    dir: readSyncDirState(context?.globalState),
+    threadIds: readSyncThreadIdsState(context?.globalState),
     autoPull: config.get<boolean>("sync.autoPull", true),
     autoPush: config.get<boolean>("sync.autoPush", true),
   });
@@ -535,6 +644,11 @@ function renderWebviewHtml(
     range: settings.range,
     projectKeys: settings.projectKeys,
     theme: settings.theme,
+    sync: {
+      enabled: settings.sync.enabled,
+      dir: settings.sync.dir,
+      threadIds: settings.sync.threadIds,
+    },
     versionLabel,
   });
   return injectWebviewCsp(withControls, webview.cspSource);
@@ -551,8 +665,9 @@ function updateStatusItem(settings: ExtensionSettings): void {
   if (settings.sync.enabled && syncCount > 0) {
     statusItem.text += ` Sync:${syncCount}`;
   }
+  const syncFolderText = settings.sync.dir ? "folder selected" : "folder not selected";
   const syncText = settings.sync.enabled
-    ? `Sync: enabled, ${syncCount} thread${syncCount === 1 ? "" : "s"} selected.`
+    ? `Sync: enabled, ${syncFolderText}, ${syncCount} thread${syncCount === 1 ? "" : "s"} selected.`
     : "Sync: disabled.";
   statusItem.tooltip =
     projectCount > 0

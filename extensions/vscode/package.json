@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
   "publisher": "local-codex-usage",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "preview": true,
   "license": "MIT",
@@ -41,6 +41,7 @@
     "onCommand:codexUsage.selectProjects",
     "onCommand:codexUsage.selectTheme",
     "onCommand:codexUsage.reviewProjectTransitions",
+    "onCommand:codexUsage.configureSync",
     "onCommand:codexUsage.selectSyncThreads",
     "onCommand:codexUsage.syncNow",
     "onCommand:codexUsage.syncStatus",
@@ -77,6 +78,10 @@
       {
         "command": "codexUsage.reviewProjectTransitions",
         "title": "Codex Usage: Review Project Transitions"
+      },
+      {
+        "command": "codexUsage.configureSync",
+        "title": "Codex Usage: Configure Sync"
       },
       {
         "command": "codexUsage.selectSyncThreads",
@@ -130,19 +135,6 @@
           "type": "boolean",
           "default": false,
           "description": "Enable experimental selected-thread Codex sync."
-        },
-        "codexUsage.sync.dir": {
-          "type": "string",
-          "default": "",
-          "description": "Bring-your-own local sync folder, such as a OneDrive, Dropbox, Syncthing, or network drive folder."
-        },
-        "codexUsage.sync.threadIds": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "description": "Codex thread ids selected for experimental sync."
         },
         "codexUsage.sync.autoPull": {
           "type": "boolean",
