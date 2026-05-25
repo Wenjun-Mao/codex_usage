@@ -8,10 +8,7 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.selectRange",
   "codexUsage.selectProjects",
   "codexUsage.selectTheme",
-  "codexUsage.reviewProjectTransitions",
-  "codexUsage.configureSync",
-  "codexUsage.syncNow",
-  "codexUsage.syncStatus",
+  "codexUsage.openSyncMenu",
   "codexUsage.refreshDashboard",
   "codexUsage.openSettings",
 ] as const;
@@ -870,10 +867,7 @@ function renderWebviewControls(state: WebviewControlState): string {
     `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` +
     `<a href="command:codexUsage.selectProjects">Projects: ${escapeHtml(projectFilterLabel(state.projectKeys))}</a>` +
     `<a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(themeLabel(state.theme))}</a>` +
-    `<a href="command:codexUsage.configureSync">${escapeHtml(syncControlLabel(state.sync))}</a>` +
-    '<a href="command:codexUsage.syncNow">Sync Now</a>' +
-    '<a href="command:codexUsage.syncStatus">Sync Status</a>' +
-    '<a href="command:codexUsage.reviewProjectTransitions">Transitions</a>' +
+    `<a href="command:codexUsage.openSyncMenu">${escapeHtml(syncControlLabel(state.sync))}</a>` +
     '<a href="command:codexUsage.refreshDashboard">Refresh</a>' +
     '<a href="command:codexUsage.openSettings">Settings</a>' +
     version +
