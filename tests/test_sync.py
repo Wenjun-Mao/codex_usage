@@ -388,6 +388,57 @@ def test_export_writes_sync_state_and_extended_manifest(tmp_path: Path) -> None:
     assert status["base_sha256"] == status["local_sha256"] == status["remote_sha256"]
 
 
+def test_import_fast_forward_pull_updates_local_and_state(tmp_path: Path) -> None:
+    source_home = tmp_path / "source"
+    target_home = tmp_path / "target"
+    sync_dir = tmp_path / "sync"
+    source_sessions = source_home / "sessions"
+    target_sessions = target_home / "sessions"
+    source_path = _write_session(source_sessions, "thread-1", tmp_path / "repo", total=120)
+    export_threads(session_dirs=[source_sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="source")
+    target_path = _copy_remote_session_to_local(sync_dir, target_sessions, "thread-1")
+    export_threads(session_dirs=[target_sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="target")
+
+    _append_token_event(source_path, "2026-04-29T10:00:03Z", 220)
+    export_threads(session_dirs=[source_sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="source")
+
+    before = plan_sync(session_dirs=[target_sessions], sync_dir=sync_dir, thread_ids=["thread-1"]).threads[0]
+    assert before["state"] == "remote_ahead"
+    result = import_threads(session_dirs=[target_sessions], sync_dir=sync_dir, thread_ids=["thread-1"])
+    after = plan_sync(session_dirs=[target_sessions], sync_dir=sync_dir, thread_ids=["thread-1"]).threads[0]
+
+    assert result.imported == ["thread-1"]
+    assert result.conflicts == []
+    assert target_path.read_bytes() == (sync_dir / "threads" / "thread-1" / "session.jsonl").read_bytes()
+    assert after["state"] == "synced"
+
+
+def test_import_true_conflict_preserves_local_and_saves_remote_candidate(tmp_path: Path) -> None:
+    home = tmp_path / "codex"
+    sync_dir = tmp_path / "sync"
+    sessions = home / "sessions"
+    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
+    export_threads(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=["thread-1"], machine_id="machine-a")
+    remote_path = sync_dir / "threads" / "thread-1" / "session.jsonl"
+
+    _append_token_event(local_path, "2026-04-29T10:00:03Z", 180)
+    local_before = local_path.read_bytes()
+    _append_token_event(remote_path, "2026-04-29T10:00:04Z", 240)
+
+    result = import_threads(
+        session_dirs=[sessions],
+        sync_dir=sync_dir,
+        thread_ids=["thread-1"],
+        backup_label="true-conflict",
+    )
+
+    assert result.imported == []
+    assert result.conflicts == ["thread-1"]
+    assert local_path.read_bytes() == local_before
+    assert result.backup_dir is not None
+    assert (result.backup_dir / "thread-1" / "remote-conflict-session.jsonl").is_file()
+
+
 def test_sync_status_reports_memory_database_rows_without_syncing_sqlite(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex"
     sessions = codex_home / "sessions"

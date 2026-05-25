@@ -400,8 +400,21 @@ def import_threads(
     imported_entries: list[dict[str, Any]] = []
     backup_created = False
     local_threads = {thread.thread_id: thread for thread in list_threads([target_session_dir], auto_transitions=False)}
+    planned = {
+        item["thread_id"]: item
+        for item in plan_sync(session_dirs=[target_session_dir], sync_dir=sync_dir, thread_ids=thread_ids).threads
+    }
 
     for thread_id in _dedupe(thread_ids):
+        plan_item = planned.get(thread_id, {})
+        action = str(plan_item.get("action") or "")
+        if action == "conflict" and conflict_policy != "remote":
+            _save_conflict_candidate(backup_dir, thread_id, sync_dir / "threads" / thread_id / "session.jsonl")
+            conflicts.append(thread_id)
+            continue
+        if action not in {"pull", "none"} and conflict_policy != "remote":
+            skipped.append(thread_id)
+            continue
         thread_dir = sync_dir / "threads" / thread_id
         manifest = _read_json_object(thread_dir / "manifest.json")
         if manifest is None or not (thread_dir / "session.jsonl").is_file():
@@ -416,7 +429,7 @@ def import_threads(
         local_thread = local_threads.get(thread_id)
         local_thread_path = local_thread.session_path if local_thread is not None else None
         if local_thread_path is not None and not _same_path(local_thread_path, target_path):
-            if conflict_policy != "remote":
+            if conflict_policy != "remote" and action != "pull":
                 _save_conflict_candidate(backup_dir, thread_id, thread_dir / "session.jsonl")
                 conflicts.append(thread_id)
                 continue
@@ -424,7 +437,7 @@ def import_threads(
 
         local_exists = target_path.is_file()
         local_hash = _sha256_file(target_path) if local_exists else ""
-        if local_exists and local_hash != remote_hash and conflict_policy != "remote":
+        if local_exists and local_hash != remote_hash and action not in {"pull", "none"} and conflict_policy != "remote":
             _save_conflict_candidate(backup_dir, thread_id, thread_dir / "session.jsonl")
             conflicts.append(thread_id)
             continue
@@ -436,6 +449,18 @@ def import_threads(
         if needs_session_copy:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             _atomic_copy(thread_dir / "session.jsonl", target_path)
+        local_snapshot = _snapshot_file(target_path)
+        remote_snapshot = _snapshot_file(thread_dir / "session.jsonl")
+        _write_local_sync_state(
+            target_session_dir,
+            sync_dir,
+            thread_id=thread_id,
+            local_snapshot=local_snapshot,
+            remote_snapshot=remote_snapshot,
+            source_relative_path=relative_path,
+            project_key=str(plan_item.get("project_key") or manifest.get("project_key") or ""),
+            project_label=str(plan_item.get("project_label") or manifest.get("project_label") or ""),
+        )
         local_threads.pop(thread_id, None)
         index_entry = _read_json_object(thread_dir / "index-entry.json")
         if index_entry is not None:
