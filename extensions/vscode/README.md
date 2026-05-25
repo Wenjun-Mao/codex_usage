@@ -73,6 +73,10 @@ code --install-extension output\codex-usage-dashboard-win32-x64.vsix --force
 
 After installation, run `Codex Usage: Open Dashboard` from the command palette.
 
+## First Run And Cache
+
+On first open, the dashboard may show "Initializing Codex usage cache. This can take a few seconds the first time." The extension passes an internal cache folder to the bundled Python CLI and stores parsed usage rows in local SQLite under VS Code global extension storage. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
+
 ## Privacy
 
 The extension reads local Codex session JSONL files and writes local HTML reports under VS Code extension storage. Automatic project transition detection can also read local `state_5.sqlite` thread `cwd` and timestamps as read-only evidence. It does not upload session logs, does not include telemetry, does not fetch live pricing, and does not sync or mutate SQLite databases.
