@@ -596,15 +596,16 @@ test("injectWebviewControls adds command links without scripts or external URLs"
   assert.match(out, /codex-usage-version/);
   assert.match(out, /command:codexUsage.selectRange/);
   assert.match(out, /command:codexUsage.selectTheme/);
-  assert.match(out, /command:codexUsage.configureSync/);
-  assert.match(out, /command:codexUsage.syncNow/);
-  assert.match(out, /command:codexUsage.syncStatus/);
-  assert.match(out, /command:codexUsage.reviewProjectTransitions/);
+  assert.match(out, /command:codexUsage.openSyncMenu/);
+  assert.doesNotMatch(out, /command:codexUsage.syncNow/);
+  assert.doesNotMatch(out, /command:codexUsage.syncStatus/);
+  assert.doesNotMatch(out, /command:codexUsage.reviewProjectTransitions/);
   assert.match(out, /Projects: 2 selected/);
   assert.match(out, /Theme: Night/);
   assert.match(out, /Sync: 2 conversations/);
-  assert.match(out, />Sync Now<\/a>/);
-  assert.match(out, />Sync Status<\/a>/);
+  assert.doesNotMatch(out, />Sync Now<\/a>/);
+  assert.doesNotMatch(out, />Sync Status<\/a>/);
+  assert.doesNotMatch(out, />Transitions<\/a>/);
   assert.match(out, />v0\.1\.9<\/span>/);
   assert.doesNotMatch(out, /<script/i);
   assert.doesNotMatch(out, /https:/);
@@ -662,10 +663,7 @@ test("webview command allowlist includes dashboard commands", () => {
     "codexUsage.selectRange",
     "codexUsage.selectProjects",
     "codexUsage.selectTheme",
-    "codexUsage.reviewProjectTransitions",
-    "codexUsage.configureSync",
-    "codexUsage.syncNow",
-    "codexUsage.syncStatus",
+    "codexUsage.openSyncMenu",
     "codexUsage.refreshDashboard",
     "codexUsage.openSettings",
   ]);
@@ -700,6 +698,7 @@ test("package metadata describes manual-only sync mode clearly", () => {
 test("package metadata uses project and conversation wording for sync commands", () => {
   const commands = new Map(packageJson.contributes.commands.map((item) => [item.command, item.title]));
 
+  assert.equal(commands.get("codexUsage.openSyncMenu"), "Codex Usage: Sync Menu");
   assert.equal(commands.get("codexUsage.selectSyncProjects"), "Codex Usage: Select Sync Projects");
   assert.equal(commands.get("codexUsage.selectSyncThreads"), "Codex Usage: Select Sync Conversations");
 });
