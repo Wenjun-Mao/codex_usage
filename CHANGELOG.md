@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.12 - Project-First Sync UX
+
+- Changed the sync setup flow to select projects before conversations.
+- Renamed user-facing sync thread wording to conversations while keeping thread ids as the internal sync unit.
+- Added an all-conversations-in-selected-projects mode that resolves current conversations at sync time.
+- Added rough per-project sync-size estimates based on local session JSONL files plus metadata overhead.
+- Added a direct `Codex Usage: Select Sync Projects` command.
+
 ## 0.1.11 - Sync Setup UX
 
 - Added `Codex Usage: Configure Sync` with a VS Code folder picker for the sync folder and the existing thread picker for selected threads.

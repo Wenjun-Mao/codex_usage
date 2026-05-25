@@ -26,6 +26,11 @@ def test_list_threads_filters_by_project_key_and_returns_titles(tmp_path: Path) 
     assert threads[0].project_key == "https://github.com/example/demo"
     assert threads[0].total_tokens == 120
     assert threads[0].session_path == session_path
+    expected_session_bytes = session_path.stat().st_size
+    assert threads[0].session_bytes == expected_session_bytes
+    assert threads[0].estimated_sync_bytes == expected_session_bytes + 4096
+    assert threads[0].to_dict()["session_bytes"] == expected_session_bytes
+    assert threads[0].to_dict()["estimated_sync_bytes"] == expected_session_bytes + 4096
 
 
 def test_list_threads_filters_by_transition_target_project(tmp_path: Path) -> None:

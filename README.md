@@ -31,7 +31,8 @@ Available commands:
 - `Codex Usage: Review Project Transitions`
 - `Codex Usage: Select Theme`
 - `Codex Usage: Configure Sync`
-- `Codex Usage: Select Sync Threads`
+- `Codex Usage: Select Sync Projects`
+- `Codex Usage: Select Sync Conversations`
 - `Codex Usage: Sync Now`
 - `Codex Usage: Sync Status`
 - `Codex Usage: Open Sync Folder`
@@ -74,13 +75,13 @@ Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser
 The report uses no remote assets, JavaScript, or Python chart libraries. It is safe to open locally and is designed to fit inside a VS Code webview.
 The dashboard uses the same tokenized day/night design system as the VS Code extension, including dark-mode-friendly charts and tables.
 
-## Experimental Thread Sync
+## Experimental Conversation Sync
 
-The Windows VS Code beta can sync selected Codex threads through a bring-your-own local sync folder such as OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Run `Codex Usage: Configure Sync` to choose a sync folder with a folder picker and then select the threads you want to sync.
+The Windows VS Code beta can sync selected Codex conversations through a bring-your-own local sync folder such as OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Run `Codex Usage: Configure Sync` to choose a sync folder, select one or more projects, see a rough sync-size estimate for each project, then choose whether to sync all conversations in those projects or only specific conversations.
 
-The sync folder path and selected thread ids are stored as local VS Code extension UI state, not as raw settings you need to edit by hand. You can later run `Codex Usage: Select Sync Threads` to change the selected threads or `Codex Usage: Open Sync Folder` to inspect the folder.
+Projects match the repo/workspace identities shown in Project Breakdown. Conversations are individual Codex sessions inside those projects. Size estimates are based on local session JSONL file sizes plus a small manifest/index/metadata allowance, so they are useful for cloud-storage planning but not exact billing or provider overhead. The extension stores the sync folder, selected sync projects, and selected conversations as local VS Code extension UI state, not as raw settings you need to edit by hand.
 
-The sync MVP copies only selected session JSONL files and matching `session_index.jsonl` entries. It does not sync `auth.json`, settings, caches, logs, or SQLite databases. If local memory database rows are detected for a selected thread, sync status reports that they are not synced by this beta.
+The sync MVP copies only selected session JSONL files and matching `session_index.jsonl` entries. It does not sync `auth.json`, settings, caches, logs, or SQLite databases. If local memory database rows are detected for a selected conversation, sync status reports that they are not synced by this beta.
 
 ## Accounting And Pricing
 

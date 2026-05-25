@@ -22,6 +22,7 @@ from codex_usage.project_transitions import (
 
 
 SYNC_VERSION = 1
+SYNC_METADATA_OVERHEAD_BYTES = 4096
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,8 @@ class ThreadInfo:
     project_label: str
     project_aliases: tuple[str, ...]
     total_tokens: int
+    session_bytes: int
+    estimated_sync_bytes: int
     memory_mode: str = ""
     has_base_instructions: bool = False
 
@@ -47,6 +50,8 @@ class ThreadInfo:
             "project_label": self.project_label,
             "project_aliases": list(self.project_aliases),
             "total_tokens": self.total_tokens,
+            "session_bytes": self.session_bytes,
+            "estimated_sync_bytes": self.estimated_sync_bytes,
             "memory_mode": self.memory_mode,
             "has_base_instructions": self.has_base_instructions,
         }
@@ -122,6 +127,7 @@ def list_threads(
             entry = index_entries.get(metadata.session_id, {})
             updated_at = str(entry.get("updated_at") or _session_updated_at(path, metadata.timestamp))
             title = str(entry.get("thread_name") or identity.label or metadata.session_id)
+            session_bytes = _file_size(path)
             thread = ThreadInfo(
                 thread_id=metadata.session_id,
                 title=title,
@@ -131,6 +137,8 @@ def list_threads(
                 project_label=identity.label,
                 project_aliases=identity.aliases,
                 total_tokens=total,
+                session_bytes=session_bytes,
+                estimated_sync_bytes=session_bytes + SYNC_METADATA_OVERHEAD_BYTES,
                 memory_mode=metadata.memory_mode,
                 has_base_instructions=metadata.has_base_instructions,
             )
@@ -479,6 +487,13 @@ def _codex_home_from_session_dir(session_dir: Path) -> Path:
 
 def _fallback_session_relative_path(thread_id: str) -> str:
     return f"synced/{thread_id}.jsonl"
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
 
 
 def _sha256_file(path: Path) -> str:

@@ -12,7 +12,7 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - Supports multi-project filtering from detected project keys.
 - Supports auto/day/night dashboard theme switching.
 - Detects high-confidence project transitions and can split dashboard usage after verified local repository changes.
-- Adds experimental selected-thread sync through a user-provided local sync folder.
+- Adds experimental selected-conversation sync through a user-provided local sync folder.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, daily/hourly views, project breakdown, and model mix.
 - Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
 
@@ -25,7 +25,8 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - `Codex Usage: Select Theme`
 - `Codex Usage: Review Project Transitions`
 - `Codex Usage: Configure Sync`
-- `Codex Usage: Select Sync Threads`
+- `Codex Usage: Select Sync Projects`
+- `Codex Usage: Select Sync Conversations`
 - `Codex Usage: Sync Now`
 - `Codex Usage: Sync Status`
 - `Codex Usage: Open Sync Folder`
@@ -36,17 +37,17 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - `codexUsage.range`: dashboard range, default `30d`.
 - `codexUsage.theme`: `auto`, `day`, or `night`. Auto follows your active VS Code theme.
 - `codexUsage.projectTransitions.autoDetect`: automatically split usage after high-confidence local repository transitions.
-- `codexUsage.sync.enabled`: enable experimental selected-thread sync.
+- `codexUsage.sync.enabled`: enable experimental selected-conversation sync.
 - `codexUsage.sync.autoPull` / `codexUsage.sync.autoPush`: automatic sync behavior.
 
 Project filtering is managed with `Codex Usage: Select Projects` and is stored as extension UI state, not as a user setting.
-Sync folder and thread selections are managed with `Codex Usage: Configure Sync` and stored as extension UI state, not as user settings.
+Sync folder, sync project, and sync conversation selections are managed with `Codex Usage: Configure Sync` and stored as extension UI state, not as user settings.
 
 ## Experimental Sync
 
 Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected Codex session JSONL files and matching session index entries. It does not upload data itself and does not sync Codex auth, settings, caches, logs, or SQLite databases.
 
-Run `Codex Usage: Configure Sync` to pick the sync folder using VS Code's folder picker, then choose threads from the thread picker. Use `Codex Usage: Select Sync Threads` later when you want to change only the selected threads.
+The setup flow is project-first: choose the sync folder, choose projects with rough sync-size estimates, then choose all conversations in those projects or specific conversations. The command id for selecting conversations remains `codexUsage.selectSyncThreads` internally for compatibility, but the command palette shows `Codex Usage: Select Sync Conversations`.
 
 ## Project Transitions
 

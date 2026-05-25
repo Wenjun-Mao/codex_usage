@@ -47,9 +47,14 @@ export type SyncImportCommandOptions = SyncCommandOptions & {
   conflictPolicy?: string;
 };
 
+export const SYNC_CONVERSATION_MODE_VALUES = ["selectedConversations", "allInProjects"] as const;
+export type SyncConversationMode = (typeof SYNC_CONVERSATION_MODE_VALUES)[number];
+
 export type SyncSettings = {
   enabled: boolean;
   dir: string;
+  projectKeys: string[];
+  conversationMode: SyncConversationMode;
   threadIds: string[];
   autoPull: boolean;
   autoPush: boolean;
@@ -78,7 +83,36 @@ export type ThreadChoice = {
   description: string;
   detail: string;
   totalTokens: number;
+  estimatedSyncBytes: number;
   picked: boolean;
+};
+
+export type SyncProjectChoice = {
+  key: string;
+  label: string;
+  description: string;
+  detail: string;
+  totalTokens: number;
+  conversationCount: number;
+  estimatedSyncBytes: number;
+  picked: boolean;
+};
+
+export type SyncProjectQuickPickItem = {
+  label: string;
+  description?: string;
+  detail?: string;
+  picked?: boolean;
+  projectKey: string;
+};
+
+export type SyncConversationQuickPickItem = {
+  label: string;
+  description?: string;
+  detail?: string;
+  picked?: boolean;
+  threadId?: string;
+  allConversations?: boolean;
 };
 
 export type TransitionChoice = {
@@ -111,13 +145,15 @@ export type WebviewControlState = {
   range: ReportRange;
   projectKeys: string[];
   theme: ReportTheme;
-  sync?: Pick<SyncSettings, "enabled" | "dir" | "threadIds">;
+  sync?: Pick<SyncSettings, "enabled" | "dir" | "projectKeys" | "conversationMode" | "threadIds">;
   versionLabel?: string;
 };
 
 export const PROJECT_KEYS_STATE_KEY = "projectKeys";
 export const SYNC_DIR_STATE_KEY = "syncDir";
 export const SYNC_THREAD_IDS_STATE_KEY = "syncThreadIds";
+export const SYNC_PROJECT_KEYS_STATE_KEY = "syncProjectKeys";
+export const SYNC_CONVERSATION_MODE_STATE_KEY = "syncConversationMode";
 
 export type GlobalStateReader = {
   get<T>(key: string, defaultValue: T): T;
@@ -178,11 +214,27 @@ export function readSyncThreadIdsState(state?: GlobalStateReader): string[] {
   return normalizeThreadIds(state?.get(SYNC_THREAD_IDS_STATE_KEY, []));
 }
 
+export function normalizeSyncConversationMode(value: unknown): SyncConversationMode {
+  return typeof value === "string" && SYNC_CONVERSATION_MODE_VALUES.includes(value as SyncConversationMode)
+    ? (value as SyncConversationMode)
+    : "selectedConversations";
+}
+
+export function readSyncProjectKeysState(state?: GlobalStateReader): string[] {
+  return normalizeProjectKeys(state?.get(SYNC_PROJECT_KEYS_STATE_KEY, []));
+}
+
+export function readSyncConversationModeState(state?: GlobalStateReader): SyncConversationMode {
+  return normalizeSyncConversationMode(state?.get(SYNC_CONVERSATION_MODE_STATE_KEY, "selectedConversations"));
+}
+
 export function normalizeSyncSettings(value: unknown): SyncSettings {
   const input = isRecord(value) ? value : {};
   return {
     enabled: input.enabled === true,
     dir: typeof input.dir === "string" ? input.dir.trim() : "",
+    projectKeys: normalizeProjectKeys(input.projectKeys),
+    conversationMode: normalizeSyncConversationMode(input.conversationMode),
     threadIds: normalizeThreadIds(input.threadIds),
     autoPull: input.autoPull === false ? false : true,
     autoPush: input.autoPush === false ? false : true,
@@ -386,17 +438,100 @@ export function parseThreadChoices(threadsJson: string, selectedThreadIds: strin
     const project = typeof row.project_label === "string" && row.project_label.trim() ? row.project_label.trim() : "unknown";
     const updated = typeof row.updated_at === "string" ? row.updated_at : "";
     const totalTokens = numberValue(row.total_tokens);
+    const estimatedSyncBytes = numberValue(row.estimated_sync_bytes);
     choices.push({
       threadId,
       label,
       totalTokens,
-      description: `${project} | ${formatInt(totalTokens)} tokens`,
+      estimatedSyncBytes,
+      description: `${project} | ${formatInt(totalTokens)} tokens | ${formatBytes(estimatedSyncBytes)}`,
       detail: updated ? `${threadId} | ${updated}` : threadId,
       picked: selected.has(threadId),
     });
     seen.add(threadId);
   }
   return choices;
+}
+
+export function parseSyncProjectChoices(threadsJson: string, selectedProjectKeys: string[] = []): SyncProjectChoice[] {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(threadsJson);
+  } catch (error) {
+    throw new Error(`Could not parse Codex thread JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!isRecord(payload) || !Array.isArray(payload.threads)) {
+    throw new Error("Codex thread JSON did not contain a threads array.");
+  }
+
+  const selected = new Set(normalizeProjectKeys(selectedProjectKeys));
+  const byProject = new Map<string, SyncProjectChoice>();
+  for (const row of payload.threads) {
+    if (!isRecord(row) || typeof row.project_key !== "string") {
+      continue;
+    }
+    const key = row.project_key.trim();
+    if (!key) {
+      continue;
+    }
+    const label = stringValue(row.project_label) || key;
+    const totalTokens = numberValue(row.total_tokens);
+    const estimatedBytes = numberValue(row.estimated_sync_bytes);
+    const existing = byProject.get(key);
+    if (existing) {
+      existing.totalTokens += totalTokens;
+      existing.conversationCount += 1;
+      existing.estimatedSyncBytes += estimatedBytes;
+      existing.description = syncProjectDescription(existing.conversationCount, existing.estimatedSyncBytes);
+      continue;
+    }
+    byProject.set(key, {
+      key,
+      label,
+      totalTokens,
+      conversationCount: 1,
+      estimatedSyncBytes: estimatedBytes,
+      description: syncProjectDescription(1, estimatedBytes),
+      detail: key,
+      picked: selected.has(key),
+    });
+  }
+  return [...byProject.values()].sort((a, b) => b.estimatedSyncBytes - a.estimatedSyncBytes);
+}
+
+export function syncProjectQuickPickItems(
+  choices: SyncProjectChoice[],
+  selectedProjectKeys: string[],
+): SyncProjectQuickPickItem[] {
+  const selected = new Set(normalizeProjectKeys(selectedProjectKeys));
+  return choices.map((choice) => ({
+    label: choice.label,
+    description: choice.description,
+    detail: choice.detail,
+    picked: selected.has(choice.key),
+    projectKey: choice.key,
+  }));
+}
+
+export function syncConversationQuickPickItems(
+  choices: ThreadChoice[],
+  mode: SyncConversationMode,
+): SyncConversationQuickPickItem[] {
+  return [
+    {
+      label: "All conversations in selected projects",
+      description: "Automatically include current and future conversations for these projects",
+      picked: mode === "allInProjects",
+      allConversations: true,
+    },
+    ...choices.map((choice) => ({
+      label: choice.label,
+      description: choice.description,
+      detail: choice.detail,
+      picked: mode === "selectedConversations" ? choice.picked : false,
+      threadId: choice.threadId,
+    })),
+  ];
 }
 
 export function parseTransitionChoices(transitionsJson: string): TransitionChoice[] {
@@ -482,7 +617,7 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
     }
   }
   const total = rows.length;
-  const parts = [`${total} thread${total === 1 ? "" : "s"}`, `${synced} synced`];
+  const parts = [`${total} conversation${total === 1 ? "" : "s"}`, `${synced} synced`];
   if (conflicts) {
     parts.push(`${conflicts} conflict${conflicts === 1 ? "" : "s"}`);
   }
@@ -638,13 +773,23 @@ function syncControlLabel(sync: WebviewControlState["sync"]): string {
   if (!normalized.dir) {
     return "Sync: Select Folder";
   }
+  if (normalized.projectKeys.length === 0 && normalized.threadIds.length === 0) {
+    return "Sync: Select Projects";
+  }
+  if (normalized.conversationMode === "allInProjects") {
+    const count = normalized.projectKeys.length;
+    if (count === 1) {
+      return "Sync: All conversations in 1 project";
+    }
+    return `Sync: All conversations in ${count} projects`;
+  }
   if (normalized.threadIds.length === 0) {
-    return "Sync: Select Threads";
+    return "Sync: Select Conversations";
   }
   if (normalized.threadIds.length === 1) {
-    return "Sync: 1 thread";
+    return "Sync: 1 conversation";
   }
-  return `Sync: ${normalized.threadIds.length} threads`;
+  return `Sync: ${normalized.threadIds.length} conversations`;
 }
 
 function themeLabel(theme: ReportTheme): string {
@@ -716,6 +861,28 @@ function transitionDetail(options: {
 
 function formatInt(value: number): string {
   return Math.round(value).toLocaleString("en-US");
+}
+
+function syncProjectDescription(conversationCount: number, estimatedBytes: number): string {
+  const conversationLabel = `${conversationCount} conversation${conversationCount === 1 ? "" : "s"}`;
+  return `${conversationLabel} | ${formatBytes(estimatedBytes)} estimated sync size`;
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  if (unitIndex === 0) {
+    return `${Math.round(size)} ${units[unitIndex]}`;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function dedupePaths(paths: string[]): string[] {

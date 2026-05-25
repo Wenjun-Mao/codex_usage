@@ -9,7 +9,7 @@ Codex Usage Dashboard is designed as a local-first tool.
 - Local Codex `session_index.jsonl` entries when experimental selected-thread sync is used.
 - Read-only local Codex SQLite memory diagnostics when sync status is requested.
 - User settings for dashboard range, theme, transition detection, and experimental sync behavior toggles.
-- Extension UI state for selected dashboard projects, the selected sync folder, and selected sync thread ids.
+- Extension UI state for selected dashboard projects, the selected sync folder, selected sync projects, sync conversation mode, and selected sync conversation ids.
 
 ## What It Writes
 
