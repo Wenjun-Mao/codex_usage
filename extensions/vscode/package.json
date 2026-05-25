@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
   "publisher": "local-codex-usage",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "private": true,
   "preview": true,
   "license": "MIT",
@@ -41,6 +41,7 @@
     "onCommand:codexUsage.selectProjects",
     "onCommand:codexUsage.selectTheme",
     "onCommand:codexUsage.reviewProjectTransitions",
+    "onCommand:codexUsage.openSyncMenu",
     "onCommand:codexUsage.configureSync",
     "onCommand:codexUsage.selectSyncProjects",
     "onCommand:codexUsage.selectSyncThreads",
@@ -79,6 +80,10 @@
       {
         "command": "codexUsage.reviewProjectTransitions",
         "title": "Codex Usage: Review Project Transitions"
+      },
+      {
+        "command": "codexUsage.openSyncMenu",
+        "title": "Codex Usage: Sync Menu"
       },
       {
         "command": "codexUsage.configureSync",

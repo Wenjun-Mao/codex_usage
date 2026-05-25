@@ -119,6 +119,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const reviewProjectTransitionsCommand = vscode.commands.registerCommand("codexUsage.reviewProjectTransitions", async () => {
     await reviewProjectTransitions(context);
   });
+  const openSyncMenuCommand = vscode.commands.registerCommand("codexUsage.openSyncMenu", async () => {
+    await showSyncMenu(context);
+  });
   const configureSyncCommand = vscode.commands.registerCommand("codexUsage.configureSync", async () => {
     await configureSync(context);
   });
@@ -162,6 +165,7 @@ export async function activate(context: vscode.ExtensionContext) {
     selectProjectsCommand,
     selectThemeCommand,
     reviewProjectTransitionsCommand,
+    openSyncMenuCommand,
     configureSyncCommand,
     selectSyncProjectsCommand,
     selectSyncThreadsCommand,
@@ -536,6 +540,57 @@ async function configureSync(context: vscode.ExtensionContext): Promise<void> {
   if (panel) {
     await refreshDashboard(context, panel);
   }
+}
+
+async function showSyncMenu(context: vscode.ExtensionContext): Promise<void> {
+  const settings = readSettings(context);
+  const items: Array<vscode.QuickPickItem & { action: "syncNow" | "syncStatus" | "configureSync" | "openSyncFolder" }> = [
+    {
+      label: "$(sync) Sync Now",
+      description: settings.sync.enabled ? "Pull then push selected conversations" : "Sync is currently disabled",
+      detail: "Run one manual sync using the current folder, project, and conversation selections.",
+      action: "syncNow",
+    },
+    {
+      label: "$(info) Sync Status",
+      description: "Inspect selected conversations",
+      detail: "Show local/remote state, conflicts, missing files, and memory warnings.",
+      action: "syncStatus",
+    },
+    {
+      label: "$(settings-gear) Configure Sync",
+      description: "Folder, projects, and conversations",
+      detail: "Choose the sync folder and select which projects or conversations participate in sync.",
+      action: "configureSync",
+    },
+    {
+      label: "$(folder-opened) Open Sync Folder",
+      description: settings.sync.dir || "No folder selected",
+      detail: "Open the configured bring-your-own sync folder.",
+      action: "openSyncFolder",
+    },
+  ];
+
+  const selected = await vscode.window.showQuickPick(items, {
+    placeHolder: "Choose a Codex sync action",
+  });
+  if (!selected) {
+    return;
+  }
+
+  if (selected.action === "syncNow") {
+    await requestSync(context, "manual");
+    return;
+  }
+  if (selected.action === "syncStatus") {
+    await showSyncStatus(context);
+    return;
+  }
+  if (selected.action === "configureSync") {
+    await configureSync(context);
+    return;
+  }
+  await openSyncFolder(context);
 }
 
 async function selectSyncFolder(context: vscode.ExtensionContext): Promise<string | undefined> {
