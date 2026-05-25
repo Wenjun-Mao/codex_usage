@@ -527,9 +527,32 @@ test("parseSyncStatusSummary counts states and memory warnings", () => {
   assert.equal(summary.synced, 1);
   assert.equal(summary.conflicts, 1);
   assert.equal(summary.memoryWarnings, 1);
+  assert.equal(summary.localChanges, 0);
+  assert.equal(summary.remoteChanges, 0);
+  assert.equal(summary.fastForwards, 0);
   assert.match(summary.message, /2 conversations/);
   assert.match(summary.message, /1 synced/);
   assert.match(summary.message, /1 conflict/);
+});
+
+test("parseSyncStatusSummary describes planned pull push and fast-forward states", () => {
+  const summary = parseSyncStatusSummary(
+    JSON.stringify({
+      threads: [
+        { thread_id: "a", state: "local_ahead" },
+        { thread_id: "b", state: "remote_ahead" },
+        { thread_id: "c", state: "fast_forward_push" },
+        { thread_id: "d", state: "fast_forward_pull" },
+        { thread_id: "e", state: "synced" },
+      ],
+    }),
+  );
+
+  assert.equal(summary.total, 5);
+  assert.equal(summary.synced, 1);
+  assert.match(summary.message, /1 local change/);
+  assert.match(summary.message, /1 remote change/);
+  assert.match(summary.message, /2 fast-forward/);
 });
 
 test("injectWebviewControls adds command links without scripts or external URLs", () => {

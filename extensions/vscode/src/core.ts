@@ -147,6 +147,9 @@ export type SyncStatusSummary = {
   conflicts: number;
   missing: number;
   memoryWarnings: number;
+  localChanges: number;
+  remoteChanges: number;
+  fastForwards: number;
   message: string;
 };
 
@@ -654,6 +657,9 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
   let conflicts = 0;
   let missing = 0;
   let memoryWarnings = 0;
+  let localChanges = 0;
+  let remoteChanges = 0;
+  let fastForwards = 0;
   for (const row of rows) {
     if (!isRecord(row)) {
       continue;
@@ -665,6 +671,12 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
       conflicts += 1;
     } else if (state === "missing") {
       missing += 1;
+    } else if (state === "local_ahead" || state === "local_only") {
+      localChanges += 1;
+    } else if (state === "remote_ahead" || state === "remote_only") {
+      remoteChanges += 1;
+    } else if (state === "fast_forward_push" || state === "fast_forward_pull") {
+      fastForwards += 1;
     }
     if (numberValue(row.memory_database_rows) > 0) {
       memoryWarnings += 1;
@@ -672,6 +684,15 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
   }
   const total = rows.length;
   const parts = [`${total} conversation${total === 1 ? "" : "s"}`, `${synced} synced`];
+  if (localChanges) {
+    parts.push(`${localChanges} local change${localChanges === 1 ? "" : "s"}`);
+  }
+  if (remoteChanges) {
+    parts.push(`${remoteChanges} remote change${remoteChanges === 1 ? "" : "s"}`);
+  }
+  if (fastForwards) {
+    parts.push(`${fastForwards} fast-forward${fastForwards === 1 ? "" : "s"}`);
+  }
   if (conflicts) {
     parts.push(`${conflicts} conflict${conflicts === 1 ? "" : "s"}`);
   }
@@ -681,7 +702,17 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
   if (memoryWarnings) {
     parts.push(`${memoryWarnings} memory warning${memoryWarnings === 1 ? "" : "s"}`);
   }
-  return { total, synced, conflicts, missing, memoryWarnings, message: parts.join(", ") };
+  return {
+    total,
+    synced,
+    conflicts,
+    missing,
+    memoryWarnings,
+    localChanges,
+    remoteChanges,
+    fastForwards,
+    message: parts.join(", "),
+  };
 }
 
 export function injectWebviewControls(reportHtml: string, state: WebviewControlState): string {
