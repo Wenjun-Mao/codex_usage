@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
   "publisher": "local-codex-usage",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "private": true,
   "preview": true,
   "license": "MIT",
@@ -139,17 +139,17 @@
         "codexUsage.sync.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable experimental selected-thread Codex sync."
+          "description": "Enable experimental Codex sync for manual Sync Now and optional automatic pull/push."
         },
         "codexUsage.sync.autoPull": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically pull selected thread updates when VS Code activates or gains focus."
+          "description": "Optional automatic pull of selected conversation updates when VS Code activates or gains focus. Turn off for manual-only sync."
         },
         "codexUsage.sync.autoPush": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically push selected thread updates after watched Codex session files change."
+          "description": "Optional automatic push of selected conversation updates after watched Codex session files change. Turn off for manual-only sync."
         }
       }
     }

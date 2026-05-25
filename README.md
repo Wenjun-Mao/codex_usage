@@ -83,6 +83,8 @@ Projects match the repo/workspace identities shown in Project Breakdown. Convers
 
 Background sync is intentionally quiet. The VS Code status bar shows the current sync state, such as `Sync:Off`, `Sync:Idle`, `Sync:Waiting`, `Sync:Pulling`, `Sync:Pushing`, `Sync:Conflict`, or `Sync:Issue`. Automatic sync logs details to the Codex Usage output channel; visible notifications are reserved for manual sync and action-needed failures.
 
+Manual-only sync is supported: keep Sync Enabled on, turn Auto Pull and Auto Push off, then use `Codex Usage: Sync Now` from the command palette or the dashboard action strip. Use `Sync Status` to inspect selected conversation state without running a full sync.
+
 The sync MVP copies only selected session JSONL files and matching `session_index.jsonl` entries. It does not sync `auth.json`, settings, caches, logs, or SQLite databases. If local memory database rows are detected for a selected conversation, sync status reports that they are not synced by this beta.
 
 ## Accounting And Pricing

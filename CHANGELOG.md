@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.15 - Manual Sync UX
+
+- Added `Sync Now` and `Sync Status` to the dashboard action strip.
+- Clarified that Sync Enabled allows manual sync, while Auto Pull and Auto Push are optional automation.
+- Updated sync setting descriptions to use conversation wording and explain manual-only mode.
+
 ## 0.1.14 - Sync Scheduler Hardening
 
 - Added single-flight sync scheduling so background triggers do not start overlapping sync runs.

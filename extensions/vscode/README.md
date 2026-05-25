@@ -51,6 +51,8 @@ The setup flow is project-first: choose the sync folder, choose projects with ro
 
 The status bar is the primary background sync indicator. Automatic sync uses a focus cooldown, a file-change debounce, and failure backoff to avoid noisy repeated runs. Normal automatic success/failure details go to the Codex Usage output channel; popups are reserved for manual sync and action-needed failures such as conflicts.
 
+For manual-only sync, leave `codexUsage.sync.enabled` on and turn off both `codexUsage.sync.autoPull` and `codexUsage.sync.autoPush`. Run `Codex Usage: Sync Now` from the command palette or the dashboard action strip when you want to sync, and use `Codex Usage: Sync Status` to inspect selected conversations.
+
 ## Project Transitions
 
 Automatic project transition detection uses read-only evidence from local Codex session JSONL files and, when present, the local Codex `state_5.sqlite` `threads` field `cwd` plus thread timestamps. The extension does not upload this data, make network calls for transition detection, mutate SQLite, or sync SQLite databases.

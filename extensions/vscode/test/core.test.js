@@ -553,10 +553,14 @@ test("injectWebviewControls adds command links without scripts or external URLs"
   assert.match(out, /command:codexUsage.selectRange/);
   assert.match(out, /command:codexUsage.selectTheme/);
   assert.match(out, /command:codexUsage.configureSync/);
+  assert.match(out, /command:codexUsage.syncNow/);
+  assert.match(out, /command:codexUsage.syncStatus/);
   assert.match(out, /command:codexUsage.reviewProjectTransitions/);
   assert.match(out, /Projects: 2 selected/);
   assert.match(out, /Theme: Night/);
   assert.match(out, /Sync: 2 conversations/);
+  assert.match(out, />Sync Now<\/a>/);
+  assert.match(out, />Sync Status<\/a>/);
   assert.match(out, />v0\.1\.9<\/span>/);
   assert.doesNotMatch(out, /<script/i);
   assert.doesNotMatch(out, /https:/);
@@ -616,6 +620,8 @@ test("webview command allowlist includes dashboard commands", () => {
     "codexUsage.selectTheme",
     "codexUsage.reviewProjectTransitions",
     "codexUsage.configureSync",
+    "codexUsage.syncNow",
+    "codexUsage.syncStatus",
     "codexUsage.refreshDashboard",
     "codexUsage.openSettings",
   ]);
@@ -635,6 +641,16 @@ test("package metadata no longer contributes removed manual settings", () => {
   assert.ok(properties["codexUsage.sync.enabled"]);
   assert.ok(properties["codexUsage.sync.autoPull"]);
   assert.ok(properties["codexUsage.sync.autoPush"]);
+});
+
+test("package metadata describes manual-only sync mode clearly", () => {
+  const properties = packageJson.contributes.configuration.properties;
+
+  assert.match(properties["codexUsage.sync.enabled"].description, /manual Sync Now/i);
+  assert.match(properties["codexUsage.sync.enabled"].description, /optional automatic/i);
+  assert.match(properties["codexUsage.sync.autoPull"].description, /optional/i);
+  assert.match(properties["codexUsage.sync.autoPush"].description, /optional/i);
+  assert.doesNotMatch(properties["codexUsage.sync.enabled"].description, /selected-thread/i);
 });
 
 test("package metadata uses project and conversation wording for sync commands", () => {
