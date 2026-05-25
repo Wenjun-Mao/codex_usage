@@ -5,11 +5,13 @@ const packageJson = require("../package.json");
 
 const {
   buildReportArgs,
+  buildCodexUsageEnv,
   buildSummaryArgs,
   buildSyncExportArgs,
   buildSyncImportArgs,
   buildSyncStatusArgs,
   buildThreadsArgs,
+  cacheDbPath,
   buildTransitionSuggestArgs,
   bundledExecutablePath,
   candidateSessionDirs,
@@ -36,6 +38,7 @@ const {
   renderErrorHtml,
   renderLoadingHtml,
   selectSessionDirsForWatcher,
+  shouldRefreshAfterSyncSetupStep,
   syncBackoffMs,
   syncConversationQuickPickItems,
   syncFailureRequiresNotification,
@@ -326,6 +329,24 @@ test("watcher session directory selection follows discovery precedence", () => {
     "C:/Users/example/.codex/sessions",
   ]);
   assert.deepEqual(selectSessionDirsForWatcher(candidates, false, () => false), ["C:/codex/sessions"]);
+});
+
+test("buildCodexUsageEnv passes internal cache directory without removing process env", () => {
+  const env = buildCodexUsageEnv("C:/global-storage", { PATH: "C:/bin", CODEX_HOME: "C:/codex" });
+
+  assert.equal(env.PATH, "C:/bin");
+  assert.equal(env.CODEX_HOME, "C:/codex");
+  assert.equal(env.CODEX_USAGE_CACHE_DIR, path.join("C:/global-storage", "cache"));
+});
+
+test("cacheDbPath points at the Python cache database under extension storage", () => {
+  assert.equal(cacheDbPath("C:/global-storage"), path.join("C:/global-storage", "cache", "usage-cache.sqlite3"));
+});
+
+test("sync setup step refresh policy defaults to refresh and can be suppressed", () => {
+  assert.equal(shouldRefreshAfterSyncSetupStep(undefined), true);
+  assert.equal(shouldRefreshAfterSyncSetupStep({}), true);
+  assert.equal(shouldRefreshAfterSyncSetupStep({ refreshDashboard: false }), false);
 });
 
 test("bundledExecutablePath resolves Windows x64 executable and rejects unsupported platforms", () => {
@@ -684,10 +705,11 @@ test("package metadata uses project and conversation wording for sync commands",
 });
 
 test("loading and error HTML are script-free and themeable", () => {
-  const loading = renderLoadingHtml();
+  const loading = renderLoadingHtml("Initializing Codex usage cache. This can take a few seconds the first time.");
   const error = renderErrorHtml("boom");
 
   assert.match(loading, /data-codex-theme="auto"/);
+  assert.match(loading, /Initializing Codex usage cache/);
   assert.match(error, /data-codex-theme="auto"/);
   assert.match(loading, /body\.vscode-dark/);
   assert.match(error, /body\.vscode-dark/);

@@ -327,6 +327,32 @@ export function selectSessionDirsForWatcher(
   return [existing ?? candidates[0]];
 }
 
+export function cacheDirPath(globalStoragePath: string): string {
+  return path.join(globalStoragePath, "cache");
+}
+
+export function cacheDbPath(globalStoragePath: string): string {
+  return path.join(cacheDirPath(globalStoragePath), "usage-cache.sqlite3");
+}
+
+export function buildCodexUsageEnv(
+  globalStoragePath: string,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return {
+    ...baseEnv,
+    CODEX_USAGE_CACHE_DIR: cacheDirPath(globalStoragePath),
+  };
+}
+
+export type SyncSetupStepOptions = {
+  refreshDashboard?: boolean;
+};
+
+export function shouldRefreshAfterSyncSetupStep(options: SyncSetupStepOptions | undefined): boolean {
+  return options?.refreshDashboard !== false;
+}
+
 export function extensionVersionLabel(packageJson: unknown): string {
   if (!isRecord(packageJson) || typeof packageJson.version !== "string") {
     return "";
@@ -799,7 +825,8 @@ ${basicWebviewCss()}
 </html>`;
 }
 
-export function renderLoadingHtml(): string {
+export function renderLoadingHtml(message = "Generating Codex usage dashboard..."): string {
+  const escaped = escapeHtml(message);
   return `<!doctype html>
 <html lang="en" data-codex-theme="auto">
 <head>
@@ -810,7 +837,9 @@ ${basicWebviewCss()}
   </style>
 </head>
 <body>
-  Generating Codex usage dashboard...
+  <main class="report-shell">
+    <section class="notice loading" role="status" aria-live="polite">${escaped}</section>
+  </main>
 </body>
 </html>`;
 }
