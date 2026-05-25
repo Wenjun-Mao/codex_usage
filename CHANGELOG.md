@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.16 - Three-Way Sync State
+
+- Added local sync-state tracking so Codex conversation sync can distinguish local-only, remote-only, and true divergent changes.
+- Added prefix-aware fast-forward handling for append-only Codex JSONL session files.
+- Improved sync status summaries for local changes, remote changes, fast-forwards, and true conflicts.
+
 ## 0.1.15 - Manual Sync UX
 
 - Added `Sync Now` and `Sync Status` to the dashboard action strip.
