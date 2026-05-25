@@ -703,6 +703,10 @@ test("package metadata uses project and conversation wording for sync commands",
   assert.equal(commands.get("codexUsage.selectSyncThreads"), "Codex Usage: Select Sync Conversations");
 });
 
+test("windows VSIX package script creates the output directory", () => {
+  assert.match(packageJson.scripts["package:vsix:win"], /New-Item -ItemType Directory -Force \.\.\\\.\.\\output/);
+});
+
 test("loading and error HTML are script-free and themeable", () => {
   const loading = renderLoadingHtml("Initializing Codex usage cache. This can take a few seconds the first time.");
   const error = renderErrorHtml("boom");

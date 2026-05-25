@@ -165,7 +165,7 @@
     "watch": "tsc -watch -p .",
     "test": "npm run build && node --test test/*.test.js",
     "package:vsix": "npm run package:vsix:win",
-    "package:vsix:win": "npm run build:python:win && vsce package --target win32-x64 --out ../../output/codex-usage-dashboard-win32-x64.vsix --allow-missing-repository",
+    "package:vsix:win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ..\\..\\output | Out-Null\" && npm run build:python:win && vsce package --target win32-x64 --out ../../output/codex-usage-dashboard-win32-x64.vsix --allow-missing-repository",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
