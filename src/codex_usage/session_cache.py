@@ -1,0 +1,521 @@
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+from codex_usage.discovery import collect_jsonl_files
+from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.parser import finalize_session_records, parse_session_file, parse_timestamp
+from codex_usage.project_identity import resolve_project_identity
+from codex_usage.project_transitions import (
+    ProjectTransition,
+    apply_project_transitions,
+    collect_repo_path_observations,
+    infer_project_transitions,
+)
+from codex_usage.session_files import owning_session_dir, read_session_metadata
+from codex_usage.sync_constants import SYNC_METADATA_OVERHEAD_BYTES
+
+CACHE_DB_NAME = "usage-cache.sqlite3"
+CACHE_SCHEMA_VERSION = 1
+PARSER_CACHE_VERSION = 1
+PROJECT_TRANSITION_CACHE_VERSION = 1
+
+
+@dataclass(frozen=True)
+class CacheStats:
+    files_total: int = 0
+    files_parsed: int = 0
+    files_reused: int = 0
+    files_removed: int = 0
+    file_errors: int = 0
+    rebuilt: bool = False
+
+
+@dataclass(frozen=True)
+class CachedFileSummary:
+    file_path: Path
+    session_dir: Path
+    session_id: str
+    cwd: str
+    project_key: str
+    project_label: str
+    project_aliases: tuple[str, ...]
+    git_repository_url: str
+    git_branch: str
+    memory_mode: str
+    has_base_instructions: bool
+    session_bytes: int
+    estimated_sync_bytes: int
+
+
+@dataclass(frozen=True)
+class CachedSessionData:
+    session_dirs: list[Path]
+    files: list[Path]
+    records: list[UsageRecord]
+    file_summaries: dict[Path, CachedFileSummary]
+    project_transitions: list[ProjectTransition]
+    stats: CacheStats
+    file_errors: dict[str, str]
+
+
+def uncached_session_data(
+    session_dirs: list[Path],
+    files: list[Path],
+    records: list[UsageRecord],
+    project_transitions: list[ProjectTransition],
+) -> CachedSessionData:
+    return CachedSessionData(
+        session_dirs=session_dirs,
+        files=files,
+        records=records,
+        file_summaries={},
+        project_transitions=project_transitions,
+        stats=CacheStats(files_total=len(files)),
+        file_errors={},
+    )
+
+
+def resolve_cache_dir(session_dirs: list[Path], cache_dir: Path | None = None) -> Path:
+    if cache_dir is not None:
+        return cache_dir
+    env_value = os.environ.get("CODEX_USAGE_CACHE_DIR", "").strip()
+    if env_value:
+        return Path(env_value)
+    codex_home = os.environ.get("CODEX_HOME", "").strip()
+    if codex_home:
+        return Path(codex_home).expanduser() / ".codex-usage-cache"
+    if session_dirs:
+        return session_dirs[0].parent / ".codex-usage-cache"
+    return Path.home() / ".codex" / ".codex-usage-cache"
+
+
+def load_cached_session_data(
+    session_dirs: list[Path],
+    *,
+    cache_dir: Path | None = None,
+    auto_transitions: bool = True,
+) -> CachedSessionData:
+    resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
+    resolved_cache_dir.mkdir(parents=True, exist_ok=True)
+    session_files = collect_jsonl_files(session_dirs)
+    with sqlite3.connect(resolved_cache_dir / CACHE_DB_NAME) as connection:
+        connection.row_factory = sqlite3.Row
+        rebuilt = _ensure_schema(connection)
+        stats = _refresh_files(connection, session_dirs, session_files, rebuilt=rebuilt)
+        records_by_file = _load_records_by_file(connection, session_files)
+        records = finalize_session_records([records_by_file.get(path, []) for path in session_files])
+        transitions = _refresh_or_load_transitions(
+            connection,
+            session_dirs=session_dirs,
+            session_files=session_files,
+            records=records,
+            stats=stats,
+            auto_transitions=auto_transitions,
+        )
+        if auto_transitions:
+            records = apply_project_transitions(records, transitions)
+        summaries = _load_file_summaries(connection, session_files, session_dirs)
+        errors = _load_file_errors(connection)
+    return CachedSessionData(
+        session_dirs=session_dirs,
+        files=session_files,
+        records=records,
+        file_summaries=summaries,
+        project_transitions=transitions,
+        stats=stats,
+        file_errors=errors,
+    )
+
+
+def _ensure_schema(connection: sqlite3.Connection) -> bool:
+    if _schema_matches(connection):
+        return False
+    _drop_cache_tables(connection)
+    connection.executescript(
+        """
+        create table schema_meta (key text primary key, value text not null);
+        create table files (
+            path text primary key,
+            session_dir text not null,
+            size_bytes integer not null,
+            mtime_ns integer not null,
+            parsed_at text not null,
+            session_id text,
+            error text
+        );
+        create table usage_records (
+            file_path text not null,
+            record_index integer not null,
+            timestamp text not null,
+            session_id text not null,
+            turn_id text,
+            model text not null,
+            effort text,
+            collaboration_mode text,
+            project_key text not null,
+            project_label text not null,
+            project_aliases_json text not null,
+            cwd text,
+            git_repository_url text,
+            git_branch text,
+            parent_thread_id text,
+            input_tokens integer not null,
+            cached_input_tokens integer not null,
+            output_tokens integer not null,
+            reasoning_output_tokens integer not null,
+            total_tokens integer not null,
+            primary key (file_path, record_index)
+        );
+        create table session_metadata (
+            file_path text primary key,
+            session_dir text not null,
+            session_id text not null,
+            cwd text,
+            project_key text,
+            project_label text,
+            project_aliases_json text not null,
+            git_repository_url text,
+            git_branch text,
+            memory_mode text,
+            has_base_instructions integer not null,
+            session_bytes integer not null,
+            estimated_sync_bytes integer not null
+        );
+        create table project_transitions (
+            source_key text not null,
+            source_label text not null,
+            target_key text not null,
+            target_label text not null,
+            effective_from text not null,
+            confidence integer not null,
+            evidence_json text not null,
+            thread_ids_json text not null
+        );
+        """
+    )
+    connection.executemany(
+        "insert into schema_meta (key, value) values (?, ?)",
+        [
+            ("schema_version", str(CACHE_SCHEMA_VERSION)),
+            ("parser_version", str(PARSER_CACHE_VERSION)),
+            ("project_transition_version", str(PROJECT_TRANSITION_CACHE_VERSION)),
+        ],
+    )
+    connection.commit()
+    return True
+
+
+def _schema_matches(connection: sqlite3.Connection) -> bool:
+    try:
+        rows = connection.execute("select key, value from schema_meta").fetchall()
+    except sqlite3.Error:
+        return False
+    return {str(row["key"]): str(row["value"]) for row in rows} == {
+        "schema_version": str(CACHE_SCHEMA_VERSION),
+        "parser_version": str(PARSER_CACHE_VERSION),
+        "project_transition_version": str(PROJECT_TRANSITION_CACHE_VERSION),
+    }
+
+
+def _drop_cache_tables(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        drop table if exists project_transitions;
+        drop table if exists session_metadata;
+        drop table if exists usage_records;
+        drop table if exists files;
+        drop table if exists schema_meta;
+        """
+    )
+
+
+def _refresh_files(
+    connection: sqlite3.Connection,
+    session_dirs: list[Path],
+    session_files: list[Path],
+    *,
+    rebuilt: bool,
+) -> CacheStats:
+    cached_rows = {str(row["path"]): row for row in connection.execute("select path, size_bytes, mtime_ns from files")}
+    current_paths = {str(path) for path in session_files}
+    removed_paths = [path for path in cached_rows if path not in current_paths]
+    for path in removed_paths:
+        _delete_file_rows(connection, Path(path))
+
+    parsed = 0
+    reused = 0
+    errors = 0
+    for path in session_files:
+        stat = path.stat()
+        cached = cached_rows.get(str(path))
+        if cached and int(cached["size_bytes"]) == stat.st_size and int(cached["mtime_ns"]) == stat.st_mtime_ns:
+            reused += 1
+            continue
+        _record_count, error = _refresh_one_file(connection, session_dirs, path)
+        parsed += 1
+        if error:
+            errors += 1
+    connection.commit()
+    return CacheStats(
+        files_total=len(session_files),
+        files_parsed=parsed,
+        files_reused=reused,
+        files_removed=len(removed_paths),
+        file_errors=errors,
+        rebuilt=rebuilt,
+    )
+
+
+def _refresh_one_file(connection: sqlite3.Connection, session_dirs: list[Path], path: Path) -> tuple[int, str]:
+    _delete_file_rows(connection, path)
+    stat = path.stat()
+    records: list[UsageRecord] = []
+    try:
+        records = parse_session_file(path)
+        for index, record in enumerate(records):
+            _insert_record(connection, path, index, record)
+        _insert_file_summary(connection, session_dirs, path, records)
+        error = ""
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+    connection.execute(
+        """
+        insert or replace into files
+            (path, session_dir, size_bytes, mtime_ns, parsed_at, session_id, error)
+        values (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(path),
+            str(owning_session_dir(path, session_dirs)),
+            stat.st_size,
+            stat.st_mtime_ns,
+            datetime.now(UTC).isoformat(),
+            records[0].session_id if records else path.stem,
+            error,
+        ),
+    )
+    return (len(records), error)
+
+
+def _delete_file_rows(connection: sqlite3.Connection, path: Path) -> None:
+    value = str(path)
+    connection.execute("delete from usage_records where file_path = ?", (value,))
+    connection.execute("delete from session_metadata where file_path = ?", (value,))
+    connection.execute("delete from files where path = ?", (value,))
+
+
+def _insert_record(connection: sqlite3.Connection, file_path: Path, index: int, record: UsageRecord) -> None:
+    usage = record.usage
+    connection.execute(
+        """
+        insert into usage_records (
+            file_path, record_index, timestamp, session_id, turn_id, model, effort,
+            collaboration_mode, project_key, project_label, project_aliases_json,
+            cwd, git_repository_url, git_branch, parent_thread_id,
+            input_tokens, cached_input_tokens, output_tokens,
+            reasoning_output_tokens, total_tokens
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(file_path),
+            index,
+            record.timestamp.isoformat(),
+            record.session_id,
+            record.turn_id,
+            record.model,
+            record.effort,
+            record.collaboration_mode,
+            record.project_key,
+            record.project_label,
+            json.dumps(list(record.project_aliases)),
+            record.cwd,
+            record.git_repository_url,
+            record.git_branch,
+            record.parent_thread_id,
+            usage.input_tokens,
+            usage.cached_input_tokens,
+            usage.output_tokens,
+            usage.reasoning_output_tokens,
+            usage.total_tokens,
+        ),
+    )
+
+
+def _insert_file_summary(
+    connection: sqlite3.Connection,
+    session_dirs: list[Path],
+    path: Path,
+    records: list[UsageRecord],
+) -> None:
+    stat = path.stat()
+    metadata = read_session_metadata(path)
+    selected = records[-1] if records else None
+    identity = None if selected is not None or metadata is None else resolve_project_identity(metadata)
+    session_id = selected.session_id if selected else (metadata.session_id if metadata else path.stem)
+    project_key = selected.project_key if selected else (identity.key if identity else "")
+    project_label = selected.project_label if selected else (identity.label if identity else "")
+    project_aliases = selected.project_aliases if selected else (identity.aliases if identity else ())
+    connection.execute(
+        """
+        insert or replace into session_metadata (
+            file_path, session_dir, session_id, cwd, project_key, project_label,
+            project_aliases_json, git_repository_url, git_branch, memory_mode,
+            has_base_instructions, session_bytes, estimated_sync_bytes
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            str(path),
+            str(owning_session_dir(path, session_dirs)),
+            session_id,
+            selected.cwd if selected else (metadata.cwd if metadata else ""),
+            project_key,
+            project_label,
+            json.dumps(list(project_aliases)),
+            selected.git_repository_url if selected else (metadata.git_repository_url if metadata else ""),
+            selected.git_branch if selected else (metadata.git_branch if metadata else ""),
+            metadata.memory_mode if metadata else "",
+            1 if metadata and metadata.has_base_instructions else 0,
+            stat.st_size,
+            stat.st_size + SYNC_METADATA_OVERHEAD_BYTES,
+        ),
+    )
+
+
+def _load_records_by_file(connection: sqlite3.Connection, session_files: list[Path]) -> dict[Path, list[UsageRecord]]:
+    if not session_files:
+        return {}
+    selected = {str(path) for path in session_files}
+    records_by_file: dict[Path, list[UsageRecord]] = {}
+    for row in connection.execute("select * from usage_records order by file_path, record_index"):
+        if row["file_path"] not in selected:
+            continue
+        records_by_file.setdefault(Path(row["file_path"]), []).append(_row_to_record(row))
+    return records_by_file
+
+
+def _row_to_record(row: sqlite3.Row) -> UsageRecord:
+    return UsageRecord(
+        timestamp=parse_timestamp(row["timestamp"]) or datetime.fromtimestamp(0, tz=UTC),
+        usage=TokenUsage(
+            input_tokens=int(row["input_tokens"]),
+            cached_input_tokens=int(row["cached_input_tokens"]),
+            output_tokens=int(row["output_tokens"]),
+            reasoning_output_tokens=int(row["reasoning_output_tokens"]),
+            total_tokens=int(row["total_tokens"]),
+        ),
+        session_id=row["session_id"],
+        file_path=Path(row["file_path"]),
+        model=row["model"],
+        turn_id=row["turn_id"] or "",
+        effort=row["effort"] or "",
+        collaboration_mode=row["collaboration_mode"] or "",
+        project_key=row["project_key"],
+        project_label=row["project_label"],
+        project_aliases=tuple(json.loads(row["project_aliases_json"] or "[]")),
+        cwd=row["cwd"] or "",
+        git_repository_url=row["git_repository_url"] or "",
+        git_branch=row["git_branch"] or "",
+        parent_thread_id=row["parent_thread_id"] or "",
+    )
+
+
+def _refresh_or_load_transitions(
+    connection: sqlite3.Connection,
+    *,
+    session_dirs: list[Path],
+    session_files: list[Path],
+    records: list[UsageRecord],
+    stats: CacheStats,
+    auto_transitions: bool,
+) -> list[ProjectTransition]:
+    if not auto_transitions:
+        return []
+    if stats.rebuilt or stats.files_parsed or stats.files_removed:
+        observations = collect_repo_path_observations(session_dirs, session_files)
+        transitions = infer_project_transitions(records, observations)
+        connection.execute("delete from project_transitions")
+        for transition in transitions:
+            connection.execute(
+                """
+                insert into project_transitions (
+                    source_key, source_label, target_key, target_label,
+                    effective_from, confidence, evidence_json, thread_ids_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transition.source_key,
+                    transition.source_label,
+                    transition.target_key,
+                    transition.target_label,
+                    transition.effective_from.isoformat(),
+                    transition.confidence,
+                    json.dumps(list(transition.evidence)),
+                    json.dumps(list(transition.thread_ids)),
+                ),
+            )
+        connection.commit()
+        return transitions
+    return _load_transitions(connection)
+
+
+def _load_transitions(connection: sqlite3.Connection) -> list[ProjectTransition]:
+    transitions: list[ProjectTransition] = []
+    for row in connection.execute("select * from project_transitions order by effective_from, source_key, target_key"):
+        timestamp = parse_timestamp(row["effective_from"])
+        if timestamp is None:
+            continue
+        transitions.append(
+            ProjectTransition(
+                source_key=row["source_key"],
+                source_label=row["source_label"],
+                target_key=row["target_key"],
+                target_label=row["target_label"],
+                effective_from=timestamp,
+                confidence=int(row["confidence"]),
+                evidence=tuple(json.loads(row["evidence_json"] or "[]")),
+                thread_ids=tuple(json.loads(row["thread_ids_json"] or "[]")),
+            )
+        )
+    return transitions
+
+
+def _load_file_summaries(
+    connection: sqlite3.Connection,
+    session_files: list[Path],
+    session_dirs: list[Path],
+) -> dict[Path, CachedFileSummary]:
+    selected = {str(path) for path in session_files}
+    summaries: dict[Path, CachedFileSummary] = {}
+    for row in connection.execute("select * from session_metadata"):
+        if row["file_path"] not in selected:
+            continue
+        path = Path(row["file_path"])
+        summaries[path] = CachedFileSummary(
+            file_path=path,
+            session_dir=Path(row["session_dir"]) if row["session_dir"] else owning_session_dir(path, session_dirs),
+            session_id=row["session_id"],
+            cwd=row["cwd"] or "",
+            project_key=row["project_key"] or "",
+            project_label=row["project_label"] or "",
+            project_aliases=tuple(json.loads(row["project_aliases_json"] or "[]")),
+            git_repository_url=row["git_repository_url"] or "",
+            git_branch=row["git_branch"] or "",
+            memory_mode=row["memory_mode"] or "",
+            has_base_instructions=bool(row["has_base_instructions"]),
+            session_bytes=int(row["session_bytes"]),
+            estimated_sync_bytes=int(row["estimated_sync_bytes"]),
+        )
+    return summaries
+
+
+def _load_file_errors(connection: sqlite3.Connection) -> dict[str, str]:
+    return {
+        str(row["path"]): str(row["error"])
+        for row in connection.execute("select path, error from files where error is not null and error != ''")
+    }

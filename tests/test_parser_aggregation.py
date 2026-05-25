@@ -272,6 +272,43 @@ def test_parse_session_files_uses_parent_project_for_subagent_without_git_metada
     ]
 
 
+def test_finalize_session_records_preserves_parent_identity_inheritance(tmp_path: Path) -> None:
+    parent = _write_session(
+        tmp_path / "parent",
+        [
+            _session_meta(
+                cwd="/repo/parent",
+                repo="https://github.com/example/parent.git",
+                session_id="parent-thread",
+            ),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=100)),
+        ],
+    )
+    child = _write_session(
+        tmp_path / "child",
+        [
+            _session_meta(
+                cwd="/repo/child-without-git",
+                session_id="child-thread",
+                parent_thread_id="parent-thread",
+            ),
+            _turn_context(model="gpt-5.5"),
+            _token("2026-04-29T10:00:00Z", _usage(total=50)),
+        ],
+    )
+
+    from codex_usage.parser import finalize_session_records, parse_session_file
+
+    finalized = finalize_session_records([parse_session_file(parent), parse_session_file(child)])
+
+    child_record = next(record for record in finalized if record.session_id == "child-thread")
+    assert child_record.project_key == "https://github.com/example/parent"
+    assert child_record.project_label == "parent"
+    assert child_record.git_repository_url == "https://github.com/example/parent.git"
+    assert "/repo/child-without-git" in child_record.project_aliases
+
+
 def test_project_grouping_prefers_json_git_url_over_cwd_git_config(tmp_path: Path) -> None:
     repo = tmp_path / "demo"
     git_dir = repo / ".git"

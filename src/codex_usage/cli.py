@@ -33,8 +33,10 @@ from codex_usage.reporting import (
     write_csv,
 )
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
+from codex_usage.session_cache import CachedSessionData, load_cached_session_data, uncached_session_data
 from codex_usage.settings import get_settings
-from codex_usage.sync import export_threads, import_threads, list_threads, sync_status
+from codex_usage.sync import export_threads, import_threads, sync_status
+from codex_usage.threads import list_threads_from_cached_data
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -169,11 +171,11 @@ def handle_threads(args: argparse.Namespace) -> int:
     settings = get_settings()
     session_dirs = find_session_dirs()
     project_keys = _normalize_project_keys(args.project_key)
-    threads = list_threads(
+    data = _load_session_data(
         session_dirs,
-        project_keys=project_keys,
         auto_transitions=_auto_project_transitions_enabled(args, settings),
     )
+    threads = list_threads_from_cached_data(data, project_keys=project_keys)
     payload = {"threads": [thread.to_dict() for thread in threads], "project_keys": project_keys}
     if args.json:
         print_json(payload)
@@ -185,22 +187,20 @@ def handle_threads(args: argparse.Namespace) -> int:
 
 def handle_transitions_suggest(args: argparse.Namespace) -> int:
     session_dirs = _existing_session_dirs()
-    files = collect_jsonl_files(session_dirs)
-    records = parse_session_files(files)
-    observations = collect_repo_path_observations(session_dirs, files)
-    transitions = infer_project_transitions(records, observations)
+    data = _load_session_data(session_dirs, auto_transitions=True)
+    observations = collect_repo_path_observations(session_dirs, data.files)
 
     if args.json:
         print_json(
             {
                 "sessions_dirs": [str(path) for path in session_dirs],
-                "files_scanned": len(files),
+                "files_scanned": len(data.files),
                 "observations_count": len(observations),
-                "project_transitions": _transition_dicts(transitions),
+                "project_transitions": _transition_dicts(data.project_transitions),
             }
         )
     else:
-        for transition in transitions:
+        for transition in data.project_transitions:
             print(
                 f"{transition.source_label} -> {transition.target_label} @ "
                 f"{transition.effective_from.isoformat()} {transition.confidence}"
@@ -272,25 +272,40 @@ def _load_context(args: argparse.Namespace) -> _Context:
     settings = get_settings()
     timezone = resolve_timezone(args.timezone or settings.timezone)
     session_dirs = find_session_dirs()
-    files = collect_jsonl_files(session_dirs)
-    records = parse_session_files(files)
-    project_transitions: list[ProjectTransition] = []
-    if _auto_project_transitions_enabled(args, settings):
-        observations = collect_repo_path_observations(session_dirs, files)
-        project_transitions = infer_project_transitions(records, observations)
-        records = apply_project_transitions(records, project_transitions)
+    auto_transitions = _auto_project_transitions_enabled(args, settings)
+    data = _load_session_data(session_dirs, auto_transitions=auto_transitions)
     project_keys = _normalize_project_keys(args.project_key)
-    range_records = filter_records_by_range(records, args.range_name, timezone)
+    range_records = filter_records_by_range(data.records, args.range_name, timezone)
     filtered_records = filter_records_by_project_keys(range_records, project_keys)
-    filtered_transitions = _filter_project_transitions(project_transitions, filtered_records)
+    filtered_transitions = _filter_project_transitions(data.project_transitions, filtered_records)
     return _Context(
         session_dirs=session_dirs,
-        files=files,
+        files=data.files,
         records=filtered_records,
         timezone=timezone,
         project_keys=project_keys,
         project_transitions=filtered_transitions,
     )
+
+
+def _load_session_data(session_dirs: list[Path], *, auto_transitions: bool) -> CachedSessionData:
+    try:
+        return load_cached_session_data(session_dirs, auto_transitions=auto_transitions)
+    except Exception as exc:
+        print(f"codex-usage: cache unavailable, falling back to direct parse: {exc}", file=sys.stderr)
+        files = collect_jsonl_files(session_dirs)
+        records = parse_session_files(files)
+        project_transitions: list[ProjectTransition] = []
+        if auto_transitions:
+            observations = collect_repo_path_observations(session_dirs, files)
+            project_transitions = infer_project_transitions(records, observations)
+            records = apply_project_transitions(records, project_transitions)
+        return uncached_session_data(
+            session_dirs=session_dirs,
+            files=files,
+            records=records,
+            project_transitions=project_transitions,
+        )
 
 
 def _add_common_options(parser: argparse.ArgumentParser) -> None:

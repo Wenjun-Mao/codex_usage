@@ -97,6 +97,27 @@ def test_list_threads_normalizes_raw_path_project_filter_for_metadata_fallback(t
     assert threads[0].session_path == session_path
 
 
+def test_list_threads_can_use_cached_session_data(tmp_path: Path) -> None:
+    from codex_usage.session_cache import load_cached_session_data
+    from codex_usage.threads import list_threads_from_cached_data
+
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    project = tmp_path / "repo"
+    _write_git_config(project, "https://github.com/example/demo.git")
+    session_path = _write_session(sessions, "thread-1", project, total=120)
+    _write_index(codex_home, {"id": "thread-1", "thread_name": "Demo thread", "updated_at": "2026-04-29T10:05:00Z"})
+    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache", auto_transitions=True)
+
+    threads = list_threads_from_cached_data(data, project_keys=["https://github.com/example/demo"])
+
+    assert [thread.thread_id for thread in threads] == ["thread-1"]
+    assert threads[0].title == "Demo thread"
+    assert threads[0].project_key == "https://github.com/example/demo"
+    assert threads[0].session_path == session_path
+    assert threads[0].estimated_sync_bytes >= threads[0].session_bytes
+
+
 def test_export_and_import_selected_thread_with_index_backup_and_conflict(tmp_path: Path) -> None:
     source_home = tmp_path / "source"
     target_home = tmp_path / "target"
@@ -236,7 +257,7 @@ def test_import_thread_does_not_replace_identical_existing_session(tmp_path: Pat
     def fail_if_session_copy_is_attempted(source: Path, target: Path) -> None:
         raise AssertionError(f"identical session should not be replaced: {source} -> {target}")
 
-    monkeypatch.setattr(sync_module, "_atomic_copy", fail_if_session_copy_is_attempted)
+    monkeypatch.setattr(sync_module, "atomic_copy", fail_if_session_copy_is_attempted)
 
     import_result = import_threads(
         session_dirs=[target_sessions],

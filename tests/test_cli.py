@@ -187,6 +187,39 @@ def test_cli_project_key_filters_summary_and_report(tmp_path: Path) -> None:
     assert "No Codex usage was found for this report range." in report_html
 
 
+def test_cli_uses_internal_cache_dir_env_var(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    cache_dir = tmp_path / "extension-cache"
+    day = sessions / "2026" / "04" / "29"
+    day.mkdir(parents=True)
+    _write_session(day / "thread-1.jsonl", "thread-1", "/repo/first", 100)
+
+    result = _run_cli(
+        ["summary", "--range", "all", "--by", "project", "--json"],
+        env={"CODEX_HOME": str(codex_home), "CODEX_USAGE_CACHE_DIR": str(cache_dir)},
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["total"]["usage"]["total_tokens"] == 100
+    assert (cache_dir / "usage-cache.sqlite3").is_file()
+
+
+def test_cli_cache_reuses_records_after_first_scan(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    cache_dir = tmp_path / "cache"
+    day = sessions / "2026" / "04" / "29"
+    day.mkdir(parents=True)
+    _write_session(day / "thread-1.jsonl", "thread-1", "/repo/first", 100)
+    env = {"CODEX_HOME": str(codex_home), "CODEX_USAGE_CACHE_DIR": str(cache_dir)}
+
+    first = _run_cli(["summary", "--range", "all", "--by", "project", "--json"], env=env)
+    second = _run_cli(["summary", "--range", "all", "--by", "project", "--json"], env=env)
+
+    assert json.loads(first.stdout)["total"]["usage"] == json.loads(second.stdout)["total"]["usage"]
+
+
 def test_cli_report_rejects_unknown_theme(tmp_path: Path) -> None:
     result = subprocess.run(
         [
@@ -246,6 +279,7 @@ def test_cli_threads_and_sync_commands(tmp_path: Path) -> None:
     threads_payload = json.loads(threads_result.stdout)
     assert [thread["thread_id"] for thread in threads_payload["threads"]] == ["thread-1"]
     assert threads_payload["threads"][0]["title"] == "First thread"
+    assert "estimated_sync_bytes" in threads_payload["threads"][0]
 
     export_result = _run_cli(
         [

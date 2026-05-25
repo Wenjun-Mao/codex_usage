@@ -6,6 +6,7 @@ import { spawn } from "child_process";
 import * as vscode from "vscode";
 import {
   ExtensionSettings,
+  buildCodexUsageEnv,
   buildReportArgs,
   buildSummaryArgs,
   buildSyncExportArgs,
@@ -14,6 +15,7 @@ import {
   buildThreadsArgs,
   buildTransitionSuggestArgs,
   bundledExecutablePath,
+  cacheDbPath,
   candidateSessionDirs,
   extensionVersionLabel,
   injectWebviewControls,
@@ -40,6 +42,7 @@ import {
   renderErrorHtml,
   renderLoadingHtml,
   selectSessionDirsForWatcher,
+  shouldRefreshAfterSyncSetupStep,
   SYNC_AUTO_WARNING_COOLDOWN_MS,
   SYNC_FILE_CHANGE_DEBOUNCE_MS,
   SYNC_FOCUS_COOLDOWN_MS,
@@ -195,22 +198,20 @@ async function openOrRefreshDashboard(context: vscode.ExtensionContext): Promise
     panel.reveal(vscode.ViewColumn.One);
   }
 
-  panel.webview.html = renderWebviewHtml(
-    renderLoadingHtml(),
-    panel.webview,
-    readSettings(context),
-    extensionVersionLabel(context.extension.packageJSON),
-  );
   await refreshDashboard(context, panel);
 }
 
 async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: vscode.WebviewPanel): Promise<void> {
   const settings = readSettings(context);
   const reportPath = path.join(context.globalStorageUri.fsPath, "report.html");
+  const loadingKind = await dashboardLoadingKind(context);
+  setDashboardLoading(context, targetPanel, loadingKind);
+  setUsageStatus(context, loadingKind === "initializing" ? "Codex Usage: Initializing" : "Codex Usage: Loading");
 
   try {
     const executablePath = await resolveBundledExecutable(context);
     await fs.mkdir(context.globalStorageUri.fsPath, { recursive: true });
+    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     const args = buildReportArgs({
       range: settings.range,
       outputPath: reportPath,
@@ -218,7 +219,7 @@ async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: v
       theme: settings.theme,
       projectTransitions: settings.projectTransitions,
     });
-    await runCodexUsage(executablePath, args);
+    await runCodexUsage(executablePath, args, env);
     const reportHtml = await fs.readFile(reportPath, "utf8");
     targetPanel.webview.html = renderWebviewHtml(
       reportHtml,
@@ -230,13 +231,60 @@ async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: v
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
     targetPanel.webview.html = renderWebviewHtml(
-      renderErrorHtml(message),
+      renderErrorHtml(`${message}\n\nCheck the Codex Usage output channel for details.`),
       targetPanel.webview,
       settings,
       extensionVersionLabel(context.extension.packageJSON),
     );
     void vscode.window.showErrorMessage(`Codex Usage failed: ${message}`);
+  } finally {
+    updateStatusItem(readSettings(context));
   }
+}
+
+type UsageLoadingKind = "initializing" | "refreshing" | "projects" | "syncProjects" | "syncThreads";
+
+function usageLoadingMessage(kind: UsageLoadingKind): string {
+  if (kind === "initializing") {
+    return "Initializing Codex usage cache. This can take a few seconds the first time.";
+  }
+  if (kind === "projects") {
+    return "Loading Codex projects...";
+  }
+  if (kind === "syncProjects") {
+    return "Loading sync projects...";
+  }
+  if (kind === "syncThreads") {
+    return "Loading conversations...";
+  }
+  return "Refreshing Codex usage...";
+}
+
+async function dashboardLoadingKind(context: vscode.ExtensionContext): Promise<UsageLoadingKind> {
+  try {
+    await fs.access(cacheDbPath(context.globalStorageUri.fsPath));
+    return "refreshing";
+  } catch {
+    return "initializing";
+  }
+}
+
+function setDashboardLoading(
+  context: vscode.ExtensionContext,
+  targetPanel: vscode.WebviewPanel,
+  kind: UsageLoadingKind,
+): void {
+  targetPanel.webview.html = renderWebviewHtml(
+    renderLoadingHtml(usageLoadingMessage(kind)),
+    targetPanel.webview,
+    readSettings(context),
+    extensionVersionLabel(context.extension.packageJSON),
+  );
+}
+
+function setUsageStatus(context: vscode.ExtensionContext, label: string): void {
+  statusItem.text = label;
+  statusItem.tooltip = label;
 }
 
 async function selectRangeSetting(context: vscode.ExtensionContext): Promise<void> {
@@ -275,8 +323,10 @@ async function selectThemeSetting(context: vscode.ExtensionContext): Promise<voi
 
 async function selectProjectSettings(context: vscode.ExtensionContext): Promise<void> {
   const settings = readSettings(context);
+  setUsageStatus(context, "Codex Usage: Loading Projects");
   try {
     const executablePath = await resolveBundledExecutable(context);
+    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
@@ -289,6 +339,7 @@ async function selectProjectSettings(context: vscode.ExtensionContext): Promise<
             range: settings.range,
             projectTransitions: settings.projectTransitions,
           }),
+          env,
         ),
     );
     const choices = parseProjectChoices(result.stdout, settings.projectKeys);
@@ -318,14 +369,21 @@ async function selectProjectSettings(context: vscode.ExtensionContext): Promise<
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
     void vscode.window.showErrorMessage(`Codex Usage failed to load projects: ${message}`);
+  } finally {
+    updateStatusItem(readSettings(context));
   }
 }
 
-async function selectSyncProjectSettings(context: vscode.ExtensionContext): Promise<boolean> {
+async function selectSyncProjectSettings(
+  context: vscode.ExtensionContext,
+  options: { refreshDashboard?: boolean } = {},
+): Promise<boolean> {
   const settings = readSettings(context);
   const selectedProjectKeys = settings.sync.projectKeys.length > 0 ? settings.sync.projectKeys : settings.projectKeys;
+  setUsageStatus(context, "Codex Usage: Loading Sync Projects");
   try {
     const executablePath = await resolveBundledExecutable(context);
+    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
@@ -337,6 +395,7 @@ async function selectSyncProjectSettings(context: vscode.ExtensionContext): Prom
           buildThreadsArgs({
             projectTransitions: settings.projectTransitions,
           }),
+          env,
         ),
     );
     const choices = parseSyncProjectChoices(result.stdout, selectedProjectKeys);
@@ -356,7 +415,7 @@ async function selectSyncProjectSettings(context: vscode.ExtensionContext): Prom
     const projectKeys = normalizeProjectKeys(selected.map((item) => item.projectKey));
     await context.globalState.update(SYNC_PROJECT_KEYS_STATE_KEY, projectKeys);
     updateStatusItem(readSettings(context));
-    if (panel) {
+    if (panel && shouldRefreshAfterSyncSetupStep(options)) {
       await refreshDashboard(context, panel);
     }
     return true;
@@ -365,14 +424,21 @@ async function selectSyncProjectSettings(context: vscode.ExtensionContext): Prom
     output.appendLine(`[error] ${message}`);
     void vscode.window.showErrorMessage(`Codex Usage failed to load sync projects: ${message}`);
     return false;
+  } finally {
+    updateStatusItem(readSettings(context));
   }
 }
 
-async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promise<boolean> {
+async function selectSyncThreadSettings(
+  context: vscode.ExtensionContext,
+  options: { refreshDashboard?: boolean } = {},
+): Promise<boolean> {
   const settings = readSettings(context);
   const projectKeys = settings.sync.projectKeys.length > 0 ? settings.sync.projectKeys : settings.projectKeys;
+  setUsageStatus(context, "Codex Usage: Loading Conversations");
   try {
     const executablePath = await resolveBundledExecutable(context);
+    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
@@ -385,6 +451,7 @@ async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promi
             projectKeys,
             projectTransitions: settings.projectTransitions,
           }),
+          env,
         ),
     );
     const choices = parseThreadChoices(result.stdout, settings.sync.threadIds);
@@ -409,7 +476,7 @@ async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promi
     }
     updateStatusItem(readSettings(context));
     configureSyncWatcher(context);
-    if (panel) {
+    if (panel && shouldRefreshAfterSyncSetupStep(options)) {
       await refreshDashboard(context, panel);
     }
     return true;
@@ -418,6 +485,8 @@ async function selectSyncThreadSettings(context: vscode.ExtensionContext): Promi
     output.appendLine(`[error] ${message}`);
     void vscode.window.showErrorMessage(`Codex Usage failed to load sync conversations: ${message}`);
     return false;
+  } finally {
+    updateStatusItem(readSettings(context));
   }
 }
 
@@ -452,7 +521,7 @@ async function configureSync(context: vscode.ExtensionContext): Promise<void> {
 
   await vscode.workspace.getConfiguration("codexUsage").update("sync.enabled", true, vscode.ConfigurationTarget.Global);
   output.appendLine(`[sync] Sync folder configured: ${syncDir}`);
-  const selectedProjects = await selectSyncProjectSettings(context);
+  const selectedProjects = await selectSyncProjectSettings(context, { refreshDashboard: false });
   if (!selectedProjects && readSettings(context).sync.projectKeys.length === 0) {
     updateStatusItem(readSettings(context));
     configureSyncWatcher(context);
@@ -461,7 +530,7 @@ async function configureSync(context: vscode.ExtensionContext): Promise<void> {
     }
     return;
   }
-  await selectSyncThreadSettings(context);
+  await selectSyncThreadSettings(context, { refreshDashboard: false });
   updateStatusItem(readSettings(context));
   configureSyncWatcher(context);
   if (panel) {
@@ -489,6 +558,7 @@ async function reviewProjectTransitions(context: vscode.ExtensionContext): Promi
   const settings = readSettings(context);
   try {
     const executablePath = await resolveBundledExecutable(context);
+    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
@@ -498,6 +568,7 @@ async function reviewProjectTransitions(context: vscode.ExtensionContext): Promi
         runCodexUsage(
           executablePath,
           buildTransitionSuggestArgs(),
+          env,
         ),
     );
     const choices = parseTransitionChoices(result.stdout);
@@ -595,6 +666,7 @@ async function runSyncNow(context: vscode.ExtensionContext, reason: SyncReason):
   const settings = readSettings(context);
   try {
     const executablePath = await resolveBundledExecutable(context);
+    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
@@ -606,15 +678,15 @@ async function runSyncNow(context: vscode.ExtensionContext, reason: SyncReason):
           throw new Error("No Codex conversations are selected for sync.");
         }
         setSyncStatus(context, "pulling");
-        const status = await runCodexUsage(executablePath, buildSyncStatusArgs(options));
+        const status = await runCodexUsage(executablePath, buildSyncStatusArgs(options), env);
         const summary = parseSyncStatusSummary(status.stdout);
         if (summary.conflicts > 0) {
           setSyncStatus(context, "conflict", `${summary.conflicts} conflict${summary.conflicts === 1 ? "" : "s"}`);
           throw new Error(`Codex sync has ${summary.conflicts} conflict${summary.conflicts === 1 ? "" : "s"}. Run Codex Usage: Sync Status.`);
         }
-        await runCodexUsage(executablePath, buildSyncImportArgs(options));
+        await runCodexUsage(executablePath, buildSyncImportArgs(options), env);
         setSyncStatus(context, "pushing");
-        await runCodexUsage(executablePath, buildSyncExportArgs(options));
+        await runCodexUsage(executablePath, buildSyncExportArgs(options), env);
       },
     );
     if (reason === "manual") {
@@ -655,12 +727,13 @@ async function showSyncStatus(context: vscode.ExtensionContext): Promise<void> {
   }
   try {
     const executablePath = await resolveBundledExecutable(context);
+    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     const options = await resolvedSyncOptions(context, settings);
     if (options.threadIds.length === 0) {
       await offerConfigureSync(context, "No Codex conversations are selected for sync.");
       return;
     }
-    const result = await runCodexUsage(executablePath, buildSyncStatusArgs(options));
+    const result = await runCodexUsage(executablePath, buildSyncStatusArgs(options), env);
     const summary = parseSyncStatusSummary(result.stdout);
     output.appendLine(`[sync] ${summary.message}`);
     void vscode.window.showInformationMessage(`Codex sync status: ${summary.message}`);
@@ -752,13 +825,17 @@ async function resolveBundledExecutable(context: vscode.ExtensionContext): Promi
   }
 }
 
-function runCodexUsage(executablePath: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+function runCodexUsage(
+  executablePath: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ stdout: string; stderr: string }> {
   output.appendLine(`> ${executablePath} ${args.join(" ")}`);
   return new Promise((resolve, reject) => {
     const child = spawn(executablePath, args, {
       shell: false,
       windowsHide: true,
-      env: { ...process.env },
+      env,
     });
 
     let stdout = "";
@@ -909,12 +986,14 @@ async function resolveSyncThreadIds(context: vscode.ExtensionContext, settings: 
     return [];
   }
   const executablePath = await resolveBundledExecutable(context);
+  const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
   const result = await runCodexUsage(
     executablePath,
     buildThreadsArgs({
       projectKeys: settings.sync.projectKeys,
       projectTransitions: settings.projectTransitions,
     }),
+    env,
   );
   return parseThreadChoices(result.stdout, []).map((choice) => choice.threadId);
 }

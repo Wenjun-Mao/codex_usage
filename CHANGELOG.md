@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.17 - Persistent Usage Cache
+
+- Added a persistent local SQLite usage cache for faster dashboard refreshes, project pickers, and sync setup.
+- Added clearer first-run and refresh loading messages in the dashboard and status bar.
+- Reduced sync setup churn by refreshing the dashboard once after folder/project/conversation selection finishes.
+
 ## 0.1.16 - Three-Way Sync State
 
 - Added local sync-state tracking so Codex conversation sync can distinguish local-only, remote-only, and true divergent changes.

@@ -12,17 +12,19 @@ from codex_usage.project_identity import resolve_project_identity
 
 
 def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
-    records_by_file: list[list[UsageRecord]] = []
+    return finalize_session_records([parse_session_file(path) for path in paths])
+
+
+def finalize_session_records(records_by_file: Iterable[list[UsageRecord]]) -> list[UsageRecord]:
+    grouped = list(records_by_file)
     identity_by_session: dict[str, UsageRecord] = {}
-    for path in paths:
-        file_records = parse_session_file(path)
-        records_by_file.append(file_records)
+    for file_records in grouped:
         for record in file_records:
             if record.git_repository_url:
                 identity_by_session[record.session_id] = record
 
     records: list[UsageRecord] = []
-    for file_records in records_by_file:
+    for file_records in grouped:
         for record in file_records:
             parent_identity = identity_by_session.get(record.parent_thread_id)
             if parent_identity is not None and not record.git_repository_url:
