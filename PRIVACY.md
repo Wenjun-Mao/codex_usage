@@ -8,8 +8,8 @@ Codex Usage Dashboard is designed as a local-first tool.
 - Read-only local Codex `state_5.sqlite` thread evidence for automatic project transition detection, limited to thread id/timestamps and the `threads` field `cwd` when present.
 - Local Codex `session_index.jsonl` entries when experimental selected-thread sync is used.
 - Read-only local Codex SQLite memory diagnostics when sync status is requested.
-- User settings for dashboard range, theme, transition detection, and experimental sync configuration.
-- Extension UI state for selected dashboard projects.
+- User settings for dashboard range, theme, transition detection, and experimental sync behavior toggles.
+- Extension UI state for selected dashboard projects, the selected sync folder, and selected sync thread ids.
 
 ## What It Writes
 
@@ -25,7 +25,7 @@ Codex Usage Dashboard is designed as a local-first tool.
 - The extension does not include telemetry.
 - The extension does not fetch live pricing data.
 - Automatic project transition detection does not upload data or make network calls.
-- Experimental sync writes only to the local folder you configure. Any cloud transfer is handled by your own sync tool, not by this extension.
+- Experimental sync writes only to the local folder you choose through the extension. Any cloud transfer is handled by your own sync tool, not by this extension.
 - Experimental sync does not sync Codex SQLite databases, including `state_5.sqlite`.
 - API-equivalent USD and Codex credit estimates use checked-in effective-dated pricing tables.
 

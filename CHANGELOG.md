@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.11 - Sync Setup UX
+
+- Added `Codex Usage: Configure Sync` with a VS Code folder picker for the sync folder and the existing thread picker for selected threads.
+- Removed raw `sync.dir` and `sync.threadIds` settings from the Settings UI.
+- Moved sync folder and thread selections into local VS Code extension state, with migration from previous beta settings.
+- Added a dashboard sync control showing whether sync is off, missing a folder, missing threads, or configured.
+
 ## 0.1.10 - Version Label
 
 - Added the installed extension version to the dashboard action strip so beta installs are easier to confirm.

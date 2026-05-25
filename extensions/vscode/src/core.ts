@@ -9,6 +9,7 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.selectProjects",
   "codexUsage.selectTheme",
   "codexUsage.reviewProjectTransitions",
+  "codexUsage.configureSync",
   "codexUsage.refreshDashboard",
   "codexUsage.openSettings",
 ] as const;
@@ -110,10 +111,13 @@ export type WebviewControlState = {
   range: ReportRange;
   projectKeys: string[];
   theme: ReportTheme;
+  sync?: Pick<SyncSettings, "enabled" | "dir" | "threadIds">;
   versionLabel?: string;
 };
 
 export const PROJECT_KEYS_STATE_KEY = "projectKeys";
+export const SYNC_DIR_STATE_KEY = "syncDir";
+export const SYNC_THREAD_IDS_STATE_KEY = "syncThreadIds";
 
 export type GlobalStateReader = {
   get<T>(key: string, defaultValue: T): T;
@@ -163,6 +167,15 @@ export function normalizeThreadIds(values: unknown): string[] {
 
 export function readProjectKeysState(state: GlobalStateReader): string[] {
   return normalizeProjectKeys(state.get(PROJECT_KEYS_STATE_KEY, []));
+}
+
+export function readSyncDirState(state?: GlobalStateReader): string {
+  const value = state?.get(SYNC_DIR_STATE_KEY, "");
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function readSyncThreadIdsState(state?: GlobalStateReader): string[] {
+  return normalizeThreadIds(state?.get(SYNC_THREAD_IDS_STATE_KEY, []));
 }
 
 export function normalizeSyncSettings(value: unknown): SyncSettings {
@@ -608,12 +621,30 @@ function renderWebviewControls(state: WebviewControlState): string {
     `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` +
     `<a href="command:codexUsage.selectProjects">Projects: ${escapeHtml(projectFilterLabel(state.projectKeys))}</a>` +
     `<a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(themeLabel(state.theme))}</a>` +
+    `<a href="command:codexUsage.configureSync">${escapeHtml(syncControlLabel(state.sync))}</a>` +
     '<a href="command:codexUsage.reviewProjectTransitions">Transitions</a>' +
     '<a href="command:codexUsage.refreshDashboard">Refresh</a>' +
     '<a href="command:codexUsage.openSettings">Settings</a>' +
     version +
     "</nav>"
   );
+}
+
+function syncControlLabel(sync: WebviewControlState["sync"]): string {
+  const normalized = normalizeSyncSettings(sync ?? {});
+  if (!normalized.enabled) {
+    return "Sync: Off";
+  }
+  if (!normalized.dir) {
+    return "Sync: Select Folder";
+  }
+  if (normalized.threadIds.length === 0) {
+    return "Sync: Select Threads";
+  }
+  if (normalized.threadIds.length === 1) {
+    return "Sync: 1 thread";
+  }
+  return `Sync: ${normalized.threadIds.length} threads`;
 }
 
 function themeLabel(theme: ReportTheme): string {

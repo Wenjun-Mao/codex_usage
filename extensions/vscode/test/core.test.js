@@ -21,6 +21,8 @@ const {
   normalizeRange,
   parseProjectChoices,
   readProjectKeysState,
+  readSyncDirState,
+  readSyncThreadIdsState,
   parseSyncStatusSummary,
   parseThreadChoices,
   parseTransitionChoices,
@@ -205,6 +207,34 @@ test("project keys are normalized from extension global state", () => {
   assert.deepEqual(readProjectKeysState(state), ["repo-a", "repo-b"]);
 });
 
+test("sync folder and thread ids are normalized from extension global state", () => {
+  const state = {
+    get(key, fallback) {
+      if (key === "syncDir") {
+        return " D:/CodexSync ";
+      }
+      if (key === "syncThreadIds") {
+        return [" t1 ", "", "t1", "t2"];
+      }
+      return fallback;
+    },
+  };
+
+  assert.equal(readSyncDirState(state), "D:/CodexSync");
+  assert.deepEqual(readSyncThreadIdsState(state), ["t1", "t2"]);
+});
+
+test("empty sync global state uses safe defaults", () => {
+  const state = {
+    get(_key, fallback) {
+      return fallback;
+    },
+  };
+
+  assert.equal(readSyncDirState(state), "");
+  assert.deepEqual(readSyncThreadIdsState(state), []);
+});
+
 test("session directory candidates are discovered without a user setting", () => {
   const dirs = candidateSessionDirs({
     codexHome: "C:/Users/example/.codex",
@@ -354,6 +384,7 @@ test("injectWebviewControls adds command links without scripts or external URLs"
     range: "7d",
     projectKeys: ["repo-a", "repo-b"],
     theme: "night",
+    sync: { enabled: true, dir: "D:/CodexSync", threadIds: ["t1", "t2"] },
     versionLabel: "v0.1.9",
   });
 
@@ -361,12 +392,46 @@ test("injectWebviewControls adds command links without scripts or external URLs"
   assert.match(out, /codex-usage-version/);
   assert.match(out, /command:codexUsage.selectRange/);
   assert.match(out, /command:codexUsage.selectTheme/);
+  assert.match(out, /command:codexUsage.configureSync/);
   assert.match(out, /command:codexUsage.reviewProjectTransitions/);
   assert.match(out, /Projects: 2 selected/);
   assert.match(out, /Theme: Night/);
+  assert.match(out, /Sync: 2 threads/);
   assert.match(out, />v0\.1\.9<\/span>/);
   assert.doesNotMatch(out, /<script/i);
   assert.doesNotMatch(out, /https:/);
+});
+
+test("injectWebviewControls labels unconfigured sync states", () => {
+  const html = "<!doctype html><html><head><title>Report</title></head><body><main><h1>Report</h1></main></body></html>";
+
+  assert.match(
+    injectWebviewControls(html, {
+      range: "7d",
+      projectKeys: [],
+      theme: "auto",
+      sync: { enabled: false, dir: "", threadIds: [] },
+    }),
+    /Sync: Off/,
+  );
+  assert.match(
+    injectWebviewControls(html, {
+      range: "7d",
+      projectKeys: [],
+      theme: "auto",
+      sync: { enabled: true, dir: "", threadIds: [] },
+    }),
+    /Sync: Select Folder/,
+  );
+  assert.match(
+    injectWebviewControls(html, {
+      range: "7d",
+      projectKeys: [],
+      theme: "auto",
+      sync: { enabled: true, dir: "D:\/CodexSync", threadIds: [] },
+    }),
+    /Sync: Select Threads/,
+  );
 });
 
 test("extensionVersionLabel reads package metadata", () => {
@@ -381,6 +446,7 @@ test("webview command allowlist includes dashboard commands", () => {
     "codexUsage.selectProjects",
     "codexUsage.selectTheme",
     "codexUsage.reviewProjectTransitions",
+    "codexUsage.configureSync",
     "codexUsage.refreshDashboard",
     "codexUsage.openSettings",
   ]);
@@ -393,6 +459,11 @@ test("package metadata no longer contributes removed manual settings", () => {
   assert.equal(properties["codexUsage.subscriptionUsd"], undefined);
   assert.equal(properties["codexUsage.projectKeys"], undefined);
   assert.equal(properties["codexUsage.projectAliases"], undefined);
+  assert.equal(properties["codexUsage.sync.dir"], undefined);
+  assert.equal(properties["codexUsage.sync.threadIds"], undefined);
+  assert.ok(properties["codexUsage.sync.enabled"]);
+  assert.ok(properties["codexUsage.sync.autoPull"]);
+  assert.ok(properties["codexUsage.sync.autoPush"]);
 });
 
 test("loading and error HTML are script-free and themeable", () => {
