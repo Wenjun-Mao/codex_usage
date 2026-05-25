@@ -96,6 +96,18 @@ After any sync completes:
 
 ## Notification Rules
 
+The status bar is the primary feedback surface for background sync. It should show ambient state without interrupting the user:
+
+- `Sync: Off`
+- `Sync: Idle`
+- `Sync: Waiting`
+- `Sync: Pulling`
+- `Sync: Pushing`
+- `Sync: Conflict`
+- `Sync: Issue`
+
+The status bar tooltip should carry richer detail: selected projects or conversation count, auto pull/push state, last sync time, next retry time, and the last error summary when present.
+
 Manual:
 
 - Success: `Codex sync complete.`
@@ -109,6 +121,8 @@ Auto:
 - Access denied, lock, transient CLI failure, or generic nonzero exit: output channel only, with backoff.
 
 The output channel should include the reason, action, and next retry timing when backoff applies.
+
+Normal auto sync should not show success popups. While auto sync is running, status bar state is enough. If it fails transiently, status bar should move to `Sync: Issue` and the tooltip/output channel should explain the last failure.
 
 ## Settings
 
@@ -141,6 +155,7 @@ Manual smoke should verify:
 - Focus does not trigger repeated syncs within the cooldown.
 - Manual Sync Now still runs immediately.
 - Auto sync failures are logged, not repeatedly shown as popups.
+- Auto sync running, waiting, issue, and conflict states are visible in the status bar and tooltip.
 
 ## Non-Goals
 
