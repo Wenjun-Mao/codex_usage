@@ -14,6 +14,13 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.openSettings",
 ] as const;
 
+export const SYNC_FILE_CHANGE_DEBOUNCE_MS = 30_000;
+export const SYNC_FOCUS_COOLDOWN_MS = 5 * 60_000;
+export const SYNC_AUTO_WARNING_COOLDOWN_MS = 5 * 60_000;
+
+export const SYNC_STATUS_KIND_VALUES = ["off", "idle", "waiting", "pulling", "pushing", "conflict", "issue"] as const;
+export type SyncStatusKind = (typeof SYNC_STATUS_KIND_VALUES)[number];
+
 export type ProjectTransitionsSettings = {
   autoDetect: boolean;
 };
@@ -239,6 +246,51 @@ export function normalizeSyncSettings(value: unknown): SyncSettings {
     autoPull: input.autoPull === false ? false : true,
     autoPush: input.autoPush === false ? false : true,
   };
+}
+
+export function syncBackoffMs(failureCount: number): number {
+  if (!Number.isFinite(failureCount) || failureCount <= 0) {
+    return 0;
+  }
+  if (failureCount === 1) {
+    return 60_000;
+  }
+  if (failureCount === 2) {
+    return 5 * 60_000;
+  }
+  return 15 * 60_000;
+}
+
+export function syncFailureRequiresNotification(message: string): boolean {
+  const text = message.toLowerCase();
+  return (
+    text.includes("conflict") ||
+    text.includes("not configured") ||
+    text.includes("bundled codex-usage executable was not found") ||
+    text.includes("no codex conversations are selected")
+  );
+}
+
+export function syncStatusKindLabel(kind: SyncStatusKind): string {
+  if (kind === "off") {
+    return "Off";
+  }
+  if (kind === "idle") {
+    return "Idle";
+  }
+  if (kind === "waiting") {
+    return "Waiting";
+  }
+  if (kind === "pulling") {
+    return "Pulling";
+  }
+  if (kind === "pushing") {
+    return "Pushing";
+  }
+  if (kind === "conflict") {
+    return "Conflict";
+  }
+  return "Issue";
 }
 
 export function candidateSessionDirs(options: SessionDirDiscoveryOptions): string[] {

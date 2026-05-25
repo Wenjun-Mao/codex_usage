@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.14 - Sync Scheduler Hardening
+
+- Added single-flight sync scheduling so background triggers do not start overlapping sync runs.
+- Added calmer auto sync timing with focus cooldown, file-change debounce, and failure backoff.
+- Moved normal background sync feedback into the VS Code status bar and output channel.
+- Kept visible notifications for manual sync and action-needed failures such as conflicts.
+- Clearing Sync Off now cancels pending file-change sync timers and prevents new auto sync runs.
+
 ## 0.1.13 - Sync Import Stability
 
 - Fixed sync import so already-identical local session files are not rewritten, avoiding Windows access-denied errors when Codex still has a session file open.

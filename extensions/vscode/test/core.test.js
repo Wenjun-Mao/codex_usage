@@ -16,6 +16,9 @@ const {
   extensionVersionLabel,
   injectWebviewControls,
   injectWebviewCsp,
+  SYNC_AUTO_WARNING_COOLDOWN_MS,
+  SYNC_FILE_CHANGE_DEBOUNCE_MS,
+  SYNC_FOCUS_COOLDOWN_MS,
   normalizeSyncConversationMode,
   normalizeSyncSettings,
   normalizeTheme,
@@ -33,8 +36,11 @@ const {
   renderErrorHtml,
   renderLoadingHtml,
   selectSessionDirsForWatcher,
+  syncBackoffMs,
   syncConversationQuickPickItems,
+  syncFailureRequiresNotification,
   syncProjectQuickPickItems,
+  syncStatusKindLabel,
   WEBVIEW_COMMANDS,
 } = require("../out/core");
 
@@ -254,6 +260,39 @@ test("sync project keys and conversation mode are normalized from extension glob
   assert.equal(normalizeSyncConversationMode("selectedConversations"), "selectedConversations");
   assert.equal(normalizeSyncConversationMode("allInProjects"), "allInProjects");
   assert.equal(normalizeSyncConversationMode("other"), "selectedConversations");
+});
+
+test("sync scheduler constants use calm background timing", () => {
+  assert.equal(SYNC_FILE_CHANGE_DEBOUNCE_MS, 30_000);
+  assert.equal(SYNC_FOCUS_COOLDOWN_MS, 5 * 60_000);
+  assert.equal(SYNC_AUTO_WARNING_COOLDOWN_MS, 5 * 60_000);
+});
+
+test("syncBackoffMs escalates auto retry delays and caps them", () => {
+  assert.equal(syncBackoffMs(0), 0);
+  assert.equal(syncBackoffMs(1), 60_000);
+  assert.equal(syncBackoffMs(2), 5 * 60_000);
+  assert.equal(syncBackoffMs(3), 15 * 60_000);
+  assert.equal(syncBackoffMs(20), 15 * 60_000);
+});
+
+test("syncFailureRequiresNotification only elevates action-needed auto failures", () => {
+  assert.equal(syncFailureRequiresNotification("Codex sync has 1 conflict. Run Codex Usage: Sync Status."), true);
+  assert.equal(syncFailureRequiresNotification("Bundled codex-usage executable was not found at C:/x/codex-usage.exe."), true);
+  assert.equal(syncFailureRequiresNotification("Codex sync is not configured."), true);
+  assert.equal(syncFailureRequiresNotification("No Codex conversations are selected for sync."), true);
+  assert.equal(syncFailureRequiresNotification("PermissionError: [WinError 5] Access is denied"), false);
+  assert.equal(syncFailureRequiresNotification("codex-usage exited with code 1"), false);
+});
+
+test("syncStatusKindLabel maps scheduler states to concise status bar labels", () => {
+  assert.equal(syncStatusKindLabel("off"), "Off");
+  assert.equal(syncStatusKindLabel("idle"), "Idle");
+  assert.equal(syncStatusKindLabel("waiting"), "Waiting");
+  assert.equal(syncStatusKindLabel("pulling"), "Pulling");
+  assert.equal(syncStatusKindLabel("pushing"), "Pushing");
+  assert.equal(syncStatusKindLabel("conflict"), "Conflict");
+  assert.equal(syncStatusKindLabel("issue"), "Issue");
 });
 
 test("empty sync global state uses safe defaults", () => {

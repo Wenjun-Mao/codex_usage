@@ -81,6 +81,8 @@ The Windows VS Code beta can sync selected Codex conversations through a bring-y
 
 Projects match the repo/workspace identities shown in Project Breakdown. Conversations are individual Codex sessions inside those projects. Size estimates are based on local session JSONL file sizes plus a small manifest/index/metadata allowance, so they are useful for cloud-storage planning but not exact billing or provider overhead. The extension stores the sync folder, selected sync projects, and selected conversations as local VS Code extension UI state, not as raw settings you need to edit by hand.
 
+Background sync is intentionally quiet. The VS Code status bar shows the current sync state, such as `Sync:Off`, `Sync:Idle`, `Sync:Waiting`, `Sync:Pulling`, `Sync:Pushing`, `Sync:Conflict`, or `Sync:Issue`. Automatic sync logs details to the Codex Usage output channel; visible notifications are reserved for manual sync and action-needed failures.
+
 The sync MVP copies only selected session JSONL files and matching `session_index.jsonl` entries. It does not sync `auth.json`, settings, caches, logs, or SQLite databases. If local memory database rows are detected for a selected conversation, sync status reports that they are not synced by this beta.
 
 ## Accounting And Pricing
