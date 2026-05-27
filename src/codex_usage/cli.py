@@ -34,6 +34,7 @@ from codex_usage.reporting import (
 )
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.session_cache import CachedSessionData, load_cached_session_data, uncached_session_data
+from codex_usage.session_inventory import storage_snapshots
 from codex_usage.settings import get_settings
 from codex_usage.sync import export_threads, import_threads, sync_status
 from codex_usage.threads import list_threads_from_cached_data
@@ -89,6 +90,14 @@ def build_parser() -> argparse.ArgumentParser:
     suggest_parser = transitions_subparsers.add_parser("suggest", help="Suggest project transitions.")
     suggest_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     suggest_parser.set_defaults(handler=handle_transitions_suggest)
+
+    storage_parser = subparsers.add_parser("storage", help="Inspect local Codex storage state.")
+    storage_subparsers = storage_parser.add_subparsers(dest="storage_command")
+    storage_parser.set_defaults(handler=handle_subparser_help, help_parser=storage_parser)
+
+    storage_snapshot_parser = storage_subparsers.add_parser("snapshot", help="Print a local Codex storage snapshot.")
+    storage_snapshot_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    storage_snapshot_parser.set_defaults(handler=handle_storage_snapshot)
 
     sync_parser = subparsers.add_parser("sync", help="Synchronize selected Codex threads.")
     sync_subparsers = sync_parser.add_subparsers(dest="sync_command")
@@ -211,6 +220,30 @@ def handle_transitions_suggest(args: argparse.Namespace) -> int:
 def handle_subparser_help(args: argparse.Namespace) -> int:
     args.help_parser.print_help(sys.stderr)
     return 2
+
+
+def handle_storage_snapshot(args: argparse.Namespace) -> int:
+    roots = [
+        {
+            "path": str(snapshot.path),
+            "storage_state": snapshot.storage_state,
+            "exists": snapshot.exists,
+            "jsonl_count": snapshot.jsonl_count,
+            "total_bytes": snapshot.total_bytes,
+        }
+        for snapshot in storage_snapshots()
+    ]
+    payload = {"roots": roots}
+    if args.json:
+        print_json(payload)
+    else:
+        for root in roots:
+            exists = "yes" if root["exists"] else "no"
+            print(
+                f'{root["storage_state"]:>12} {exists:>3} {root["jsonl_count"]:>5} files '
+                f'{root["total_bytes"]:>12} bytes {root["path"]}'
+            )
+    return 0
 
 
 def handle_sync_export(args: argparse.Namespace) -> int:

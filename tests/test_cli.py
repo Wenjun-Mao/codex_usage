@@ -220,6 +220,25 @@ def test_cli_cache_reuses_records_after_first_scan(tmp_path: Path) -> None:
     assert json.loads(first.stdout)["total"]["usage"] == json.loads(second.stdout)["total"]["usage"]
 
 
+def test_storage_snapshot_reports_active_and_archived_roots(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    archived = codex_home / "archived_sessions"
+    day = sessions / "2026" / "04" / "29"
+    archived_day = archived / "2026" / "04" / "29"
+    day.mkdir(parents=True)
+    archived_day.mkdir(parents=True)
+    _write_session(day / "active-thread.jsonl", "active-thread", "/repo/active", 10)
+    _write_session(archived_day / "archived-thread.jsonl", "archived-thread", "/repo/archived", 20)
+
+    result = _run_cli(["storage", "snapshot", "--json"], env={"CODEX_HOME": str(codex_home)})
+
+    payload = json.loads(result.stdout)
+    roots = {Path(row["path"]).name: row for row in payload["roots"]}
+    assert roots["sessions"]["jsonl_count"] == 1
+    assert roots["archived_sessions"]["jsonl_count"] == 1
+
+
 def test_cli_report_rejects_unknown_theme(tmp_path: Path) -> None:
     result = subprocess.run(
         [
