@@ -48,7 +48,7 @@ def load_all_index_entries(session_dirs: list[Path]) -> dict[str, dict[str, Any]
             if not thread_id:
                 continue
             existing = entries.get(thread_id)
-            if existing is None or _timestamp_key(str(entry.get("updated_at") or "")) >= _timestamp_key(
+            if existing is None or timestamp_key(str(entry.get("updated_at") or "")) >= timestamp_key(
                 str(existing.get("updated_at") or "")
             ):
                 entries[thread_id] = entry
