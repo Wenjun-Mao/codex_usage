@@ -58,7 +58,7 @@ def test_changed_file_reparses_when_size_or_mtime_changes(tmp_path: Path) -> Non
     assert [record.usage.total_tokens for record in data.records] == [100, 50]
 
 
-def test_removed_file_deletes_cached_rows(tmp_path: Path) -> None:
+def test_removed_file_retains_cached_usage_as_missing(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     first = _write_session(sessions, "thread-1", "/repo/one", 100)
     _write_session(sessions, "thread-2", "/repo/two", 75)
@@ -68,8 +68,43 @@ def test_removed_file_deletes_cached_rows(tmp_path: Path) -> None:
 
     data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
-    assert data.stats.files_removed == 1
-    assert [record.session_id for record in data.records] == ["thread-2"]
+    assert data.stats.files_missing_retained == 1
+    assert sorted(record.session_id for record in data.records) == ["thread-1", "thread-2"]
+    assert sum(record.usage.total_tokens for record in data.records) == 175
+
+
+def test_archived_move_does_not_double_count_cached_usage(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    archived = codex_home / "archived_sessions"
+    active = _write_session(sessions, "thread-1", "/repo/one", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions, archived], cache_dir=cache_dir, auto_transitions=False)
+
+    archived_path = archived / "2026" / "04" / "29" / active.name
+    archived_path.parent.mkdir(parents=True)
+    active.replace(archived_path)
+
+    data = load_cached_session_data([sessions, archived], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.stats.files_total == 1
+    assert data.stats.files_missing_retained == 0
+    assert [record.session_id for record in data.records] == ["thread-1"]
+    assert [record.usage.total_tokens for record in data.records] == [100]
+
+
+def test_active_and_archived_duplicate_prefers_active_file(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    archived = codex_home / "archived_sessions"
+    active = _write_session(sessions, "thread-1", "/repo/active", 100)
+    _write_session(archived, "thread-1", "/repo/archived", 100)
+    cache_dir = tmp_path / "cache"
+
+    data = load_cached_session_data([sessions, archived], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.files == [active]
+    assert [record.cwd for record in data.records] == ["/repo/active"]
 
 
 def test_schema_version_mismatch_rebuilds_cache(tmp_path: Path) -> None:

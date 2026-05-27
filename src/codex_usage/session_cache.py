@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_usage.discovery import collect_jsonl_files
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.parser import finalize_session_records, parse_session_file, parse_timestamp
 from codex_usage.project_identity import resolve_project_identity
@@ -18,10 +17,11 @@ from codex_usage.project_transitions import (
     infer_project_transitions,
 )
 from codex_usage.session_files import owning_session_dir, read_session_metadata
+from codex_usage.session_inventory import SessionFileInventoryEntry, collect_session_file_inventory
 from codex_usage.sync_constants import SYNC_METADATA_OVERHEAD_BYTES
 
 CACHE_DB_NAME = "usage-cache.sqlite3"
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2
 PARSER_CACHE_VERSION = 1
 PROJECT_TRANSITION_CACHE_VERSION = 1
 
@@ -29,9 +29,12 @@ PROJECT_TRANSITION_CACHE_VERSION = 1
 @dataclass(frozen=True)
 class CacheStats:
     files_total: int = 0
+    files_current: int = 0
+    files_archived: int = 0
     files_parsed: int = 0
     files_reused: int = 0
     files_removed: int = 0
+    files_missing_retained: int = 0
     file_errors: int = 0
     rebuilt: bool = False
 
@@ -51,6 +54,9 @@ class CachedFileSummary:
     has_base_instructions: bool
     session_bytes: int
     estimated_sync_bytes: int
+    file_key: str = ""
+    storage_state: str = "active"
+    is_missing: bool = False
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,7 @@ class CachedSessionData:
     project_transitions: list[ProjectTransition]
     stats: CacheStats
     file_errors: dict[str, str]
+    retained_missing_files: list[Path] = field(default_factory=list)
 
 
 def uncached_session_data(
@@ -103,13 +110,17 @@ def load_cached_session_data(
 ) -> CachedSessionData:
     resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
     resolved_cache_dir.mkdir(parents=True, exist_ok=True)
-    session_files = collect_jsonl_files(session_dirs)
+    inventory = collect_session_file_inventory(session_dirs)
+    session_files = [entry.path for entry in inventory]
     with sqlite3.connect(resolved_cache_dir / CACHE_DB_NAME) as connection:
         connection.row_factory = sqlite3.Row
         rebuilt = _ensure_schema(connection)
-        stats = _refresh_files(connection, session_dirs, session_files, rebuilt=rebuilt)
-        records_by_file = _load_records_by_file(connection, session_files)
-        records = finalize_session_records([records_by_file.get(path, []) for path in session_files])
+        stats = _refresh_files(connection, session_dirs, inventory, rebuilt=rebuilt)
+        current_keys = {entry.file_key for entry in inventory}
+        missing_keys = _missing_file_keys(connection)
+        records_by_file_key = _load_records_by_file_key(connection, current_keys | missing_keys)
+        ordered_keys = [entry.file_key for entry in inventory] + sorted(missing_keys - current_keys)
+        records = finalize_session_records([records_by_file_key.get(file_key, []) for file_key in ordered_keys])
         transitions = _refresh_or_load_transitions(
             connection,
             session_dirs=session_dirs,
@@ -120,8 +131,9 @@ def load_cached_session_data(
         )
         if auto_transitions:
             records = apply_project_transitions(records, transitions)
-        summaries = _load_file_summaries(connection, session_files, session_dirs)
+        summaries = _load_file_summaries(connection, inventory, session_dirs)
         errors = _load_file_errors(connection)
+        retained_missing_files = _retained_missing_files(connection)
     return CachedSessionData(
         session_dirs=session_dirs,
         files=session_files,
@@ -130,6 +142,7 @@ def load_cached_session_data(
         project_transitions=transitions,
         stats=stats,
         file_errors=errors,
+        retained_missing_files=retained_missing_files,
     )
 
 
@@ -141,15 +154,21 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
         """
         create table schema_meta (key text primary key, value text not null);
         create table files (
-            path text primary key,
+            file_key text primary key,
+            path text not null,
             session_dir text not null,
+            storage_state text not null,
             size_bytes integer not null,
             mtime_ns integer not null,
             parsed_at text not null,
+            last_seen_at text not null,
+            missing_since text,
+            is_missing integer not null,
             session_id text,
             error text
         );
         create table usage_records (
+            file_key text not null,
             file_path text not null,
             record_index integer not null,
             timestamp text not null,
@@ -170,11 +189,14 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
             output_tokens integer not null,
             reasoning_output_tokens integer not null,
             total_tokens integer not null,
-            primary key (file_path, record_index)
+            primary key (file_key, record_index)
         );
         create table session_metadata (
-            file_path text primary key,
+            file_key text primary key,
+            file_path text not null,
             session_dir text not null,
+            storage_state text not null,
+            is_missing integer not null,
             session_id text not null,
             cwd text,
             project_key text,
@@ -238,64 +260,97 @@ def _drop_cache_tables(connection: sqlite3.Connection) -> None:
 def _refresh_files(
     connection: sqlite3.Connection,
     session_dirs: list[Path],
-    session_files: list[Path],
+    inventory: list[SessionFileInventoryEntry],
     *,
     rebuilt: bool,
 ) -> CacheStats:
-    cached_rows = {str(row["path"]): row for row in connection.execute("select path, size_bytes, mtime_ns from files")}
-    current_paths = {str(path) for path in session_files}
-    removed_paths = [path for path in cached_rows if path not in current_paths]
-    for path in removed_paths:
-        _delete_file_rows(connection, Path(path))
+    now = datetime.now(UTC).isoformat()
+    cached_rows = {
+        str(row["file_key"]): row
+        for row in connection.execute("select file_key, path, size_bytes, mtime_ns, is_missing from files")
+    }
+    current_keys = {entry.file_key for entry in inventory}
+    missing_marked = 0
+    for file_key, row in cached_rows.items():
+        if file_key not in current_keys and int(row["is_missing"]) == 0:
+            connection.execute(
+                "update files set is_missing = 1, missing_since = ?, last_seen_at = ? where file_key = ?",
+                (now, now, file_key),
+            )
+            connection.execute("update session_metadata set is_missing = 1 where file_key = ?", (file_key,))
+            missing_marked += 1
 
     parsed = 0
     reused = 0
     errors = 0
-    for path in session_files:
-        stat = path.stat()
-        cached = cached_rows.get(str(path))
-        if cached and int(cached["size_bytes"]) == stat.st_size and int(cached["mtime_ns"]) == stat.st_mtime_ns:
+    for entry in inventory:
+        cached = cached_rows.get(entry.file_key)
+        if (
+            cached
+            and str(cached["path"]) == str(entry.path)
+            and int(cached["size_bytes"]) == entry.size_bytes
+            and int(cached["mtime_ns"]) == entry.mtime_ns
+            and int(cached["is_missing"]) == 0
+        ):
             reused += 1
+            connection.execute("update files set last_seen_at = ? where file_key = ?", (now, entry.file_key))
             continue
-        _record_count, error = _refresh_one_file(connection, session_dirs, path)
+        _record_count, error = _refresh_one_file(connection, session_dirs, entry)
         parsed += 1
         if error:
             errors += 1
     connection.commit()
+    missing_count = connection.execute("select count(*) from files where is_missing = 1").fetchone()[0]
     return CacheStats(
-        files_total=len(session_files),
+        files_total=len(inventory),
+        files_current=len(inventory),
+        files_archived=sum(1 for entry in inventory if entry.storage_state == "archived"),
         files_parsed=parsed,
         files_reused=reused,
-        files_removed=len(removed_paths),
+        files_removed=missing_marked,
+        files_missing_retained=int(missing_count),
         file_errors=errors,
         rebuilt=rebuilt,
     )
 
 
-def _refresh_one_file(connection: sqlite3.Connection, session_dirs: list[Path], path: Path) -> tuple[int, str]:
-    _delete_file_rows(connection, path)
-    stat = path.stat()
+def _refresh_one_file(
+    connection: sqlite3.Connection,
+    session_dirs: list[Path],
+    entry: SessionFileInventoryEntry,
+) -> tuple[int, str]:
+    _delete_file_rows(connection, entry.file_key)
+    path = entry.path
     records: list[UsageRecord] = []
     try:
         records = parse_session_file(path)
         for index, record in enumerate(records):
-            _insert_record(connection, path, index, record)
-        _insert_file_summary(connection, session_dirs, path, records)
+            _insert_record(connection, entry.file_key, path, index, record)
+        _insert_file_summary(connection, session_dirs, entry, records)
         error = ""
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
+    now = datetime.now(UTC).isoformat()
     connection.execute(
         """
         insert or replace into files
-            (path, session_dir, size_bytes, mtime_ns, parsed_at, session_id, error)
-        values (?, ?, ?, ?, ?, ?, ?)
+            (
+                file_key, path, session_dir, storage_state, size_bytes, mtime_ns,
+                parsed_at, last_seen_at, missing_since, is_missing, session_id, error
+            )
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
+            entry.file_key,
             str(path),
             str(owning_session_dir(path, session_dirs)),
-            stat.st_size,
-            stat.st_mtime_ns,
-            datetime.now(UTC).isoformat(),
+            entry.storage_state,
+            entry.size_bytes,
+            entry.mtime_ns,
+            now,
+            now,
+            "",
+            0,
             records[0].session_id if records else path.stem,
             error,
         ),
@@ -303,26 +358,25 @@ def _refresh_one_file(connection: sqlite3.Connection, session_dirs: list[Path], 
     return (len(records), error)
 
 
-def _delete_file_rows(connection: sqlite3.Connection, path: Path) -> None:
-    value = str(path)
-    connection.execute("delete from usage_records where file_path = ?", (value,))
-    connection.execute("delete from session_metadata where file_path = ?", (value,))
-    connection.execute("delete from files where path = ?", (value,))
+def _delete_file_rows(connection: sqlite3.Connection, file_key: str) -> None:
+    connection.execute("delete from usage_records where file_key = ?", (file_key,))
+    connection.execute("delete from session_metadata where file_key = ?", (file_key,))
 
 
-def _insert_record(connection: sqlite3.Connection, file_path: Path, index: int, record: UsageRecord) -> None:
+def _insert_record(connection: sqlite3.Connection, file_key: str, file_path: Path, index: int, record: UsageRecord) -> None:
     usage = record.usage
     connection.execute(
         """
         insert into usage_records (
-            file_path, record_index, timestamp, session_id, turn_id, model, effort,
+            file_key, file_path, record_index, timestamp, session_id, turn_id, model, effort,
             collaboration_mode, project_key, project_label, project_aliases_json,
             cwd, git_repository_url, git_branch, parent_thread_id,
             input_tokens, cached_input_tokens, output_tokens,
             reasoning_output_tokens, total_tokens
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
+            file_key,
             str(file_path),
             index,
             record.timestamp.isoformat(),
@@ -350,10 +404,10 @@ def _insert_record(connection: sqlite3.Connection, file_path: Path, index: int, 
 def _insert_file_summary(
     connection: sqlite3.Connection,
     session_dirs: list[Path],
-    path: Path,
+    entry: SessionFileInventoryEntry,
     records: list[UsageRecord],
 ) -> None:
-    stat = path.stat()
+    path = entry.path
     metadata = read_session_metadata(path)
     selected = records[-1] if records else None
     identity = None if selected is not None or metadata is None else resolve_project_identity(metadata)
@@ -364,14 +418,17 @@ def _insert_file_summary(
     connection.execute(
         """
         insert or replace into session_metadata (
-            file_path, session_dir, session_id, cwd, project_key, project_label,
+            file_key, file_path, session_dir, storage_state, is_missing, session_id, cwd, project_key, project_label,
             project_aliases_json, git_repository_url, git_branch, memory_mode,
             has_base_instructions, session_bytes, estimated_sync_bytes
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
+            entry.file_key,
             str(path),
             str(owning_session_dir(path, session_dirs)),
+            entry.storage_state,
+            0,
             session_id,
             selected.cwd if selected else (metadata.cwd if metadata else ""),
             project_key,
@@ -381,21 +438,20 @@ def _insert_file_summary(
             selected.git_branch if selected else (metadata.git_branch if metadata else ""),
             metadata.memory_mode if metadata else "",
             1 if metadata and metadata.has_base_instructions else 0,
-            stat.st_size,
-            stat.st_size + SYNC_METADATA_OVERHEAD_BYTES,
+            entry.size_bytes,
+            entry.size_bytes + SYNC_METADATA_OVERHEAD_BYTES,
         ),
     )
 
 
-def _load_records_by_file(connection: sqlite3.Connection, session_files: list[Path]) -> dict[Path, list[UsageRecord]]:
-    if not session_files:
+def _load_records_by_file_key(connection: sqlite3.Connection, selected_keys: set[str]) -> dict[str, list[UsageRecord]]:
+    if not selected_keys:
         return {}
-    selected = {str(path) for path in session_files}
-    records_by_file: dict[Path, list[UsageRecord]] = {}
-    for row in connection.execute("select * from usage_records order by file_path, record_index"):
-        if row["file_path"] not in selected:
+    records_by_file: dict[str, list[UsageRecord]] = {}
+    for row in connection.execute("select * from usage_records order by file_key, record_index"):
+        if row["file_key"] not in selected_keys:
             continue
-        records_by_file.setdefault(Path(row["file_path"]), []).append(_row_to_record(row))
+        records_by_file.setdefault(str(row["file_key"]), []).append(_row_to_record(row))
     return records_by_file
 
 
@@ -487,13 +543,13 @@ def _load_transitions(connection: sqlite3.Connection) -> list[ProjectTransition]
 
 def _load_file_summaries(
     connection: sqlite3.Connection,
-    session_files: list[Path],
+    inventory: list[SessionFileInventoryEntry],
     session_dirs: list[Path],
 ) -> dict[Path, CachedFileSummary]:
-    selected = {str(path) for path in session_files}
+    selected = {entry.file_key for entry in inventory}
     summaries: dict[Path, CachedFileSummary] = {}
     for row in connection.execute("select * from session_metadata"):
-        if row["file_path"] not in selected:
+        if row["file_key"] not in selected:
             continue
         path = Path(row["file_path"])
         summaries[path] = CachedFileSummary(
@@ -510,6 +566,9 @@ def _load_file_summaries(
             has_base_instructions=bool(row["has_base_instructions"]),
             session_bytes=int(row["session_bytes"]),
             estimated_sync_bytes=int(row["estimated_sync_bytes"]),
+            file_key=row["file_key"] or "",
+            storage_state=row["storage_state"] or "active",
+            is_missing=bool(row["is_missing"]),
         )
     return summaries
 
@@ -519,3 +578,14 @@ def _load_file_errors(connection: sqlite3.Connection) -> dict[str, str]:
         str(row["path"]): str(row["error"])
         for row in connection.execute("select path, error from files where error is not null and error != ''")
     }
+
+
+def _missing_file_keys(connection: sqlite3.Connection) -> set[str]:
+    return {str(row["file_key"]) for row in connection.execute("select file_key from files where is_missing = 1")}
+
+
+def _retained_missing_files(connection: sqlite3.Connection) -> list[Path]:
+    return [
+        Path(row["path"])
+        for row in connection.execute("select path from files where is_missing = 1 order by path")
+    ]
