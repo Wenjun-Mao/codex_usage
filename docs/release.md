@@ -68,6 +68,26 @@ Manual smoke checklist:
 - Confirm readable behavior when no session files are found.
 - Confirm the dashboard says pricing uses rates effective at each usage event.
 
+## Archive/Delete Accounting Checks
+
+Archived Codex conversations should remain in usage totals through `archived_sessions`. Deleted conversations should remain in historical totals after the local cache has parsed them once, but the real delete behavior must be observed on an expendable conversation instead of assumed.
+
+Before any manual delete experiment, capture:
+
+```powershell
+uv run codex-usage storage snapshot --json > output\storage-snapshot-before-delete-experiment.json
+uv run codex-usage summary --range all --by session --json > output\delete-experiment-before-summary.json
+```
+
+Then delete one nonessential Codex conversation in the Codex app and capture:
+
+```powershell
+uv run codex-usage storage snapshot --json > output\storage-snapshot-after-delete-experiment.json
+uv run codex-usage summary --range all --by session --json > output\delete-experiment-after-summary.json
+```
+
+Do not use a conversation needed for sync or resume testing. This beta preserves parsed historical usage but cannot restore a deleted Codex conversation.
+
 ## Beta Notes
 
 - First beta target is Windows x64 only.
