@@ -128,6 +128,36 @@ def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:
     assert effective_from.isoformat() in html
 
 
+def test_report_html_mentions_archived_and_retained_missing_files(tmp_path: Path) -> None:
+    output = tmp_path / "storage.html"
+    total = UsageSummary(
+        usage=TokenUsage(input_tokens=30, total_tokens=30),
+        cost=CostBreakdown(),
+        credits=CreditBreakdown(),
+        record_count=2,
+    )
+
+    render_html_report(
+        output_path=output,
+        generated_at=datetime(2026, 5, 27, 12, tzinfo=UTC),
+        range_name="all",
+        total=total,
+        daily_rows=[],
+        hourly_rows=[],
+        project_rows=[],
+        model_rows=[],
+        sessions_dirs=[Path("sessions"), Path("archived_sessions")],
+        files_scanned=2,
+        files_archived=1,
+        files_retained_missing=1,
+    )
+
+    html = output.read_text(encoding="utf-8")
+
+    assert "Archived files included: 1" in html
+    assert "Retained missing files: 1" in html
+
+
 def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> None:
     output = tmp_path / "unknown.html"
     total = UsageSummary(

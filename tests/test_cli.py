@@ -239,6 +239,33 @@ def test_storage_snapshot_reports_active_and_archived_roots(tmp_path: Path) -> N
     assert roots["archived_sessions"]["jsonl_count"] == 1
 
 
+def test_summary_json_reports_archived_and_retained_missing_counts(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    archived = codex_home / "archived_sessions"
+    active_day = sessions / "2026" / "04" / "29"
+    archived_day = archived / "2026" / "04" / "29"
+    active_day.mkdir(parents=True)
+    archived_day.mkdir(parents=True)
+    active_path = _write_session(active_day / "active-thread.jsonl", "active-thread", "/repo/active", 10)
+    _write_session(archived_day / "archived-thread.jsonl", "archived-thread", "/repo/archived", 20)
+    env = {"CODEX_HOME": str(codex_home)}
+
+    first_result = _run_cli(["summary", "--range", "all", "--by", "project", "--json"], env=env)
+    first_payload = json.loads(first_result.stdout)
+    assert first_payload["files_archived"] == 1
+    assert first_payload["files_retained_missing"] == 0
+
+    active_path.unlink()
+    second_result = _run_cli(["summary", "--range", "all", "--by", "project", "--json"], env=env)
+
+    payload = json.loads(second_result.stdout)
+    assert payload["files_archived"] == 1
+    assert payload["files_retained_missing"] == 1
+    assert payload["storage_roots"] == [str(sessions), str(archived)]
+    assert payload["total"]["usage"]["total_tokens"] == 30
+
+
 def test_cli_report_rejects_unknown_theme(tmp_path: Path) -> None:
     result = subprocess.run(
         [
@@ -366,7 +393,7 @@ def _run_cli(args: list[str], *, env: dict[str, str] | None = None) -> subproces
     )
 
 
-def _write_session(path: Path, session_id: str, cwd: str, total: int) -> None:
+def _write_session(path: Path, session_id: str, cwd: str, total: int) -> Path:
     _write_jsonl(
         path,
         [
@@ -379,6 +406,7 @@ def _write_session(path: Path, session_id: str, cwd: str, total: int) -> None:
             _token_count_event("2026-04-29T10:00:02Z", total),
         ],
     )
+    return path
 
 
 def _write_jsonl(path: Path, events: list[dict[str, object]]) -> None:

@@ -50,6 +50,9 @@ class ReportViewModel:
     range_name: str
     sessions_dirs: list[Path]
     files_scanned: int
+    files_archived: int
+    files_retained_missing: int
+    storage_roots: tuple[str, ...]
     total: UsageSummary
     kpis: list[KpiCard]
     daily_points: list[DailyPoint]
@@ -93,12 +96,18 @@ def build_report_view_model(
     model_rows: list[AggregateRow],
     sessions_dirs: list[Path],
     files_scanned: int,
+    files_archived: int = 0,
+    files_retained_missing: int = 0,
+    storage_roots: list[str] | tuple[str, ...] | None = None,
 ) -> ReportViewModel:
     return ReportViewModel(
         generated_at=generated_at,
         range_name=range_name,
         sessions_dirs=sessions_dirs,
         files_scanned=files_scanned,
+        files_archived=files_archived,
+        files_retained_missing=files_retained_missing,
+        storage_roots=tuple(storage_roots or [str(path) for path in sessions_dirs]),
         total=total,
         kpis=_build_kpis(total),
         daily_points=[_daily_point(row) for row in daily_rows],

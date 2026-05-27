@@ -29,6 +29,9 @@ def summary_payload(
     group_by: str,
     sessions_dirs: list[Path],
     files_scanned: int,
+    storage_roots: list[str] | None = None,
+    files_archived: int = 0,
+    files_retained_missing: int = 0,
     project_keys: list[str] | None = None,
     project_transitions: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
@@ -41,7 +44,10 @@ def summary_payload(
         "project_keys": project_keys or [],
         "project_transitions": project_transitions or [],
         "sessions_dirs": [str(path) for path in sessions_dirs],
+        "storage_roots": storage_roots or [str(path) for path in sessions_dirs],
         "files_scanned": files_scanned,
+        "files_archived": files_archived,
+        "files_retained_missing": files_retained_missing,
         "total": total.to_dict(),
         "rows": [row.to_dict() for row in rows],
     }
@@ -70,10 +76,17 @@ def render_terminal(
     range_name: str,
     group_by: str,
     files_scanned: int,
+    files_archived: int = 0,
+    files_retained_missing: int = 0,
 ) -> str:
+    storage_bits = _storage_bits(
+        files_scanned=files_scanned,
+        files_archived=files_archived,
+        files_retained_missing=files_retained_missing,
+    )
     lines = [
         f"Codex usage summary ({range_name}, by {group_by})",
-        f"Files scanned: {files_scanned} | Usage events: {total.record_count} | Pricing table as of: {PRICING_AS_OF}",
+        f"{' | '.join(storage_bits)} | Usage events: {total.record_count} | Pricing table as of: {PRICING_AS_OF}",
         "Pricing uses rates effective at each usage event.",
         "",
         _format_row(
@@ -119,6 +132,9 @@ def render_html_report(
     model_rows: list[AggregateRow],
     sessions_dirs: list[Path],
     files_scanned: int,
+    storage_roots: list[str] | None = None,
+    files_archived: int = 0,
+    files_retained_missing: int = 0,
     project_keys: list[str] | None = None,
     project_transitions: list[dict[str, object]] | None = None,
     theme: str = "auto",
@@ -135,10 +151,20 @@ def render_html_report(
         model_rows=model_rows,
         sessions_dirs=sessions_dirs,
         files_scanned=files_scanned,
+        files_archived=files_archived,
+        files_retained_missing=files_retained_missing,
+        storage_roots=storage_roots,
     )
     pricing_notice_html = _pricing_notice(view_model)
     project_filter_label = _project_filter_label(project_keys)
     project_transitions_html = _project_transitions_section(project_transitions)
+    storage_summary = " | ".join(
+        _storage_bits(
+            files_scanned=view_model.files_scanned,
+            files_archived=view_model.files_archived,
+            files_retained_missing=view_model.files_retained_missing,
+        )
+    )
 
     body = f"""<!doctype html>
 <html lang="en" data-codex-theme="{html.escape(theme)}">
@@ -156,7 +182,8 @@ def render_html_report(
     <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())} | Range: {html.escape(range_name)} | Pricing table as of {PRICING_AS_OF}</div>
     <div class="muted summary-line">Pricing uses rates effective at each usage event.</div>
     <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
-    <div class="muted summary-line">Sessions: {html.escape(', '.join(str(path) for path in sessions_dirs))} | Files scanned: {files_scanned}</div>
+    <div class="muted summary-line">Sessions: {html.escape(', '.join(str(path) for path in sessions_dirs))}</div>
+    <div class="muted summary-line">{html.escape(storage_summary)}</div>
     {_render_kpis(view_model)}
     {pricing_notice_html}
     {_empty_report_notice(view_model)}
@@ -179,6 +206,15 @@ def _project_filter_label(project_keys: list[str] | None) -> str:
     if not selected:
         return "All Projects"
     return ", ".join(selected)
+
+
+def _storage_bits(*, files_scanned: int, files_archived: int, files_retained_missing: int) -> list[str]:
+    bits = [f"Files scanned: {files_scanned}"]
+    if files_archived:
+        bits.append(f"Archived files included: {files_archived}")
+    if files_retained_missing:
+        bits.append(f"Retained missing files: {files_retained_missing}")
+    return bits
 
 
 def _write_csv_rows(rows: list[AggregateRow], handle: TextIO) -> None:

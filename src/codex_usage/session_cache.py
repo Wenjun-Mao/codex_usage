@@ -83,7 +83,7 @@ def uncached_session_data(
         records=records,
         file_summaries={},
         project_transitions=project_transitions,
-        stats=CacheStats(files_total=len(files)),
+        stats=CacheStats(files_total=len(files), files_current=len(files)),
         file_errors={},
     )
 

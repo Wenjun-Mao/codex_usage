@@ -33,7 +33,7 @@ from codex_usage.reporting import (
     write_csv,
 )
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
-from codex_usage.session_cache import CachedSessionData, load_cached_session_data, uncached_session_data
+from codex_usage.session_cache import CacheStats, CachedSessionData, load_cached_session_data, uncached_session_data
 from codex_usage.session_inventory import storage_snapshots
 from codex_usage.settings import get_settings
 from codex_usage.sync import export_threads, import_threads, sync_status
@@ -134,6 +134,9 @@ def handle_summary(args: argparse.Namespace) -> int:
         group_by=args.group_by,
         sessions_dirs=context.session_dirs,
         files_scanned=len(context.files),
+        storage_roots=[str(path) for path in context.session_dirs],
+        files_archived=context.storage_stats.files_archived,
+        files_retained_missing=context.storage_stats.files_missing_retained,
         project_keys=context.project_keys,
         project_transitions=_transition_dicts(context.project_transitions),
     )
@@ -149,6 +152,8 @@ def handle_summary(args: argparse.Namespace) -> int:
                 range_name=args.range_name,
                 group_by=args.group_by,
                 files_scanned=len(context.files),
+                files_archived=context.storage_stats.files_archived,
+                files_retained_missing=context.storage_stats.files_missing_retained,
             )
         )
     return 0
@@ -168,6 +173,9 @@ def handle_report(args: argparse.Namespace) -> int:
         model_rows=aggregate_records(context.records, "model", context.timezone),
         sessions_dirs=context.session_dirs,
         files_scanned=len(context.files),
+        storage_roots=[str(path) for path in context.session_dirs],
+        files_archived=context.storage_stats.files_archived,
+        files_retained_missing=context.storage_stats.files_missing_retained,
         project_keys=context.project_keys,
         project_transitions=_transition_dicts(context.project_transitions),
         theme=normalize_report_theme(args.theme or get_settings().theme),
@@ -292,6 +300,7 @@ class _Context:
         timezone,
         project_keys: list[str],
         project_transitions: list[ProjectTransition],
+        storage_stats: CacheStats,
     ) -> None:
         self.session_dirs = session_dirs
         self.files = files
@@ -299,6 +308,7 @@ class _Context:
         self.timezone = timezone
         self.project_keys = project_keys
         self.project_transitions = project_transitions
+        self.storage_stats = storage_stats
 
 
 def _load_context(args: argparse.Namespace) -> _Context:
@@ -318,6 +328,7 @@ def _load_context(args: argparse.Namespace) -> _Context:
         timezone=timezone,
         project_keys=project_keys,
         project_transitions=filtered_transitions,
+        storage_stats=data.stats,
     )
 
 
