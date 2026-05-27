@@ -88,6 +88,13 @@ uv run codex-usage summary --range all --by session --json > output\delete-exper
 
 Do not use a conversation needed for sync or resume testing. This beta preserves parsed historical usage but cannot restore a deleted Codex conversation.
 
+## Codex Delete Behavior Observation
+
+Observed on Windows with Codex app build current as of 2026-05-27:
+
+- Archive moves session JSONL files from `sessions` to `archived_sessions`.
+- Delete removed the archived session JSONL from local Codex storage; Codex Usage retained historical usage from cache.
+
 ## Beta Notes
 
 - First beta target is Windows x64 only.
