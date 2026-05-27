@@ -7,7 +7,7 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 ## Features
 
 - Opens a local dashboard from Codex session JSONL logs.
-- Auto-discovers the default Codex sessions directory.
+- Auto-discovers the default active and archived Codex session directories.
 - Supports quick range switching: today, yesterday, 7d, 30d, month, all.
 - Supports multi-project filtering from detected project keys.
 - Supports auto/day/night dashboard theme switching.
@@ -55,6 +55,10 @@ For manual-only sync, leave `codexUsage.sync.enabled` on and turn off both `code
 
 Conversation sync is prefix-aware. Normal append-only progress on one computer is pulled or pushed automatically; true divergent edits on two computers are reported as conflicts and neither side is overwritten.
 
+### Archive/Delete Accounting
+
+Archived Codex conversations are included in usage totals. Deleted or otherwise missing conversations are retained in historical totals after the local cache has parsed them once. The dashboard header shows archived and retained missing file counts when applicable.
+
 ## Project Transitions
 
 Automatic project transition detection uses read-only evidence from local Codex session JSONL files and, when present, the local Codex `state_5.sqlite` `threads` field `cwd` plus thread timestamps. The extension does not upload this data, make network calls for transition detection, mutate SQLite, or sync SQLite databases.
@@ -85,7 +89,7 @@ Codex session logs can include project paths, repository URLs, branch names, mod
 
 ## Troubleshooting
 
-- If no usage appears, confirm Codex session files exist under `CODEX_HOME\sessions`, `%USERPROFILE%\.codex\sessions`, or `~\.codex\sessions`.
+- If no usage appears, confirm Codex session files exist under `CODEX_HOME\sessions`, `CODEX_HOME\archived_sessions`, `%USERPROFILE%\.codex\sessions`, `%USERPROFILE%\.codex\archived_sessions`, or the matching `~\.codex` folders.
 - If project filtering shows no choices, switch the range to `all` and run `Codex Usage: Select Projects` again.
 - If a project split looks surprising, run `Codex Usage: Review Project Transitions` to inspect the evidence, or disable `codexUsage.projectTransitions.autoDetect`.
 - If the dashboard theme is not what you expect, run `Codex Usage: Select Theme` and choose `auto`, `day`, or `night`.

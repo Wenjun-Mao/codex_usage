@@ -53,13 +53,16 @@ uv run codex-usage sync export --sync-dir D:\CodexSync --thread-id <thread-id>
 uv run codex-usage sync status --sync-dir D:\CodexSync --thread-id <thread-id> --json
 ```
 
-By default, the tool looks for Codex sessions at:
+By default, the tool looks for Codex session storage at:
 
 - `CODEX_HOME/sessions`
+- `CODEX_HOME/archived_sessions`
 - `%USERPROFILE%\.codex\sessions`
+- `%USERPROFILE%\.codex\archived_sessions`
 - `~/.codex/sessions`
+- `~/.codex/archived_sessions`
 
-Discovery uses the first existing location in that order. Set `CODEX_HOME` when you need to point the CLI at a different Codex home for testing or migration.
+Discovery includes active and archived session roots when they exist. Set `CODEX_HOME` when you need to point the CLI at a different Codex home for testing or migration.
 
 Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser/system color-scheme preference. In VS Code, auto follows the active VS Code theme. You can force a report with `--theme day` or `--theme night`, or set `CODEX_USAGE_THEME`.
 
@@ -92,6 +95,21 @@ Manual-only sync is supported: keep Sync Enabled on, turn Auto Pull and Auto Pus
 Sync uses three-way state per conversation. If one side only appends new Codex JSONL events, the beta treats it as a fast-forward and pulls or pushes automatically. If both computers append different tails to the same conversation, sync stops and preserves both sides for review.
 
 The sync MVP copies only selected session JSONL files and matching `session_index.jsonl` entries. It does not sync `auth.json`, settings, caches, logs, or SQLite databases. If local memory database rows are detected for a selected conversation, sync status reports that they are not synced by this beta.
+
+## Archived And Deleted Conversations
+
+The dashboard treats token usage as historical usage. Archiving a Codex conversation moves its JSONL file to `archived_sessions`, and those files are included in totals. If a conversation file disappears after the dashboard cache has seen it, its parsed usage is retained as historical usage and marked as a retained missing file.
+
+To observe how your installed Codex build handles deletion:
+
+```powershell
+uv run codex-usage storage snapshot --json > output\before-delete.json
+# delete one test conversation in Codex
+uv run codex-usage storage snapshot --json > output\after-delete.json
+uv run codex-usage summary --range all --by project --json > output\after-delete-summary.json
+```
+
+Do not use a conversation you still need for sync testing. The dashboard can preserve usage after it has parsed a file, but it cannot restore a deleted Codex conversation.
 
 ## Accounting And Pricing
 

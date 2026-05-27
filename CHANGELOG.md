@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.19 - Archive/Delete Resilient Usage
+
+- Included Codex `archived_sessions` in usage totals.
+- Preserved cached historical usage when previously parsed session files disappear locally.
+- Added `codex-usage storage snapshot --json` to support before/after delete behavior experiments.
+- Avoided double-counting session files moved between active and archived storage.
+- Kept sync conversation selection limited to currently available local JSONL files.
+
 ## 0.1.18 - Dashboard Action Strip Cleanup
 
 - Collapsed dashboard sync actions into one Sync menu to reduce top-bar crowding.
