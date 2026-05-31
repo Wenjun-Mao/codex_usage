@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.20 - Publishing Hardening
+
+- Preserved previous cached usage when a changed session file hits a transient parse/read failure.
+- Preserved retained missing-file usage across compatible cache schema rebuilds.
+- Stored sync conversations with filesystem-safe folder names when thread ids contain slashes or invalid Windows path characters.
+- Included archived Codex session folders in VS Code auto-sync watcher discovery.
+
 ## 0.1.19 - Archive/Delete Resilient Usage
 
 - Included Codex `archived_sessions` in usage totals.

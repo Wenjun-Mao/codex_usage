@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -32,6 +33,31 @@ from codex_usage.threads import ThreadInfo, list_threads
 
 
 SYNC_VERSION = 1
+_SAFE_THREAD_STORAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
+}
 
 
 @dataclass(frozen=True)
@@ -183,7 +209,7 @@ def _plan_thread_sync(
     thread_id: str,
     local_thread: ThreadInfo | None,
 ) -> SyncPlanItem:
-    thread_dir = sync_dir / "threads" / thread_id
+    thread_dir = _thread_dir(sync_dir, thread_id)
     manifest = read_json_object(thread_dir / "manifest.json") or {}
     remote_path = thread_dir / "session.jsonl"
     relative_path = str(manifest.get("source_relative_path") or _fallback_session_relative_path(thread_id))
@@ -262,7 +288,7 @@ def export_threads(
         if plan_item.get("action") not in {"push", "none"}:
             skipped.append(thread_id)
             continue
-        thread_dir = sync_dir / "threads" / thread_id
+        thread_dir = _thread_dir(sync_dir, thread_id)
         thread_dir.mkdir(parents=True, exist_ok=True)
         session_dir = owning_session_dir(thread.session_path, session_dirs)
         relative_path = thread.session_path.relative_to(session_dir).as_posix()
@@ -328,13 +354,17 @@ def import_threads(
         plan_item = planned.get(thread_id, {})
         action = str(plan_item.get("action") or "")
         if action == "conflict" and conflict_policy != "remote":
-            save_conflict_candidate(backup_dir, thread_id, sync_dir / "threads" / thread_id / "session.jsonl")
+            save_conflict_candidate(
+                backup_dir,
+                _thread_storage_name(thread_id),
+                _thread_dir(sync_dir, thread_id) / "session.jsonl",
+            )
             conflicts.append(thread_id)
             continue
         if action not in {"pull", "none"} and conflict_policy != "remote":
             skipped.append(thread_id)
             continue
-        thread_dir = sync_dir / "threads" / thread_id
+        thread_dir = _thread_dir(sync_dir, thread_id)
         manifest = read_json_object(thread_dir / "manifest.json")
         if manifest is None or not (thread_dir / "session.jsonl").is_file():
             skipped.append(thread_id)
@@ -349,7 +379,7 @@ def import_threads(
         local_thread_path = local_thread.session_path if local_thread is not None else None
         if local_thread_path is not None and not _same_path(local_thread_path, target_path):
             if conflict_policy != "remote" and action != "pull":
-                save_conflict_candidate(backup_dir, thread_id, thread_dir / "session.jsonl")
+                save_conflict_candidate(backup_dir, _thread_storage_name(thread_id), thread_dir / "session.jsonl")
                 conflicts.append(thread_id)
                 continue
             target_path = local_thread_path
@@ -357,13 +387,13 @@ def import_threads(
         local_exists = target_path.is_file()
         local_hash = sha256_file(target_path) if local_exists else ""
         if local_exists and local_hash != remote_hash and action not in {"pull", "none"} and conflict_policy != "remote":
-            save_conflict_candidate(backup_dir, thread_id, thread_dir / "session.jsonl")
+            save_conflict_candidate(backup_dir, _thread_storage_name(thread_id), thread_dir / "session.jsonl")
             conflicts.append(thread_id)
             continue
 
         needs_session_copy = not (local_exists and local_hash == remote_hash)
         if needs_session_copy and local_exists:
-            backup_file(target_path, backup_dir / thread_id / "session.jsonl")
+            backup_file(target_path, _backup_thread_dir(backup_dir, thread_id) / "session.jsonl")
             backup_created = True
         if needs_session_copy:
             target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -407,13 +437,30 @@ def _sync_dir_fingerprint(sync_dir: Path) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
+def _thread_storage_name(thread_id: str) -> str:
+    value = thread_id.strip()
+    stem = value.split(".", 1)[0].upper()
+    if _SAFE_THREAD_STORAGE_RE.fullmatch(value) and stem not in _WINDOWS_RESERVED_NAMES:
+        return value
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
+    return f"id-{digest[:32]}"
+
+
+def _thread_dir(sync_dir: Path, thread_id: str) -> Path:
+    return sync_dir / "threads" / _thread_storage_name(thread_id)
+
+
+def _backup_thread_dir(backup_dir: Path, thread_id: str) -> Path:
+    return backup_dir / _thread_storage_name(thread_id)
+
+
 def _sync_state_path(session_dir: Path, sync_dir: Path, thread_id: str) -> Path:
     return (
         codex_home_from_session_dir(session_dir)
         / ".codex-sync-state"
         / _sync_dir_fingerprint(sync_dir)
         / "threads"
-        / f"{thread_id}.json"
+        / f"{_thread_storage_name(thread_id)}.json"
     )
 
 
@@ -520,7 +567,7 @@ def _default_index_entry(thread: ThreadInfo) -> dict[str, str]:
 
 
 def _fallback_session_relative_path(thread_id: str) -> str:
-    return f"synced/{thread_id}.jsonl"
+    return f"synced/{_thread_storage_name(thread_id)}.jsonl"
 
 
 def _snapshot_file(path: Path | None) -> SyncFileSnapshot:

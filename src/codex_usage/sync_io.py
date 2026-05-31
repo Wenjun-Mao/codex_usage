@@ -50,8 +50,8 @@ def backup_file(source: Path, target: Path) -> None:
     shutil.copy2(source, target)
 
 
-def save_conflict_candidate(backup_dir: Path, thread_id: str, remote_path: Path) -> None:
-    backup_file(remote_path, backup_dir / thread_id / "remote-conflict-session.jsonl")
+def save_conflict_candidate(backup_dir: Path, thread_storage_name: str, remote_path: Path) -> None:
+    backup_file(remote_path, backup_dir / thread_storage_name / "remote-conflict-session.jsonl")
 
 
 def read_json_object(path: Path) -> dict[str, Any] | None:

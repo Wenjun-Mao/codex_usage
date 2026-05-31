@@ -409,6 +409,33 @@ def test_export_writes_sync_state_and_extended_manifest(tmp_path: Path) -> None:
     assert status["base_sha256"] == status["local_sha256"] == status["remote_sha256"]
 
 
+def test_sync_uses_safe_storage_paths_for_thread_ids_with_slashes(tmp_path: Path) -> None:
+    home = tmp_path / "codex"
+    sync_dir = tmp_path / "sync"
+    sessions = home / "sessions"
+    thread_id = "Owner/Repo"
+    session_path = _write_session_with_file_name(sessions, "safe-file.jsonl", thread_id, tmp_path / "repo", total=120)
+
+    export_threads(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=[thread_id], machine_id="machine-a")
+
+    unsafe_nested_dir = sync_dir / "threads" / "Owner" / "Repo"
+    assert not unsafe_nested_dir.exists()
+    stored_manifests = list((sync_dir / "threads").glob("*/manifest.json"))
+    assert len(stored_manifests) == 1
+    stored_dir = stored_manifests[0].parent
+    assert stored_dir.parent == sync_dir / "threads"
+    assert json.loads(stored_manifests[0].read_text(encoding="utf-8"))["thread_id"] == thread_id
+    assert (stored_dir / "session.jsonl").read_bytes() == session_path.read_bytes()
+
+    status = plan_sync(session_dirs=[sessions], sync_dir=sync_dir, thread_ids=[thread_id]).threads[0]
+    assert status["state"] == "synced"
+    assert status["thread_id"] == thread_id
+
+    state_files = list((home / ".codex-sync-state").rglob("*.json"))
+    assert len(state_files) == 1
+    assert state_files[0].parent.name == "threads"
+
+
 def test_import_fast_forward_pull_updates_local_and_state(tmp_path: Path) -> None:
     source_home = tmp_path / "source"
     target_home = tmp_path / "target"
@@ -517,6 +544,33 @@ def _write_session(
                 },
             },
         },
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    return path
+
+
+def _write_session_with_file_name(
+    sessions_dir: Path,
+    file_name: str,
+    thread_id: str,
+    cwd: Path,
+    total: int,
+) -> Path:
+    day_dir = sessions_dir / "2026" / "04" / "29"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    path = day_dir / file_name
+    rows = [
+        {
+            "timestamp": "2026-04-29T10:00:00Z",
+            "type": "session_meta",
+            "payload": {
+                "id": thread_id,
+                "timestamp": "2026-04-29T10:00:00Z",
+                "cwd": str(cwd),
+            },
+        },
+        {"timestamp": "2026-04-29T10:00:01Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
+        _token_count_event("2026-04-29T10:00:02Z", total),
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
     return path

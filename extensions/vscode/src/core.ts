@@ -298,13 +298,13 @@ export function syncStatusKindLabel(kind: SyncStatusKind): string {
 export function candidateSessionDirs(options: SessionDirDiscoveryOptions): string[] {
   const candidates: string[] = [];
   if (options.codexHome?.trim()) {
-    candidates.push(path.join(options.codexHome.trim(), "sessions"));
+    appendCodexSessionDirs(candidates, options.codexHome.trim());
   }
   if (options.userProfile?.trim()) {
-    candidates.push(path.join(options.userProfile.trim(), ".codex", "sessions"));
+    appendCodexSessionDirs(candidates, path.join(options.userProfile.trim(), ".codex"));
   }
   if (options.homeDir?.trim()) {
-    candidates.push(path.join(options.homeDir.trim(), ".codex", "sessions"));
+    appendCodexSessionDirs(candidates, path.join(options.homeDir.trim(), ".codex"));
   }
   return dedupePaths(candidates);
 }
@@ -318,10 +318,10 @@ export function selectSessionDirsForWatcher(
     return [];
   }
   if (codexHomeSet) {
-    return [candidates[0]];
+    return siblingSessionDirs(candidates, candidates[0]);
   }
   const existing = candidates.find((candidate) => exists(candidate));
-  return [existing ?? candidates[0]];
+  return siblingSessionDirs(candidates, existing ?? candidates[0]);
 }
 
 export function cacheDirPath(globalStoragePath: string): string {
@@ -993,6 +993,16 @@ function formatBytes(value: number): string {
     return `${Math.round(size)} ${units[unitIndex]}`;
   }
   return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function appendCodexSessionDirs(candidates: string[], codexRoot: string): void {
+  candidates.push(path.join(codexRoot, "sessions"));
+  candidates.push(path.join(codexRoot, "archived_sessions"));
+}
+
+function siblingSessionDirs(candidates: string[], selected: string): string[] {
+  const parent = path.dirname(selected);
+  return candidates.filter((candidate) => path.dirname(candidate) === parent);
 }
 
 function dedupePaths(paths: string[]): string[] {

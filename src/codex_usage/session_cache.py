@@ -6,6 +6,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.parser import finalize_session_records, parse_session_file, parse_timestamp
@@ -69,6 +70,13 @@ class CachedSessionData:
     stats: CacheStats
     file_errors: dict[str, str]
     retained_missing_files: list[Path] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RetainedMissingRows:
+    files: list[dict[str, Any]]
+    usage_records: list[dict[str, Any]]
+    session_metadata: list[dict[str, Any]]
 
 
 def uncached_session_data(
@@ -149,6 +157,7 @@ def load_cached_session_data(
 def _ensure_schema(connection: sqlite3.Connection) -> bool:
     if _schema_matches(connection):
         return False
+    retained_missing = _snapshot_retained_missing_rows(connection)
     _drop_cache_tables(connection)
     connection.executescript(
         """
@@ -229,6 +238,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
             ("project_transition_version", str(PROJECT_TRANSITION_CACHE_VERSION)),
         ],
     )
+    _restore_retained_missing_rows(connection, retained_missing)
     connection.commit()
     return True
 
@@ -319,17 +329,18 @@ def _refresh_one_file(
     session_dirs: list[Path],
     entry: SessionFileInventoryEntry,
 ) -> tuple[int, str]:
-    _delete_file_rows(connection, entry.file_key)
     path = entry.path
-    records: list[UsageRecord] = []
     try:
         records = parse_session_file(path)
-        for index, record in enumerate(records):
-            _insert_record(connection, entry.file_key, path, index, record)
-        _insert_file_summary(connection, session_dirs, entry, records)
-        error = ""
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
+        _record_file_error(connection, session_dirs, entry, error)
+        return (0, error)
+
+    _delete_file_rows(connection, entry.file_key)
+    for index, record in enumerate(records):
+        _insert_record(connection, entry.file_key, path, index, record)
+    _insert_file_summary(connection, session_dirs, entry, records)
     now = datetime.now(UTC).isoformat()
     connection.execute(
         """
@@ -352,10 +363,112 @@ def _refresh_one_file(
             "",
             0,
             records[0].session_id if records else path.stem,
+            "",
+        ),
+    )
+    return (len(records), "")
+
+
+def _snapshot_retained_missing_rows(connection: sqlite3.Connection) -> RetainedMissingRows:
+    try:
+        file_rows = _dict_rows(connection, "select * from files where is_missing = 1")
+    except sqlite3.Error:
+        return RetainedMissingRows(files=[], usage_records=[], session_metadata=[])
+    file_keys = [str(row["file_key"]) for row in file_rows if row.get("file_key")]
+    if not file_keys:
+        return RetainedMissingRows(files=[], usage_records=[], session_metadata=[])
+    placeholders = ",".join("?" for _ in file_keys)
+    try:
+        usage_rows = _dict_rows(
+            connection,
+            f"select * from usage_records where file_key in ({placeholders}) order by file_key, record_index",
+            file_keys,
+        )
+        metadata_rows = _dict_rows(
+            connection,
+            f"select * from session_metadata where file_key in ({placeholders})",
+            file_keys,
+        )
+    except sqlite3.Error:
+        return RetainedMissingRows(files=file_rows, usage_records=[], session_metadata=[])
+    return RetainedMissingRows(files=file_rows, usage_records=usage_rows, session_metadata=metadata_rows)
+
+
+def _restore_retained_missing_rows(connection: sqlite3.Connection, snapshot: RetainedMissingRows) -> None:
+    _insert_dict_rows(connection, "files", snapshot.files)
+    _insert_dict_rows(connection, "usage_records", snapshot.usage_records)
+    _insert_dict_rows(connection, "session_metadata", snapshot.session_metadata)
+
+
+def _dict_rows(
+    connection: sqlite3.Connection,
+    query: str,
+    parameters: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    return [dict(row) for row in connection.execute(query, parameters or [])]
+
+
+def _insert_dict_rows(connection: sqlite3.Connection, table: str, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    columns = _table_columns(connection, table)
+    selected_columns = [column for column in columns if column in rows[0]]
+    if not selected_columns:
+        return
+    placeholders = ",".join("?" for _ in selected_columns)
+    column_sql = ",".join(selected_columns)
+    sql = f"insert or ignore into {table} ({column_sql}) values ({placeholders})"
+    for row in rows:
+        connection.execute(sql, [row.get(column) for column in selected_columns])
+
+
+def _table_columns(connection: sqlite3.Connection, table: str) -> list[str]:
+    return [str(row["name"]) for row in connection.execute(f"pragma table_info({table})")]
+
+
+def _record_file_error(
+    connection: sqlite3.Connection,
+    session_dirs: list[Path],
+    entry: SessionFileInventoryEntry,
+    error: str,
+) -> None:
+    now = datetime.now(UTC).isoformat()
+    existing = connection.execute("select 1 from files where file_key = ?", (entry.file_key,)).fetchone()
+    if existing is not None:
+        connection.execute(
+            """
+            update files
+            set last_seen_at = ?, missing_since = null, is_missing = 0, error = ?
+            where file_key = ?
+            """,
+            (now, error, entry.file_key),
+        )
+        connection.execute("update session_metadata set is_missing = 0 where file_key = ?", (entry.file_key,))
+        return
+    connection.execute(
+        """
+        insert into files
+            (
+                file_key, path, session_dir, storage_state, size_bytes, mtime_ns,
+                parsed_at, last_seen_at, missing_since, is_missing, session_id, error
+            )
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            entry.file_key,
+            str(entry.path),
+            str(owning_session_dir(entry.path, session_dirs)),
+            entry.storage_state,
+            entry.size_bytes,
+            entry.mtime_ns,
+            now,
+            now,
+            "",
+            0,
+            entry.path.stem,
             error,
         ),
     )
-    return (len(records), error)
 
 
 def _delete_file_rows(connection: sqlite3.Connection, file_key: str) -> None:

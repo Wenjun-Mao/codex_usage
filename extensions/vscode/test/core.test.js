@@ -318,17 +318,30 @@ test("session directory candidates are discovered without a user setting", () =>
 
   assert.deepEqual(dirs, [
     path.join("C:/Users/example/.codex", "sessions"),
+    path.join("C:/Users/example/.codex", "archived_sessions"),
   ]);
 });
 
 test("watcher session directory selection follows discovery precedence", () => {
-  const candidates = ["C:/codex/sessions", "C:/Users/example/.codex/sessions"];
+  const candidates = [
+    "C:/codex/sessions",
+    "C:/codex/archived_sessions",
+    "C:/Users/example/.codex/sessions",
+    "C:/Users/example/.codex/archived_sessions",
+  ];
 
-  assert.deepEqual(selectSessionDirsForWatcher(candidates, true, () => false), ["C:/codex/sessions"]);
+  assert.deepEqual(selectSessionDirsForWatcher(candidates, true, () => false), [
+    "C:/codex/sessions",
+    "C:/codex/archived_sessions",
+  ]);
   assert.deepEqual(selectSessionDirsForWatcher(candidates, false, (dir) => dir.includes("Users")), [
     "C:/Users/example/.codex/sessions",
+    "C:/Users/example/.codex/archived_sessions",
   ]);
-  assert.deepEqual(selectSessionDirsForWatcher(candidates, false, () => false), ["C:/codex/sessions"]);
+  assert.deepEqual(selectSessionDirsForWatcher(candidates, false, () => false), [
+    "C:/codex/sessions",
+    "C:/codex/archived_sessions",
+  ]);
 });
 
 test("buildCodexUsageEnv passes internal cache directory without removing process env", () => {

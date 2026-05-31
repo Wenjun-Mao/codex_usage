@@ -128,6 +128,29 @@ def test_schema_version_mismatch_rebuilds_cache(tmp_path: Path) -> None:
     assert row == (str(CACHE_SCHEMA_VERSION),)
 
 
+def test_schema_rebuild_retains_missing_file_usage(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    session_path = _write_session(sessions, "thread-1", "/repo/deleted", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    session_path.unlink()
+    missing_data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    assert missing_data.stats.files_missing_retained == 1
+    db_path = cache_dir / CACHE_DB_NAME
+
+    import sqlite3
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
+
+    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.stats.rebuilt is True
+    assert data.stats.files_missing_retained == 1
+    assert [record.session_id for record in data.records] == ["thread-1"]
+    assert [record.usage.total_tokens for record in data.records] == [100]
+
+
 def test_corrupt_file_records_error_and_keeps_other_files(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", "/repo/good", 100)
@@ -140,6 +163,26 @@ def test_corrupt_file_records_error_and_keeps_other_files(tmp_path: Path) -> Non
     assert [record.session_id for record in data.records] == ["thread-1"]
     assert data.stats.file_errors == 1
     assert data.file_errors[str(bad)]
+
+
+def test_parse_failure_keeps_previous_cached_records(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    _append_token_count(session_path, "2026-04-29T10:05:00Z", 150)
+    os.utime(session_path, None)
+
+    def fail_parse(_path: Path):
+        raise OSError("transient read failure")
+
+    monkeypatch.setattr(cache_module, "parse_session_file", fail_parse)
+
+    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.stats.file_errors == 1
+    assert data.file_errors[str(session_path)] == "OSError: transient read failure"
+    assert [record.usage.total_tokens for record in data.records] == [100]
 
 
 def test_resolve_cache_dir_prefers_internal_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
