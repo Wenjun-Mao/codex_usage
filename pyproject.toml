@@ -1,6 +1,6 @@
 [project]
 name = "codex-usage"
-version = "0.1.22"
+version = "0.1.24"
 description = "Local Codex session token usage analyzer"
 readme = "README.md"
 license = "MIT"

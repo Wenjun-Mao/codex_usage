@@ -189,10 +189,10 @@ def render_html_report(
     {_empty_report_notice(view_model)}
     {project_transitions_html}
     <div class="dashboard-grid">
-      {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), _table_section("Daily Details", daily_rows))}
-      {_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), _table_section("Hourly Details", hourly_rows))}
-      {_chart_section("Project Breakdown", render_project_breakdown_svg(view_model.project_points), _table_section("Project Details", project_rows))}
-      {_chart_section("Model Mix", render_model_mix_svg(view_model.model_points), _table_section("Model Details", model_rows))}
+      {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), _table_section("Daily Details", daily_rows), scroll_class="tooltip-chart-scroll")}
+      {_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), _table_section("Hourly Details", hourly_rows), scroll_class="heatmap-chart-scroll")}
+      {_chart_section("Project Breakdown", render_project_breakdown_svg(view_model.project_points), _table_section("Project Details", project_rows), scroll_class="tooltip-chart-scroll")}
+      {_chart_section("Model Mix", render_model_mix_svg(view_model.model_points), _table_section("Model Details", model_rows), scroll_class="tooltip-chart-scroll")}
     </div>
   </main>
 </body>
@@ -320,11 +320,14 @@ def _project_transitions_section(project_transitions: list[dict[str, object]] | 
     )
 
 
-def _chart_section(title: str, svg: str, table_html: str) -> str:
+def _chart_section(title: str, svg: str, table_html: str, *, scroll_class: str = "") -> str:
+    classes = "chart-scroll"
+    if scroll_class:
+        classes = f"{classes} {html.escape(scroll_class, quote=True)}"
     return (
         "<section class=\"section\">"
         f"<h2>{html.escape(title)}</h2>"
-        f"<div class=\"chart-scroll\">{svg}</div>"
+        f"<div class=\"{classes}\">{svg}</div>"
         f"{table_html}"
         "</section>"
     )

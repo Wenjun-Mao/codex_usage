@@ -8,7 +8,7 @@ from codex_usage.project_transitions import ProjectTransition
 from codex_usage.reporting import render_html_report
 
 
-def test_dashboard_report_contains_inline_svg_sections_without_external_assets(tmp_path: Path) -> None:
+def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(tmp_path: Path) -> None:
     output = tmp_path / "report.html"
     total = UsageSummary(
         usage=TokenUsage(input_tokens=1_000, cached_input_tokens=500, output_tokens=100, total_tokens=1_100),
@@ -48,9 +48,21 @@ def test_dashboard_report_contains_inline_svg_sections_without_external_assets(t
     assert "Hourly Heatmap" in html
     assert "Project Breakdown" in html
     assert "Model Mix" in html
-    assert html.count("<svg") == 3
-    assert 'aria-label="Daily API-equivalent cost trend"' in html
+    assert html.count("<svg") == 0
+    assert 'role="img" aria-label="Daily API-equivalent cost trend"' in html
     assert 'role="grid" aria-label="Hourly API-equivalent cost heatmap"' in html
+    assert 'class="chart-scroll tooltip-chart-scroll"' in html
+    assert "daily-bar-chart" in html
+    assert "breakdown-bar-chart" in html
+    assert "chart-tooltip-main" in html
+    assert '<span class="chart-tooltip-main">2026-04-29</span>' in html
+    assert '<span class="chart-tooltip-detail">$1.7500 | 1,100 tokens</span>' in html
+    assert '<span class="chart-tooltip-main">demo</span>' in html
+    assert '<span class="chart-tooltip-detail">1,100 tokens | $1.7500 | 14.2 credits</span>' in html
+    assert '<span class="chart-tooltip-main">gpt-5.5</span>' in html
+    assert "<title>2026-04-29:" not in html
+    assert "<title>demo:" not in html
+    assert "<title>gpt-5.5:" not in html
     assert "Codex Credits" in html
     assert "rates effective at each usage event" in html
     assert "API USD excludes" not in html
@@ -88,6 +100,7 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
 
     assert '<html lang="en" data-codex-theme="auto">' in html
     assert "heatmap-grid" in html
+    assert 'class="chart-scroll heatmap-chart-scroll"' in html
     assert "heat-cell heat-" in html
     assert "heatmap-tooltip" in html
     assert "heatmap-tooltip-main" in html

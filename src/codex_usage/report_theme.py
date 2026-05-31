@@ -226,6 +226,12 @@ def report_css() -> str:
     .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 18px; }
     .section { border-top: 1px solid var(--border); padding-top: 18px; }
     .chart-scroll { overflow-x: auto; padding-bottom: 4px; }
+    .tooltip-chart-scroll,
+    .heatmap-chart-scroll {
+      /* Horizontal scroll containers clip vertical overflow, so reserve hover space for the top row. */
+      padding-top: 56px;
+      margin-top: -44px;
+    }
     .chart-svg { display: block; width: 100%; height: auto; min-width: 680px; }
     .axis-line { stroke: var(--border); stroke-width: 1; }
     .axis-label { fill: var(--muted); font-size: 11px; }
@@ -234,6 +240,147 @@ def report_css() -> str:
     .cost-bar { fill: var(--accent); }
     .cost-bar:hover, .breakdown-bar:hover { fill: var(--accent-strong); }
     .breakdown-bar { fill: var(--highlight); }
+    .daily-bar-chart {
+      min-width: 680px;
+      max-width: 920px;
+      width: 100%;
+    }
+    .chart-max-label {
+      color: var(--muted);
+      font-size: 11px;
+      margin: 0 18px 5px 54px;
+      font-variant-numeric: tabular-nums;
+    }
+    .daily-bars {
+      display: grid;
+      grid-template-columns: repeat(var(--bar-count), minmax(5px, 1fr));
+      gap: 3px;
+      min-height: 226px;
+      padding: 0 18px 0 54px;
+    }
+    .daily-bar-slot {
+      display: grid;
+      grid-template-rows: 200px 22px;
+      min-width: 0;
+      align-items: end;
+    }
+    .chart-bar-hit {
+      position: relative;
+      display: block;
+      outline: none;
+    }
+    .daily-bar-hit {
+      align-self: end;
+      height: 200px;
+      border-bottom: 1px solid var(--border);
+    }
+    .daily-bar-fill {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: block;
+      min-height: 1px;
+      border-radius: 2px 2px 0 0;
+      background: var(--accent);
+    }
+    .daily-bar-label {
+      color: var(--muted);
+      font-size: 11px;
+      min-height: 16px;
+      margin-top: 6px;
+      overflow: hidden;
+      text-align: center;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .breakdown-bar-chart {
+      display: grid;
+      gap: 10px;
+      min-width: 680px;
+      max-width: 920px;
+      width: 100%;
+    }
+    .breakdown-bar-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;
+      gap: 10px;
+      align-items: center;
+    }
+    .breakdown-bar-label {
+      color: var(--text);
+      font-size: 12px;
+      overflow: hidden;
+      text-align: right;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .breakdown-bar-hit {
+      height: 24px;
+      border-radius: 4px;
+    }
+    .breakdown-bar-fill {
+      display: block;
+      min-width: 2px;
+      height: 20px;
+      margin-top: 2px;
+      border-radius: 4px;
+      background: var(--highlight);
+    }
+    .breakdown-bar-value {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .chart-bar-hit:hover .daily-bar-fill,
+    .chart-bar-hit:focus-visible .daily-bar-fill {
+      background: var(--accent-strong);
+    }
+    .chart-bar-hit:hover .breakdown-bar-fill,
+    .chart-bar-hit:focus-visible .breakdown-bar-fill {
+      background: var(--accent-strong);
+    }
+    .chart-bar-hit:hover,
+    .chart-bar-hit:focus-visible {
+      z-index: 2;
+    }
+    .chart-tooltip {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      z-index: 4;
+      width: max-content;
+      max-width: 280px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: var(--tooltip-bg);
+      color: var(--tooltip-text);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      font-size: 12px;
+      line-height: 1.3;
+      pointer-events: none;
+      transform: translate(-50%, 2px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.06s linear, transform 0.06s linear, visibility 0s linear 0.06s;
+      white-space: normal;
+    }
+    .chart-bar-hit:hover .chart-tooltip,
+    .chart-bar-hit:focus-visible .chart-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, 0);
+      transition-delay: 0s;
+    }
+    .chart-tooltip-main,
+    .chart-tooltip-detail {
+      display: block;
+    }
+    .chart-tooltip-detail {
+      margin-top: 2px;
+      opacity: 0.86;
+    }
     .heatmap-grid {
       --heatmap-cell-size: 20px;
       display: grid;

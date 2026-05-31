@@ -14,36 +14,27 @@ def render_daily_cost_svg(points: list[DailyPoint]) -> str:
     if max_cost <= 0:
         return _empty_svg(title, "No priced daily cost is available for this range.")
 
-    width = 920
-    height = 270
-    left = 54
-    right = 18
-    top = 26
-    bottom = 44
-    inner_width = width - left - right
-    inner_height = height - top - bottom
-    gap = 3
-    bar_width = max(4, (inner_width - gap * max(0, len(points) - 1)) / len(points))
     label_step = max(1, round(len(points) / 8))
 
-    chunks = [_svg_open(width, height, title)]
-    chunks.append(f'<line class="axis-line" x1="{left}" y1="{top + inner_height}" x2="{width - right}" y2="{top + inner_height}" />')
+    chunks = [f'<div class="daily-bar-chart" role="img" aria-label="{_esc(title)}">']
+    chunks.append(f'<div class="chart-max-label">${max_cost:.2f} max day</div>')
+    chunks.append(f'<div class="daily-bars" style="--bar-count: {len(points)};">')
     for index, point in enumerate(points):
-        bar_height = max(1, point.cost_usd / max_cost * inner_height)
-        x = left + index * (bar_width + gap)
-        y = top + inner_height - bar_height
+        height_pct = max(1.0, point.cost_usd / max_cost * 100)
+        label = point.label if index % label_step == 0 or index == len(points) - 1 else ""
+        main_text = point.key
+        detail_text = f"${point.cost_usd:.4f} | {_fmt_int(point.total_tokens)} tokens"
+        aria_text = f"{main_text}: {detail_text.replace(' | ', ', ')}"
         chunks.append(
-            f'<rect class="cost-bar" x="{x:.2f}" y="{y:.2f}" width="{bar_width:.2f}" '
-            f'height="{bar_height:.2f}" rx="2"><title>{_esc(point.key)}: ${point.cost_usd:.4f}, '
-            f'{_fmt_int(point.total_tokens)} tokens</title></rect>'
+            '<span class="daily-bar-slot">'
+            f'<span class="chart-bar-hit daily-bar-hit" tabindex="0" aria-label="{_esc(aria_text)}">'
+            f'<span class="daily-bar-fill" style="height: {height_pct:.2f}%"></span>'
+            f'{_chart_tooltip(main_text, detail_text)}'
+            "</span>"
+            f'<span class="daily-bar-label">{_esc(label)}</span>'
+            "</span>"
         )
-        if index % label_step == 0 or index == len(points) - 1:
-            chunks.append(
-                f'<text class="axis-label" x="{x + bar_width / 2:.2f}" y="{height - 18}" text-anchor="middle">'
-                f'{_esc(point.label)}</text>'
-            )
-    chunks.append(f'<text class="axis-label" x="{left}" y="18">${max_cost:.2f} max day</text>')
-    chunks.append("</svg>")
+    chunks.append("</div></div>")
     return "".join(chunks)
 
 
@@ -99,33 +90,34 @@ def _render_horizontal_bars(title: str, points: list[BreakdownPoint], *, value_k
     if not points:
         return _empty_svg(title, "No usage found for this range.")
 
-    width = 920
-    row_height = 38
-    top = 26
-    left = 206
-    right = 184
-    height = top + row_height * len(points) + 22
-    inner_width = width - left - right
     max_value = max(point.total_tokens for point in points) or 1
 
-    chunks = [_svg_open(width, height, title)]
-    for index, point in enumerate(points):
-        y = top + index * row_height
-        bar_width = max(2, point.total_tokens / max_value * inner_width)
+    chunks = [f'<div class="breakdown-bar-chart" role="img" aria-label="{_esc(title)}">']
+    for point in points:
+        width_pct = max(1.0, point.total_tokens / max_value * 100)
         label = _truncate(point.label, 28)
-        chunks.append(f'<text class="bar-label" x="{left - 10}" y="{y + 20}" text-anchor="end">{_esc(label)}</text>')
-        chunks.append(
-            f'<rect class="breakdown-bar" x="{left}" y="{y + 5}" width="{bar_width:.2f}" height="20" rx="4">'
-            f'<title>{_esc(point.label)}: {_fmt_int(point.total_tokens)} {value_kind}, '
-            f'${point.cost_usd:.4f}, {_fmt_credits(point.total_credits)} credits</title></rect>'
-        )
         value_text = f"{_fmt_compact(point.total_tokens)} | ${point.cost_usd:.2f} | {_fmt_credits(point.total_credits)} cr"
         if point.unpriced_tokens:
             value_text += f" | {_fmt_compact(point.unpriced_tokens)} API excl."
         if point.credit_unpriced_tokens:
             value_text += f" | {_fmt_compact(point.credit_unpriced_tokens)} no credit"
-        chunks.append(f'<text class="value-label" x="{left + inner_width + 10}" y="{y + 20}">{_esc(value_text)}</text>')
-    chunks.append("</svg>")
+        detail_text = f"{_fmt_int(point.total_tokens)} {value_kind} | ${point.cost_usd:.4f} | {_fmt_credits(point.total_credits)} credits"
+        if point.unpriced_tokens:
+            detail_text += f" | {_fmt_int(point.unpriced_tokens)} API-excluded"
+        if point.credit_unpriced_tokens:
+            detail_text += f" | {_fmt_int(point.credit_unpriced_tokens)} without credit rates"
+        aria_text = f"{point.label}: {detail_text.replace(' | ', ', ')}"
+        chunks.append(
+            '<div class="breakdown-bar-row">'
+            f'<span class="breakdown-bar-label">{_esc(label)}</span>'
+            f'<span class="chart-bar-hit breakdown-bar-hit" tabindex="0" aria-label="{_esc(aria_text)}">'
+            f'<span class="breakdown-bar-fill" style="width: {width_pct:.2f}%"></span>'
+            f'{_chart_tooltip(point.label, detail_text)}'
+            "</span>"
+            f'<span class="breakdown-bar-value">{_esc(value_text)}</span>'
+            "</div>"
+        )
+    chunks.append("</div>")
     return "".join(chunks)
 
 
@@ -136,6 +128,15 @@ def _empty_svg(title: str, message: str) -> str:
         _svg_open(width, height, title)
         + f'<text class="empty-chart" x="24" y="78">{_esc(message)}</text>'
         + "</svg>"
+    )
+
+
+def _chart_tooltip(main_text: str, detail_text: str) -> str:
+    return (
+        '<span class="chart-tooltip" aria-hidden="true">'
+        f'<span class="chart-tooltip-main">{_esc(main_text)}</span>'
+        f'<span class="chart-tooltip-detail">{_esc(detail_text)}</span>'
+        "</span>"
     )
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.24 - Fast Bar Chart Tooltips
+
+- Replaced populated daily, project, and model SVG bars with script-free HTML/CSS bars so hover and keyboard-focus tooltips feel immediate across the dashboard.
+
+## 0.1.23 - Heatmap Tooltip Clipping Fix
+
+- Reserved top-row hover space for the hourly heatmap so two-line tooltips are not clipped by the horizontal scroll container.
+
 ## 0.1.22 - Heatmap Tooltip Polish
 
 - Split hourly heatmap tooltip content into two lines: timestamp first, then cost and token usage.
