@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.22 - Heatmap Tooltip Polish
+
+- Split hourly heatmap tooltip content into two lines: timestamp first, then cost and token usage.
+
 ## 0.1.21 - Fast Heatmap Tooltips
 
 - Replaced populated hourly heatmap SVG cells with a script-free HTML/CSS grid for immediate hover and keyboard-focus tooltips.

@@ -295,6 +295,14 @@ def report_css() -> str:
       transform: translate(-50%, 0);
       transition-delay: 0s;
     }
+    .heatmap-tooltip-main,
+    .heatmap-tooltip-detail {
+      display: block;
+    }
+    .heatmap-tooltip-detail {
+      margin-top: 2px;
+      opacity: 0.86;
+    }
     .heatmap-legend { margin: 8px 0 0 82px; }
     .heat-cell { stroke: var(--heat-stroke); stroke-width: 1; }
     .heat-0 { fill: var(--heat-0); background: var(--heat-0); }

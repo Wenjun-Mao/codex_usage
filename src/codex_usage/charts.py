@@ -70,15 +70,16 @@ def render_hourly_heatmap_html(cells: list[HourlyCell]) -> str:
             cell = by_key.get((day, hour))
             value = cell.cost_usd if cell else 0.0
             heat_class = _heat_class(value / max_cost if max_cost else 0)
-            title_text = (
-                f"{day} {hour:02d}:00: ${value:.4f}, {_fmt_int(cell.total_tokens)} tokens"
-                if cell
-                else f"{day} {hour:02d}:00: no usage"
-            )
+            main_text = f"{day} {hour:02d}:00"
+            detail_text = f"${value:.4f} | {_fmt_int(cell.total_tokens)} tokens" if cell else "No usage"
+            aria_text = f"{main_text}: {detail_text.replace(' | ', ', ')}"
             chunks.append(
                 f'<span class="heatmap-cell heat-cell {heat_class}" role="gridcell" tabindex="0" '
-                f'aria-label="{_esc(title_text)}">'
-                f'<span class="heatmap-tooltip" aria-hidden="true">{_esc(title_text)}</span>'
+                f'aria-label="{_esc(aria_text)}">'
+                '<span class="heatmap-tooltip" aria-hidden="true">'
+                f'<span class="heatmap-tooltip-main">{_esc(main_text)}</span>'
+                f'<span class="heatmap-tooltip-detail">{_esc(detail_text)}</span>'
+                "</span>"
                 "</span>"
             )
     chunks.append("</div>")

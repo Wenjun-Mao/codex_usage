@@ -90,8 +90,12 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     assert "heatmap-grid" in html
     assert "heat-cell heat-" in html
     assert "heatmap-tooltip" in html
+    assert "heatmap-tooltip-main" in html
+    assert "heatmap-tooltip-detail" in html
     assert 'tabindex="0"' in html
-    assert "2026-04-29 10:00: $0.7500, 700 tokens" in html
+    assert '<span class="heatmap-tooltip-main">2026-04-29 10:00</span>' in html
+    assert '<span class="heatmap-tooltip-detail">$0.7500 | 700 tokens</span>' in html
+    assert 'aria-label="2026-04-29 10:00: $0.7500, 700 tokens"' in html
     assert "<title>2026-04-29 10:00" not in html
     assert "#edf2f7" not in html
     assert "--heat-0" in html
