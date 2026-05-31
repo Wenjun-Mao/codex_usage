@@ -80,6 +80,8 @@ def report_css() -> str:
       --heat-4: #1d4ed8;
       --heat-5: #f4b000;
       --heat-stroke: var(--surface);
+      --tooltip-bg: #111827;
+      --tooltip-text: #f8fafc;
     }
     html[data-codex-theme="night"] {
       color-scheme: dark;
@@ -110,6 +112,8 @@ def report_css() -> str:
       --heat-4: #7da3ff;
       --heat-5: #d8a72f;
       --heat-stroke: var(--bg);
+      --tooltip-bg: #f8fafc;
+      --tooltip-text: #0d0f12;
     }
     @media (prefers-color-scheme: dark) {
       html[data-codex-theme="auto"] {
@@ -141,6 +145,8 @@ def report_css() -> str:
         --heat-4: #7da3ff;
         --heat-5: #d8a72f;
         --heat-stroke: var(--bg);
+        --tooltip-bg: #f8fafc;
+        --tooltip-text: #0d0f12;
       }
     }
     html[data-codex-theme="auto"] body.vscode-dark {
@@ -172,6 +178,8 @@ def report_css() -> str:
       --heat-4: #7da3ff;
       --heat-5: #d8a72f;
       --heat-stroke: var(--bg);
+      --tooltip-bg: var(--vscode-editorWidget-background, #f8fafc);
+      --tooltip-text: var(--vscode-editorWidget-foreground, #0d0f12);
     }
     body.vscode-high-contrast {
       --bg: var(--vscode-editor-background, #000000);
@@ -187,6 +195,8 @@ def report_css() -> str:
       --notice-bg: transparent;
       --warn-bg: transparent;
       --heat-stroke: var(--border);
+      --tooltip-bg: var(--vscode-editorWidget-background, #000000);
+      --tooltip-text: var(--vscode-editorWidget-foreground, #ffffff);
     }
     * { box-sizing: border-box; }
     body {
@@ -224,13 +234,75 @@ def report_css() -> str:
     .cost-bar { fill: var(--accent); }
     .cost-bar:hover, .breakdown-bar:hover { fill: var(--accent-strong); }
     .breakdown-bar { fill: var(--highlight); }
+    .heatmap-grid {
+      --heatmap-cell-size: 20px;
+      display: grid;
+      grid-template-columns: max-content repeat(24, var(--heatmap-cell-size));
+      gap: 4px;
+      align-items: center;
+      width: max-content;
+      min-width: 680px;
+      padding: 4px 0;
+    }
+    .heatmap-corner { width: 72px; }
+    .heatmap-hour, .heatmap-day {
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .heatmap-hour { text-align: center; min-height: 16px; }
+    .heatmap-day { width: 72px; text-align: right; padding-right: 4px; }
+    .heatmap-cell {
+      position: relative;
+      display: block;
+      width: var(--heatmap-cell-size);
+      height: var(--heatmap-cell-size);
+      border: 1px solid var(--heat-stroke);
+      border-radius: 4px;
+      outline: none;
+    }
+    .heatmap-cell:hover,
+    .heatmap-cell:focus-visible {
+      border-color: var(--accent-strong);
+      box-shadow: 0 0 0 2px var(--accent-soft);
+      z-index: 2;
+    }
+    .heatmap-tooltip {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      z-index: 4;
+      width: max-content;
+      max-width: 260px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: var(--tooltip-bg);
+      color: var(--tooltip-text);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      font-size: 12px;
+      line-height: 1.3;
+      pointer-events: none;
+      transform: translate(-50%, 2px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.06s linear, transform 0.06s linear, visibility 0s linear 0.06s;
+      white-space: normal;
+    }
+    .heatmap-cell:hover .heatmap-tooltip,
+    .heatmap-cell:focus-visible .heatmap-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, 0);
+      transition-delay: 0s;
+    }
+    .heatmap-legend { margin: 8px 0 0 82px; }
     .heat-cell { stroke: var(--heat-stroke); stroke-width: 1; }
-    .heat-0 { fill: var(--heat-0); }
-    .heat-1 { fill: var(--heat-1); }
-    .heat-2 { fill: var(--heat-2); }
-    .heat-3 { fill: var(--heat-3); }
-    .heat-4 { fill: var(--heat-4); }
-    .heat-5 { fill: var(--heat-5); }
+    .heat-0 { fill: var(--heat-0); background: var(--heat-0); }
+    .heat-1 { fill: var(--heat-1); background: var(--heat-1); }
+    .heat-2 { fill: var(--heat-2); background: var(--heat-2); }
+    .heat-3 { fill: var(--heat-3); background: var(--heat-3); }
+    .heat-4 { fill: var(--heat-4); background: var(--heat-4); }
+    .heat-5 { fill: var(--heat-5); background: var(--heat-5); }
     .empty-chart { fill: var(--muted); font-size: 14px; }
     .table-wrap { overflow-x: auto; }
     @media (max-width: 720px) {

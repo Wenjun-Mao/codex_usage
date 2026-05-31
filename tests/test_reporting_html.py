@@ -48,8 +48,9 @@ def test_dashboard_report_contains_inline_svg_sections_without_external_assets(t
     assert "Hourly Heatmap" in html
     assert "Project Breakdown" in html
     assert "Model Mix" in html
-    assert html.count("<svg") == 4
+    assert html.count("<svg") == 3
     assert 'aria-label="Daily API-equivalent cost trend"' in html
+    assert 'role="grid" aria-label="Hourly API-equivalent cost heatmap"' in html
     assert "Codex Credits" in html
     assert "rates effective at each usage event" in html
     assert "API USD excludes" not in html
@@ -86,7 +87,12 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     html = output.read_text(encoding="utf-8")
 
     assert '<html lang="en" data-codex-theme="auto">' in html
+    assert "heatmap-grid" in html
     assert "heat-cell heat-" in html
+    assert "heatmap-tooltip" in html
+    assert 'tabindex="0"' in html
+    assert "2026-04-29 10:00: $0.7500, 700 tokens" in html
+    assert "<title>2026-04-29 10:00" not in html
     assert "#edf2f7" not in html
     assert "--heat-0" in html
 

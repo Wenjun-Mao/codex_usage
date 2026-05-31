@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.21 - Fast Heatmap Tooltips
+
+- Replaced populated hourly heatmap SVG cells with a script-free HTML/CSS grid for immediate hover and keyboard-focus tooltips.
+- Kept heatmap colors themeable across day, night, auto, and VS Code high-contrast modes.
+
 ## 0.1.20 - Publishing Hardening
 
 - Preserved previous cached usage when a changed session file hits a transient parse/read failure.

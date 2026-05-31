@@ -11,7 +11,7 @@ from typing import TextIO
 from codex_usage.aggregation import AggregateRow, UsageSummary
 from codex_usage.charts import (
     render_daily_cost_svg,
-    render_hourly_heatmap_svg,
+    render_hourly_heatmap_html,
     render_model_mix_svg,
     render_project_breakdown_svg,
 )
@@ -190,7 +190,7 @@ def render_html_report(
     {project_transitions_html}
     <div class="dashboard-grid">
       {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), _table_section("Daily Details", daily_rows))}
-      {_chart_section("Hourly Heatmap", render_hourly_heatmap_svg(view_model.hourly_cells), _table_section("Hourly Details", hourly_rows))}
+      {_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), _table_section("Hourly Details", hourly_rows))}
       {_chart_section("Project Breakdown", render_project_breakdown_svg(view_model.project_points), _table_section("Project Details", project_rows))}
       {_chart_section("Model Mix", render_model_mix_svg(view_model.model_points), _table_section("Model Details", model_rows))}
     </div>

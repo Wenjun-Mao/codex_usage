@@ -47,7 +47,7 @@ def render_daily_cost_svg(points: list[DailyPoint]) -> str:
     return "".join(chunks)
 
 
-def render_hourly_heatmap_svg(cells: list[HourlyCell]) -> str:
+def render_hourly_heatmap_html(cells: list[HourlyCell]) -> str:
     title = "Hourly API-equivalent cost heatmap"
     if not cells:
         return _empty_svg(title, "No hourly usage found for this range.")
@@ -58,38 +58,31 @@ def render_hourly_heatmap_svg(cells: list[HourlyCell]) -> str:
     if max_cost <= 0:
         return _empty_svg(title, "No priced hourly cost is available for this range.")
 
-    left = 82
-    top = 34
-    cell_size = 24
-    row_gap = 4
-    width = left + 24 * cell_size + 20
-    height = top + len(days) * (cell_size + row_gap) + 22
-
-    chunks = [_svg_open(width, height, title)]
+    chunks = ['<div class="heatmap-grid" role="grid" aria-label="Hourly API-equivalent cost heatmap">']
+    chunks.append('<span class="heatmap-corner" aria-hidden="true"></span>')
     for hour in range(24):
-        if hour % 3 == 0:
-            x = left + hour * cell_size + cell_size / 2
-            chunks.append(f'<text class="axis-label" x="{x:.1f}" y="20" text-anchor="middle">{hour:02d}</text>')
+        label = f"{hour:02d}" if hour % 3 == 0 else ""
+        chunks.append(f'<span class="heatmap-hour" role="columnheader" aria-label="{hour:02d}:00">{label}</span>')
 
     for day_index, day in enumerate(days):
-        y = top + day_index * (cell_size + row_gap)
-        chunks.append(f'<text class="axis-label" x="{left - 8}" y="{y + 16}" text-anchor="end">{_esc(_short_day(day))}</text>')
+        chunks.append(f'<span class="heatmap-day" role="rowheader">{_esc(_short_day(day))}</span>')
         for hour in range(24):
             cell = by_key.get((day, hour))
             value = cell.cost_usd if cell else 0.0
             heat_class = _heat_class(value / max_cost if max_cost else 0)
-            x = left + hour * cell_size
             title_text = (
                 f"{day} {hour:02d}:00: ${value:.4f}, {_fmt_int(cell.total_tokens)} tokens"
                 if cell
                 else f"{day} {hour:02d}:00: no usage"
             )
             chunks.append(
-                f'<rect x="{x}" y="{y}" width="20" height="20" rx="3" class="heat-cell {heat_class}">'
-                f'<title>{_esc(title_text)}</title></rect>'
+                f'<span class="heatmap-cell heat-cell {heat_class}" role="gridcell" tabindex="0" '
+                f'aria-label="{_esc(title_text)}">'
+                f'<span class="heatmap-tooltip" aria-hidden="true">{_esc(title_text)}</span>'
+                "</span>"
             )
-    chunks.append(f'<text class="axis-label" x="{left}" y="{height - 4}">Darker cells mean higher API-equivalent cost.</text>')
-    chunks.append("</svg>")
+    chunks.append("</div>")
+    chunks.append('<p class="heatmap-legend muted">Darker cells mean higher API-equivalent cost.</p>')
     return "".join(chunks)
 
 
