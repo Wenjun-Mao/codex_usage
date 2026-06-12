@@ -78,7 +78,7 @@ def report_css() -> str:
       --heat-2: #93c5fd;
       --heat-3: #3b82f6;
       --heat-4: #1d4ed8;
-      --heat-5: #f4b000;
+      --heat-5: #003ecc;
       --heat-stroke: var(--surface);
       --tooltip-bg: #111827;
       --tooltip-text: #f8fafc;
@@ -110,7 +110,7 @@ def report_css() -> str:
       --heat-2: #2f5fbe;
       --heat-3: #4f83ff;
       --heat-4: #7da3ff;
-      --heat-5: #d8a72f;
+      --heat-5: #b8ccff;
       --heat-stroke: var(--bg);
       --tooltip-bg: #f8fafc;
       --tooltip-text: #0d0f12;
@@ -143,7 +143,7 @@ def report_css() -> str:
         --heat-2: #2f5fbe;
         --heat-3: #4f83ff;
         --heat-4: #7da3ff;
-        --heat-5: #d8a72f;
+        --heat-5: #b8ccff;
         --heat-stroke: var(--bg);
         --tooltip-bg: #f8fafc;
         --tooltip-text: #0d0f12;
@@ -176,7 +176,7 @@ def report_css() -> str:
       --heat-2: #2f5fbe;
       --heat-3: #4f83ff;
       --heat-4: #7da3ff;
-      --heat-5: #d8a72f;
+      --heat-5: #b8ccff;
       --heat-stroke: var(--bg);
       --tooltip-bg: var(--vscode-editorWidget-background, #f8fafc);
       --tooltip-text: var(--vscode-editorWidget-foreground, #0d0f12);
@@ -382,13 +382,14 @@ def report_css() -> str:
       opacity: 0.86;
     }
     .heatmap-grid {
-      --heatmap-cell-size: 20px;
+      --heatmap-cell-size: clamp(20px, 2.4vw, 31px);
       display: grid;
       grid-template-columns: max-content repeat(24, var(--heatmap-cell-size));
       gap: 4px;
       align-items: center;
       width: max-content;
       min-width: 680px;
+      margin-inline: auto;
       padding: 4px 0;
     }
     .heatmap-corner { width: 72px; }
@@ -450,7 +451,6 @@ def report_css() -> str:
       margin-top: 2px;
       opacity: 0.86;
     }
-    .heatmap-legend { margin: 8px 0 0 82px; }
     .heat-cell { stroke: var(--heat-stroke); stroke-width: 1; }
     .heat-0 { fill: var(--heat-0); background: var(--heat-0); }
     .heat-1 { fill: var(--heat-1); background: var(--heat-1); }

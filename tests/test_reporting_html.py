@@ -101,6 +101,8 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     assert '<html lang="en" data-codex-theme="auto">' in html
     assert "heatmap-grid" in html
     assert 'class="chart-scroll heatmap-chart-scroll"' in html
+    assert "--heatmap-cell-size: clamp(20px, 2.4vw, 31px);" in html
+    assert "margin-inline: auto;" in html
     assert "heat-cell heat-" in html
     assert "heatmap-tooltip" in html
     assert "heatmap-tooltip-main" in html
@@ -111,7 +113,12 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     assert 'aria-label="2026-04-29 10:00: $0.7500, 700 tokens"' in html
     assert "<title>2026-04-29 10:00" not in html
     assert "#edf2f7" not in html
+    assert "heatmap-legend" not in html
+    assert "More saturated cells mean higher API-equivalent cost." not in html
+    assert "Darker cells mean higher API-equivalent cost." not in html
     assert "--heat-0" in html
+    assert "--heat-5: #f4b000" not in html
+    assert "--heat-5: #d8a72f" not in html
 
 
 def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:

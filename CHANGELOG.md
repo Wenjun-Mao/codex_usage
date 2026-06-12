@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.27 - Heatmap Legend Cleanup
+
+- Removed the hourly heatmap legend line now that hover and keyboard-focus tooltips provide exact values.
+- Centered the hourly heatmap and let its cells scale up on wider dashboards so it better matches surrounding chart/table widths.
+
+## 0.1.26 - Heatmap Palette Cleanup
+
+- Removed the amber max bucket from the hourly heatmap so day and night modes use a calmer blue-only intensity scale.
+- Updated the heatmap legend wording to describe the day/night scale accurately.
+
 ## 0.1.25 - Sync Menu Controls
 
 - Added explicit Sync menu actions for pause/resume, changing folder, changing projects, changing conversations, clearing sync setup, opening the sync folder, status, and manual sync.

@@ -74,7 +74,6 @@ def render_hourly_heatmap_html(cells: list[HourlyCell]) -> str:
                 "</span>"
             )
     chunks.append("</div>")
-    chunks.append('<p class="heatmap-legend muted">Darker cells mean higher API-equivalent cost.</p>')
     return "".join(chunks)
 
 
