@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.28 - Compact Centered Heatmap
+
+- Kept the hourly heatmap centered while restoring compact cell sizing so it no longer feels oversized.
+
 ## 0.1.27 - Heatmap Legend Cleanup
 
 - Removed the hourly heatmap legend line now that hover and keyboard-focus tooltips provide exact values.

@@ -101,7 +101,7 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     assert '<html lang="en" data-codex-theme="auto">' in html
     assert "heatmap-grid" in html
     assert 'class="chart-scroll heatmap-chart-scroll"' in html
-    assert "--heatmap-cell-size: clamp(20px, 2.4vw, 31px);" in html
+    assert "--heatmap-cell-size: 20px;" in html
     assert "margin-inline: auto;" in html
     assert "heat-cell heat-" in html
     assert "heatmap-tooltip" in html

@@ -382,7 +382,7 @@ def report_css() -> str:
       opacity: 0.86;
     }
     .heatmap-grid {
-      --heatmap-cell-size: clamp(20px, 2.4vw, 31px);
+      --heatmap-cell-size: 20px;
       display: grid;
       grid-template-columns: max-content repeat(24, var(--heatmap-cell-size));
       gap: 4px;
