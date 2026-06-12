@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.25 - Sync Menu Controls
+
+- Added explicit Sync menu actions for pause/resume, changing folder, changing projects, changing conversations, clearing sync setup, opening the sync folder, status, and manual sync.
+- Updated the dashboard Sync control label to read like a menu control.
+
 ## 0.1.24 - Fast Bar Chart Tooltips
 
 - Replaced populated daily, project, and model SVG bars with script-free HTML/CSS bars so hover and keyboard-focus tooltips feel immediate across the dashboard.

@@ -40,8 +40,10 @@ const {
   selectSessionDirsForWatcher,
   shouldRefreshAfterSyncSetupStep,
   syncBackoffMs,
+  syncControlLabel,
   syncConversationQuickPickItems,
   syncFailureRequiresNotification,
+  syncMenuQuickPickItems,
   syncProjectQuickPickItems,
   syncStatusKindLabel,
   WEBVIEW_COMMANDS,
@@ -263,6 +265,50 @@ test("sync project keys and conversation mode are normalized from extension glob
   assert.equal(normalizeSyncConversationMode("selectedConversations"), "selectedConversations");
   assert.equal(normalizeSyncConversationMode("allInProjects"), "allInProjects");
   assert.equal(normalizeSyncConversationMode("other"), "selectedConversations");
+});
+
+test("sync menu exposes pause resume change and clear actions", () => {
+  const enabledItems = syncMenuQuickPickItems({
+    enabled: true,
+    dir: "D:/CodexSync",
+    projectKeys: ["repo-a"],
+    conversationMode: "selectedConversations",
+    threadIds: ["t1"],
+    autoPull: true,
+    autoPush: true,
+  });
+
+  assert.deepEqual(
+    enabledItems.map((item) => item.action),
+    [
+      "syncNow",
+      "syncStatus",
+      "pauseSync",
+      "changeFolder",
+      "changeProjects",
+      "changeConversations",
+      "clearSync",
+      "openSyncFolder",
+    ],
+  );
+  assert.match(enabledItems[2].label, /Pause Sync/);
+  assert.match(enabledItems[4].description, /1 selected/);
+  assert.match(enabledItems[5].description, /1 selected/);
+  assert.match(enabledItems[6].detail, /does not delete/i);
+
+  const pausedItems = syncMenuQuickPickItems({
+    enabled: false,
+    dir: "D:/CodexSync",
+    projectKeys: ["repo-a"],
+    conversationMode: "selectedConversations",
+    threadIds: ["t1"],
+    autoPull: true,
+    autoPush: true,
+  });
+
+  assert.equal(pausedItems[0].action, "resumeSync");
+  assert.match(pausedItems[0].label, /Resume Sync/);
+  assert.match(pausedItems[0].description, /Paused/);
 });
 
 test("sync scheduler constants use calm background timing", () => {
@@ -622,6 +668,33 @@ test("injectWebviewControls adds command links without scripts or external URLs"
   assert.match(out, />v0\.1\.9<\/span>/);
   assert.doesNotMatch(out, /<script/i);
   assert.doesNotMatch(out, /https:/);
+});
+
+test("sync control labels read as menu controls", () => {
+  assert.equal(
+    syncControlLabel({ enabled: false, dir: "", projectKeys: [], conversationMode: "selectedConversations", threadIds: [] }),
+    "Sync: Off ▾",
+  );
+  assert.equal(
+    syncControlLabel({
+      enabled: true,
+      dir: "D:/CodexSync",
+      projectKeys: ["repo-a"],
+      conversationMode: "selectedConversations",
+      threadIds: ["t1"],
+    }),
+    "Sync: 1 conversation ▾",
+  );
+  assert.equal(
+    syncControlLabel({
+      enabled: true,
+      dir: "D:/CodexSync",
+      projectKeys: ["repo-a", "repo-b"],
+      conversationMode: "allInProjects",
+      threadIds: [],
+    }),
+    "Sync: All conversations in 2 projects ▾",
+  );
 });
 
 test("injectWebviewControls labels unconfigured sync states", () => {

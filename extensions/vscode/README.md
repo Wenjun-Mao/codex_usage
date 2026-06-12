@@ -24,6 +24,7 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - `Codex Usage: Select Projects`
 - `Codex Usage: Select Theme`
 - `Codex Usage: Review Project Transitions`
+- `Codex Usage: Sync Menu`
 - `Codex Usage: Configure Sync`
 - `Codex Usage: Select Sync Projects`
 - `Codex Usage: Select Sync Conversations`
@@ -48,6 +49,8 @@ Sync folder, sync project, and sync conversation selections are managed with `Co
 Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected Codex session JSONL files and matching session index entries. It does not upload data itself and does not sync Codex auth, settings, caches, logs, or SQLite databases.
 
 The setup flow is project-first: choose the sync folder, choose projects with rough sync-size estimates, then choose all conversations in those projects or specific conversations. The command id for selecting conversations remains `codexUsage.selectSyncThreads` internally for compatibility, but the command palette shows `Codex Usage: Select Sync Conversations`.
+
+Click the dashboard `Sync: ... ▾` control or run `Codex Usage: Sync Menu` to manage sync. The menu supports manual sync, status, pause/resume, changing the sync folder, changing projects, changing conversations, clearing the setup, and opening the sync folder. Clearing setup only forgets extension selections; it does not delete Codex logs or sync-folder files.
 
 The status bar is the primary background sync indicator. Automatic sync uses a focus cooldown, a file-change debounce, and failure backoff to avoid noisy repeated runs. Normal automatic success/failure details go to the Codex Usage output channel; popups are reserved for manual sync and action-needed failures such as conflicts.
 

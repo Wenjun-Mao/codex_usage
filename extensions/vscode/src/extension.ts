@@ -46,10 +46,12 @@ import {
   SYNC_AUTO_WARNING_COOLDOWN_MS,
   SYNC_FILE_CHANGE_DEBOUNCE_MS,
   SYNC_FOCUS_COOLDOWN_MS,
+  SyncMenuAction,
   SyncStatusKind,
   syncConversationQuickPickItems,
   syncBackoffMs,
   syncFailureRequiresNotification,
+  syncMenuQuickPickItems,
   syncProjectQuickPickItems,
   syncStatusKindLabel,
   RANGE_VALUES,
@@ -544,53 +546,104 @@ async function configureSync(context: vscode.ExtensionContext): Promise<void> {
 
 async function showSyncMenu(context: vscode.ExtensionContext): Promise<void> {
   const settings = readSettings(context);
-  const items: Array<vscode.QuickPickItem & { action: "syncNow" | "syncStatus" | "configureSync" | "openSyncFolder" }> = [
-    {
-      label: "$(sync) Sync Now",
-      description: settings.sync.enabled ? "Pull then push selected conversations" : "Sync is currently disabled",
-      detail: "Run one manual sync using the current folder, project, and conversation selections.",
-      action: "syncNow",
-    },
-    {
-      label: "$(info) Sync Status",
-      description: "Inspect selected conversations",
-      detail: "Show local/remote state, conflicts, missing files, and memory warnings.",
-      action: "syncStatus",
-    },
-    {
-      label: "$(settings-gear) Configure Sync",
-      description: "Folder, projects, and conversations",
-      detail: "Choose the sync folder and select which projects or conversations participate in sync.",
-      action: "configureSync",
-    },
-    {
-      label: "$(folder-opened) Open Sync Folder",
-      description: settings.sync.dir || "No folder selected",
-      detail: "Open the configured bring-your-own sync folder.",
-      action: "openSyncFolder",
-    },
-  ];
-
-  const selected = await vscode.window.showQuickPick(items, {
+  const selected = await vscode.window.showQuickPick(syncMenuQuickPickItems(settings.sync), {
     placeHolder: "Choose a Codex sync action",
   });
   if (!selected) {
     return;
   }
 
-  if (selected.action === "syncNow") {
+  await handleSyncMenuAction(context, selected.action);
+}
+
+async function handleSyncMenuAction(context: vscode.ExtensionContext, action: SyncMenuAction): Promise<void> {
+  if (action === "syncNow") {
+    const settings = readSettings(context);
+    if (!settings.sync.enabled) {
+      await resumeSync(context);
+      return;
+    }
     await requestSync(context, "manual");
     return;
   }
-  if (selected.action === "syncStatus") {
+  if (action === "syncStatus") {
     await showSyncStatus(context);
     return;
   }
-  if (selected.action === "configureSync") {
-    await configureSync(context);
+  if (action === "pauseSync") {
+    await pauseSync(context);
+    return;
+  }
+  if (action === "resumeSync") {
+    await resumeSync(context);
+    return;
+  }
+  if (action === "changeFolder") {
+    await changeSyncFolder(context);
+    return;
+  }
+  if (action === "changeProjects") {
+    await selectSyncProjectSettings(context);
+    return;
+  }
+  if (action === "changeConversations") {
+    await selectSyncThreadSettings(context);
+    return;
+  }
+  if (action === "clearSync") {
+    await clearSyncSetup(context);
     return;
   }
   await openSyncFolder(context);
+}
+
+async function pauseSync(context: vscode.ExtensionContext): Promise<void> {
+  await vscode.workspace.getConfiguration("codexUsage").update("sync.enabled", false, vscode.ConfigurationTarget.Global);
+  output.appendLine("[sync] Sync paused from dashboard menu.");
+  await refreshSyncUi(context);
+}
+
+async function resumeSync(context: vscode.ExtensionContext): Promise<void> {
+  await vscode.workspace.getConfiguration("codexUsage").update("sync.enabled", true, vscode.ConfigurationTarget.Global);
+  output.appendLine("[sync] Sync resumed from dashboard menu.");
+  await refreshSyncUi(context);
+}
+
+async function changeSyncFolder(context: vscode.ExtensionContext): Promise<void> {
+  const selectedDir = await selectSyncFolder(context);
+  if (!selectedDir) {
+    return;
+  }
+  output.appendLine(`[sync] Sync folder changed: ${selectedDir}`);
+  await refreshSyncUi(context);
+}
+
+async function clearSyncSetup(context: vscode.ExtensionContext): Promise<void> {
+  const choice = await vscode.window.showWarningMessage(
+    "Clear Codex sync setup? This disables sync and forgets the selected folder, projects, and conversations. It does not delete any files.",
+    { modal: true },
+    "Clear Sync Setup",
+  );
+  if (choice !== "Clear Sync Setup") {
+    return;
+  }
+
+  await vscode.workspace.getConfiguration("codexUsage").update("sync.enabled", false, vscode.ConfigurationTarget.Global);
+  await context.globalState.update(SYNC_DIR_STATE_KEY, undefined);
+  await context.globalState.update(SYNC_PROJECT_KEYS_STATE_KEY, undefined);
+  await context.globalState.update(SYNC_CONVERSATION_MODE_STATE_KEY, undefined);
+  await context.globalState.update(SYNC_THREAD_IDS_STATE_KEY, undefined);
+  output.appendLine("[sync] Sync setup cleared from dashboard menu.");
+  await refreshSyncUi(context);
+}
+
+async function refreshSyncUi(context: vscode.ExtensionContext): Promise<void> {
+  updateStatusItem(readSettings(context));
+  configureSyncWatcher(context);
+  resetSyncSchedulerWhenDisabled(context);
+  if (panel) {
+    await refreshDashboard(context, panel);
+  }
 }
 
 async function selectSyncFolder(context: vscode.ExtensionContext): Promise<string | undefined> {

@@ -30,6 +30,7 @@ Available commands:
 - `Codex Usage: Select Projects`
 - `Codex Usage: Review Project Transitions`
 - `Codex Usage: Select Theme`
+- `Codex Usage: Sync Menu`
 - `Codex Usage: Configure Sync`
 - `Codex Usage: Select Sync Projects`
 - `Codex Usage: Select Sync Conversations`
@@ -87,6 +88,8 @@ The dashboard uses the same tokenized day/night design system as the VS Code ext
 The Windows VS Code beta can sync selected Codex conversations through a bring-your-own local sync folder such as OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Run `Codex Usage: Configure Sync` to choose a sync folder, select one or more projects, see a rough sync-size estimate for each project, then choose whether to sync all conversations in those projects or only specific conversations.
 
 Projects match the repo/workspace identities shown in Project Breakdown. Conversations are individual Codex sessions inside those projects. Size estimates are based on local session JSONL file sizes plus a small manifest/index/metadata allowance, so they are useful for cloud-storage planning but not exact billing or provider overhead. The extension stores the sync folder, selected sync projects, and selected conversations as local VS Code extension UI state, not as raw settings you need to edit by hand.
+
+Sync is managed from the dashboard `Sync: ... ▾` menu, where you can pause/resume, change the folder, change projects or conversations, clear setup, run manual sync, and inspect status.
 
 Background sync is intentionally quiet. The VS Code status bar shows the current sync state, such as `Sync:Off`, `Sync:Idle`, `Sync:Waiting`, `Sync:Pulling`, `Sync:Pushing`, `Sync:Conflict`, or `Sync:Issue`. Automatic sync logs details to the Codex Usage output channel; visible notifications are reserved for manual sync and action-needed failures.
 

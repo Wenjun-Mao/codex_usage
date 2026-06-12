@@ -121,6 +121,24 @@ export type SyncConversationQuickPickItem = {
   allConversations?: boolean;
 };
 
+export type SyncMenuAction =
+  | "syncNow"
+  | "syncStatus"
+  | "pauseSync"
+  | "resumeSync"
+  | "changeFolder"
+  | "changeProjects"
+  | "changeConversations"
+  | "clearSync"
+  | "openSyncFolder";
+
+export type SyncMenuQuickPickItem = {
+  label: string;
+  description: string;
+  detail: string;
+  action: SyncMenuAction;
+};
+
 export type TransitionChoice = {
   label: string;
   description: string;
@@ -875,31 +893,112 @@ function renderWebviewControls(state: WebviewControlState): string {
   );
 }
 
-function syncControlLabel(sync: WebviewControlState["sync"]): string {
+export function syncControlLabel(sync: WebviewControlState["sync"]): string {
   const normalized = normalizeSyncSettings(sync ?? {});
   if (!normalized.enabled) {
-    return "Sync: Off";
+    return "Sync: Off ▾";
   }
   if (!normalized.dir) {
-    return "Sync: Select Folder";
+    return "Sync: Select Folder ▾";
   }
   if (normalized.projectKeys.length === 0 && normalized.threadIds.length === 0) {
-    return "Sync: Select Projects";
+    return "Sync: Select Projects ▾";
   }
   if (normalized.conversationMode === "allInProjects") {
     const count = normalized.projectKeys.length;
     if (count === 1) {
-      return "Sync: All conversations in 1 project";
+      return "Sync: All conversations in 1 project ▾";
     }
-    return `Sync: All conversations in ${count} projects`;
+    return `Sync: All conversations in ${count} projects ▾`;
   }
   if (normalized.threadIds.length === 0) {
-    return "Sync: Select Conversations";
+    return "Sync: Select Conversations ▾";
   }
   if (normalized.threadIds.length === 1) {
-    return "Sync: 1 conversation";
+    return "Sync: 1 conversation ▾";
   }
-  return `Sync: ${normalized.threadIds.length} conversations`;
+  return `Sync: ${normalized.threadIds.length} conversations ▾`;
+}
+
+export function syncMenuQuickPickItems(sync: SyncSettings): SyncMenuQuickPickItem[] {
+  const settings = normalizeSyncSettings(sync);
+  const projectCount = settings.projectKeys.length;
+  const conversationCount = settings.conversationMode === "allInProjects" ? 0 : settings.threadIds.length;
+  const conversationDescription =
+    settings.conversationMode === "allInProjects"
+      ? projectCount === 1
+        ? "All conversations in 1 project"
+        : `All conversations in ${projectCount} projects`
+      : conversationCount === 1
+        ? "1 selected"
+        : `${conversationCount} selected`;
+
+  const primary: SyncMenuQuickPickItem = settings.enabled
+    ? {
+        label: "$(sync) Sync Now",
+        description: "Pull then push selected conversations",
+        detail: "Run one manual sync using the current folder, project, and conversation selections.",
+        action: "syncNow",
+      }
+    : {
+        label: "$(play) Resume Sync",
+        description: settings.dir ? "Paused" : "Setup needed",
+        detail: "Turn sync back on without changing the selected folder, projects, or conversations.",
+        action: "resumeSync",
+      };
+
+  const items: SyncMenuQuickPickItem[] = [
+    primary,
+    {
+      label: "$(info) Sync Status",
+      description: "Inspect selected conversations",
+      detail: "Show local/remote state, conflicts, missing files, and memory warnings.",
+      action: "syncStatus",
+    },
+  ];
+
+  if (settings.enabled) {
+    items.push({
+      label: "$(debug-pause) Pause Sync",
+      description: "Stop automatic and manual sync",
+      detail: "Keeps the selected folder, projects, and conversations so sync can be resumed later.",
+      action: "pauseSync",
+    });
+  }
+
+  items.push(
+    {
+      label: "$(folder-opened) Change Folder",
+      description: settings.dir || "No folder selected",
+      detail: "Choose a different bring-your-own sync folder.",
+      action: "changeFolder",
+    },
+    {
+      label: "$(repo) Change Projects",
+      description: projectCount === 1 ? "1 selected" : `${projectCount} selected`,
+      detail: "Choose which Codex projects are eligible for sync.",
+      action: "changeProjects",
+    },
+    {
+      label: "$(comment-discussion) Change Conversations",
+      description: conversationDescription,
+      detail: "Choose all conversations in selected projects or specific conversations.",
+      action: "changeConversations",
+    },
+    {
+      label: "$(trash) Clear Sync Setup",
+      description: "Disable sync and forget selections",
+      detail: "Does not delete local Codex files or anything inside the sync folder.",
+      action: "clearSync",
+    },
+    {
+      label: "$(folder) Open Sync Folder",
+      description: settings.dir || "No folder selected",
+      detail: "Open the configured bring-your-own sync folder.",
+      action: "openSyncFolder",
+    },
+  );
+  return items;
 }
 
 function themeLabel(theme: ReportTheme): string {
