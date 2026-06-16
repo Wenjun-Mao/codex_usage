@@ -13,38 +13,38 @@ from codex_usage.project_transitions import (
 
 def test_extract_windows_paths_from_text() -> None:
     text = (
-        "Work in repo `D:\\MyDocuments\\03-PythonProjects\\HU\\ops-board` and "
-        "ignore C:\\Users\\mkof6\\.codex\\sessions."
+        "Work in repo `D:\\Work\\repos\\ops-board` and "
+        "ignore C:\\Users\\alice\\.codex\\sessions."
     )
 
     paths = extract_windows_paths(text)
 
     assert paths == [
-        "D:\\MyDocuments\\03-PythonProjects\\HU\\ops-board",
-        "C:\\Users\\mkof6\\.codex\\sessions",
+        "D:\\Work\\repos\\ops-board",
+        "C:\\Users\\alice\\.codex\\sessions",
     ]
 
 
 def test_extract_windows_paths_from_forward_slash_text() -> None:
     text = (
-        "Work in repo `D:/MyDocuments/03-PythonProjects/HU/ops-board` and "
-        "ignore C:/Users/mkof6/.codex/sessions."
+        "Work in repo `D:/Work/repos/ops-board` and "
+        "ignore C:/Users/alice/.codex/sessions."
     )
 
     paths = extract_windows_paths(text)
 
     assert paths == [
-        "D:/MyDocuments/03-PythonProjects/HU/ops-board",
-        "C:/Users/mkof6/.codex/sessions",
+        "D:/Work/repos/ops-board",
+        "C:/Users/alice/.codex/sessions",
     ]
 
 
 def test_extract_windows_paths_stops_bare_path_at_prose_boundary() -> None:
-    text = "Work in D:\\MyDocuments\\03-PythonProjects\\utility_projects\\codex_usage before continuing."
+    text = "Work in D:\\Work\\repos\\codex_usage before continuing."
 
     paths = extract_windows_paths(text)
 
-    assert paths == ["D:\\MyDocuments\\03-PythonProjects\\utility_projects\\codex_usage"]
+    assert paths == ["D:\\Work\\repos\\codex_usage"]
 
 
 def test_extract_windows_paths_preserves_delimited_trailing_parenthesis() -> None:

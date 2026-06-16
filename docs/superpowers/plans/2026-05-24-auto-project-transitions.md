@@ -69,15 +69,15 @@ from codex_usage.project_transitions import (
 
 def test_extract_windows_paths_from_text() -> None:
     text = (
-        "Work in repo `D:\\MyDocuments\\03-PythonProjects\\HU\\ops-board` and "
-        "ignore C:\\Users\\mkof6\\.codex\\sessions for project identity."
+        "Work in repo `D:\\Work\\repos\\ops-board` and "
+        "ignore C:\\Users\\alice\\.codex\\sessions for project identity."
     )
 
     paths = extract_windows_paths(text)
 
     assert paths == [
-        "D:\\MyDocuments\\03-PythonProjects\\HU\\ops-board",
-        "C:\\Users\\mkof6\\.codex\\sessions",
+        "D:\\Work\\repos\\ops-board",
+        "C:\\Users\\alice\\.codex\\sessions",
     ]
 
 
