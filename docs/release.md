@@ -1,6 +1,6 @@
-# Beta Release Checklist
+# Marketplace Preview Release Checklist
 
-This project is prepared for Windows x64 beta distribution. Do not publish to the Marketplace from this checklist.
+This project is prepared for Windows x64 Marketplace preview distribution. Confirm the Marketplace publisher id `wenjun-mao` exists before publishing.
 
 ## Build And Test
 
@@ -35,6 +35,8 @@ tar -tf output\codex-usage-dashboard-win32-x64.vsix
 The archive should include:
 
 - `extension/LICENSE.txt`
+- `extension/CHANGELOG.md`
+- `extension/SUPPORT.md`
 - `extension/media/icon.png`
 - `extension/bin/win32-x64/codex-usage.exe`
 - `extension/out/core.js`
@@ -49,6 +51,30 @@ The archive should not include:
 - `node_modules`
 - `.vscode`
 - source maps
+
+## Marketplace Preflight
+
+Before publishing:
+
+- Confirm the Visual Studio Marketplace publisher id is `wenjun-mao`.
+- Confirm `extensions/vscode/package.json` has `"preview": true`.
+- Confirm `extensions/vscode/package.json` does not have `"private": true`.
+- Confirm the package target is Windows x64.
+- Confirm the extension README clearly says Windows x64 Preview.
+- Confirm `PRIVACY.md`, `LICENSE`, `CHANGELOG.md`, and `SUPPORT.md` are current.
+- Confirm pricing notes say pricing is checked-in and effective-dated, with no live fetch.
+- Confirm Codex fast mode is documented as counted through recorded tokens but not separately labeled because Codex does not expose a durable per-turn fast-mode marker in JSONL.
+
+Publish manually from the VS Code extension folder after the checks pass:
+
+```powershell
+cd extensions/vscode
+npx vsce login wenjun-mao
+npm run package:vsix:win
+npx vsce publish --packagePath ..\..\output\codex-usage-dashboard-win32-x64.vsix
+```
+
+Alternatively, upload `output\codex-usage-dashboard-win32-x64.vsix` through the Visual Studio Marketplace publisher portal.
 
 ## Local Install Smoke
 
@@ -95,9 +121,9 @@ Observed on Windows with Codex app build current as of 2026-05-27:
 - Archive moves session JSONL files from `sessions` to `archived_sessions`.
 - Delete removed the archived session JSONL from local Codex storage; Codex Usage retained historical usage from cache.
 
-## Beta Notes
+## Preview Notes
 
-- First beta target is Windows x64 only.
+- First preview target is Windows x64 only.
 - The VSIX is self-contained and does not require Python, `uv`, or this repository at runtime.
 - The extension reads local Codex session files and writes local reports only.
-- Marketplace publisher identity is intentionally not finalized in this beta slice.
+- Marketplace publisher identity is `wenjun-mao`.

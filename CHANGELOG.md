@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.29 - Marketplace Preview Polish
+
+- Updated VS Code extension metadata for Marketplace preview publishing under the `wenjun-mao` publisher id.
+- Added extension-local changelog and support documents for Marketplace packaging.
+- Documented the current Codex fast-mode accounting limitation: usage is counted from recorded tokens, but Codex does not expose a durable per-turn fast-mode marker in JSONL.
+
 ## 0.1.28 - Compact Centered Heatmap
 
 - Kept the hourly heatmap centered while restoring compact cell sizing so it no longer feels oversized.

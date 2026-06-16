@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const packageJson = require("../package.json");
@@ -791,6 +792,30 @@ test("package metadata uses project and conversation wording for sync commands",
 
 test("windows VSIX package script creates the output directory", () => {
   assert.match(packageJson.scripts["package:vsix:win"], /New-Item -ItemType Directory -Force \.\.\\\.\.\\output/);
+});
+
+test("package metadata is ready for Marketplace preview publishing", () => {
+  assert.equal(packageJson.publisher, "wenjun-mao");
+  assert.equal(packageJson.private, undefined);
+  assert.equal(packageJson.preview, true);
+  assert.equal(packageJson.repository.url, "https://github.com/Wenjun-Mao/codex_usage.git");
+  assert.match(packageJson.description, /local/i);
+  assert.match(packageJson.description, /Codex/i);
+  assert.doesNotMatch(packageJson.publisher, /local/i);
+  assert.doesNotMatch(packageJson.scripts["package:vsix:win"], /allow-missing-repository/);
+});
+
+test("extension package includes Marketplace support documents", () => {
+  const extensionRoot = path.resolve(__dirname, "..");
+  const changelog = fs.readFileSync(path.join(extensionRoot, "CHANGELOG.md"), "utf8");
+  const support = fs.readFileSync(path.join(extensionRoot, "SUPPORT.md"), "utf8");
+  const readme = fs.readFileSync(path.join(extensionRoot, "README.md"), "utf8");
+
+  assert.match(changelog, /0\.1\.29/);
+  assert.match(support, /GitHub Issues/i);
+  assert.match(readme, /Windows x64/i);
+  assert.match(readme, /Preview/i);
+  assert.match(readme, /fast mode/i);
 });
 
 test("loading and error HTML are script-free and themeable", () => {

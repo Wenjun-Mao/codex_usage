@@ -2,9 +2,8 @@
   "name": "codex-usage-dashboard",
   "displayName": "Codex Usage Dashboard",
   "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
-  "publisher": "local-codex-usage",
-  "version": "0.1.28",
-  "private": true,
+  "publisher": "wenjun-mao",
+  "version": "0.1.29",
   "preview": true,
   "license": "MIT",
   "icon": "media/icon.png",
@@ -33,6 +32,13 @@
   "extensionKind": [
     "ui"
   ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "Codex Usage reads local Codex session storage and does not execute workspace code."
+    }
+  },
   "activationEvents": [
     "onCommand:codexUsage.openDashboard",
     "onCommand:codexUsage.refreshDashboard",
@@ -165,7 +171,7 @@
     "watch": "tsc -watch -p .",
     "test": "npm run build && node --test test/*.test.js",
     "package:vsix": "npm run package:vsix:win",
-    "package:vsix:win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ..\\..\\output | Out-Null\" && npm run build:python:win && vsce package --target win32-x64 --out ../../output/codex-usage-dashboard-win32-x64.vsix --allow-missing-repository",
+    "package:vsix:win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ..\\..\\output | Out-Null\" && npm run build:python:win && vsce package --target win32-x64 --out ../../output/codex-usage-dashboard-win32-x64.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

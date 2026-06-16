@@ -1,6 +1,6 @@
 # Codex Usage Dashboard
 
-Windows x64 beta VS Code extension for viewing local Codex token usage, project rollups, Codex credits, and API-equivalent cost estimates.
+Windows x64 Preview VS Code extension for viewing local Codex token usage, project rollups, Codex credits, and API-equivalent cost estimates.
 
 ![Synthetic Codex Usage Dashboard screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/dashboard-synthetic.png)
 
@@ -15,6 +15,10 @@ Windows x64 beta VS Code extension for viewing local Codex token usage, project 
 - Adds experimental selected-conversation sync through a user-provided local sync folder.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, daily/hourly views, project breakdown, and model mix.
 - Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
+
+## Preview Status
+
+This Marketplace preview is Windows x64 only. The installed extension bundles `codex-usage.exe` and does not require Python, `uv`, or this repository at runtime. Linux and macOS packages are planned later after the Windows preview proves the release path.
 
 ## Commands
 
@@ -68,9 +72,9 @@ Automatic project transition detection uses read-only evidence from local Codex 
 
 The dashboard transition table shows source, target, effective timestamp, and confidence. Use `Codex Usage: Review Project Transitions` for detailed evidence and thread ids.
 
-## Windows Beta Install
+## Windows Preview Install
 
-This beta package is Windows x64 only. The installed VSIX bundles `codex-usage.exe` and does not require Python, `uv`, or this repository at runtime.
+This preview package is Windows x64 only. The installed VSIX bundles `codex-usage.exe` and does not require Python, `uv`, or this repository at runtime.
 
 From the repository root after packaging:
 
@@ -89,6 +93,12 @@ On first open, the dashboard may show "Initializing Codex usage cache. This can 
 The extension reads local Codex session JSONL files and writes local HTML reports under VS Code extension storage. Automatic project transition detection can also read local `state_5.sqlite` thread `cwd` and timestamps as read-only evidence. It does not upload session logs, does not include telemetry, does not fetch live pricing, and does not sync or mutate SQLite databases.
 
 Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. See the repository `PRIVACY.md` for details.
+
+## Pricing And Fast Mode Notes
+
+API-equivalent USD and Codex credit estimates are calculated from checked-in effective-dated pricing tables. The extension does not fetch live pricing, does not know your subscription price, and does not convert Codex credits to dollars.
+
+Codex fast mode is counted through the token usage that Codex records. At the moment, Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.
 
 ## Troubleshooting
 

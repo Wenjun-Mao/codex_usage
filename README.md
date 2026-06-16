@@ -7,12 +7,12 @@ Local tooling for understanding Codex token usage, project activity, Codex credi
 This repository contains:
 
 - A Python CLI, `codex-usage`, for parsing local Codex session logs.
-- A Windows x64 VS Code extension beta that bundles the Python CLI as `codex-usage.exe`.
+- A Windows x64 VS Code extension preview that bundles the Python CLI as `codex-usage.exe`.
 - A dependency-light dashboard report rendered with local HTML, CSS, and inline SVG.
 
-## Windows VS Code Beta
+## Windows VS Code Preview
 
-The current beta package is Windows x64 only. It is self-contained at runtime and does not require Python, `uv`, or this repository after installation.
+The current preview package is Windows x64 only. It is self-contained at runtime and does not require Python, `uv`, or this repository after installation.
 
 Build and install the local VSIX:
 
@@ -69,7 +69,11 @@ Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser
 
 ### Performance Cache
 
-The Windows VS Code beta stores a local SQLite cache under VS Code global extension storage. The first dashboard open may say "Initializing Codex usage cache" and take a few seconds while existing Codex JSONL files are parsed. Later range switches and project pickers reuse unchanged parsed rows and should usually feel much faster. The cache is local only, can be rebuilt automatically after schema changes, and does not change pricing semantics because costs are still calculated from checked-in effective-dated rates at report time.
+The Windows VS Code preview stores a local SQLite cache under VS Code global extension storage. The first dashboard open may say "Initializing Codex usage cache" and take a few seconds while existing Codex JSONL files are parsed. Later range switches and project pickers reuse unchanged parsed rows and should usually feel much faster. The cache is local only, can be rebuilt automatically after schema changes, and does not change pricing semantics because costs are still calculated from checked-in effective-dated rates at report time.
+
+### Codex Fast Mode
+
+Codex fast mode is counted through the token usage that Codex records. Current Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.
 
 ## What The Dashboard Shows
 
