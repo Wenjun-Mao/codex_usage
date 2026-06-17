@@ -5,12 +5,15 @@ This folder is a private-style engineering notebook for future maintainers of Co
 Read in this order:
 
 1. [Day 0 Product Design](01-day-0-product-design.md)
-2. [Architecture Map](02-architecture-map.md)
-3. [Source Code Walkthrough](03-source-code-walkthrough.md)
-4. [Testing Strategy](04-testing-strategy.md)
-5. [Packaging And Release](05-packaging-and-release.md)
-6. [Sync Design Retrospective](06-sync-design-retrospective.md)
-7. [Developer Exercises](07-developer-exercises.md)
+2. [Project Structure](02-project-structure.md)
+3. [Architecture Map](03-architecture-map.md)
+4. [Source Code Walkthrough](04-source-code-walkthrough.md)
+5. [Testing Strategy](05-testing-strategy.md)
+6. [Packaging And Release](06-packaging-and-release.md)
+7. [Sync Design Retrospective](07-sync-design-retrospective.md)
+8. [Developer Exercises](08-developer-exercises.md)
+9. [Debugging And Incident Notes](09-debugging-and-incident-notes.md)
+10. [Product UX Lessons](10-product-ux-lessons.md)
 
 Use the ADRs in [../adr](../adr) as the companion decision log. The learning docs explain the project as a story. The ADRs capture durable decisions in a format that is easier to review later.
 
@@ -19,4 +22,3 @@ Use the ADRs in [../adr](../adr) as the companion decision log. The learning doc
 Read one page, then open the referenced source files and trace the code. Do not treat the docs as a substitute for reading the implementation. The value is in connecting product constraints to code boundaries.
 
 Future me: the important lesson is not "we built a VS Code extension." The important lesson is that a useful product is usually a chain of contracts: data contract, parsing contract, identity contract, pricing contract, rendering contract, runtime contract, and release contract. When one contract is fuzzy, bugs appear in surprising places.
-

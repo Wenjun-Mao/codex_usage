@@ -16,4 +16,4 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 | [0006](0006-bundled-windows-vsix-runtime.md) | Bundle a Windows x64 executable in the VSIX. |
 | [0007](0007-byo-folder-selected-conversation-sync.md) | Sync selected conversations through a bring-your-own local folder. |
 | [0008](0008-three-way-prefix-aware-sync.md) | Use three-way prefix-aware sync to avoid unsafe overwrites. |
-
+| [0009](0009-public-private-documentation-boundary.md) | Separate public docs, ADRs, learning notes, and implementation history. |
