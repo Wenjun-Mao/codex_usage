@@ -136,9 +136,13 @@ def test_unknown_future_model_is_grouped_but_unpriced(tmp_path: Path) -> None:
 
     assert rows[0].key == "gpt-5.6"
     assert rows[0].usage.total_tokens == 1_050
+    assert rows[0].cost.total_usd == 0
     assert rows[0].cost.unpriced_tokens == 1_050
+    assert rows[0].credits.total_credits == 0
     assert rows[0].credits.unpriced_tokens == 1_050
+    assert total.cost.total_usd == 0
     assert total.cost.unpriced_tokens == 1_050
+    assert total.credits.total_credits == 0
     assert total.credits.unpriced_tokens == 1_050
 
 
