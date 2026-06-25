@@ -51,6 +51,26 @@ def test_gpt_5_3_resolves_to_same_api_rate_as_gpt_5_3_codex() -> None:
     assert rate_for_model("gpt-5.3") == rate_for_model("gpt-5.3-codex")
 
 
+def test_rate_lookup_requires_exact_model_or_explicit_alias(monkeypatch) -> None:
+    base_rate = ModelRate(input_per_1m=1.0, cached_input_per_1m=0.1, output_per_1m=2.0)
+    schedule = (
+        EffectiveModelRate(
+            model_key="gpt-5.6",
+            effective_from=datetime(1970, 1, 1, tzinfo=UTC),
+            rate=base_rate,
+            aliases=("gpt-5.6-2026-08-18",),
+        ),
+    )
+    monkeypatch.setattr(pricing, "API_PRICING_USD_SCHEDULE", schedule)
+
+    assert rate_for_model("gpt-5.6") == base_rate
+    assert rate_for_model("GPT-5.6") == base_rate
+    assert rate_for_model("gpt-5.6-2026-08-18") == base_rate
+    assert rate_for_model("gpt-5.6-pro") is None
+    assert rate_for_model("gpt-5.6-mini") is None
+    assert rate_for_model("wrapper-gpt-5.6") is None
+
+
 def test_effective_dated_rate_lookup_uses_latest_rate_when_at_is_omitted(monkeypatch) -> None:
     monkeypatch.setattr(
         pricing,
@@ -97,6 +117,15 @@ def test_effective_dated_rate_lookup_uses_record_timestamp(monkeypatch) -> None:
     assert before.input_per_1m == 1.0
     assert after is not None
     assert after.input_per_1m == 2.0
+
+
+def test_future_model_without_checked_in_rate_is_unpriced() -> None:
+    usage = TokenUsage(input_tokens=1_000, cached_input_tokens=100, output_tokens=50, total_tokens=1_050)
+
+    assert rate_for_model("gpt-5.6") is None
+    assert credit_rate_for_model("gpt-5.6") is None
+    assert estimate_cost(usage, "gpt-5.6") is None
+    assert estimate_codex_credits(usage, "gpt-5.6") is None
 
 
 def test_unknown_model_has_no_api_or_credit_rate() -> None:

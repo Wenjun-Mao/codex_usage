@@ -23,6 +23,7 @@ class EffectiveModelRate:
     model_key: str
     effective_from: datetime
     rate: ModelRate
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,7 @@ def _effective_rate(
     cached_input_per_1m: float,
     output_per_1m: float,
     effective_from: datetime = BASELINE_EFFECTIVE_FROM,
+    aliases: tuple[str, ...] = (),
 ) -> EffectiveModelRate:
     return EffectiveModelRate(
         model_key=model_key,
@@ -95,6 +97,7 @@ def _effective_rate(
             cached_input_per_1m=cached_input_per_1m,
             output_per_1m=output_per_1m,
         ),
+        aliases=aliases,
     )
 
 
@@ -128,25 +131,19 @@ def _rate_for_model(
     model: str,
     at: datetime | None = None,
 ) -> ModelRate | None:
-    normalized = model.casefold()
+    normalized = _normalize_model_id(model)
     effective_at = _normalize_effective_at(at)
-    matching_keys = sorted(
-        {entry.model_key for entry in schedule if entry.model_key in normalized},
-        key=len,
-        reverse=True,
-    )
-    for model_key in matching_keys:
-        candidates = [
-            entry
-            for entry in schedule
-            if entry.model_key == model_key
-            and (effective_at is None or _normalize_effective_at(entry.effective_from) <= effective_at)
-        ]
-        if candidates:
-            return max(
-                candidates,
-                key=lambda entry: _normalize_effective_at(entry.effective_from) or BASELINE_EFFECTIVE_FROM,
-            ).rate
+    candidates = [
+        entry
+        for entry in schedule
+        if _matches_model(entry, normalized)
+        and (effective_at is None or _normalize_effective_at(entry.effective_from) <= effective_at)
+    ]
+    if candidates:
+        return max(
+            candidates,
+            key=lambda entry: _normalize_effective_at(entry.effective_from) or BASELINE_EFFECTIVE_FROM,
+        ).rate
     return None
 
 
@@ -188,3 +185,12 @@ def _normalize_effective_at(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _normalize_model_id(value: str) -> str:
+    return value.strip().casefold()
+
+
+def _matches_model(entry: EffectiveModelRate, normalized_model: str) -> bool:
+    aliases = {_normalize_model_id(alias) for alias in entry.aliases}
+    return normalized_model == _normalize_model_id(entry.model_key) or normalized_model in aliases

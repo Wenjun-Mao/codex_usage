@@ -126,7 +126,7 @@ Project grouping uses `git.repository_url` when present, local `.git/config` ori
 
 Pricing uses checked-in effective-dated rate schedules. Each usage event is priced with the API USD and Codex credit rates active at that event's timestamp, so future price changes can be added without rewriting historical reports.
 
-The tool does not fetch live pricing. Cost and credit values are estimates based on the checked-in pricing table version shown in each report.
+The tool does not fetch live pricing. Cost and credit values are estimates based on the checked-in pricing table version shown in each report. New Codex models may appear in local logs before this repository has official checked-in rates for them; those models remain visible in totals and model mix, but their API USD and Codex credit estimates are excluded until exact effective-dated rates are checked in.
 
 ## Project Transitions
 

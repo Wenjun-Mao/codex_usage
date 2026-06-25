@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.30 - Future Model Pricing Hardening
+
+- Hardened checked-in pricing lookup so unknown future model variants remain visible but unpriced instead of inheriting rates by substring.
+- Documented the exact-model pricing guardrail for future model launches such as GPT-5.6.
+- Refreshed the synthetic dashboard screenshot used in README and Marketplace materials.
+
 ## 0.1.29 - Marketplace Preview Polish
 
 - Updated VS Code extension metadata for Marketplace preview publishing under the `wenjun-mao` publisher id.

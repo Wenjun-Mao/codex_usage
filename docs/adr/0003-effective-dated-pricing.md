@@ -26,3 +26,4 @@ Historical reports remain stable when future rates are added. Adding a price cha
 
 Keep API USD and Codex credits separate. Do not fetch pricing over the network in normal reporting.
 
+Model matching is exact by checked-in model id or explicit alias. Do not price an unknown future variant such as `gpt-5.6-pro` by substring-matching a base model such as `gpt-5.6`; leave it visible but unpriced until official rates are checked in.

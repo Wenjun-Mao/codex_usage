@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
   "publisher": "wenjun-mao",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "preview": true,
   "license": "MIT",
   "icon": "media/icon.png",
