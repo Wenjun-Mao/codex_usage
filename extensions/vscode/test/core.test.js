@@ -790,8 +790,12 @@ test("package metadata uses project and conversation wording for sync commands",
   assert.equal(commands.get("codexUsage.selectSyncThreads"), "Codex Usage: Select Sync Conversations");
 });
 
-test("windows VSIX package script creates the output directory", () => {
-  assert.match(packageJson.scripts["package:vsix:win"], /New-Item -ItemType Directory -Force \.\.\\\.\.\\output/);
+test("windows VSIX package script creates the release output directory", () => {
+  assert.match(
+    packageJson.scripts["package:vsix:win"],
+    /New-Item -ItemType Directory -Force \.\.\\\.\.\\output\\releases/,
+  );
+  assert.match(packageJson.scripts["package:vsix:win"], /--out \.\.\/\.\.\/output\/releases\/codex-usage-dashboard-win32-x64\.vsix/);
 });
 
 test("package metadata is ready for Marketplace preview publishing", () => {

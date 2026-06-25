@@ -49,7 +49,7 @@ Build and inspect:
 cd <repo-root>\extensions\vscode
 npm run package:vsix:win
 cd ..\..
-tar -tf output\codex-usage-dashboard-win32-x64.vsix
+tar -tf output\releases\codex-usage-dashboard-win32-x64.vsix
 ```
 
 Confirm the package includes compiled output and the bundled executable, not TypeScript source.

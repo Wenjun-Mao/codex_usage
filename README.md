@@ -19,7 +19,7 @@ Build and install the local VSIX:
 ```powershell
 cd extensions/vscode
 npm run package:vsix:win
-code --install-extension ..\..\output\codex-usage-dashboard-win32-x64.vsix --force
+code --install-extension ..\..\output\releases\codex-usage-dashboard-win32-x64.vsix --force
 ```
 
 Available commands:

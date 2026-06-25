@@ -21,7 +21,7 @@ npm run package:vsix:win
 Expected VSIX output:
 
 ```text
-output/codex-usage-dashboard-win32-x64.vsix
+output/releases/codex-usage-dashboard-win32-x64.vsix
 ```
 
 ## Inspect The VSIX
@@ -29,7 +29,7 @@ output/codex-usage-dashboard-win32-x64.vsix
 Run from the repository root:
 
 ```powershell
-tar -tf output\codex-usage-dashboard-win32-x64.vsix
+tar -tf output\releases\codex-usage-dashboard-win32-x64.vsix
 ```
 
 The archive should include:
@@ -64,24 +64,38 @@ Before publishing:
 - Confirm `PRIVACY.md`, `LICENSE`, `CHANGELOG.md`, and `SUPPORT.md` are current.
 - Confirm pricing notes say pricing is checked-in and effective-dated, with no live fetch.
 - Confirm Codex fast mode is documented as counted through recorded tokens but not separately labeled because Codex does not expose a durable per-turn fast-mode marker in JSONL.
+- Confirm the version in `extensions/vscode/package.json` has not already been published. Marketplace versions are immutable.
 
-Publish manually from the VS Code extension folder after the checks pass:
+## Manual Marketplace Upload
+
+Use this path when you want to upload the VSIX through the browser instead of publishing from the terminal.
+
+1. Open <https://marketplace.visualstudio.com/manage/publishers/>.
+2. Sign in with the Microsoft account that owns the publisher.
+3. Select publisher `wenjun-mao`.
+4. Open the existing `Codex Usage Dashboard` extension entry.
+5. Choose the update/upload action for a new extension version.
+6. Upload `output\releases\codex-usage-dashboard-win32-x64.vsix` from the repository root.
+7. Wait for Marketplace verification to finish.
+8. Confirm the listing shows the new version, then search/install it from VS Code after indexing catches up.
+
+## CLI Marketplace Publish
+
+Publish from the VS Code extension folder after the checks pass:
 
 ```powershell
 cd extensions/vscode
 npx vsce login wenjun-mao
 npm run package:vsix:win
-npx vsce publish --packagePath ..\..\output\codex-usage-dashboard-win32-x64.vsix
+npx vsce publish --packagePath ..\..\output\releases\codex-usage-dashboard-win32-x64.vsix
 ```
-
-Alternatively, upload `output\codex-usage-dashboard-win32-x64.vsix` through the Visual Studio Marketplace publisher portal.
 
 ## Local Install Smoke
 
 Install into normal VS Code:
 
 ```powershell
-code --install-extension output\codex-usage-dashboard-win32-x64.vsix --force
+code --install-extension output\releases\codex-usage-dashboard-win32-x64.vsix --force
 ```
 
 Manual smoke checklist:

@@ -46,7 +46,7 @@ It should exclude TypeScript source, tests, and dev-only configs.
 Inspect with:
 
 ```powershell
-tar -tf output\codex-usage-dashboard-win32-x64.vsix
+tar -tf output\releases\codex-usage-dashboard-win32-x64.vsix
 ```
 
 ## Marketplace Metadata
@@ -97,4 +97,3 @@ git push origin v0.1.29
 - Does Windows Defender object to the bundled executable?
 - Does first-run cache initialization feel understandable?
 - Do users understand pricing is estimated from checked-in rates?
-

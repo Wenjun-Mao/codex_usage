@@ -79,7 +79,7 @@ This preview package is Windows x64 only. The installed VSIX bundles `codex-usag
 From the repository root after packaging:
 
 ```powershell
-code --install-extension output\codex-usage-dashboard-win32-x64.vsix --force
+code --install-extension output\releases\codex-usage-dashboard-win32-x64.vsix --force
 ```
 
 After installation, run `Codex Usage: Open Dashboard` from the command palette.
