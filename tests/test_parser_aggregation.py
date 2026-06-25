@@ -120,6 +120,28 @@ def test_aggregation_accumulates_api_cost_and_codex_credits(tmp_path: Path) -> N
     assert rows[0].to_dict()["credits"]["total_credits"] == 68.90625
 
 
+def test_unknown_future_model_is_grouped_but_unpriced(tmp_path: Path) -> None:
+    path = _write_session(
+        tmp_path,
+        [
+            _session_meta(cwd=str(tmp_path)),
+            _turn_context(model="gpt-5.6"),
+            _token("2026-06-25T10:00:00Z", _usage(total=1_050, input_tokens=1_000, cached=100, output=50)),
+        ],
+    )
+
+    records = parse_session_file(path)
+    total = summarize_records(records)
+    rows = aggregate_records(records, "model", UTC)
+
+    assert rows[0].key == "gpt-5.6"
+    assert rows[0].usage.total_tokens == 1_050
+    assert rows[0].cost.unpriced_tokens == 1_050
+    assert rows[0].credits.unpriced_tokens == 1_050
+    assert total.cost.unpriced_tokens == 1_050
+    assert total.credits.unpriced_tokens == 1_050
+
+
 def test_aggregation_prices_records_with_rates_effective_at_each_timestamp(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         pricing,
