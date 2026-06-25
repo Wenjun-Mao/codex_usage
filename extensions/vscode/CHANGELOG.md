@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.30
+
+- Hardened future-model pricing behavior so newly released Codex models show usage immediately while cost estimates stay partial until official rates are checked in.
+- Refreshed the synthetic dashboard screenshot.
+
 ## 0.1.29 - Marketplace Preview
 
 - Prepared the extension package for Windows x64 Marketplace preview publishing.
