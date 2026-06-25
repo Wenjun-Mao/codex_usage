@@ -624,4 +624,3 @@ Expected:
 - Spec coverage: pricing hardening, future model behavior, docs caveat, screenshot refresh, version bump, tests, and package rebuild are all covered.
 - Placeholder scan: no implementation step says TBD/TODO/fill later. The only adaptive note is constrained to matching existing helper call signatures in `tests/test_parser_aggregation.py`.
 - Type consistency: `EffectiveModelRate.aliases`, `_matches_model`, and `_normalize_model_id` are introduced before use. Existing constructor calls remain valid because `aliases` has a default.
-
