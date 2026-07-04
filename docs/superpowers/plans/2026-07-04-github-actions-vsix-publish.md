@@ -4,7 +4,7 @@
 
 **Goal:** Add a GitHub Actions workflow that builds both platform-specific VSIX packages and publishes them to the VS Code Marketplace when explicitly requested.
 
-**Architecture:** A workflow in `.github/workflows/package-vsix.yml` runs separate Windows x64 and macOS Apple Silicon packaging jobs, uploads both VSIX artifacts, and gates Marketplace publishing behind either a `v*` tag push or an explicit manual `publish` input on `main`. A focused Python regression test checks that the workflow keeps the required runner labels, package commands, artifact paths, and publish guard.
+**Architecture:** A workflow in `.github/workflows/package-vsix.yml` runs separate Windows x64 and macOS Apple Silicon packaging jobs, uploads both VSIX artifacts, and gates Marketplace publishing behind either a validated `v*` tag push or an explicit manual `publish` input on `main`. A focused Python regression test checks that the workflow keeps the required runner labels, package commands, artifact paths, publish guard, tag/version preflight, and step-scoped secret.
 
 **Tech Stack:** GitHub Actions, Windows/macOS hosted runners, Python 3.13, `uv`, Node.js 24, npm, `vsce`, PyInstaller, pytest.
 
@@ -73,11 +73,24 @@ def test_publish_job_requires_secret_and_release_guard():
     text = read_workflow()
 
     assert "VSCE_PAT: ${{ secrets.VSCE_PAT }}" in text
-    assert "npx vsce publish --packagePath" in text
+    assert "    env:\n      VSCE_PAT: ${{ secrets.VSCE_PAT }}" not in text
+    assert "npx vsce publish --skip-duplicate --packagePath" in text
     assert "startsWith(github.ref, 'refs/tags/v')" in text
     assert "github.event_name == 'workflow_dispatch'" in text
     assert "github.ref == 'refs/heads/main'" in text
     assert "inputs.publish" in text
+
+
+def test_publish_job_has_release_preflight_and_rerunnable_publish():
+    text = read_workflow()
+
+    assert "fetch-depth: 0" in text
+    assert "Verify release tag" in text
+    assert "GITHUB_REF_NAME" in text
+    assert "expected_tag=\"v${version}\"" in text
+    assert "git merge-base --is-ancestor" in text
+    assert "--skip-duplicate" in text
+    assert text.count("npx vsce publish") == 1
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -224,12 +237,11 @@ jobs:
       - macos
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish)
-    env:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -237,6 +249,20 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: extensions/vscode/package-lock.json
+
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(node -p "require('./extensions/vscode/package.json').version")"
+          expected_tag="v${version}"
+          if [ "$GITHUB_REF_NAME" != "$expected_tag" ]; then
+            echo "Release tag $GITHUB_REF_NAME does not match extension version $version; expected $expected_tag." >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag $GITHUB_REF_NAME must point to a commit contained in origin/main." >&2
+            exit 1
+          fi
 
       - name: Install VS Code extension dependencies
         working-directory: extensions/vscode
@@ -249,18 +275,18 @@ jobs:
           merge-multiple: true
 
       - name: Verify publish inputs
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           test -n "$VSCE_PAT"
           test -f output/releases/codex-usage-dashboard-win32-x64.vsix
           test -f output/releases/codex-usage-dashboard-darwin-arm64.vsix
 
-      - name: Publish Windows x64 VSIX
+      - name: Publish VSIX packages
         working-directory: extensions/vscode
-        run: npx vsce publish --packagePath ../../output/releases/codex-usage-dashboard-win32-x64.vsix
-
-      - name: Publish macOS Apple Silicon VSIX
-        working-directory: extensions/vscode
-        run: npx vsce publish --packagePath ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --skip-duplicate --packagePath ../../output/releases/codex-usage-dashboard-win32-x64.vsix ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix
 ```
 
 - [ ] **Step 4: Run the workflow regression test**
@@ -271,7 +297,7 @@ Run:
 uv run pytest tests/test_github_actions_workflow.py -q
 ```
 
-Expected: PASS with `4 passed`.
+Expected: PASS with `5 passed`.
 
 - [ ] **Step 5: Validate workflow YAML parses**
 
@@ -306,9 +332,9 @@ In `docs/release.md`, add a new section after `## Build And Test`:
 
 The repository has a `Package and Publish VSIX` workflow that builds both platform packages on native GitHub-hosted runners.
 
-Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Use `publish=true` from `main` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag such as `v0.1.32` also builds and publishes both packages.
+Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version and points at a commit contained in `origin/main`, such as `v0.1.32`, also builds and publishes both packages.
 
-The workflow requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
+Publishing requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
 ```
 
 - [ ] **Step 2: Run a documentation grep check**
