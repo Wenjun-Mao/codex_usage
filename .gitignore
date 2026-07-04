@@ -12,6 +12,12 @@ wheels/
 .venv
 .worktrees/
 
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+!.env.*.example
+
 # JavaScript / VS Code extension generated files
 node_modules/
 extensions/vscode/node_modules/
