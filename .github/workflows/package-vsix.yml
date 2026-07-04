@@ -1,0 +1,166 @@
+name: Package and Publish VSIX
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the generated VSIX files to the VS Code Marketplace"
+        required: true
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vsix-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24"
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  windows:
+    name: Build Windows x64 VSIX
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: extensions/vscode/package-lock.json
+
+      - name: Run Python tests
+        run: uv run pytest -q
+
+      - name: Install VS Code extension dependencies
+        working-directory: extensions/vscode
+        run: npm ci
+
+      - name: Run VS Code extension tests
+        working-directory: extensions/vscode
+        run: npm test
+
+      - name: Package Windows VSIX
+        working-directory: extensions/vscode
+        run: npm run package:vsix:win
+
+      - name: Upload Windows VSIX
+        uses: actions/upload-artifact@v6
+        with:
+          name: codex-usage-dashboard-win32-x64
+          path: output/releases/codex-usage-dashboard-win32-x64.vsix
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: Build macOS Apple Silicon VSIX
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: extensions/vscode/package-lock.json
+
+      - name: Run Python tests
+        run: uv run pytest -q
+
+      - name: Install VS Code extension dependencies
+        working-directory: extensions/vscode
+        run: npm ci
+
+      - name: Run VS Code extension tests
+        working-directory: extensions/vscode
+        run: npm test
+
+      - name: Package macOS Apple Silicon VSIX
+        working-directory: extensions/vscode
+        run: npm run package:vsix:mac
+
+      - name: Upload macOS Apple Silicon VSIX
+        uses: actions/upload-artifact@v6
+        with:
+          name: codex-usage-dashboard-darwin-arm64
+          path: output/releases/codex-usage-dashboard-darwin-arm64.vsix
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish VSIX packages
+    needs:
+      - windows
+      - macos
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish)
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: extensions/vscode/package-lock.json
+
+      - name: Install VS Code extension dependencies
+        working-directory: extensions/vscode
+        run: npm ci
+
+      - name: Download packaged VSIX artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: output/releases
+          merge-multiple: true
+
+      - name: Verify publish inputs
+        run: |
+          test -n "$VSCE_PAT"
+          test -f output/releases/codex-usage-dashboard-win32-x64.vsix
+          test -f output/releases/codex-usage-dashboard-darwin-arm64.vsix
+
+      - name: Publish Windows x64 VSIX
+        working-directory: extensions/vscode
+        run: npx vsce publish --packagePath ../../output/releases/codex-usage-dashboard-win32-x64.vsix
+
+      - name: Publish macOS Apple Silicon VSIX
+        working-directory: extensions/vscode
+        run: npx vsce publish --packagePath ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix
