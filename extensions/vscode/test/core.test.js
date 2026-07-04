@@ -418,7 +418,10 @@ test("bundledExecutablePath resolves supported bundled executables and rejects u
     bundledExecutablePath("/Users/alice/.vscode/extensions/codex-usage", "darwin", "arm64"),
     path.join("/Users/alice/.vscode/extensions/codex-usage", "bin", "darwin-arm64", "codex-usage"),
   );
-  assert.throws(() => bundledExecutablePath("/extension", "darwin", "x64"), /Unsupported platform/);
+  assert.throws(
+    () => bundledExecutablePath("/extension", "darwin", "x64"),
+    /Unsupported platform.*Windows x64 and macOS Apple Silicon/s,
+  );
   assert.throws(() => bundledExecutablePath("/extension", "linux", "x64"), /Unsupported platform/);
 });
 
@@ -801,6 +804,17 @@ test("windows VSIX package script creates the release output directory", () => {
     /New-Item -ItemType Directory -Force \.\.\\\.\.\\output\\releases/,
   );
   assert.match(packageJson.scripts["package:vsix:win"], /--out \.\.\/\.\.\/output\/releases\/codex-usage-dashboard-win32-x64\.vsix/);
+});
+
+test("macos Apple Silicon VSIX package script creates the release output directory", () => {
+  assert.match(packageJson.scripts["build:python:mac"], /build-macos-arm64-exe\.sh/);
+  assert.match(packageJson.scripts["package:vsix:mac"], /mkdir -p \.\.\/\.\.\/output\/releases/);
+  assert.match(packageJson.scripts["package:vsix:mac"], /npm run build:python:mac/);
+  assert.match(packageJson.scripts["package:vsix:mac"], /--target darwin-arm64/);
+  assert.match(
+    packageJson.scripts["package:vsix:mac"],
+    /--out \.\.\/\.\.\/output\/releases\/codex-usage-dashboard-darwin-arm64\.vsix/,
+  );
 });
 
 test("package metadata is ready for Marketplace preview publishing", () => {

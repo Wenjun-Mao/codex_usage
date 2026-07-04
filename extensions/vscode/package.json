@@ -167,11 +167,13 @@
   },
   "scripts": {
     "build:python:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ..\\..\\scripts\\build-windows-exe.ps1",
+    "build:python:mac": "bash ../../scripts/build-macos-arm64-exe.sh",
     "build": "tsc -p .",
     "watch": "tsc -watch -p .",
     "test": "npm run build && node --test test/*.test.js",
     "package:vsix": "npm run package:vsix:win",
     "package:vsix:win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ..\\..\\output\\releases | Out-Null\" && npm run build:python:win && vsce package --target win32-x64 --out ../../output/releases/codex-usage-dashboard-win32-x64.vsix",
+    "package:vsix:mac": "mkdir -p ../../output/releases && npm run build:python:mac && vsce package --target darwin-arm64 --out ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
