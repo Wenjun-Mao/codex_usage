@@ -15,6 +15,10 @@ from codex_usage.project_identity import normalize_project_key
 _WINDOWS_PATH_PATTERN = r"[A-Za-z]:[\\/](?:[^\\/:*?\"<>|\r\n`]+[\\/])*[^\\/:*?\"<>|\r\n`]+"
 _DELIMITED_WINDOWS_PATH_PATTERN = re.compile(rf"(?P<delimiter>[`\"])(?P<path>{_WINDOWS_PATH_PATTERN})(?P=delimiter)")
 _BARE_WINDOWS_PATH_PATTERN = re.compile(r"[A-Za-z]:[\\/](?:[^\\/:*?\"<>|\s\r\n`]+[\\/])*[^\\/:*?\"<>|\s\r\n`]+")
+_POSIX_PATH_PATTERN = r"/(?:[^/\0\r\n`\"<>|]+/)*[^/\0\r\n`\"<>|]+"
+_DELIMITED_POSIX_PATH_PATTERN = re.compile(rf"(?P<delimiter>[`\"])(?P<path>{_POSIX_PATH_PATTERN})(?P=delimiter)")
+_BARE_POSIX_PATH_PATTERN = re.compile(r"(?<!:)/(?:[^/\s\r\n`\"<>|]+/)*[^/\s\r\n`\"<>|]+")
+_TRAILING_PATH_PUNCTUATION = ".,;:)]}'\""
 
 
 @dataclass(frozen=True)
@@ -34,27 +38,65 @@ class RepoPathObservation:
         )
 
 
-def extract_windows_paths(text: str) -> list[str]:
+def extract_repo_paths(text: str) -> list[str]:
     paths: list[str] = []
     seen: set[str] = set()
     candidates: list[tuple[int, str, bool]] = []
-    delimited_spans: list[tuple[int, int]] = []
+    occupied_spans: list[tuple[int, int]] = []
 
-    for match in _DELIMITED_WINDOWS_PATH_PATTERN.finditer(text):
-        delimited_spans.append(match.span())
-        candidates.append((match.start("path"), match.group("path"), False))
+    for pattern in (_DELIMITED_WINDOWS_PATH_PATTERN, _DELIMITED_POSIX_PATH_PATTERN):
+        for match in pattern.finditer(text):
+            occupied_spans.append(match.span())
+            candidates.append((match.start("path"), match.group("path"), False))
 
-    for match in _BARE_WINDOWS_PATH_PATTERN.finditer(text):
-        if any(start <= match.start() and match.end() <= end for start, end in delimited_spans):
-            continue
-        candidates.append((match.start(), match.group(0), True))
+    for pattern in (_BARE_WINDOWS_PATH_PATTERN, _BARE_POSIX_PATH_PATTERN):
+        for match in pattern.finditer(text):
+            if any(start <= match.start() and match.end() <= end for start, end in occupied_spans):
+                continue
+            occupied_spans.append(match.span())
+            candidates.append((match.start(), match.group(0), True))
+
+    exact_posix_field = _exact_posix_path_field_candidate(text)
+    if exact_posix_field is not None:
+        start, end, value = exact_posix_field
+        candidates = [
+            candidate
+            for candidate in candidates
+            if not (start <= candidate[0] and candidate[0] + len(candidate[1]) <= end and candidate[1].startswith("/"))
+        ]
+        candidates.append((start, value, False))
 
     for _, candidate, trim_trailing_punctuation in sorted(candidates, key=lambda item: item[0]):
-        value = candidate.rstrip(".,;:)]}'\"") if trim_trailing_punctuation else candidate
+        value = candidate.rstrip(_TRAILING_PATH_PUNCTUATION) if trim_trailing_punctuation else candidate
         if value and value not in seen:
             seen.add(value)
             paths.append(value)
     return paths
+
+
+def _exact_posix_path_field_candidate(text: str) -> tuple[int, int, str] | None:
+    stripped = text.strip()
+    if not stripped.startswith("/") or not any(character.isspace() for character in stripped):
+        return None
+    if _DELIMITED_WINDOWS_PATH_PATTERN.search(stripped) or _DELIMITED_POSIX_PATH_PATTERN.search(stripped):
+        return None
+    if _BARE_WINDOWS_PATH_PATTERN.search(stripped):
+        return None
+
+    absolute_posix_matches = [
+        match
+        for match in _BARE_POSIX_PATH_PATTERN.finditer(stripped)
+        if match.start() == 0 or stripped[match.start() - 1].isspace()
+    ]
+    if len(absolute_posix_matches) != 1 or absolute_posix_matches[0].start() != 0:
+        return None
+
+    start = len(text) - len(text.lstrip())
+    return start, start + len(stripped), stripped
+
+
+def extract_windows_paths(text: str) -> list[str]:
+    return extract_repo_paths(text)
 
 
 def verified_repo_observation_from_path(
@@ -131,7 +173,7 @@ def _collect_jsonl_observations(
                         continue
 
                     for source, text in _jsonl_observation_texts(event_type, payload):
-                        for raw_path in extract_windows_paths(text):
+                        for raw_path in extract_repo_paths(text):
                             observation = _cached_verified_repo_observation(
                                 raw_path=raw_path,
                                 timestamp=timestamp,
@@ -180,7 +222,7 @@ def _collect_state_sqlite_observations(
                 for field in _SQLITE_THREAD_TEXT_FIELDS
                 if field in row.keys() and row[field] is not None
             )
-            for raw_path in extract_windows_paths(text):
+            for raw_path in extract_repo_paths(text):
                 observation = _cached_verified_repo_observation(
                     raw_path=raw_path,
                     timestamp=timestamp,

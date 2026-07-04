@@ -8,8 +8,6 @@ from codex_usage.models import UsageRecord
 from codex_usage.project_transition_evidence import (
     RepoPathObservation,
     collect_repo_path_observations,
-    extract_windows_paths,
-    verified_repo_observation_from_path,
 )
 
 

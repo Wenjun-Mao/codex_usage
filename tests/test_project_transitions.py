@@ -86,6 +86,21 @@ def test_extract_repo_paths_from_posix_text() -> None:
     ]
 
 
+def test_extract_repo_paths_from_leading_posix_text_with_multiple_paths() -> None:
+    text = "/Users/alice/project and /tmp/other"
+
+    assert extract_repo_paths(text) == [
+        "/Users/alice/project",
+        "/tmp/other",
+    ]
+
+
+def test_extract_repo_paths_preserves_exact_posix_field_with_boundary_word() -> None:
+    assert extract_repo_paths("/Users/alice/project and docs") == [
+        "/Users/alice/project and docs",
+    ]
+
+
 def test_extract_windows_paths_keeps_compatibility_for_posix_paths() -> None:
     assert extract_windows_paths("/Users/alice/projects/ops-board") == [
         "/Users/alice/projects/ops-board",
