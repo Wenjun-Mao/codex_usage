@@ -45,8 +45,20 @@ def test_publish_job_requires_secret_and_release_guard():
 
     assert "VSCE_PAT: ${{ secrets.VSCE_PAT }}" in text
     assert "    env:\n      VSCE_PAT: ${{ secrets.VSCE_PAT }}" not in text
-    assert "npx vsce publish --packagePath" in text
+    assert "npx vsce publish --skip-duplicate --packagePath" in text
     assert "startsWith(github.ref, 'refs/tags/v')" in text
     assert "github.event_name == 'workflow_dispatch'" in text
     assert "github.ref == 'refs/heads/main'" in text
     assert "inputs.publish" in text
+
+
+def test_publish_job_has_release_preflight_and_rerunnable_publish():
+    text = read_workflow()
+
+    assert "fetch-depth: 0" in text
+    assert "Verify release tag" in text
+    assert "GITHUB_REF_NAME" in text
+    assert "expected_tag=\"v${version}\"" in text
+    assert "git merge-base --is-ancestor" in text
+    assert "--skip-duplicate" in text
+    assert text.count("npx vsce publish") == 1

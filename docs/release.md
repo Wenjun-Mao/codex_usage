@@ -37,9 +37,9 @@ output/releases/codex-usage-dashboard-darwin-arm64.vsix
 
 The repository has a `Package and Publish VSIX` workflow that builds both platform packages on native GitHub-hosted runners.
 
-Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Use `publish=true` from `main` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag such as `v0.1.32` also builds and publishes both packages.
+Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version, such as `v0.1.32`, also builds and publishes both packages.
 
-The workflow requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
+Publishing requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
 
 ## Inspect The VSIX
 
