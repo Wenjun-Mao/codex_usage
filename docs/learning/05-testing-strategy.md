@@ -105,6 +105,14 @@ npm test
 npm run package:vsix:win
 ```
 
+On macOS Apple Silicon:
+
+```bash
+cd extensions/vscode
+npm test
+npm run package:vsix:mac
+```
+
 For bundled runtime smoke:
 
 ```powershell

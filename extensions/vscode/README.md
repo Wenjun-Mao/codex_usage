@@ -1,6 +1,6 @@
 # Codex Usage Dashboard
 
-Windows x64 Preview VS Code extension for viewing local Codex token usage, project rollups, Codex credits, and API-equivalent cost estimates.
+Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local Codex token usage, project rollups, Codex credits, and API-equivalent cost estimates.
 
 ![Synthetic Codex Usage Dashboard screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/dashboard-synthetic.png)
 
@@ -18,7 +18,7 @@ Windows x64 Preview VS Code extension for viewing local Codex token usage, proje
 
 ## Preview Status
 
-This Marketplace preview is Windows x64 only. The installed extension bundles `codex-usage.exe` and does not require Python, `uv`, or this repository at runtime. Linux and macOS packages are planned later after the Windows preview proves the release path.
+This Marketplace preview supports Windows x64 and macOS Apple Silicon. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Intel macOS is not supported.
 
 ## Commands
 
@@ -72,14 +72,18 @@ Automatic project transition detection uses read-only evidence from local Codex 
 
 The dashboard transition table shows source, target, effective timestamp, and confidence. Use `Codex Usage: Review Project Transitions` for detailed evidence and thread ids.
 
-## Windows Preview Install
+## Preview Install
 
-This preview package is Windows x64 only. The installed VSIX bundles `codex-usage.exe` and does not require Python, `uv`, or this repository at runtime.
-
-From the repository root after packaging:
+Windows x64:
 
 ```powershell
 code --install-extension output\releases\codex-usage-dashboard-win32-x64.vsix --force
+```
+
+macOS Apple Silicon:
+
+```bash
+code --install-extension output/releases/codex-usage-dashboard-darwin-arm64.vsix --force
 ```
 
 After installation, run `Codex Usage: Open Dashboard` from the command palette.
@@ -102,7 +106,7 @@ Codex fast mode is counted through the token usage that Codex records. At the mo
 
 ## Troubleshooting
 
-- If no usage appears, confirm Codex session files exist under `CODEX_HOME\sessions`, `CODEX_HOME\archived_sessions`, `%USERPROFILE%\.codex\sessions`, `%USERPROFILE%\.codex\archived_sessions`, or the matching `~\.codex` folders.
+- If no usage appears, confirm Codex session files exist under `CODEX_HOME/sessions`, `CODEX_HOME/archived_sessions`, `%USERPROFILE%\.codex\sessions`, `%USERPROFILE%\.codex\archived_sessions`, `~/.codex/sessions`, or `~/.codex/archived_sessions`.
 - If project filtering shows no choices, switch the range to `all` and run `Codex Usage: Select Projects` again.
 - If a project split looks surprising, run `Codex Usage: Review Project Transitions` to inspect the evidence, or disable `codexUsage.projectTransitions.autoDetect`.
 - If the dashboard theme is not what you expect, run `Codex Usage: Select Theme` and choose `auto`, `day`, or `night`.
@@ -111,13 +115,22 @@ Codex fast mode is counted through the token usage that Codex records. At the mo
 
 ## Development
 
-From `extensions/vscode`:
+Windows x64 on Windows/PowerShell from `extensions/vscode`:
 
 ```powershell
 npm install
 npm run build
 npm test
 npm run package:vsix:win
+```
+
+macOS Apple Silicon on macOS/bash from `extensions/vscode`:
+
+```bash
+npm install
+npm run build
+npm test
+npm run package:vsix:mac
 ```
 
 For the shortest loop, open this folder as the VS Code workspace and press F5. The included launch configuration starts an Extension Development Host.

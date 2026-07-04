@@ -7,12 +7,12 @@ Local tooling for understanding Codex token usage, project activity, Codex credi
 This repository contains:
 
 - A Python CLI, `codex-usage`, for parsing local Codex session logs.
-- A Windows x64 VS Code extension preview that bundles the Python CLI as `codex-usage.exe`.
+- A Windows x64 and macOS Apple Silicon VS Code extension preview that bundles the Python CLI.
 - A dependency-light dashboard report rendered with local HTML, CSS, and inline SVG.
 
-## Windows VS Code Preview
+## VS Code Preview Packages
 
-The current preview package is Windows x64 only. It is self-contained at runtime and does not require Python, `uv`, or this repository after installation.
+The current preview packages support Windows x64 and macOS Apple Silicon. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation.
 
 Build and install the local VSIX:
 
@@ -20,6 +20,12 @@ Build and install the local VSIX:
 cd extensions/vscode
 npm run package:vsix:win
 code --install-extension ..\..\output\releases\codex-usage-dashboard-win32-x64.vsix --force
+```
+
+```bash
+cd extensions/vscode
+npm run package:vsix:mac
+code --install-extension ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix --force
 ```
 
 Available commands:
@@ -69,7 +75,7 @@ Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser
 
 ### Performance Cache
 
-The Windows VS Code preview stores a local SQLite cache under VS Code global extension storage. The first dashboard open may say "Initializing Codex usage cache" and take a few seconds while existing Codex JSONL files are parsed. Later range switches and project pickers reuse unchanged parsed rows and should usually feel much faster. The cache is local only, can be rebuilt automatically after schema changes, and does not change pricing semantics because costs are still calculated from checked-in effective-dated rates at report time.
+The VS Code preview stores a local SQLite cache under VS Code global extension storage. The first dashboard open may say "Initializing Codex usage cache" and take a few seconds while existing Codex JSONL files are parsed. Later range switches and project pickers reuse unchanged parsed rows and should usually feel much faster. The cache is local only, can be rebuilt automatically after schema changes, and does not change pricing semantics because costs are still calculated from checked-in effective-dated rates at report time.
 
 ### Codex Fast Mode
 
@@ -89,7 +95,7 @@ The dashboard uses the same tokenized day/night design system as the VS Code ext
 
 ## Experimental Conversation Sync
 
-The Windows VS Code beta can sync selected Codex conversations through a bring-your-own local sync folder such as OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Run `Codex Usage: Configure Sync` to choose a sync folder, select one or more projects, see a rough sync-size estimate for each project, then choose whether to sync all conversations in those projects or only specific conversations.
+The VS Code preview can sync selected Codex conversations through a bring-your-own local sync folder such as iCloud Drive, OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Run `Codex Usage: Configure Sync` to choose a sync folder, select one or more projects, see a rough sync-size estimate for each project, then choose whether to sync all conversations in those projects or only specific conversations.
 
 Projects match the repo/workspace identities shown in Project Breakdown. Conversations are individual Codex sessions inside those projects. Size estimates are based on local session JSONL file sizes plus a small manifest/index/metadata allowance, so they are useful for cloud-storage planning but not exact billing or provider overhead. The extension stores the sync folder, selected sync projects, and selected conversations as local VS Code extension UI state, not as raw settings you need to edit by hand.
 

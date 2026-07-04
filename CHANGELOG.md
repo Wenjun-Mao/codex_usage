@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.31 - macOS Apple Silicon Preview
+
+- Added macOS Apple Silicon VS Code packaging with a bundled `codex-usage` executable.
+- Added POSIX path evidence for automatic project transition detection on macOS.
+- Kept Windows x64 packaging unchanged and documented Intel macOS as unsupported.
+
 ## 0.1.30 - Future Model Pricing Hardening
 
 - Hardened checked-in pricing lookup so unknown future model variants remain visible but unpriced instead of inheriting rates by substring.
@@ -170,5 +176,5 @@
 
 ## Notes
 
-- This is a Windows x64 beta package for local testing.
+- The initial 0.1.0 beta package targeted Windows x64 for local testing.
 - The extension does not upload session logs, does not include telemetry, and does not fetch live pricing.

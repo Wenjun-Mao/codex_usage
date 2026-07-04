@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.31
+
+- Added macOS Apple Silicon preview packaging with a bundled `codex-usage` executable.
+- Kept Windows x64 packaging unchanged.
+
 ## 0.1.30
 
 - Hardened future-model pricing behavior so newly released Codex models show usage immediately while cost estimates stay partial until official rates are checked in.
@@ -23,4 +28,3 @@
 ## 0.1.26 - Heatmap Palette Cleanup
 
 - Removed the amber max bucket from the hourly heatmap so day and night modes use a calmer blue-only intensity scale.
-

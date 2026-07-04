@@ -102,7 +102,10 @@ Generated extension output is ignored:
 - `extensions/vscode/bin/`
 - `extensions/vscode/node_modules/`
 
-The bundled Windows executable is built into `extensions/vscode/bin/win32-x64/` before packaging, but it is not committed.
+Bundled runtime executables are built before packaging, but they are not committed:
+
+- `extensions/vscode/bin/win32-x64/`
+- `extensions/vscode/bin/darwin-arm64/`
 
 Rule of thumb: TypeScript owns VS Code behavior. It should not recalculate token usage, pricing, project identity, or sync decisions.
 
@@ -182,4 +185,3 @@ A structure decision may be wrong if:
 - a module name becomes vague, such as `utils.py`, because unrelated helpers are accumulating.
 
 Future me: structure should reduce the number of questions a reader has to ask. If a new folder makes the project harder to explain, it has not earned its place.
-

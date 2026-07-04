@@ -1,6 +1,6 @@
 # Packaging And Release
 
-The product changed when it moved from "works on my machine" to "works on another Windows machine."
+The product changed when it moved from "works on my machine" to "works on another user's machine."
 
 ## Local Development Runtime
 
@@ -28,6 +28,16 @@ The executable is built from the Python core with PyInstaller. The extension spa
 
 Future me: the lesson is not "always use PyInstaller." The lesson is "extension runtime strategy is part of product design." A VS Code extension cannot assume the user's machine has your development environment.
 
+## Bundled macOS Runtime
+
+The macOS Apple Silicon preview VSIX bundles:
+
+```text
+extensions/vscode/bin/darwin-arm64/codex-usage
+```
+
+The executable is built from the Python core with PyInstaller on Apple Silicon. Intel macOS is intentionally unsupported.
+
 ## VSIX Contents
 
 The VSIX should include:
@@ -40,6 +50,7 @@ The VSIX should include:
 - `extension/media/icon.png`
 - `extension/out/*.js`
 - `extension/bin/win32-x64/codex-usage.exe`
+- `extension/bin/darwin-arm64/codex-usage`
 
 It should exclude TypeScript source, tests, and dev-only configs.
 
@@ -65,13 +76,15 @@ Required release surfaces:
 - changelog;
 - support document;
 - privacy document;
-- clear Windows-only preview note.
+- clear supported-platform preview note.
 
 ## Version Discipline
 
-Marketplace versions are immutable. Once `0.1.29` is published, the next upload must use a higher version.
+Marketplace versions are immutable. Once a version is published, the next upload must use a higher version.
 
 Release flow:
+
+Windows x64 on Windows/PowerShell:
 
 ```powershell
 uv run pytest
@@ -80,13 +93,22 @@ npm test
 npm run package:vsix:win
 ```
 
+macOS Apple Silicon on macOS/bash:
+
+```bash
+uv run pytest
+cd extensions/vscode
+npm test
+npm run package:vsix:mac
+```
+
 Then upload the VSIX or publish with `vsce` if login is configured.
 
 After Marketplace accepts the release:
 
 ```powershell
-git tag -a v0.1.29 -m "v0.1.29 Marketplace preview release"
-git push origin v0.1.29
+git tag -a v0.1.31 -m "v0.1.31 Marketplace preview release"
+git push origin v0.1.31
 ```
 
 ## Things To Watch After Publish
@@ -94,6 +116,6 @@ git push origin v0.1.29
 - Does Marketplace search index the extension?
 - Does install work from Marketplace, not only local VSIX?
 - Do users have old local publisher builds installed?
-- Does Windows Defender object to the bundled executable?
+- Does Windows Defender or macOS Gatekeeper object to the bundled executable?
 - Does first-run cache initialization feel understandable?
 - Do users understand pricing is estimated from checked-in rates?
