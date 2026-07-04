@@ -50,6 +50,14 @@ def test_extract_windows_paths_stops_bare_path_at_prose_boundary() -> None:
     assert paths == ["D:\\Work\\repos\\codex_usage"]
 
 
+def test_extract_windows_paths_stops_leading_bare_path_at_prose_boundary() -> None:
+    text = r"C:\Users\alice\project before continuing."
+
+    paths = extract_windows_paths(text)
+
+    assert paths == [r"C:\Users\alice\project"]
+
+
 def test_extract_windows_paths_preserves_delimited_trailing_parenthesis() -> None:
     text = "Open `C:\\My Projects\\Foo (2026)` next."
 
@@ -96,8 +104,20 @@ def test_extract_repo_paths_from_leading_posix_text_with_multiple_paths() -> Non
 
 
 def test_extract_repo_paths_preserves_exact_posix_field_with_boundary_word() -> None:
-    assert extract_repo_paths("/Users/alice/project and docs") == [
+    assert extract_repo_paths("/Users/alice/project and docs", preserve_exact_field=True) == [
         "/Users/alice/project and docs",
+    ]
+
+
+def test_extract_repo_paths_preserves_exact_windows_field_with_boundary_word() -> None:
+    assert extract_repo_paths(r"C:\Users\alice\project and docs", preserve_exact_field=True) == [
+        r"C:\Users\alice\project and docs",
+    ]
+
+
+def test_extract_repo_paths_preserves_exact_forward_slash_windows_field_with_boundary_word() -> None:
+    assert extract_repo_paths("C:/Users/alice/project and docs/more", preserve_exact_field=True) == [
+        "C:/Users/alice/project and docs/more",
     ]
 
 

@@ -38,7 +38,7 @@ class RepoPathObservation:
         )
 
 
-def extract_repo_paths(text: str) -> list[str]:
+def extract_repo_paths(text: str, *, preserve_exact_field: bool = False) -> list[str]:
     paths: list[str] = []
     seen: set[str] = set()
     candidates: list[tuple[int, str, bool]] = []
@@ -56,13 +56,13 @@ def extract_repo_paths(text: str) -> list[str]:
             occupied_spans.append(match.span())
             candidates.append((match.start(), match.group(0), True))
 
-    exact_posix_field = _exact_posix_path_field_candidate(text)
-    if exact_posix_field is not None:
-        start, end, value = exact_posix_field
+    exact_path_field = _exact_path_field_candidate(text) if preserve_exact_field else None
+    if exact_path_field is not None:
+        start, end, value = exact_path_field
         candidates = [
             candidate
             for candidate in candidates
-            if not (start <= candidate[0] and candidate[0] + len(candidate[1]) <= end and candidate[1].startswith("/"))
+            if not (start <= candidate[0] and candidate[0] + len(candidate[1]) <= end)
         ]
         candidates.append((start, value, False))
 
@@ -72,6 +72,38 @@ def extract_repo_paths(text: str) -> list[str]:
             seen.add(value)
             paths.append(value)
     return paths
+
+
+def _exact_path_field_candidate(text: str) -> tuple[int, int, str] | None:
+    return _exact_windows_path_field_candidate(text) or _exact_posix_path_field_candidate(text)
+
+
+def _exact_windows_path_field_candidate(text: str) -> tuple[int, int, str] | None:
+    stripped = text.strip()
+    if not re.match(r"^[A-Za-z]:[\\/]", stripped) or not any(character.isspace() for character in stripped):
+        return None
+    if _DELIMITED_WINDOWS_PATH_PATTERN.search(stripped) or _DELIMITED_POSIX_PATH_PATTERN.search(stripped):
+        return None
+
+    windows_matches = [
+        match
+        for match in _BARE_WINDOWS_PATH_PATTERN.finditer(stripped)
+        if match.start() == 0 or stripped[match.start() - 1].isspace()
+    ]
+    if len(windows_matches) != 1 or windows_matches[0].start() != 0:
+        return None
+
+    remainder = stripped[windows_matches[0].end() :]
+    posix_remainder_matches = [
+        match
+        for match in _BARE_POSIX_PATH_PATTERN.finditer(remainder)
+        if match.start() == 0 or remainder[match.start() - 1].isspace()
+    ]
+    if _BARE_WINDOWS_PATH_PATTERN.search(remainder) or posix_remainder_matches:
+        return None
+
+    start = len(text) - len(text.lstrip())
+    return start, start + len(stripped), stripped
 
 
 def _exact_posix_path_field_candidate(text: str) -> tuple[int, int, str] | None:
@@ -172,8 +204,8 @@ def _collect_jsonl_observations(
                     if timestamp is None:
                         continue
 
-                    for source, text in _jsonl_observation_texts(event_type, payload):
-                        for raw_path in extract_repo_paths(text):
+                    for source, text, preserve_exact_field in _jsonl_observation_texts(event_type, payload):
+                        for raw_path in extract_repo_paths(text, preserve_exact_field=preserve_exact_field):
                             observation = _cached_verified_repo_observation(
                                 raw_path=raw_path,
                                 timestamp=timestamp,
@@ -222,7 +254,7 @@ def _collect_state_sqlite_observations(
                 for field in _SQLITE_THREAD_TEXT_FIELDS
                 if field in row.keys() and row[field] is not None
             )
-            for raw_path in extract_repo_paths(text):
+            for raw_path in extract_repo_paths(text, preserve_exact_field=True):
                 observation = _cached_verified_repo_observation(
                     raw_path=raw_path,
                     timestamp=timestamp,
@@ -328,7 +360,7 @@ def _source_event_type(value: object) -> str:
     return str(value) if value else "event"
 
 
-def _jsonl_observation_texts(event_type: object, payload: dict[str, Any]) -> list[tuple[str, str]]:
+def _jsonl_observation_texts(event_type: object, payload: dict[str, Any]) -> list[tuple[str, str, bool]]:
     """Return only execution context that can act as project-switch evidence."""
     source_event = _source_event_type(event_type)
     payload_type = str(payload.get("type") or "")
@@ -338,7 +370,7 @@ def _jsonl_observation_texts(event_type: object, payload: dict[str, Any]) -> lis
 
     if payload_type == "function_call":
         workdir = _function_call_workdir(payload.get("arguments"))
-        return [("jsonl:response_item:function_call_workdir", workdir)] if workdir else []
+        return [("jsonl:response_item:function_call_workdir", workdir, True)] if workdir else []
 
     return []
 
