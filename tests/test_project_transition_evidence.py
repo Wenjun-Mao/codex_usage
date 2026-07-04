@@ -34,6 +34,26 @@ def test_collect_repo_path_observations_reads_function_call_workdir(tmp_path: Pa
     assert observations[0].source == "jsonl:response_item:function_call_workdir"
 
 
+def test_collect_repo_path_observations_reads_posix_function_call_workdir(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    repo = tmp_path / "ops board"
+    _write_git_config(repo, "https://github.com/Wenjun-Mao/ops-board.git")
+    session_path = sessions / "2026" / "05" / "23" / "thread-1.jsonl"
+    _write_jsonl(
+        session_path,
+        [
+            _session_meta_event("thread-1"),
+            _function_call_workdir_event("2026-05-23T21:06:45Z", repo),
+        ],
+    )
+
+    observations = collect_repo_path_observations(session_dirs=[sessions], session_files=[session_path])
+
+    assert len(observations) == 1
+    assert observations[0].raw_path == str(repo)
+    assert observations[0].project_key == "https://github.com/wenjun-mao/ops-board"
+
+
 def test_collect_repo_path_observations_ignores_user_message_paths(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     repo = tmp_path / "ops-board"
@@ -218,6 +238,27 @@ def test_collect_repo_path_observations_reads_state_sqlite_thread_cwd(tmp_path: 
     assert observations[0].thread_id == "thread-1"
     assert observations[0].project_key == "https://github.com/wenjun-mao/ops-board"
     assert observations[0].timestamp == datetime(2026, 5, 23, 21, 6, 45, tzinfo=UTC)
+    assert observations[0].source == "state_5.sqlite:threads"
+
+
+def test_collect_repo_path_observations_reads_posix_state_sqlite_cwd(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    sessions.mkdir(parents=True)
+    repo = tmp_path / "ops board"
+    _write_git_config(repo, "https://github.com/Wenjun-Mao/ops-board.git")
+    _write_thread_db(
+        codex_home,
+        cwd=str(repo),
+        title="Task in ops-board",
+        first_user_message="",
+        preview="",
+    )
+
+    observations = collect_repo_path_observations(session_dirs=[sessions], session_files=[])
+
+    assert len(observations) == 1
+    assert observations[0].raw_path == str(repo)
     assert observations[0].source == "state_5.sqlite:threads"
 
 

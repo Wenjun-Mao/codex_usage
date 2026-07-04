@@ -3,11 +3,14 @@ from pathlib import Path
 
 import codex_usage.project_transition_evidence as project_transition_evidence
 from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.project_transition_evidence import (
+    extract_repo_paths,
+    extract_windows_paths,
+    verified_repo_observation_from_path,
+)
 from codex_usage.project_transitions import (
     ProjectTransition,
     apply_project_transitions,
-    extract_windows_paths,
-    verified_repo_observation_from_path,
 )
 
 
@@ -69,6 +72,24 @@ def test_extract_windows_paths_preserves_delimited_trailing_bracket() -> None:
     paths = extract_windows_paths(text)
 
     assert paths == ["C:\\Projects\\Foo [test]"]
+
+
+def test_extract_repo_paths_from_posix_text() -> None:
+    text = (
+        "Run the command in `/Users/alice/projects/ops board` and "
+        "then inspect /Users/alice/projects/signoz-stack."
+    )
+
+    assert extract_repo_paths(text) == [
+        "/Users/alice/projects/ops board",
+        "/Users/alice/projects/signoz-stack",
+    ]
+
+
+def test_extract_windows_paths_keeps_compatibility_for_posix_paths() -> None:
+    assert extract_windows_paths("/Users/alice/projects/ops-board") == [
+        "/Users/alice/projects/ops-board",
+    ]
 
 
 def test_verified_repo_observation_from_path_resolves_git_origin(tmp_path: Path) -> None:
