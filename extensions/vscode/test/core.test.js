@@ -409,12 +409,17 @@ test("sync setup step refresh policy defaults to refresh and can be suppressed",
   assert.equal(shouldRefreshAfterSyncSetupStep({ refreshDashboard: false }), false);
 });
 
-test("bundledExecutablePath resolves Windows x64 executable and rejects unsupported platforms", () => {
+test("bundledExecutablePath resolves supported bundled executables and rejects unsupported platforms", () => {
   assert.equal(
     bundledExecutablePath("C:/extension", "win32", "x64"),
     path.join("C:/extension", "bin", "win32-x64", "codex-usage.exe"),
   );
-  assert.throws(() => bundledExecutablePath("C:/extension", "linux", "x64"), /Unsupported platform/);
+  assert.equal(
+    bundledExecutablePath("/Users/alice/.vscode/extensions/codex-usage", "darwin", "arm64"),
+    path.join("/Users/alice/.vscode/extensions/codex-usage", "bin", "darwin-arm64", "codex-usage"),
+  );
+  assert.throws(() => bundledExecutablePath("/extension", "darwin", "x64"), /Unsupported platform/);
+  assert.throws(() => bundledExecutablePath("/extension", "linux", "x64"), /Unsupported platform/);
 });
 
 test("injectWebviewCsp adds a strict CSP without external allowances", () => {

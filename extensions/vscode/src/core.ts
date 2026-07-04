@@ -465,7 +465,12 @@ export function bundledExecutablePath(extensionPath: string, platform: string, a
   if (platform === "win32" && arch === "x64") {
     return path.join(extensionPath, "bin", "win32-x64", "codex-usage.exe");
   }
-  throw new Error(`Unsupported platform: ${platform}-${arch}. This VSIX currently bundles only Windows x64.`);
+  if (platform === "darwin" && arch === "arm64") {
+    return path.join(extensionPath, "bin", "darwin-arm64", "codex-usage");
+  }
+  throw new Error(
+    `Unsupported platform: ${platform}-${arch}. This VSIX currently bundles Windows x64 and macOS Apple Silicon.`,
+  );
 }
 
 export function parseProjectChoices(summaryJson: string, selectedProjectKeys: string[] = []): ProjectChoice[] {

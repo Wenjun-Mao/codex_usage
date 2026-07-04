@@ -928,7 +928,7 @@ async function resolveBundledExecutable(context: vscode.ExtensionContext): Promi
   } catch {
     throw new Error(
       `Bundled codex-usage executable was not found at ${executablePath}. ` +
-        "Rebuild the Windows VSIX with `npm run package:vsix:win`.",
+        "Rebuild the VSIX for this platform with `npm run package:vsix:win` or `npm run package:vsix:mac`.",
     );
   }
 }
