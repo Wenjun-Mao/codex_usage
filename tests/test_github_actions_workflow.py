@@ -44,6 +44,7 @@ def test_publish_job_requires_secret_and_release_guard():
     text = read_workflow()
 
     assert "VSCE_PAT: ${{ secrets.VSCE_PAT }}" in text
+    assert "    env:\n      VSCE_PAT: ${{ secrets.VSCE_PAT }}" not in text
     assert "npx vsce publish --packagePath" in text
     assert "startsWith(github.ref, 'refs/tags/v')" in text
     assert "github.event_name == 'workflow_dispatch'" in text

@@ -127,8 +127,6 @@ jobs:
       - macos
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish)
-    env:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
     steps:
       - name: Checkout repository
@@ -152,6 +150,8 @@ jobs:
           merge-multiple: true
 
       - name: Verify publish inputs
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           test -n "$VSCE_PAT"
           test -f output/releases/codex-usage-dashboard-win32-x64.vsix
@@ -159,8 +159,12 @@ jobs:
 
       - name: Publish Windows x64 VSIX
         working-directory: extensions/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: npx vsce publish --packagePath ../../output/releases/codex-usage-dashboard-win32-x64.vsix
 
       - name: Publish macOS Apple Silicon VSIX
         working-directory: extensions/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: npx vsce publish --packagePath ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix
