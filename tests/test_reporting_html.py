@@ -226,20 +226,22 @@ def test_dashboard_report_warns_for_unknown_future_model_without_price_data(tmp_
 
     render_html_report(
         output_path=output,
-        generated_at=datetime(2026, 6, 25, 12, tzinfo=UTC),
+        generated_at=datetime(2026, 7, 9, 12, tzinfo=UTC),
         range_name="all",
         total=total,
-        daily_rows=[_row("2026-06-25", "2026-06-25", 1_050, unpriced=1_050, credit_unpriced=1_050)],
+        daily_rows=[_row("2026-07-09", "2026-07-09", 1_050, unpriced=1_050, credit_unpriced=1_050)],
         hourly_rows=[],
         project_rows=[],
-        model_rows=[_row("gpt-5.6", "gpt-5.6", 1_050, unpriced=1_050, credit_unpriced=1_050)],
+        model_rows=[
+            _row("gpt-5.6-pro", "gpt-5.6-pro", 1_050, unpriced=1_050, credit_unpriced=1_050)
+        ],
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
     )
 
     html = output.read_text(encoding="utf-8")
 
-    assert "gpt-5.6" in html
+    assert "gpt-5.6-pro" in html
     assert "No price data is available for 1,050 tokens" in html
     assert "API USD excludes 1,050 tokens from models without API USD rates" in html
 

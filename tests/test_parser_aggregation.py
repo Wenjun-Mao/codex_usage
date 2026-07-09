@@ -120,13 +120,16 @@ def test_aggregation_accumulates_api_cost_and_codex_credits(tmp_path: Path) -> N
     assert rows[0].to_dict()["credits"]["total_credits"] == 68.90625
 
 
-def test_unknown_future_model_is_grouped_but_unpriced(tmp_path: Path) -> None:
+def test_gpt_5_6_sol_ultra_is_priced_by_model(tmp_path: Path) -> None:
     path = _write_session(
         tmp_path,
         [
-            _session_meta(cwd=str(tmp_path)),
-            _turn_context(model="gpt-5.6"),
-            _token("2026-06-25T10:00:00Z", _usage(total=1_050, input_tokens=1_000, cached=100, output=50)),
+            _session_meta(cwd="/repo/demo"),
+            _turn_context(model="gpt-5.6-sol", effort="ultra"),
+            _token(
+                "2026-07-09T10:00:00Z",
+                _usage(total=1_100_000, input_tokens=1_000_000, cached=250_000, output=100_000),
+            ),
         ],
     )
 
@@ -134,7 +137,33 @@ def test_unknown_future_model_is_grouped_but_unpriced(tmp_path: Path) -> None:
     total = summarize_records(records)
     rows = aggregate_records(records, "model", UTC)
 
-    assert rows[0].key == "gpt-5.6"
+    assert records[0].model == "gpt-5.6-sol"
+    assert records[0].effort == "ultra"
+    assert rows[0].key == "gpt-5.6-sol"
+    assert total.cost.total_usd == 6.875
+    assert total.cost.unpriced_tokens == 0
+    assert total.credits.total_credits == 171.875
+    assert total.credits.unpriced_tokens == 0
+
+
+def test_unknown_future_model_is_grouped_but_unpriced(tmp_path: Path) -> None:
+    path = _write_session(
+        tmp_path,
+        [
+            _session_meta(cwd=str(tmp_path)),
+            _turn_context(model="gpt-5.6-pro"),
+            _token(
+                "2026-07-09T10:00:00Z",
+                _usage(total=1_050, input_tokens=1_000, cached=100, output=50),
+            ),
+        ],
+    )
+
+    records = parse_session_file(path)
+    total = summarize_records(records)
+    rows = aggregate_records(records, "model", UTC)
+
+    assert rows[0].key == "gpt-5.6-pro"
     assert rows[0].usage.total_tokens == 1_050
     assert rows[0].cost.total_usd == 0
     assert rows[0].cost.unpriced_tokens == 1_050
@@ -554,15 +583,18 @@ def _session_meta(
     }
 
 
-def _turn_context(model: str) -> dict:
+def _turn_context(model: str, effort: str = "medium") -> dict:
     return {
         "timestamp": "2026-04-29T09:59:30Z",
         "type": "turn_context",
         "payload": {
             "turn_id": f"turn-{model}",
             "model": model,
-            "effort": "medium",
-            "collaboration_mode": {"mode": "default", "settings": {"model": model, "reasoning_effort": "medium"}},
+            "effort": effort,
+            "collaboration_mode": {
+                "mode": "default",
+                "settings": {"model": model, "reasoning_effort": effort},
+            },
         },
     }
 

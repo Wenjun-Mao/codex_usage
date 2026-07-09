@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 from codex_usage.models import TokenUsage
 
 
-PRICING_AS_OF = "2026-05-18"
+PRICING_AS_OF = "2026-07-09"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
+GPT_5_6_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,27 @@ def _effective_rate(
 
 
 API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate(
+        "gpt-5.6-sol",
+        input_per_1m=5.00,
+        cached_input_per_1m=0.50,
+        output_per_1m=30.00,
+        effective_from=GPT_5_6_EFFECTIVE_FROM,
+    ),
+    _effective_rate(
+        "gpt-5.6-terra",
+        input_per_1m=2.50,
+        cached_input_per_1m=0.25,
+        output_per_1m=15.00,
+        effective_from=GPT_5_6_EFFECTIVE_FROM,
+    ),
+    _effective_rate(
+        "gpt-5.6-luna",
+        input_per_1m=1.00,
+        cached_input_per_1m=0.10,
+        output_per_1m=6.00,
+        effective_from=GPT_5_6_EFFECTIVE_FROM,
+    ),
     _effective_rate("gpt-5.5", input_per_1m=5.00, cached_input_per_1m=0.50, output_per_1m=30.00),
     _effective_rate("gpt-5.4-mini", input_per_1m=0.75, cached_input_per_1m=0.075, output_per_1m=4.50),
     _effective_rate("gpt-5.4", input_per_1m=2.50, cached_input_per_1m=0.25, output_per_1m=15.00),
@@ -110,6 +132,27 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
 )
 
 CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate(
+        "gpt-5.6-sol",
+        input_per_1m=125.0,
+        cached_input_per_1m=12.5,
+        output_per_1m=750.0,
+        effective_from=GPT_5_6_EFFECTIVE_FROM,
+    ),
+    _effective_rate(
+        "gpt-5.6-terra",
+        input_per_1m=62.5,
+        cached_input_per_1m=6.25,
+        output_per_1m=375.0,
+        effective_from=GPT_5_6_EFFECTIVE_FROM,
+    ),
+    _effective_rate(
+        "gpt-5.6-luna",
+        input_per_1m=25.0,
+        cached_input_per_1m=2.5,
+        output_per_1m=150.0,
+        effective_from=GPT_5_6_EFFECTIVE_FROM,
+    ),
     _effective_rate("gpt-5.5", input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0),
     _effective_rate("gpt-5.4-mini", input_per_1m=18.75, cached_input_per_1m=1.875, output_per_1m=113.0),
     _effective_rate("gpt-5.4", input_per_1m=62.5, cached_input_per_1m=6.25, output_per_1m=375.0),

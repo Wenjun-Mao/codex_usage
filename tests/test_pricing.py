@@ -1,8 +1,17 @@
 from datetime import UTC, datetime
 
+import pytest
+
 import codex_usage.pricing as pricing
 from codex_usage.models import TokenUsage
-from codex_usage.pricing import EffectiveModelRate, ModelRate, credit_rate_for_model, estimate_codex_credits, estimate_cost, rate_for_model
+from codex_usage.pricing import (
+    EffectiveModelRate,
+    ModelRate,
+    credit_rate_for_model,
+    estimate_codex_credits,
+    estimate_cost,
+    rate_for_model,
+)
 
 
 def test_rate_matching_prefers_mini_over_parent_model() -> None:
@@ -49,6 +58,76 @@ def test_codex_model_has_official_api_usd_and_credit_rate() -> None:
 
 def test_gpt_5_3_resolves_to_same_api_rate_as_gpt_5_3_codex() -> None:
     assert rate_for_model("gpt-5.3") == rate_for_model("gpt-5.3-codex")
+
+
+GPT_5_6_EFFECTIVE_AT = datetime(2026, 6, 26, tzinfo=UTC)
+GPT_5_6_RATE_CASES = (
+    (
+        "gpt-5.6-sol",
+        ModelRate(input_per_1m=5.0, cached_input_per_1m=0.5, output_per_1m=30.0),
+        ModelRate(input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0),
+        6.875,
+        171.875,
+    ),
+    (
+        "gpt-5.6-terra",
+        ModelRate(input_per_1m=2.5, cached_input_per_1m=0.25, output_per_1m=15.0),
+        ModelRate(input_per_1m=62.5, cached_input_per_1m=6.25, output_per_1m=375.0),
+        3.4375,
+        85.9375,
+    ),
+    (
+        "gpt-5.6-luna",
+        ModelRate(input_per_1m=1.0, cached_input_per_1m=0.1, output_per_1m=6.0),
+        ModelRate(input_per_1m=25.0, cached_input_per_1m=2.5, output_per_1m=150.0),
+        1.375,
+        34.375,
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("model", "api_rate", "credit_rate", "expected_cost", "expected_credits"),
+    GPT_5_6_RATE_CASES,
+)
+def test_gpt_5_6_family_has_official_rates(
+    model: str,
+    api_rate: ModelRate,
+    credit_rate: ModelRate,
+    expected_cost: float,
+    expected_credits: float,
+) -> None:
+    usage = TokenUsage(
+        input_tokens=1_000_000,
+        cached_input_tokens=250_000,
+        output_tokens=100_000,
+        total_tokens=1_100_000,
+    )
+
+    assert rate_for_model(model, at=GPT_5_6_EFFECTIVE_AT) == api_rate
+    assert credit_rate_for_model(model, at=GPT_5_6_EFFECTIVE_AT) == credit_rate
+
+    cost = estimate_cost(usage, model, at=GPT_5_6_EFFECTIVE_AT)
+    credits = estimate_codex_credits(usage, model, at=GPT_5_6_EFFECTIVE_AT)
+
+    assert cost is not None
+    assert credits is not None
+    assert cost.total_usd == pytest.approx(expected_cost)
+    assert credits.total_credits == pytest.approx(expected_credits)
+
+
+@pytest.mark.parametrize("model", [case[0] for case in GPT_5_6_RATE_CASES])
+def test_gpt_5_6_rates_start_on_preview_pricing_date(model: str) -> None:
+    before = datetime(2026, 6, 25, 23, 59, 59, tzinfo=UTC)
+
+    assert rate_for_model(model, at=before) is None
+    assert credit_rate_for_model(model, at=before) is None
+    assert rate_for_model(model, at=GPT_5_6_EFFECTIVE_AT) is not None
+    assert credit_rate_for_model(model, at=GPT_5_6_EFFECTIVE_AT) is not None
+
+
+def test_pricing_table_date_covers_gpt_5_6_general_availability() -> None:
+    assert pricing.PRICING_AS_OF == "2026-07-09"
 
 
 def test_rate_lookup_requires_exact_model_or_explicit_alias(monkeypatch) -> None:
@@ -119,13 +198,18 @@ def test_effective_dated_rate_lookup_uses_record_timestamp(monkeypatch) -> None:
     assert after.input_per_1m == 2.0
 
 
-def test_future_model_without_checked_in_rate_is_unpriced() -> None:
+@pytest.mark.parametrize(
+    "model",
+    ("gpt-5.6", "gpt-5.6-pro", "wrapper-gpt-5.6-sol"),
+)
+def test_unpublished_gpt_5_6_variants_remain_unpriced(model: str) -> None:
     usage = TokenUsage(input_tokens=1_000, cached_input_tokens=100, output_tokens=50, total_tokens=1_050)
+    at = datetime(2026, 7, 9, tzinfo=UTC)
 
-    assert rate_for_model("gpt-5.6") is None
-    assert credit_rate_for_model("gpt-5.6") is None
-    assert estimate_cost(usage, "gpt-5.6") is None
-    assert estimate_codex_credits(usage, "gpt-5.6") is None
+    assert rate_for_model(model, at=at) is None
+    assert credit_rate_for_model(model, at=at) is None
+    assert estimate_cost(usage, model, at=at) is None
+    assert estimate_codex_credits(usage, model, at=at) is None
 
 
 def test_unknown_model_has_no_api_or_credit_rate() -> None:
