@@ -60,27 +60,28 @@ def test_gpt_5_3_resolves_to_same_api_rate_as_gpt_5_3_codex() -> None:
     assert rate_for_model("gpt-5.3") == rate_for_model("gpt-5.3-codex")
 
 
-GPT_5_6_EFFECTIVE_AT = datetime(2026, 6, 26, tzinfo=UTC)
+GPT_5_6_API_EFFECTIVE_AT = datetime(2026, 6, 26, tzinfo=UTC)
+GPT_5_6_CREDIT_EFFECTIVE_AT = datetime(2026, 7, 9, tzinfo=UTC)
 GPT_5_6_RATE_CASES = (
     (
         "gpt-5.6-sol",
         ModelRate(input_per_1m=5.0, cached_input_per_1m=0.5, output_per_1m=30.0),
         ModelRate(input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0),
-        6.875,
+        12.25,
         171.875,
     ),
     (
         "gpt-5.6-terra",
         ModelRate(input_per_1m=2.5, cached_input_per_1m=0.25, output_per_1m=15.0),
         ModelRate(input_per_1m=62.5, cached_input_per_1m=6.25, output_per_1m=375.0),
-        3.4375,
+        6.125,
         85.9375,
     ),
     (
         "gpt-5.6-luna",
         ModelRate(input_per_1m=1.0, cached_input_per_1m=0.1, output_per_1m=6.0),
         ModelRate(input_per_1m=25.0, cached_input_per_1m=2.5, output_per_1m=150.0),
-        1.375,
+        2.45,
         34.375,
     ),
 )
@@ -104,11 +105,11 @@ def test_gpt_5_6_family_has_official_rates(
         total_tokens=1_100_000,
     )
 
-    assert rate_for_model(model, at=GPT_5_6_EFFECTIVE_AT) == api_rate
-    assert credit_rate_for_model(model, at=GPT_5_6_EFFECTIVE_AT) == credit_rate
+    assert rate_for_model(model, at=GPT_5_6_API_EFFECTIVE_AT) == api_rate
+    assert credit_rate_for_model(model, at=GPT_5_6_CREDIT_EFFECTIVE_AT) == credit_rate
 
-    cost = estimate_cost(usage, model, at=GPT_5_6_EFFECTIVE_AT)
-    credits = estimate_codex_credits(usage, model, at=GPT_5_6_EFFECTIVE_AT)
+    cost = estimate_cost(usage, model, at=GPT_5_6_API_EFFECTIVE_AT)
+    credits = estimate_codex_credits(usage, model, at=GPT_5_6_CREDIT_EFFECTIVE_AT)
 
     assert cost is not None
     assert credits is not None
@@ -117,13 +118,89 @@ def test_gpt_5_6_family_has_official_rates(
 
 
 @pytest.mark.parametrize("model", [case[0] for case in GPT_5_6_RATE_CASES])
-def test_gpt_5_6_rates_start_on_preview_pricing_date(model: str) -> None:
-    before = datetime(2026, 6, 25, 23, 59, 59, tzinfo=UTC)
+def test_gpt_5_6_api_rates_start_on_preview_pricing_date(model: str) -> None:
+    before_api = datetime(2026, 6, 25, 23, 59, 59, tzinfo=UTC)
+    before_credits = datetime(2026, 7, 8, 23, 59, 59, tzinfo=UTC)
 
-    assert rate_for_model(model, at=before) is None
-    assert credit_rate_for_model(model, at=before) is None
-    assert rate_for_model(model, at=GPT_5_6_EFFECTIVE_AT) is not None
-    assert credit_rate_for_model(model, at=GPT_5_6_EFFECTIVE_AT) is not None
+    assert rate_for_model(model, at=before_api) is None
+    assert rate_for_model(model, at=GPT_5_6_API_EFFECTIVE_AT) is not None
+    assert credit_rate_for_model(model, at=before_credits) is None
+    assert credit_rate_for_model(model, at=GPT_5_6_CREDIT_EFFECTIVE_AT) is not None
+
+
+def test_gpt_5_6_short_context_api_cost_uses_base_rate_at_threshold() -> None:
+    usage = TokenUsage(
+        input_tokens=272_000,
+        cached_input_tokens=72_000,
+        output_tokens=10_000,
+        total_tokens=282_000,
+    )
+
+    cost = estimate_cost(usage, "gpt-5.6-sol", at=GPT_5_6_API_EFFECTIVE_AT)
+
+    assert cost is not None
+    assert cost.uncached_input_usd == pytest.approx(1.0)
+    assert cost.cached_input_usd == pytest.approx(0.036)
+    assert cost.output_usd == pytest.approx(0.3)
+    assert cost.total_usd == pytest.approx(1.336)
+
+
+@pytest.mark.parametrize(
+    ("model", "expected_uncached", "expected_cached", "expected_output"),
+    (
+        ("gpt-5.6-sol", 2.0, 0.072001, 4.5),
+        ("gpt-5.6-terra", 1.0, 0.0360005, 2.25),
+        ("gpt-5.6-luna", 0.4, 0.0144002, 0.9),
+    ),
+)
+def test_gpt_5_6_long_context_api_cost_uses_request_level_rates(
+    model: str,
+    expected_uncached: float,
+    expected_cached: float,
+    expected_output: float,
+) -> None:
+    usage = TokenUsage(
+        input_tokens=272_001,
+        cached_input_tokens=72_001,
+        output_tokens=100_000,
+        total_tokens=372_001,
+    )
+
+    cost = estimate_cost(usage, model, at=GPT_5_6_API_EFFECTIVE_AT)
+
+    assert cost is not None
+    assert cost.uncached_input_usd == pytest.approx(expected_uncached)
+    assert cost.cached_input_usd == pytest.approx(expected_cached)
+    assert cost.output_usd == pytest.approx(expected_output)
+    assert cost.total_usd == pytest.approx(expected_uncached + expected_cached + expected_output)
+
+
+def test_gpt_5_6_long_context_does_not_change_codex_credit_rates() -> None:
+    usage = TokenUsage(
+        input_tokens=272_001,
+        cached_input_tokens=72_001,
+        output_tokens=100_000,
+        total_tokens=372_001,
+    )
+
+    credits = estimate_codex_credits(usage, "gpt-5.6-sol", at=GPT_5_6_CREDIT_EFFECTIVE_AT)
+
+    assert credits is not None
+    assert credits.uncached_input_credits == pytest.approx(25.0)
+    assert credits.cached_input_credits == pytest.approx(0.9000125)
+    assert credits.output_credits == pytest.approx(75.0)
+    assert credits.total_credits == pytest.approx(100.9000125)
+
+
+def test_gpt_5_6_alias_resolves_to_sol_api_and_credit_rates() -> None:
+    assert rate_for_model("gpt-5.6", at=GPT_5_6_API_EFFECTIVE_AT) == rate_for_model(
+        "gpt-5.6-sol",
+        at=GPT_5_6_API_EFFECTIVE_AT,
+    )
+    assert credit_rate_for_model("gpt-5.6", at=GPT_5_6_CREDIT_EFFECTIVE_AT) == credit_rate_for_model(
+        "gpt-5.6-sol",
+        at=GPT_5_6_CREDIT_EFFECTIVE_AT,
+    )
 
 
 def test_pricing_table_date_covers_gpt_5_6_general_availability() -> None:
@@ -200,7 +277,7 @@ def test_effective_dated_rate_lookup_uses_record_timestamp(monkeypatch) -> None:
 
 @pytest.mark.parametrize(
     "model",
-    ("gpt-5.6", "gpt-5.6-pro", "wrapper-gpt-5.6-sol"),
+    ("gpt-5.6-pro", "gpt-5.6-mini", "wrapper-gpt-5.6-sol", "wrapper-gpt-5.6"),
 )
 def test_unpublished_gpt_5_6_variants_remain_unpriced(model: str) -> None:
     usage = TokenUsage(input_tokens=1_000, cached_input_tokens=100, output_tokens=50, total_tokens=1_050)

@@ -2,8 +2,10 @@
 
 ## 0.1.32 - GPT-5.6 Pricing Support
 
-- Added effective-dated API-equivalent USD and Codex credit rates for GPT-5.6 Sol, Terra, and Luna.
-- Kept generic and unpublished GPT-5.6 variants visible but unpriced through exact model matching.
+- Added effective-dated API-equivalent USD rates for GPT-5.6 Sol, Terra, and Luna from June 26, 2026, and Codex credit rates from July 9, 2026.
+- Added request-level long-context API-only pricing for GPT-5.6 retained events over 272,000 input tokens: Sol $10/$1/$45, Terra $5/$0.50/$22.50, and Luna $2/$0.20/$9 per 1M uncached input, cached input, and output tokens. Codex credits remain flat.
+- Mapped the official `gpt-5.6` alias to Sol while keeping unpublished variants such as `gpt-5.6-pro`, `gpt-5.6-mini`, and wrapper names unpriced through exact model matching.
+- Documented that audited retained positive deltas matched request-level `last_token_usage`, so cumulative session totals cannot trigger long-context pricing.
 - Documented that local Codex logs cannot identify the API's distinct cache-write token category.
 
 ## 0.1.31 - macOS Apple Silicon Preview

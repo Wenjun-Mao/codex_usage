@@ -2,6 +2,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 import codex_usage.pricing as pricing
 from codex_usage.aggregation import (
     aggregate_records,
@@ -140,10 +142,42 @@ def test_gpt_5_6_sol_ultra_is_priced_by_model(tmp_path: Path) -> None:
     assert records[0].model == "gpt-5.6-sol"
     assert records[0].effort == "ultra"
     assert rows[0].key == "gpt-5.6-sol"
-    assert total.cost.total_usd == 6.875
+    assert total.cost.total_usd == 12.25
     assert total.cost.unpriced_tokens == 0
     assert total.credits.total_credits == 171.875
     assert total.credits.unpriced_tokens == 0
+
+
+def test_gpt_5_6_long_context_pricing_uses_request_delta_not_cumulative_session_total(tmp_path: Path) -> None:
+    path = _write_session(
+        tmp_path,
+        [
+            _session_meta(cwd="/repo/demo"),
+            _turn_context(model="gpt-5.6-sol"),
+            _token(
+                "2026-07-09T10:00:00Z",
+                _usage(total=220_000, input_tokens=200_000, cached=50_000, output=20_000),
+            ),
+            _token(
+                "2026-07-09T10:01:00Z",
+                _usage(total=440_000, input_tokens=400_000, cached=100_000, output=40_000),
+            ),
+        ],
+    )
+
+    records = parse_session_file(path)
+    total = summarize_records(records)
+    rows = aggregate_records(records, "session", UTC)
+
+    assert [record.usage.input_tokens for record in records] == [200_000, 200_000]
+    assert all(record.usage.input_tokens <= 272_000 for record in records)
+    assert total.usage.input_tokens == 400_000
+    assert total.cost.uncached_input_usd == pytest.approx(1.5)
+    assert total.cost.cached_input_usd == pytest.approx(0.05)
+    assert total.cost.output_usd == pytest.approx(1.2)
+    assert total.cost.total_usd == pytest.approx(2.75)
+    assert total.credits.total_credits == pytest.approx(68.75)
+    assert rows[0].cost.total_usd == pytest.approx(2.75)
 
 
 def test_unknown_future_model_is_grouped_but_unpriced(tmp_path: Path) -> None:
