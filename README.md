@@ -132,7 +132,11 @@ Project grouping uses `git.repository_url` when present, local `.git/config` ori
 
 Pricing uses checked-in effective-dated rate schedules. Each usage event is priced with the API USD and Codex credit rates active at that event's timestamp, so future price changes can be added without rewriting historical reports.
 
+GPT-5.6 Sol, Terra, and Luna use their official API and Codex credit rates for usage recorded from June 26, 2026 onward. Reasoning effort such as `ultra` does not change the per-token rate; any additional work is reflected in the recorded token totals.
+
 The tool does not fetch live pricing. Cost and credit values are estimates based on the checked-in pricing table version shown in each report. New Codex models may appear in local logs before this repository has official checked-in rates for them; those models remain visible in totals and model mix, but their API USD and Codex credit estimates are excluded until exact effective-dated rates are checked in.
+
+For GPT-5.6 and later API models, explicit cache writes can have a separate 1.25x input charge. Local Codex logs expose cached-input reads but no distinct cache-write token count, so API-equivalent USD applies the standard input rate to non-cached input and cannot include an unobservable cache-write uplift.
 
 ## Project Transitions
 

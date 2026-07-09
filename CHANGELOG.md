@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.32 - GPT-5.6 Pricing Support
+
+- Added effective-dated API-equivalent USD and Codex credit rates for GPT-5.6 Sol, Terra, and Luna.
+- Kept generic and unpublished GPT-5.6 variants visible but unpriced through exact model matching.
+- Documented that local Codex logs cannot identify the API's distinct cache-write token category.
+
 ## 0.1.31 - macOS Apple Silicon Preview
 
 - Added macOS Apple Silicon VS Code packaging with a bundled `codex-usage` executable.

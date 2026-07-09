@@ -102,6 +102,10 @@ Codex session logs can include project paths, repository URLs, branch names, mod
 
 API-equivalent USD and Codex credit estimates are calculated from checked-in effective-dated pricing tables. The extension does not fetch live pricing, does not know your subscription price, and does not convert Codex credits to dollars. If a newly released Codex model appears before checked-in rates are added, the dashboard keeps its tokens visible and marks cost/credits as partial rather than guessing from another model.
 
+GPT-5.6 Sol, Terra, and Luna are priced from their official rates for usage recorded from June 26, 2026 onward. Reasoning effort such as `ultra` remains separate metadata and does not change the per-token model rate.
+
+For GPT-5.6 and later API models, explicit cache writes can have a separate 1.25x input charge. Local Codex logs expose no distinct cache-write token count, so the API-equivalent estimate cannot include that unobservable uplift.
+
 Codex fast mode is counted through the token usage that Codex records. At the moment, Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.
 
 ## Troubleshooting

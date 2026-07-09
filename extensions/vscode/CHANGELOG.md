@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.32
+
+- Added API-equivalent USD and Codex credit estimates for GPT-5.6 Sol, Terra, and Luna.
+- Preserved partial-pricing warnings for generic or unpublished GPT-5.6 variants.
+- Documented the local cache-write accounting limitation.
+
 ## 0.1.31
 
 - Added macOS Apple Silicon preview packaging with a bundled `codex-usage` executable.
