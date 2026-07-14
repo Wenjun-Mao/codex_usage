@@ -22,6 +22,7 @@ def test_first_cache_build_parses_and_stores_records(tmp_path: Path) -> None:
 
     assert data.files == [session_path]
     assert data.stats.files_parsed == 1
+    assert data.file_summaries[session_path].estimated_sync_bytes == session_path.stat().st_size + 4096
     assert data.stats.files_reused == 0
     assert data.records[0].session_id == "thread-1"
     assert data.records[0].usage.total_tokens == 100

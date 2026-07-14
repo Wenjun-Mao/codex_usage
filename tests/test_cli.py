@@ -3,8 +3,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
-from codex_usage.cli import _normalize_thread_ids
+import codex_usage.cli as cli_module
+import pytest
 
 
 def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
@@ -301,10 +303,9 @@ def test_cli_help_no_longer_exposes_removed_manual_options() -> None:
     assert "--project-key" in result.stdout
 
 
-def test_cli_threads_and_sync_commands(tmp_path: Path) -> None:
+def test_cli_threads_lists_selected_project(tmp_path: Path) -> None:
     codex_home = tmp_path / "codex"
     sessions = codex_home / "sessions"
-    sync_dir = tmp_path / "sync"
     day = sessions / "2026" / "04" / "29"
     day.mkdir(parents=True)
     _write_session(day / "thread-1.jsonl", "thread-1", "/repo/first", 100)
@@ -327,54 +328,20 @@ def test_cli_threads_and_sync_commands(tmp_path: Path) -> None:
     assert threads_payload["threads"][0]["title"] == "First thread"
     assert "estimated_sync_bytes" in threads_payload["threads"][0]
 
-    export_result = _run_cli(
-        [
-            "sync",
-            "export",
-            "--sync-dir",
-            str(sync_dir),
-            "--thread-id",
-            "thread-1",
-        ],
-        env={"CODEX_HOME": str(codex_home)},
+
+def test_main_returns_two_for_unexpected_handler_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    parser = SimpleNamespace(
+        parse_args=lambda argv: SimpleNamespace(
+            handler=lambda args: (_ for _ in ()).throw(RuntimeError("unexpected"))
+        )
     )
-    assert json.loads(export_result.stdout)["exported"] == ["thread-1"]
+    monkeypatch.setattr(cli_module, "build_parser", lambda: parser)
 
-    status_result = _run_cli(
-        [
-            "sync",
-            "status",
-            "--sync-dir",
-            str(sync_dir),
-            "--thread-id",
-            "thread-1",
-            "--json",
-        ],
-        env={"CODEX_HOME": str(codex_home)},
-    )
-    assert json.loads(status_result.stdout)["threads"][0]["state"] == "synced"
-
-    imported_home = tmp_path / "imported"
-    import_result = _run_cli(
-        [
-            "sync",
-            "import",
-            "--sync-dir",
-            str(sync_dir),
-            "--thread-id",
-            "thread-1",
-        ],
-        env={"CODEX_HOME": str(imported_home)},
-    )
-    assert json.loads(import_result.stdout)["imported"] == ["thread-1"]
-    assert (imported_home / "sessions").is_dir()
-    assert (imported_home / "session_index.jsonl").is_file()
-
-
-def test_normalize_thread_ids_preserves_case_and_slashes() -> None:
-    thread_ids = _normalize_thread_ids([" Owner/Repo ", "Owner/Repo", "owner/repo", "thread-1"])
-
-    assert thread_ids == ["Owner/Repo", "owner/repo", "thread-1"]
+    assert cli_module.main([]) == 2
+    assert capsys.readouterr().err.strip() == "codex-usage: unexpected"
 
 
 def _run_cli(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:

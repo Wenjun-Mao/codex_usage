@@ -19,12 +19,12 @@ from codex_usage.project_transitions import (
 )
 from codex_usage.session_files import owning_session_dir, read_session_metadata
 from codex_usage.session_inventory import SessionFileInventoryEntry, collect_session_file_inventory
-from codex_usage.sync_constants import SYNC_METADATA_OVERHEAD_BYTES
 
 CACHE_DB_NAME = "usage-cache.sqlite3"
 CACHE_SCHEMA_VERSION = 2
 PARSER_CACHE_VERSION = 1
 PROJECT_TRANSITION_CACHE_VERSION = 1
+_ESTIMATED_SYNC_METADATA_BYTES = 4096
 
 
 @dataclass(frozen=True)
@@ -552,7 +552,7 @@ def _insert_file_summary(
             metadata.memory_mode if metadata else "",
             1 if metadata and metadata.has_base_instructions else 0,
             entry.size_bytes,
-            entry.size_bytes + SYNC_METADATA_OVERHEAD_BYTES,
+            entry.size_bytes + _ESTIMATED_SYNC_METADATA_BYTES,
         ),
     )
 

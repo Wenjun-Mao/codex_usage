@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import socket
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +14,7 @@ from codex_usage.aggregation import (
     resolve_timezone,
     summarize_records,
 )
-from codex_usage.discovery import collect_jsonl_files, default_session_dir, find_session_dirs
+from codex_usage.discovery import collect_jsonl_files, find_session_dirs
 from codex_usage.models import UsageRecord
 from codex_usage.parser import parse_session_files
 from codex_usage.project_identity import normalize_project_key
@@ -36,7 +35,11 @@ from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_them
 from codex_usage.session_cache import CacheStats, CachedSessionData, load_cached_session_data, uncached_session_data
 from codex_usage.session_inventory import storage_snapshots
 from codex_usage.settings import get_settings
-from codex_usage.sync import export_threads, import_threads, sync_status
+from codex_usage.sync_cli import (
+    add_sync_options,
+    handle_sync_run as run_sync_command,
+    handle_sync_status as sync_status_command,
+)
 from codex_usage.threads import list_threads_from_cached_data
 
 
@@ -48,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         return args.handler(args)
-    except (FileNotFoundError, ValueError) as exc:
+    except Exception as exc:
         print(f"codex-usage: {exc}", file=sys.stderr)
         return 2
 
@@ -102,19 +105,13 @@ def build_parser() -> argparse.ArgumentParser:
     sync_parser = subparsers.add_parser("sync", help="Synchronize selected Codex threads.")
     sync_subparsers = sync_parser.add_subparsers(dest="sync_command")
 
-    export_parser = sync_subparsers.add_parser("export", help="Export selected threads to a sync folder.")
-    _add_sync_options(export_parser)
-    export_parser.add_argument("--machine-id", default=None, help="Source machine id for sync manifests.")
-    export_parser.set_defaults(handler=handle_sync_export)
-
-    import_parser = sync_subparsers.add_parser("import", help="Import selected threads from a sync folder.")
-    _add_sync_options(import_parser)
-    import_parser.add_argument("--conflict-policy", choices=("skip", "remote"), default="skip")
-    import_parser.set_defaults(handler=handle_sync_import)
+    run_parser = sync_subparsers.add_parser("run", help="Synchronize selected threads.")
+    add_sync_options(run_parser)
+    run_parser.add_argument("--machine-id", default=None, help="Source machine id for sync metadata.")
+    run_parser.set_defaults(handler=handle_sync_run)
 
     status_parser = sync_subparsers.add_parser("status", help="Show selected thread sync status.")
-    _add_sync_options(status_parser)
-    status_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    add_sync_options(status_parser)
     status_parser.set_defaults(handler=handle_sync_status)
 
     return parser
@@ -254,40 +251,12 @@ def handle_storage_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
-def handle_sync_export(args: argparse.Namespace) -> int:
-    result = export_threads(
-        session_dirs=_existing_session_dirs(),
-        sync_dir=args.sync_dir,
-        thread_ids=_normalize_thread_ids(args.thread_id),
-        machine_id=args.machine_id or _default_machine_id(),
-    )
-    print_json(result.to_dict())
-    return 0
-
-
-def handle_sync_import(args: argparse.Namespace) -> int:
-    result = import_threads(
-        session_dirs=_sync_session_dirs(create=True),
-        sync_dir=args.sync_dir,
-        thread_ids=_normalize_thread_ids(args.thread_id),
-        conflict_policy=args.conflict_policy,
-    )
-    print_json(result.to_dict())
-    return 0
+def handle_sync_run(args: argparse.Namespace) -> int:
+    return run_sync_command(args, _load_session_data)
 
 
 def handle_sync_status(args: argparse.Namespace) -> int:
-    result = sync_status(
-        session_dirs=_existing_session_dirs(),
-        sync_dir=args.sync_dir,
-        thread_ids=_normalize_thread_ids(args.thread_id),
-    )
-    if args.json:
-        print_json(result.to_dict())
-    else:
-        for item in result.threads:
-            print(f"{item['thread_id']}\t{item['state']}\t{item.get('updated_at', '')}")
-    return 0
+    return sync_status_command(args, _load_session_data)
 
 
 class _Context:
@@ -366,15 +335,6 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_sync_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--sync-dir", type=Path, required=True, help="Bring-your-own local sync folder.")
-    parser.add_argument(
-        "--thread-id",
-        action="append",
-        required=True,
-        help="Codex thread id to sync. Repeat to include multiple threads.",
-    )
-
 def _normalize_project_keys(values: list[str] | None) -> list[str]:
     selected: list[str] = []
     seen: set[str] = set()
@@ -383,18 +343,6 @@ def _normalize_project_keys(values: list[str] | None) -> list[str]:
         if key and key not in seen:
             selected.append(key)
             seen.add(key)
-    return selected
-
-
-def _normalize_thread_ids(values: list[str] | None) -> list[str]:
-    selected: list[str] = []
-    seen: set[str] = set()
-    for value in values or []:
-        thread_id = value.strip()
-        if not thread_id or thread_id in seen:
-            continue
-        selected.append(thread_id)
-        seen.add(thread_id)
     return selected
 
 
@@ -438,25 +386,6 @@ def _record_project_keys(record: UsageRecord) -> set[str]:
 
 def _existing_session_dirs() -> list[Path]:
     return find_session_dirs()
-
-
-def _sync_session_dirs(*, create: bool) -> list[Path]:
-    try:
-        return find_session_dirs()
-    except FileNotFoundError:
-        if not create:
-            raise
-    path = default_session_dir().expanduser()
-    if create:
-        path.mkdir(parents=True, exist_ok=True)
-    return [path]
-
-
-def _default_machine_id() -> str:
-    try:
-        return socket.gethostname()
-    except OSError:
-        return "unknown-machine"
 
 
 if __name__ == "__main__":

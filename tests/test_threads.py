@@ -2,7 +2,18 @@ import json
 from pathlib import Path
 
 from codex_usage.session_cache import load_cached_session_data
-from codex_usage.threads import list_threads_from_cached_data
+from codex_usage.threads import list_threads, list_threads_from_cached_data
+
+
+def test_thread_listing_estimates_sync_bytes_without_importing_sync(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    session_path = _write_session(sessions, "thread-1", "/repo/one", 100)
+
+    threads = list_threads([sessions], auto_transitions=False)
+
+    assert threads[0].session_bytes == session_path.stat().st_size
+    assert threads[0].estimated_sync_bytes == session_path.stat().st_size + 4096
+    assert threads[0].to_dict()["estimated_sync_bytes"] == session_path.stat().st_size + 4096
 
 
 def test_thread_listing_excludes_retained_missing_files(tmp_path: Path) -> None:

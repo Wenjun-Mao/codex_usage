@@ -22,7 +22,9 @@ from codex_usage.session_files import (
     session_updated_at,
     timestamp_key,
 )
-from codex_usage.sync_constants import SYNC_METADATA_OVERHEAD_BYTES
+
+
+_ESTIMATED_SYNC_METADATA_BYTES = 4096
 
 
 @dataclass(frozen=True)
@@ -100,7 +102,7 @@ def list_threads(
             project_aliases=identity.aliases,
             total_tokens=summarize_records(records).usage.total_tokens if records else 0,
             session_bytes=session_bytes,
-            estimated_sync_bytes=session_bytes + SYNC_METADATA_OVERHEAD_BYTES,
+            estimated_sync_bytes=session_bytes + _ESTIMATED_SYNC_METADATA_BYTES,
             memory_mode=metadata.memory_mode,
             has_base_instructions=metadata.has_base_instructions,
         )
