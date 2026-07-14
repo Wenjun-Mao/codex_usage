@@ -3,7 +3,7 @@
 ## 0.1.33 - Flat Single-Process Sync
 
 - Store each synced conversation as one flat JSONL file and run each sync in one process for lower startup and scan overhead.
-- Continue syncing other selected conversations when one conversation exceeds the supported size.
+- Continue the same long-running Codex conversation on another computer when normal handoff cannot complete because the conversation is too large.
 - Require an explicit clean resync when upgrading a version-1 sync folder to the version-2 layout.
 - Preserve append-only prefix fast-forwards, transactional conflict detection, and conflict backup safety.
 

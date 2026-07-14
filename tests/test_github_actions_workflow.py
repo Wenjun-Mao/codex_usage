@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,19 @@ def read_workflow() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
+def extract_workflow_job(text: str, job_name: str) -> str:
+    jobs = text.split("\njobs:\n", 1)[1]
+    headers = list(
+        re.finditer(r"^  (?P<name>[A-Za-z0-9_-]+):\n", jobs, re.MULTILINE)
+    )
+    for index, header in enumerate(headers):
+        if header.group("name") != job_name:
+            continue
+        end = headers[index + 1].start() if index + 1 < len(headers) else len(jobs)
+        return jobs[header.end() : end]
+    raise AssertionError(f"Workflow job not found: {job_name}")
+
+
 def test_workflow_has_manual_and_tag_triggers():
     text = read_workflow()
 
@@ -26,32 +40,29 @@ def test_workflow_has_manual_and_tag_triggers():
     assert '"v*"' in text
 
 
-def test_workflow_builds_platform_vsix_files_on_native_runners():
+def test_workflow_names_platform_vsix_files():
     text = read_workflow()
 
-    assert "runs-on: windows-2025" in text
-    assert "runs-on: macos-26" in text
-    assert "npm run package:vsix:win" in text
-    assert "npm run package:vsix:mac" in text
     assert "codex-usage-dashboard-win32-x64.vsix" in text
     assert "codex-usage-dashboard-darwin-arm64.vsix" in text
 
 
 @pytest.mark.parametrize(
-    ("job_name", "next_job_name", "package_command"),
+    ("job_name", "runner", "package_command"),
     (
-        ("windows", "macos", "npm run package:vsix:win"),
-        ("macos", "publish", "npm run package:vsix:mac"),
+        ("windows", "windows-2025", "npm run package:vsix:win"),
+        ("macos", "macos-26", "npm run package:vsix:mac"),
     ),
 )
 def test_native_workflow_jobs_test_before_packaging(
     job_name: str,
-    next_job_name: str,
+    runner: str,
     package_command: str,
 ):
-    text = read_workflow()
-    job = text.split(f"  {job_name}:\n", 1)[1].split(f"\n  {next_job_name}:\n", 1)[0]
+    job = extract_workflow_job(read_workflow(), job_name)
 
+    assert f"runs-on: {runner}" in job
+    assert f"run: {package_command}" in job
     assert job.index("run: uv run pytest -q") < job.index("run: npm test")
     assert job.index("run: npm test") < job.index(f"run: {package_command}")
 
