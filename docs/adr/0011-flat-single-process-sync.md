@@ -2,7 +2,7 @@
 
 Status: Accepted
 
-Date: 2026-07-14
+Date: 2026-07-13
 
 ## Context
 
@@ -50,13 +50,13 @@ Conversation files and the index are written through sibling temporary files and
 
 Verified byte transfer and repairable bookkeeping are separate guarantees. A run may be interrupted after conversation bytes are installed but before local base state, session-index metadata, or the remote catalog is committed. When the bytes already match, a later no-op run may reconcile that bookkeeping without copying the conversation again.
 
-Machine mode is a strict protocol: progress is UTF-8 JSONL on stderr, followed after stream completion by exactly one final JSON object on stdout. Results use structured `completed`, `conflict`, or `issue` outcomes; diagnostics must not corrupt either channel.
+Machine mode is a strict protocol: progress is statefully decoded UTF-8 JSONL on stderr, and stdout contains exactly one final JSON object. Consumers parse the final result only after the process closes and both stdout and stderr have ended; the contract does not impose a cross-stream emission order. Results use structured `completed`, `conflict`, or `issue` outcomes; diagnostics must not corrupt either channel.
 
 Version 2 performs no migration and no automatic destructive cleanup. Users with version-1 contents must empty the old sync-folder contents themselves and rerun sync to publish the version-2 representation.
 
 ## Alternatives Considered
 
-- Keep separate status, import, and export mutation commands with local fast paths. This retains repeated process startup and multiple inventories.
+- Keep separate status inspection plus import and export mutation commands with local fast paths. This retains repeated process startup and multiple inventories.
 - Keep per-conversation directories and sidecars. This leaves metadata fragmented and increases partial-state combinations.
 - Add automatic version-1 migration or cleanup. This adds a permanent compatibility path and risks deleting user-owned cloud-folder data.
 - Claim a distributed transaction across cloud providers. Their filesystem abstractions do not offer a portable lock or compare-and-swap contract.
