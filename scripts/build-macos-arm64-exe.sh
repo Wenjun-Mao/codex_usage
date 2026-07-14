@@ -35,3 +35,4 @@ fi
 
 chmod +x "$exe_path"
 "$exe_path" --help >/dev/null
+uv run python "$repo_root/scripts/smoke-test-packaged-sync.py" --executable "$exe_path"

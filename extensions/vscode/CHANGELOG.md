@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.33
+
+- Store each synced conversation as one flat JSONL file and run each sync in one process for lower startup and scan overhead.
+- Continue syncing other selected conversations when one conversation exceeds the supported size.
+- Require an explicit clean resync when upgrading a version-1 sync folder to the version-2 layout.
+- Preserve append-only prefix fast-forwards, transactional conflict detection, and conflict backup safety.
+
 ## 0.1.32
 
 - Added API-equivalent USD rates for GPT-5.6 Sol, Terra, and Luna from June 26, 2026, plus Codex credit estimates from July 9, 2026.

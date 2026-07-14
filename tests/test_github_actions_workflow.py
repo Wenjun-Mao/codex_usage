@@ -1,8 +1,14 @@
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "package-vsix.yml"
+NATIVE_BUILD_SCRIPTS = (
+    ROOT / "scripts" / "build-macos-arm64-exe.sh",
+    ROOT / "scripts" / "build-windows-exe.ps1",
+)
 
 
 def read_workflow() -> str:
@@ -29,6 +35,32 @@ def test_workflow_builds_platform_vsix_files_on_native_runners():
     assert "npm run package:vsix:mac" in text
     assert "codex-usage-dashboard-win32-x64.vsix" in text
     assert "codex-usage-dashboard-darwin-arm64.vsix" in text
+
+
+@pytest.mark.parametrize(
+    ("job_name", "next_job_name", "package_command"),
+    (
+        ("windows", "macos", "npm run package:vsix:win"),
+        ("macos", "publish", "npm run package:vsix:mac"),
+    ),
+)
+def test_native_workflow_jobs_test_before_packaging(
+    job_name: str,
+    next_job_name: str,
+    package_command: str,
+):
+    text = read_workflow()
+    job = text.split(f"  {job_name}:\n", 1)[1].split(f"\n  {next_job_name}:\n", 1)[0]
+
+    assert job.index("run: uv run pytest -q") < job.index("run: npm test")
+    assert job.index("run: npm test") < job.index(f"run: {package_command}")
+
+
+@pytest.mark.parametrize("build_script", NATIVE_BUILD_SCRIPTS, ids=lambda path: path.name)
+def test_native_build_scripts_run_packaged_sync_smoke(build_script: Path):
+    text = build_script.read_text(encoding="utf-8")
+
+    assert "smoke-test-packaged-sync.py" in text
 
 
 def test_workflow_uploads_artifacts_before_publishing():
