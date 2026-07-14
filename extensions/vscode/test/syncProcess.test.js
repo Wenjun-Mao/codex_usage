@@ -443,6 +443,26 @@ test("task picker adapter canonicalizes hierarchical selections and settles once
   assert.match(pickerSource, /let settled = false/);
 });
 
+test("status badge and tooltip prefer setup required for disabled invalid selection", () => {
+  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
+  const badgeSource = extensionSource.slice(
+    extensionSource.indexOf("function syncStatusBadge"),
+    extensionSource.indexOf("function syncStatusTooltip"),
+  );
+  const tooltipSource = extensionSource.slice(
+    extensionSource.indexOf("function syncStatusTooltip"),
+    extensionSource.indexOf("async function syncOnFocus"),
+  );
+
+  for (const statusSource of [badgeSource, tooltipSource]) {
+    const validityGuard = statusSource.indexOf("if (!hasValidSyncSelection(settings.sync))");
+    const enabledGuard = statusSource.indexOf("if (!settings.sync.enabled)");
+    assert.ok(validityGuard >= 0 && validityGuard < enabledGuard);
+  }
+  assert.match(badgeSource, /return "Sync: Setup required";/);
+  assert.match(tooltipSource, /return "Sync: Setup required\. Select a folder and at least one Codex task\.";/);
+});
+
 test("clear and migration retain only the deprecated folder migration contract", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const clearSource = extensionSource.slice(
@@ -461,5 +481,9 @@ test("clear and migration retain only the deprecated folder migration contract",
   assert.doesNotMatch(clearSource, /SYNC_PROJECT_KEYS_STATE_KEY|SYNC_CONVERSATION_MODE_STATE_KEY/);
 
   assert.match(migrationSource, /config\.get<string>\("sync\.dir", ""\)/);
+  assert.equal(
+    (migrationSource.match(/globalState\.update\(SYNC_DIR_STATE_KEY, legacyDir\.trim\(\)\)/g) || []).length,
+    1,
+  );
   assert.doesNotMatch(migrationSource, /sync\.threadIds|sync\.projectKeys|sync\.conversationMode/);
 });

@@ -1122,16 +1122,19 @@ function mergePendingSyncReason(existing: SyncReason | undefined, next: SyncReas
 }
 
 function syncStatusBadge(settings: ExtensionSettings, status: SyncStatusKind): string {
+  if (!hasValidSyncSelection(settings.sync)) {
+    return "Sync: Setup required";
+  }
   if (!settings.sync.enabled) {
     return "Sync:Off";
-  }
-  if (!syncIsConfigured(settings)) {
-    return "Sync:Setup";
   }
   return `Sync:${syncStatusKindLabel(status === "off" ? "idle" : status)}`;
 }
 
 function syncStatusTooltip(settings: ExtensionSettings): string {
+  if (!hasValidSyncSelection(settings.sync)) {
+    return "Sync: Setup required. Select a folder and at least one Codex task.";
+  }
   if (!settings.sync.enabled) {
     return "Sync: disabled.";
   }
