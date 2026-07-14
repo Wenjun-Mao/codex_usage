@@ -288,8 +288,8 @@ function exactRecord(
 }
 
 function nonnegativeInteger(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    invalidResult(`${label} must be a nonnegative integer`);
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    invalidResult(`${label} must be a nonnegative safe integer`);
   }
   return value;
 }

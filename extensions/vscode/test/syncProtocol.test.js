@@ -173,6 +173,36 @@ test("parseSyncRunResult requires every v2 result structure", () => {
   }
 });
 
+test("parseSyncRunResult rejects an unsafe count integer", () => {
+  const payload = JSON.stringify(syncResult()).replace('"discovered":1', '"discovered":9007199254740993');
+
+  assert.throws(() => parseSyncRunResult(payload), /counts\.discovered/);
+});
+
+test("parseSyncRunResult rejects an unsafe timing integer", () => {
+  const payload = JSON.stringify(syncResult()).replace('"discovery":1', '"discovery":9007199254740993');
+
+  assert.throws(() => parseSyncRunResult(payload), /timings_ms\.discovery/);
+});
+
+test("parseSyncRunResult rejects unsafe thread memory database rows", () => {
+  const payload = JSON.stringify(syncResult()).replace(
+    '"memory_database_rows":0',
+    '"memory_database_rows":9007199254740993',
+  );
+
+  assert.throws(() => parseSyncRunResult(payload), /threads\[0\]\.memory_database_rows/);
+});
+
+test("parseSyncRunResult accepts Number.MAX_SAFE_INTEGER in numeric fields", () => {
+  const payload = syncResult();
+  payload.counts.discovered = Number.MAX_SAFE_INTEGER;
+  payload.timings_ms.discovery = Number.MAX_SAFE_INTEGER;
+  payload.threads[0].memory_database_rows = Number.MAX_SAFE_INTEGER;
+
+  assert.deepEqual(parseSyncRunResult(JSON.stringify(payload)), payload);
+});
+
 test("parseSyncStatusSummary counts states and memory warnings", () => {
   const summary = parseSyncStatusSummary(
     JSON.stringify({
