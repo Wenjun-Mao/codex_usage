@@ -91,8 +91,16 @@ def read_json_object_with_snapshot(path: Path) -> tuple[dict[str, Any] | None, S
     reraise=True,
 )
 def is_byte_prefix(prefix: SyncFileSnapshot, full: SyncFileSnapshot) -> bool:
-    if prefix.path is None or full.path is None or prefix.size_bytes > full.size_bytes:
+    if (
+        prefix.path is None
+        or full.path is None
+        or prefix.size_bytes < 0
+        or full.size_bytes < 0
+        or prefix.size_bytes > full.size_bytes
+    ):
         return False
+    if prefix.size_bytes == 0:
+        return True
     remaining = prefix.size_bytes
     with prefix.path.open("rb") as prefix_file, full.path.open("rb") as full_file:
         while remaining:
@@ -172,6 +180,40 @@ def atomic_write_json(
     path_guard: Callable[[], None] | None = None,
 ) -> SyncFileSnapshot:
     contents = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    return _atomic_write_bytes(
+        path,
+        contents,
+        expected_target=expected_target,
+        target_label=target_label,
+        path_guard=path_guard,
+    )
+
+
+def atomic_write_text(
+    path: Path,
+    value: str,
+    *,
+    expected_target: SyncFileSnapshot | None = None,
+    target_label: str = "file",
+    path_guard: Callable[[], None] | None = None,
+) -> SyncFileSnapshot:
+    return _atomic_write_bytes(
+        path,
+        value.encode("utf-8"),
+        expected_target=expected_target,
+        target_label=target_label,
+        path_guard=path_guard,
+    )
+
+
+def _atomic_write_bytes(
+    path: Path,
+    contents: bytes,
+    *,
+    expected_target: SyncFileSnapshot | None,
+    target_label: str,
+    path_guard: Callable[[], None] | None,
+) -> SyncFileSnapshot:
     _make_directory(path.parent, path_guard=path_guard)
     tmp_path, temporary = _new_sibling_temp_file(path, path_guard=path_guard)
     try:

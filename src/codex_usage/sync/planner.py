@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from codex_usage.session_files import owning_session_dir
+from codex_usage.session_files import codex_home_from_session_dir, owning_session_dir
 from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME
 from codex_usage.sync.io import is_byte_prefix, snapshot_file
 from codex_usage.sync.models import (
@@ -15,7 +15,7 @@ from codex_usage.sync.models import (
     SyncPlanItem,
 )
 from codex_usage.sync.paths import portable_thread_filename, safe_session_target_path
-from codex_usage.sync.state import LocalStateStore, memory_database_row_count
+from codex_usage.sync.state import LocalStateStore, memory_database_row_counts
 from codex_usage.threads import ThreadInfo
 
 
@@ -57,12 +57,17 @@ def build_sync_plan(
     selected_ids = tuple(dict.fromkeys(selected_thread_ids))
     issues = list(remote.issues)
     items: list[SyncPlanItem] = []
+    session_dirs = {
+        thread_id: _session_dir_for_thread(local, local.threads.get(thread_id))
+        for thread_id in selected_ids
+    }
+    memory_rows = _memory_rows_by_thread(selected_ids, session_dirs)
 
     for thread_id in selected_ids:
         local_thread = local.threads.get(thread_id)
         effective_entry = remote.index.threads.get(thread_id)
         persisted_entry = remote.persisted_index.threads.get(thread_id)
-        session_dir = _session_dir_for_thread(local, local_thread)
+        session_dir = session_dirs[thread_id]
         item_issues = [issue for issue in remote.issues if issue.thread_id == thread_id]
 
         local_path, path_issue = _local_path(
@@ -111,9 +116,7 @@ def build_sync_plan(
                 source_relative_path=source_relative_path,
                 project_key=project_key,
                 project_label=project_label,
-                memory_database_rows=(
-                    memory_database_row_count(session_dir, thread_id) if session_dir is not None else 0
-                ),
+                memory_database_rows=memory_rows[thread_id],
                 expected_remote_entry=persisted_entry,
             )
         )
@@ -134,6 +137,24 @@ def _session_dir_for_thread(
     if local_thread is not None and local.session_dirs:
         return owning_session_dir(local_thread.session_path, list(local.session_dirs))
     return local.session_dirs[0] if local.session_dirs else None
+
+
+def _memory_rows_by_thread(
+    selected_ids: tuple[str, ...],
+    session_dirs: dict[str, Path | None],
+) -> dict[str, int]:
+    rows = dict.fromkeys(selected_ids, 0)
+    groups: dict[Path, tuple[Path, list[str]]] = {}
+    for thread_id in selected_ids:
+        session_dir = session_dirs[thread_id]
+        if session_dir is None:
+            continue
+        home = codex_home_from_session_dir(session_dir).resolve(strict=False)
+        _, thread_ids = groups.setdefault(home, (session_dir, []))
+        thread_ids.append(thread_id)
+    for session_dir, thread_ids in groups.values():
+        rows.update(memory_database_row_counts(session_dir, tuple(thread_ids)))
+    return rows
 
 
 def _local_path(

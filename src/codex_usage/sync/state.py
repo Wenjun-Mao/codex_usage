@@ -11,7 +11,6 @@ from typing import Any
 from tenacity import (
     retry,
     retry_if_exception,
-    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -21,9 +20,18 @@ from codex_usage.session_files import (
     read_index_entries,
     timestamp_key,
 )
-from codex_usage.sync.io import atomic_copy, atomic_write_json, path_kind, read_json_object
+from codex_usage.sync.io import (
+    atomic_copy,
+    atomic_write_json,
+    atomic_write_text,
+    path_kind,
+    read_json_object,
+)
 from codex_usage.sync.models import LocalSyncState, SyncFileSnapshot, SyncPlanItem
 from codex_usage.sync.paths import portable_thread_filename
+
+
+_SQLITE_PARAMETER_BATCH_SIZE = 500
 
 
 class LocalStateStore:
@@ -133,23 +141,36 @@ def merge_session_index(
 
     ordered = sorted(entries.values(), key=lambda item: timestamp_key(str(item.get("updated_at") or "")))
     contents = "".join(json.dumps(entry, separators=(",", ":")) + "\n" for entry in ordered)
-    _atomic_write_text(index_path, contents)
+    atomic_write_text(index_path, contents)
 
 
-def memory_database_row_count(session_dir: Path, thread_id: str) -> int:
+def memory_database_row_counts(
+    session_dir: Path,
+    thread_ids: tuple[str, ...],
+) -> dict[str, int]:
+    selected_ids = tuple(dict.fromkeys(thread_ids))
+    counts = dict.fromkeys(selected_ids, 0)
+    if not selected_ids:
+        return counts
     database_path = codex_home_from_session_dir(session_dir) / "state_5.sqlite"
     if path_kind(database_path) != "file":
-        return 0
+        return counts
     try:
         with tempfile.TemporaryDirectory(prefix="codex-usage-memory-") as temporary_dir:
-            copied_database = Path(temporary_dir) / database_path.name
-            for suffix in ("", "-wal", "-shm"):
-                source = Path(f"{database_path}{suffix}")
-                if path_kind(source) == "file":
-                    atomic_copy(source, Path(f"{copied_database}{suffix}"))
-            return _query_memory_database(copied_database, thread_id)
+            copied_database = _snapshot_memory_database(database_path, Path(temporary_dir))
+            counts.update(_query_memory_database(copied_database, selected_ids))
     except (OSError, sqlite3.Error):
-        return 0
+        pass
+    return counts
+
+
+def _snapshot_memory_database(database_path: Path, snapshot_dir: Path) -> Path:
+    copied_database = snapshot_dir / database_path.name
+    for suffix in ("", "-wal", "-shm"):
+        source = Path(f"{database_path}{suffix}")
+        if path_kind(source) == "file":
+            atomic_copy(source, Path(f"{copied_database}{suffix}"))
+    return copied_database
 
 
 def now_iso() -> str:
@@ -158,26 +179,6 @@ def now_iso() -> str:
 
 def _thread_storage_name(thread_id: str) -> str:
     return portable_thread_filename(thread_id).removesuffix(".jsonl")
-
-
-@retry(
-    retry=retry_if_exception_type(OSError),
-    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
-    stop=stop_after_attempt(4),
-    reraise=True,
-)
-def _atomic_write_text(path: Path, contents: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as temporary:
-            temporary.write(contents)
-            temporary.flush()
-            temporary_path = Path(temporary.name)
-        atomic_copy(temporary_path, path)
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
 
 
 def _is_retryable_sqlite_error(error: BaseException) -> bool:
@@ -192,13 +193,22 @@ def _is_retryable_sqlite_error(error: BaseException) -> bool:
     stop=stop_after_attempt(4),
     reraise=True,
 )
-def _query_memory_database(database_path: Path, thread_id: str) -> int:
+def _query_memory_database(
+    database_path: Path,
+    thread_ids: tuple[str, ...],
+) -> dict[str, int]:
     connection = sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
     try:
-        row = connection.execute(
-            "select count(*) from stage1_outputs where thread_id = ?",
-            (thread_id,),
-        ).fetchone()
+        counts: dict[str, int] = {}
+        for start in range(0, len(thread_ids), _SQLITE_PARAMETER_BATCH_SIZE):
+            batch = thread_ids[start : start + _SQLITE_PARAMETER_BATCH_SIZE]
+            placeholders = ",".join("?" for _ in batch)
+            rows = connection.execute(
+                f"select thread_id, count(*) from stage1_outputs "
+                f"where thread_id in ({placeholders}) group by thread_id",
+                batch,
+            ).fetchall()
+            counts.update((str(thread_id), int(count)) for thread_id, count in rows)
     finally:
         connection.close()
-    return int(row[0] if row else 0)
+    return counts

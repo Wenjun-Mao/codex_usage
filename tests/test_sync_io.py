@@ -82,3 +82,64 @@ def test_streaming_prefix_attempts_permanent_open_error_once(
     with pytest.raises(PermissionError, match="denied"):
         sync_io.is_byte_prefix(prefix, full)
     assert attempts == 1
+
+
+def test_zero_byte_prefix_returns_true_without_opening_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prefix_path = tmp_path / "empty.jsonl"
+    full_path = tmp_path / "full.jsonl"
+    prefix_path.write_bytes(b"")
+    full_path.write_bytes(b"content")
+    prefix = snapshot_file(prefix_path)
+    full = snapshot_file(full_path)
+
+    def fail_open(*_args: object, **_kwargs: object) -> Any:
+        raise AssertionError("zero-byte prefix must not open either file")
+
+    monkeypatch.setattr(Path, "open", fail_open)
+
+    assert sync_io.is_byte_prefix(prefix, full)
+
+
+def test_atomic_write_text_retries_transient_replace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "session_index.jsonl"
+    original_replace = Path.replace
+    attempts = 0
+
+    def transient_replace(path: Path, destination: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError(errno.EBUSY, "cloud folder is temporarily busy")
+        return original_replace(path, destination)
+
+    monkeypatch.setattr(Path, "replace", transient_replace)
+
+    sync_io.atomic_write_text(target, '{"id":"thread-1"}\n')
+
+    assert attempts == 2
+    assert target.read_text() == '{"id":"thread-1"}\n'
+
+
+def test_atomic_write_text_attempts_permanent_permission_failure_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "session_index.jsonl"
+    attempts = 0
+
+    def denied_replace(_path: Path, _destination: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "replace", denied_replace)
+
+    with pytest.raises(PermissionError, match="denied"):
+        sync_io.atomic_write_text(target, '{"id":"thread-1"}\n')
+    assert attempts == 1

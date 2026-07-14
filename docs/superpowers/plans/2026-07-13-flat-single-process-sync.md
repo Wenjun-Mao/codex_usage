@@ -371,7 +371,7 @@ Wrap only filesystem byte reads, temporary writes, copies, and `Path.replace` op
 
 ```python
 @retry(
-    retry=retry_if_exception_type(OSError),
+    retry=retry_if_exception(_is_transient_filesystem_error),
     wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
     stop=stop_after_attempt(4),
     reraise=True,
