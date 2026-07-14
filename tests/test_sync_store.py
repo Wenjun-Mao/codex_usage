@@ -547,6 +547,28 @@ def test_remote_index_rejects_padded_index_entry_identity() -> None:
         )
 
 
+def test_remote_index_requires_index_entry_identity() -> None:
+    entry = replace(_remote_entry(), index_entry={"thread_name": "Example"})
+
+    with pytest.raises(ValueError, match=r"index_entry\.id.*required"):
+        RemoteIndex(
+            format_version=SYNC_FORMAT_VERSION,
+            updated_at="",
+            threads={entry.thread_id: entry},
+        )
+
+
+def test_remote_index_requires_index_entry_identity_to_match_thread() -> None:
+    entry = replace(_remote_entry("task-a"), index_entry={"id": "task-b"})
+
+    with pytest.raises(ValueError, match=r"index_entry\.id.*match.*thread_id"):
+        RemoteIndex(
+            format_version=SYNC_FORMAT_VERSION,
+            updated_at="",
+            threads={entry.thread_id: entry},
+        )
+
+
 def test_remote_index_rejects_padded_and_canonical_identity_collision() -> None:
     canonical = _remote_entry("thread-1")
     padded = replace(
@@ -863,6 +885,47 @@ def test_remote_store_rejects_noncanonical_thread_id_index_without_mutating_it(
     before = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")))
 
     with pytest.raises(MalformedSyncIndexError, match="canonical"):
+        store.load_inventory()
+
+    assert index_path.read_bytes() == contents
+    assert tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))) == before
+    assert not store.lock_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("nested_thread_id", "message"),
+    [(None, "required"), ("task-b", "match")],
+    ids=["missing", "mismatched"],
+)
+def test_remote_store_rejects_invalid_nested_thread_identity_without_mutation(
+    tmp_path: Path,
+    nested_thread_id: str | None,
+    message: str,
+) -> None:
+    root = tmp_path / "sync"
+    root.mkdir()
+    entry_payload = _remote_entry("task-a").to_dict()
+    if nested_thread_id is None:
+        del entry_payload["index_entry"]["id"]
+    else:
+        entry_payload["index_entry"]["id"] = nested_thread_id
+    contents = (
+        json.dumps(
+            {
+                "format_version": 2,
+                "updated_at": "",
+                "threads": {"task-a": entry_payload},
+            },
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
+    index_path = root / "sync-index.json"
+    index_path.write_bytes(contents)
+    store = RemoteStore(root)
+    before = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")))
+
+    with pytest.raises(MalformedSyncIndexError, match=message):
         store.load_inventory()
 
     assert index_path.read_bytes() == contents

@@ -26,6 +26,10 @@ silently trimmed. Human selector input may still be normalized before lookup, bu
 invalid local inventory aborts before sync can write and invalid remote index or
 session identities are rejected or omitted with strict diagnostics.
 
+Every remote index task row carries the same identity in three places: the mapping
+key, `RemoteThreadEntry.thread_id`, and the required `index_entry.id`. All three must
+be canonical and exactly equal before inventory exposure or pull-side metadata merge.
+
 Treat selection schema version 2 as the setup transaction's commit marker. Setup,
 reconfiguration, clear, pause, and resume share one serialized mutation queue. Each
 mutation reads its previous tuple inside the queue, writes version 0 before changing
@@ -54,6 +58,8 @@ The extension needs hierarchical Quick Pick state management and a strict invent
 - Legacy selectors never activate the new contract implicitly.
 - Technical thread IDs are nonempty and equal to their own trim at every stored or
   emitted identity boundary; normalization is limited to selector input.
+- A remote index mapping key, entry thread id, and required nested index-entry id are
+  exactly equal; malformed rows fail the whole remote index before inventory or pull writes.
 - Selection version 2 is written last as the successful setup commit marker; version
   0 gates every in-progress mutation and every incomplete rollback.
 - Deselecting a task never deletes its remote JSONL or index entry.

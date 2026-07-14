@@ -343,6 +343,29 @@ def test_load_inventory_discovers_indexed_remote_task_without_local_sessions(
     assert _snapshot_tree(tmp_path) == before
 
 
+def test_load_inventory_rejects_mismatched_remote_index_identity_without_mutation(
+    tmp_path: Path,
+) -> None:
+    sync_dir = tmp_path / "sync"
+    _write_indexed_remote_task(sync_dir, _session_jsonl("thread-1"))
+    index_path = sync_dir / "sync-index.json"
+    index_payload = json.loads(index_path.read_text(encoding="utf-8"))
+    index_payload["threads"]["thread-1"]["index_entry"]["id"] = "thread-2"
+    index_path.write_text(
+        json.dumps(index_payload, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    before = _snapshot_tree(tmp_path)
+
+    with pytest.raises(MalformedSyncIndexError, match=r"index_entry\.id.*match"):
+        load_sync_selection_inventory(
+            _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+            sync_dir,
+        )
+
+    assert _snapshot_tree(tmp_path) == before
+
+
 @pytest.mark.parametrize(
     ("contents", "issue_fragment"),
     _INVALID_INDEXED_CONVERSATIONS,

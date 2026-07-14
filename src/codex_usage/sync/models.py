@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from codex_usage.sync.constants import SYNC_FORMAT_VERSION
-from codex_usage.sync.identity import require_canonical_thread_id
+from codex_usage.sync.identity import (
+    require_canonical_thread_id,
+    require_remote_index_thread_identity,
+)
 from codex_usage.threads import ThreadInfo
 
 
@@ -105,25 +108,15 @@ class RemoteIndex:
         if self.format_version != SYNC_FORMAT_VERSION:
             raise ValueError(f"format_version must be {SYNC_FORMAT_VERSION}")
         for thread_id, entry in self.threads.items():
-            require_canonical_thread_id(
-                thread_id,
-                f"remote index threads[{thread_id!r}] key",
-            )
             if not isinstance(entry, RemoteThreadEntry):
                 raise ValueError(
                     f"remote index thread {thread_id!r} must be a RemoteThreadEntry"
                 )
-            require_canonical_thread_id(
+            require_remote_index_thread_identity(
+                thread_id,
                 entry.thread_id,
-                f"remote index thread {thread_id!r} entry.thread_id",
+                entry.index_entry,
             )
-            if thread_id != entry.thread_id:
-                raise ValueError("remote index thread mapping key must match entry.thread_id")
-            if "id" in entry.index_entry:
-                require_canonical_thread_id(
-                    entry.index_entry["id"],
-                    f"remote index thread {thread_id!r} entry.index_entry.id",
-                )
 
 
 @dataclass(frozen=True)

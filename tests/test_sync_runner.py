@@ -236,6 +236,63 @@ def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> 
     assert merged_entries == [original_index]
 
 
+def test_pull_rejects_mismatched_remote_index_identity_before_local_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_sessions = tmp_path / "source" / "sessions"
+    target_sessions = tmp_path / "target" / "sessions"
+    sync_dir = tmp_path / "sync"
+    source_path = _write_session(
+        source_sessions,
+        "task-a",
+        tmp_path / "repo",
+        total=120,
+    )
+    source_data = load_cached_session_data(
+        [source_sessions], cache_dir=tmp_path / "source-cache"
+    )
+    run_sync(
+        data=source_data,
+        sync_dir=sync_dir,
+        thread_ids=["task-a"],
+        machine_id="source",
+    )
+    target_data = load_cached_session_data(
+        [target_sessions], cache_dir=tmp_path / "target-cache"
+    )
+    original_validate = RemoteStore.validate_selected
+
+    def corrupt_nested_identity_after_validation(
+        self: RemoteStore,
+        expected_entries,
+        expected_files,
+    ) -> None:
+        original_validate(self, expected_entries, expected_files)
+        entry = expected_entries["task-a"]
+        assert entry is not None
+        entry.index_entry["id"] = "task-b"
+
+    monkeypatch.setattr(
+        RemoteStore,
+        "validate_selected",
+        corrupt_nested_identity_after_validation,
+    )
+    target_path = target_sessions / source_path.relative_to(source_sessions)
+
+    with pytest.raises(ValueError, match=r"index_entry\.id.*match"):
+        run_sync(
+            data=target_data,
+            sync_dir=sync_dir,
+            thread_ids=["task-a"],
+            machine_id="target",
+        )
+
+    assert not target_path.exists()
+    assert not (target_sessions.parent / "session_index.jsonl").exists()
+    assert not (target_sessions.parent / ".codex-sync-state").exists()
+
+
 def test_run_sync_returns_typed_issue_when_local_changes_after_planning(
     tmp_path: Path,
     monkeypatch,

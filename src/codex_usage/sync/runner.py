@@ -21,6 +21,7 @@ from codex_usage.sync.inventory import (
     build_local_inventory,
     normalize_selected_thread_ids,
 )
+from codex_usage.sync.identity import require_remote_index_thread_identity
 from codex_usage.sync.io import atomic_copy, snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
@@ -234,6 +235,12 @@ def execute_pulls(
             _validate_remote_snapshot(item)
             if item.local.path is None or item.remote.path is None:
                 raise ValueError("pull action requires local and remote paths")
+            remote_entry = remote.index.threads[item.thread_id]
+            require_remote_index_thread_identity(
+                item.thread_id,
+                remote_entry.thread_id,
+                remote_entry.index_entry,
+            )
             session_dir = _session_dir(item, local)
             backup_dir = backup_dirs.setdefault(session_dir, _backup_dir(item, label))
             if item.local.exists:
@@ -257,7 +264,6 @@ def execute_pulls(
                     f"Remote conversation changed while pulling thread {item.thread_id!r}"
                 )
             _validate_remote_snapshot(item)
-            remote_entry = remote.index.threads[item.thread_id]
             index_entries.setdefault(session_dir, []).append(
                 dict(remote_entry.index_entry)
             )
