@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
+
+from filelock import FileLock, Timeout
 
 from codex_usage.models import SessionMetadata
 from codex_usage.parser import parse_timestamp
@@ -19,10 +23,11 @@ from codex_usage.sync.errors import (
     MalformedSyncIndexError,
 )
 from codex_usage.sync.io import (
-    _read_bytes,
     atomic_copy,
     atomic_write_json,
-    read_json_object,
+    list_directory,
+    path_kind,
+    read_bytes_with_snapshot,
     snapshot_file,
 )
 from codex_usage.sync.models import (
@@ -38,15 +43,28 @@ from codex_usage.sync.paths import portable_thread_filename
 class RemoteStore:
     """Read and update a flat, file-authoritative remote sync catalog."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, lock_timeout: float = 10.0) -> None:
         self.root = root
         self.index_path = root / SYNC_INDEX_FILENAME
         self.conversations_path = root / SYNC_CONVERSATIONS_DIRNAME
+        self.lock_path = root.parent / f".{root.name}.codex-usage.lock"
+        self._lock_timeout = lock_timeout
+        self._lock = FileLock(self.lock_path)
+
+    @contextmanager
+    def transaction(self) -> Iterator[RemoteStore]:
+        try:
+            acquired = self._lock.acquire(timeout=self._lock_timeout)
+        except Timeout as error:
+            raise ConcurrentRemoteChangeError(
+                f"Timed out acquiring remote transaction lock {self.lock_path}"
+            ) from error
+        with acquired:
+            yield self
 
     def load_inventory(self) -> RemoteInventory:
         self._reject_legacy_layout()
-        index_snapshot = snapshot_file(self.index_path)
-        persisted_index = self._read_index(index_snapshot)
+        persisted_index, index_snapshot = self._read_index()
         files = self._snapshot_conversation_files()
         index, repaired_thread_ids, issues = self._reconcile_index(persisted_index, files)
         return RemoteInventory(
@@ -66,21 +84,38 @@ class RemoteStore:
         if expected_entries.keys() != expected_files.keys():
             raise ValueError("selected remote entries and files must have the same thread ids")
 
-        latest = self._read_index(snapshot_file(self.index_path))
+        latest, _ = self._read_index()
         self._validate_selected_entries(expected_entries, latest)
+        self._conversations_directory_kind()
         for thread_id, expected in expected_files.items():
-            actual = snapshot_file(self._selected_file_path(thread_id, expected_entries[thread_id], expected))
+            path = self._selected_file_path(thread_id, expected_entries[thread_id], expected)
+            self._reject_symlinked_conversation(path)
+            actual = snapshot_file(path)
             if actual != expected:
                 raise ConcurrentRemoteChangeError(
                     f"Remote conversation file changed after planning for thread {thread_id!r}"
                 )
 
-    def write_conversation(self, source: Path, filename: str) -> SyncFileSnapshot:
+    def write_conversation(
+        self,
+        source: Path,
+        filename: str,
+        expected_target: SyncFileSnapshot,
+    ) -> SyncFileSnapshot:
+        self._require_transaction()
         if not _is_direct_jsonl_filename(filename):
             raise ValueError("remote conversation target must be a direct JSONL filename")
         target = self.conversations_path / filename
-        atomic_copy(source, target)
-        return snapshot_file(target)
+        if expected_target.path != target:
+            raise ValueError("expected remote conversation snapshot path must match target")
+        self._conversations_directory_kind()
+        self._reject_symlinked_conversation(target)
+        return atomic_copy(
+            source,
+            target,
+            expected_target=expected_target,
+            target_label="conversation",
+        )
 
     def commit_index(
         self,
@@ -88,6 +123,7 @@ class RemoteStore:
         changed: dict[str, RemoteThreadEntry],
         written: dict[str, SyncFileSnapshot],
     ) -> RemoteIndex:
+        self._require_transaction()
         self._validate_commit_inputs(base, changed, written)
         repaired = {
             thread_id: base.index.threads[thread_id]
@@ -96,7 +132,7 @@ class RemoteStore:
         }
         selected_entries = {thread_id: base.persisted_index.threads.get(thread_id) for thread_id in repaired | changed}
 
-        latest = self._read_index(snapshot_file(self.index_path))
+        latest, latest_snapshot = self._read_index()
         self._validate_selected_entries(selected_entries, latest)
 
         merged = dict(latest.threads)
@@ -109,41 +145,83 @@ class RemoteStore:
             updated_at=_now_iso(),
             threads=merged,
         )
-        atomic_write_json(self.index_path, committed.to_dict())
+        atomic_write_json(
+            self.index_path,
+            committed.to_dict(),
+            expected_target=latest_snapshot,
+            target_label="index",
+        )
         return committed
 
     def _reject_legacy_layout(self) -> None:
         legacy_path = self.root / "threads"
-        if legacy_path.exists():
+        if path_kind(legacy_path) != "missing":
             raise LegacySyncLayoutError(
                 "Legacy version-1 sync layout detected; empty the sync folder and run sync again. "
                 "Automatic migration is not supported."
             )
 
-    def _read_index(self, index_snapshot: SyncFileSnapshot) -> RemoteIndex:
-        if not index_snapshot.exists:
-            return RemoteIndex(format_version=SYNC_FORMAT_VERSION, updated_at="", threads={})
+    def _read_index(
+        self,
+        expected_snapshot: SyncFileSnapshot | None = None,
+    ) -> tuple[RemoteIndex, SyncFileSnapshot]:
         try:
-            value = read_json_object(self.index_path)
-            if value is None:
-                raise ValueError("sync index disappeared while it was being read")
+            contents, index_snapshot = read_bytes_with_snapshot(self.index_path)
+            if expected_snapshot is not None and index_snapshot != expected_snapshot:
+                raise ConcurrentRemoteChangeError(
+                    "Remote index changed after its visible snapshot"
+                )
+            if contents is None:
+                return (
+                    RemoteIndex(format_version=SYNC_FORMAT_VERSION, updated_at="", threads={}),
+                    index_snapshot,
+                )
+            value = json.loads(contents)
+            if not isinstance(value, dict):
+                raise ValueError(f"Expected a JSON object in {self.index_path}")
             index = RemoteIndex.from_dict(value)
             self._validate_file_claims(index.threads)
-            return index
+            return index, index_snapshot
+        except ConcurrentRemoteChangeError:
+            raise
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError) as error:
             raise MalformedSyncIndexError(f"Malformed {SYNC_INDEX_FILENAME}: {error}") from error
 
     def _snapshot_conversation_files(self) -> dict[str, SyncFileSnapshot]:
-        if not self.conversations_path.exists():
+        conversations_kind = self._conversations_directory_kind()
+        if conversations_kind == "missing":
             return {}
-        if not self.conversations_path.is_dir():
-            raise MalformedSyncIndexError(f"{SYNC_CONVERSATIONS_DIRNAME} must be a directory")
 
         snapshots: dict[str, SyncFileSnapshot] = {}
-        for path in sorted(self.conversations_path.glob("*.jsonl"), key=lambda item: item.name):
+        paths = sorted(
+            (path for path in list_directory(self.conversations_path) if path.suffix == ".jsonl"),
+            key=lambda item: item.name,
+        )
+        for path in paths:
+            self._reject_symlinked_conversation(path)
+            if path_kind(path) != "file":
+                raise MalformedSyncIndexError(f"Remote conversation {path.name} must be a regular file")
             relative_path = f"{SYNC_CONVERSATIONS_DIRNAME}/{path.name}"
             snapshots[relative_path] = snapshot_file(path)
         return snapshots
+
+    def _conversations_directory_kind(self) -> str:
+        kind = path_kind(self.conversations_path)
+        if kind == "symlink":
+            raise MalformedSyncIndexError("conversations directory must not be a symlink")
+        if kind not in {"missing", "directory"}:
+            raise MalformedSyncIndexError(f"{SYNC_CONVERSATIONS_DIRNAME} must be a directory")
+        return kind
+
+    def _reject_symlinked_conversation(self, path: Path) -> None:
+        if path_kind(path) == "symlink":
+            raise MalformedSyncIndexError(
+                f"Remote conversation {path.name} must not be a symlink"
+            )
+
+    def _require_transaction(self) -> None:
+        if not self._lock.is_locked:
+            raise RuntimeError("Remote store mutation requires a held transaction")
 
     def _reconcile_index(
         self,
@@ -340,13 +418,14 @@ class RemoteStore:
         written: dict[str, SyncFileSnapshot],
         committed_entries: dict[str, RemoteThreadEntry],
     ) -> None:
+        self._conversations_directory_kind()
         for thread_id in selected_entries:
             expected = written.get(thread_id, base.files.get(thread_id))
             if expected is None:
                 raise ValueError(f"missing expected remote file snapshot for {thread_id!r}")
-            actual = snapshot_file(
-                self._selected_file_path(thread_id, committed_entries[thread_id], expected)
-            )
+            path = self._selected_file_path(thread_id, committed_entries[thread_id], expected)
+            self._reject_symlinked_conversation(path)
+            actual = snapshot_file(path)
             if actual != expected:
                 label = "written conversation file" if thread_id in written else "conversation file"
                 raise ConcurrentRemoteChangeError(
@@ -389,9 +468,12 @@ def _read_explicit_session_metadata(path: Path | None) -> SessionMetadata | None
     if path is None:
         return None
     try:
-        lines = _read_bytes(path).splitlines()
+        contents, _ = read_bytes_with_snapshot(path)
     except OSError:
         return None
+    if contents is None:
+        return None
+    lines = contents.splitlines()
     for raw_line in lines:
         try:
             value = json.loads(raw_line)
