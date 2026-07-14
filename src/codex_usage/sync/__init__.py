@@ -14,6 +14,13 @@ from codex_usage.sync.models import (
     SyncTimings,
 )
 from codex_usage.sync.runner import run_sync, sync_status
+from codex_usage.sync.selection_inventory import (
+    SyncProjectInventoryItem,
+    SyncSelectionInventory,
+    SyncTaskInventoryItem,
+    build_sync_selection_inventory,
+    load_sync_selection_inventory,
+)
 
 __all__ = [
     "LocalInventory",
@@ -27,8 +34,13 @@ __all__ = [
     "SyncPlan",
     "SyncPlanItem",
     "SyncProgressEvent",
+    "SyncProjectInventoryItem",
     "SyncRunResult",
+    "SyncSelectionInventory",
+    "SyncTaskInventoryItem",
     "SyncTimings",
+    "build_sync_selection_inventory",
+    "load_sync_selection_inventory",
     "run_sync",
     "sync_status",
 ]
