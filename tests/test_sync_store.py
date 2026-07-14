@@ -80,14 +80,45 @@ def test_atomic_write_retries_transient_replace_errors(tmp_path: Path, monkeypat
     assert json.loads(target.read_text(encoding="utf-8"))["format_version"] == 2
 
 
+def _permission_error_with_winerror(winerror: int) -> PermissionError:
+    error = PermissionError(errno.EACCES, "Windows filesystem error")
+    error.winerror = winerror
+    return error
+
+
+def test_atomic_write_retries_windows_sharing_violations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "sync-index.json"
+    original_replace = Path.replace
+    sharing_violation = _permission_error_with_winerror(32)
+    attempts = 0
+
+    def flaky_replace(path: Path, destination: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise sharing_violation
+        return original_replace(path, destination)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+
+    atomic_write_json(target, {"format_version": 2, "threads": {}})
+
+    assert attempts == 3
+    assert json.loads(target.read_text(encoding="utf-8"))["format_version"] == 2
+
+
 @pytest.mark.parametrize(
     "error",
     [
         FileNotFoundError(errno.ENOENT, "target parent disappeared"),
         PermissionError(errno.EACCES, "target is not writable"),
+        _permission_error_with_winerror(5),
         OSError(errno.EINVAL, "invalid filesystem operation"),
     ],
-    ids=["missing", "permission", "permanent-oserror"],
+    ids=["missing", "permission", "windows-access-denied", "permanent-oserror"],
 )
 def test_atomic_write_does_not_retry_permanent_replace_errors(
     tmp_path: Path,

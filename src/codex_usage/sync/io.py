@@ -40,9 +40,14 @@ _PERMANENT_FILESYSTEM_ERRORS = (FileNotFoundError, PermissionError, NotADirector
 
 
 def _is_transient_filesystem_error(error: BaseException) -> bool:
-    if not isinstance(error, OSError) or isinstance(error, _PERMANENT_FILESYSTEM_ERRORS):
+    if not isinstance(error, OSError) or isinstance(error, FileNotFoundError):
         return False
-    return error.errno in _TRANSIENT_ERRNOS or getattr(error, "winerror", None) in _TRANSIENT_WINERRORS
+    winerror = getattr(error, "winerror", None)
+    if winerror is not None:
+        return winerror in _TRANSIENT_WINERRORS
+    if isinstance(error, _PERMANENT_FILESYSTEM_ERRORS):
+        return False
+    return error.errno in _TRANSIENT_ERRNOS
 
 
 def snapshot_file(path: Path | None) -> SyncFileSnapshot:
