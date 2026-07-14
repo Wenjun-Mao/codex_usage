@@ -45,6 +45,39 @@ from codex_usage.sync.paths import portable_thread_filename, safe_session_target
 from codex_usage.sync.store import RemoteStore
 
 
+class _TemporaryFileProxy:
+    def __init__(
+        self,
+        wrapped: Any,
+        *,
+        write_callback: Any = None,
+        flush_callback: Any = None,
+    ) -> None:
+        self._wrapped = wrapped
+        self._write_callback = write_callback
+        self._flush_callback = flush_callback
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._wrapped, name)
+
+    def __enter__(self) -> _TemporaryFileProxy:
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        self.close()
+
+    def write(self, data: Any) -> int:
+        if self._write_callback is not None:
+            return self._write_callback(self._wrapped, data)
+        return self._wrapped.write(data)
+
+    def flush(self) -> None:
+        if self._flush_callback is not None:
+            self._flush_callback(self._wrapped)
+            return
+        self._wrapped.flush()
+
+
 def test_portable_thread_filename_is_stable_and_windows_safe() -> None:
     assert portable_thread_filename("thread-1") == "thread-1.jsonl"
     assert portable_thread_filename("CON").startswith("id-")
@@ -69,6 +102,129 @@ def test_atomic_copy_preserves_source_bytes(tmp_path: Path) -> None:
     atomic_copy(source, target)
     assert target.read_bytes() == source.read_bytes()
     assert not list(target.parent.glob("*.tmp"))
+
+
+def test_atomic_copy_streams_held_temp_and_resets_after_partial_write_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.jsonl"
+    source_bytes = b"first-line\n" + (b"x" * (2 * 1024 * 1024)) + b"\nlast-line\n"
+    source.write_bytes(source_bytes)
+    target = tmp_path / "remote" / "thread-1.jsonl"
+    original_named_temporary_file = sync_io.tempfile.NamedTemporaryFile
+    original_fsync = os.fsync
+    write_sizes: list[int] = []
+    temporary_files: list[_TemporaryFileProxy] = []
+    flush_calls = 0
+    fsync_calls = 0
+    injected_partial_failure = False
+
+    def write_with_one_partial_failure(wrapped: Any, data: Any) -> int:
+        nonlocal injected_partial_failure
+        payload = bytes(data)
+        write_sizes.append(len(payload))
+        if not injected_partial_failure:
+            injected_partial_failure = True
+            wrapped.write(payload[:17])
+            raise OSError(errno.EBUSY, "temporary file write is busy")
+        return wrapped.write(payload)
+
+    def track_flush(wrapped: Any) -> None:
+        nonlocal flush_calls
+        flush_calls += 1
+        wrapped.flush()
+
+    def faulting_temporary_file(*args: Any, **kwargs: Any) -> _TemporaryFileProxy:
+        proxy = _TemporaryFileProxy(
+            original_named_temporary_file(*args, **kwargs),
+            write_callback=write_with_one_partial_failure,
+            flush_callback=track_flush,
+        )
+        temporary_files.append(proxy)
+        return proxy
+
+    def track_fsync(file_descriptor: int) -> None:
+        nonlocal fsync_calls
+        fsync_calls += 1
+        original_fsync(file_descriptor)
+
+    monkeypatch.setattr(sync_io.tempfile, "NamedTemporaryFile", faulting_temporary_file)
+    monkeypatch.setattr(os, "fsync", track_fsync)
+
+    atomic_copy(source, target)
+
+    assert target.read_bytes() == source_bytes
+    assert injected_partial_failure
+    assert len(write_sizes) >= 3
+    assert max(write_sizes) < len(source_bytes)
+    assert flush_calls >= 1
+    assert fsync_calls >= 1
+    assert temporary_files[0].closed
+    assert not list(target.parent.glob("*.tmp"))
+
+
+def test_atomic_copy_retries_transient_source_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.jsonl"
+    source_bytes = b"source bytes read through a retried stream\n"
+    source.write_bytes(source_bytes)
+    target = tmp_path / "remote" / "thread-1.jsonl"
+    original_open = Path.open
+    source_opens = 0
+    injected_read_failure = False
+
+    class _TransientReadProxy:
+        def __init__(self, wrapped: Any) -> None:
+            self._wrapped = wrapped
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._wrapped, name)
+
+        def __enter__(self) -> _TransientReadProxy:
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            self._wrapped.close()
+
+        def read(self, size: int = -1) -> bytes:
+            nonlocal injected_read_failure
+            if not injected_read_failure:
+                injected_read_failure = True
+                raise OSError(errno.EBUSY, "source read is busy")
+            return self._wrapped.read(size)
+
+    def open_with_transient_source_read(
+        path: Path,
+        mode: str = "r",
+        buffering: int = -1,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> Any:
+        nonlocal source_opens
+        opened = original_open(
+            path,
+            mode=mode,
+            buffering=buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+        )
+        if path == source and mode == "rb":
+            source_opens += 1
+            return _TransientReadProxy(opened)
+        return opened
+
+    monkeypatch.setattr(Path, "open", open_with_transient_source_read)
+
+    atomic_copy(source, target)
+
+    assert source_opens == 2
+    assert injected_read_failure
+    assert target.read_bytes() == source_bytes
 
 
 def test_atomic_write_retries_transient_replace_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -911,6 +1067,186 @@ def _symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool = Fa
         pytest.skip(f"symlinks are unavailable: {error}")
 
 
+def test_write_conversation_rejects_parent_swap_before_temp_population_without_external_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {entry.thread_id: entry})
+    store = RemoteStore(root)
+    base = store.load_inventory()
+    source = tmp_path / "source.jsonl"
+    source.write_bytes(_session_jsonl("thread-1") + b"our-change\n")
+    conversations = root / "conversations"
+    target = conversations / portable_thread_filename(entry.thread_id)
+    target_before = target.read_bytes()
+    detached = tmp_path / "detached-conversations"
+    external = tmp_path / "external-conversations"
+    collision_bytes = b"external temp sentinel\n"
+    original_named_temporary_file = sync_io.tempfile.NamedTemporaryFile
+    temporary_name = ""
+    temporary_files: list[Any] = []
+
+    def create_then_swap_parent(*args: Any, **kwargs: Any) -> Any:
+        nonlocal temporary_name
+        temporary = original_named_temporary_file(*args, **kwargs)
+        temporary_files.append(temporary)
+        if Path(kwargs["dir"]) != conversations:
+            return temporary
+        temporary_name = Path(temporary.name).name
+        try:
+            conversations.rename(detached)
+        except OSError as error:
+            temporary.close()
+            pytest.skip(f"cannot swap a directory containing an open temp file: {error}")
+        external.mkdir()
+        (external / temporary_name).write_bytes(collision_bytes)
+        (external / target.name).write_bytes(target_before)
+        try:
+            conversations.symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            temporary.close()
+            detached.rename(conversations)
+            pytest.skip(f"directory symlinks are unavailable: {error}")
+        return temporary
+
+    monkeypatch.setattr(sync_io.tempfile, "NamedTemporaryFile", create_then_swap_parent)
+
+    with store.transaction():
+        with pytest.raises(MalformedSyncIndexError, match="directory must not be a symlink"):
+            store.write_conversation(source, target.name, base.files[entry.thread_id])
+
+    assert temporary_name
+    assert (external / temporary_name).read_bytes() == collision_bytes
+    assert (external / target.name).read_bytes() == target_before
+    assert temporary_files[0].closed
+
+
+def test_write_conversation_rejects_parent_swap_during_temp_population_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {entry.thread_id: entry})
+    store = RemoteStore(root)
+    base = store.load_inventory()
+    source = tmp_path / "source.jsonl"
+    source.write_bytes(_session_jsonl("thread-1") + b"our-change\n")
+    conversations = root / "conversations"
+    target = conversations / portable_thread_filename(entry.thread_id)
+    target_before = target.read_bytes()
+    detached = tmp_path / "detached-conversations"
+    external = tmp_path / "external-conversations"
+    collision_bytes = b"retry collision sentinel\n"
+    original_named_temporary_file = sync_io.tempfile.NamedTemporaryFile
+    temporary_files: list[_TemporaryFileProxy] = []
+    temporary_name = ""
+    write_attempts = 0
+
+    def write_then_swap(wrapped: Any, data: Any) -> int:
+        nonlocal temporary_name, write_attempts
+        write_attempts += 1
+        payload = bytes(data)
+        wrapped.write(payload[:11])
+        temporary_name = Path(wrapped.name).name
+        try:
+            conversations.rename(detached)
+        except OSError as error:
+            wrapped.close()
+            pytest.skip(f"cannot swap a directory containing an open temp file: {error}")
+        external.mkdir()
+        (external / temporary_name).write_bytes(collision_bytes)
+        (external / target.name).write_bytes(target_before)
+        try:
+            conversations.symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            wrapped.close()
+            detached.rename(conversations)
+            pytest.skip(f"directory symlinks are unavailable: {error}")
+        raise OSError(errno.EBUSY, "temporary population is busy")
+
+    def faulting_temporary_file(*args: Any, **kwargs: Any) -> _TemporaryFileProxy:
+        proxy = _TemporaryFileProxy(
+            original_named_temporary_file(*args, **kwargs),
+            write_callback=write_then_swap,
+        )
+        temporary_files.append(proxy)
+        return proxy
+
+    monkeypatch.setattr(sync_io.tempfile, "NamedTemporaryFile", faulting_temporary_file)
+
+    with store.transaction():
+        with pytest.raises(MalformedSyncIndexError, match="directory must not be a symlink"):
+            store.write_conversation(source, target.name, base.files[entry.thread_id])
+
+    assert write_attempts == 1
+    assert temporary_name
+    assert (external / temporary_name).read_bytes() == collision_bytes
+    assert (external / target.name).read_bytes() == target_before
+    assert temporary_files[0].closed
+
+
+def test_atomic_write_json_does_not_reopen_temp_after_guarded_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "index-store"
+    parent.mkdir()
+    target = parent / "sync-index.json"
+    target.write_bytes(b'{"format_version":2,"threads":{},"updated_at":"before"}\n')
+    expected = snapshot_file(target)
+    target_before = target.read_bytes()
+    detached = tmp_path / "detached-index-store"
+    external = tmp_path / "external-index-store"
+    collision_bytes = b"external JSON temp sentinel\n"
+    original_named_temporary_file = sync_io.tempfile.NamedTemporaryFile
+    temporary_name = ""
+    temporary_files: list[Any] = []
+
+    def guard_parent() -> None:
+        if sync_io.path_kind(parent) == "symlink":
+            raise MalformedSyncIndexError("index parent must not be a symlink")
+
+    def create_then_swap_parent(*args: Any, **kwargs: Any) -> Any:
+        nonlocal temporary_name
+        temporary = original_named_temporary_file(*args, **kwargs)
+        temporary_files.append(temporary)
+        temporary_name = Path(temporary.name).name
+        try:
+            parent.rename(detached)
+        except OSError as error:
+            temporary.close()
+            pytest.skip(f"cannot swap a directory containing an open temp file: {error}")
+        external.mkdir()
+        (external / temporary_name).write_bytes(collision_bytes)
+        (external / target.name).write_bytes(target_before)
+        try:
+            parent.symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            temporary.close()
+            detached.rename(parent)
+            pytest.skip(f"directory symlinks are unavailable: {error}")
+        return temporary
+
+    monkeypatch.setattr(sync_io.tempfile, "NamedTemporaryFile", create_then_swap_parent)
+
+    with pytest.raises(MalformedSyncIndexError, match="index parent must not be a symlink"):
+        atomic_write_json(
+            target,
+            {"format_version": 2, "threads": {}, "updated_at": "after"},
+            expected_target=expected,
+            target_label="index",
+            path_guard=guard_parent,
+        )
+
+    assert temporary_name
+    assert (external / temporary_name).read_bytes() == collision_bytes
+    assert (external / target.name).read_bytes() == target_before
+    assert temporary_files[0].closed
+
+
 def test_remote_store_rejects_symlinked_index_without_reading_external_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1008,6 +1344,109 @@ def test_remote_store_rejects_symlinked_conversations_directory_without_external
 
     assert external_file.read_bytes() == before
     assert not (root / "sync-index.json").exists()
+
+
+def test_remote_store_rejects_simulated_conversations_junction_before_enumeration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "sync"
+    conversations = root / "conversations"
+    conversations.mkdir(parents=True)
+    marker = conversations / "thread-1.jsonl"
+    marker_bytes = _session_jsonl("thread-1")
+    marker.write_bytes(marker_bytes)
+    original_is_junction = Path.is_junction
+    original_iterdir = Path.iterdir
+    enumeration_attempts = 0
+
+    def simulated_junction(path: Path) -> bool:
+        if path == conversations:
+            return True
+        return original_is_junction(path)
+
+    def reject_enumeration(path: Path) -> Any:
+        nonlocal enumeration_attempts
+        if path == conversations:
+            enumeration_attempts += 1
+            raise AssertionError("junction contents must not be enumerated")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "is_junction", simulated_junction)
+    monkeypatch.setattr(Path, "iterdir", reject_enumeration)
+
+    with pytest.raises(MalformedSyncIndexError, match="junction"):
+        RemoteStore(root).load_inventory()
+
+    assert enumeration_attempts == 0
+    assert marker.read_bytes() == marker_bytes
+
+
+def test_remote_store_retries_transient_junction_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "sync"
+    conversations = root / "conversations"
+    conversations.mkdir(parents=True)
+    original_is_junction = Path.is_junction
+    attempts = 0
+
+    def transient_junction_inspection(path: Path) -> bool:
+        nonlocal attempts
+        if path == conversations:
+            attempts += 1
+            if attempts < 3:
+                raise OSError(errno.EBUSY, "junction inspection is busy")
+        return original_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", transient_junction_inspection)
+
+    RemoteStore(root).load_inventory()
+
+    assert attempts == 3
+
+
+def test_remote_store_does_not_retry_permanent_junction_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "sync"
+    conversations = root / "conversations"
+    conversations.mkdir(parents=True)
+    original_is_junction = Path.is_junction
+    attempts = 0
+
+    def denied_junction_inspection(path: Path) -> bool:
+        nonlocal attempts
+        if path == conversations:
+            attempts += 1
+            raise PermissionError(errno.EACCES, "junction inspection denied")
+        return original_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", denied_junction_inspection)
+
+    with pytest.raises(PermissionError):
+        RemoteStore(root).load_inventory()
+
+    assert attempts == 1
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native junctions are Windows-only")
+def test_path_kind_classifies_available_native_windows_junction() -> None:
+    user_profile = Path(os.environ.get("USERPROFILE", str(Path.home())))
+    program_data = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+    candidates = (
+        user_profile / "Application Data",
+        user_profile / "Local Settings",
+        user_profile / "My Documents",
+        program_data / "Application Data",
+    )
+    junction = next((candidate for candidate in candidates if candidate.is_junction()), None)
+    if junction is None:
+        pytest.skip("no standard native Windows junction is available to this CI account")
+
+    assert sync_io.path_kind(junction) == "junction"
 
 
 def test_validate_selected_rejects_conversations_directory_swapped_to_symlink(

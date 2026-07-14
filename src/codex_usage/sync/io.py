@@ -3,12 +3,12 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
-import shutil
+import os
 import stat
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
@@ -40,6 +40,7 @@ _TRANSIENT_WINERRORS = frozenset(
     }
 )
 _PERMANENT_FILESYSTEM_ERRORS = (FileNotFoundError, PermissionError, NotADirectoryError, IsADirectoryError)
+_COPY_CHUNK_SIZE = 1024 * 1024
 
 
 def _is_transient_filesystem_error(error: BaseException) -> bool:
@@ -90,6 +91,8 @@ def path_kind(path: Path) -> str:
         return "missing"
     if stat.S_ISLNK(mode):
         return "symlink"
+    if _is_junction(path):
+        return "junction"
     if stat.S_ISDIR(mode):
         return "directory"
     if stat.S_ISREG(mode):
@@ -110,10 +113,15 @@ def atomic_copy(
     path_guard: Callable[[], None] | None = None,
 ) -> SyncFileSnapshot:
     _make_directory(target.parent, path_guard=path_guard)
-    tmp_path = _new_sibling_temp_path(target, path_guard=path_guard)
+    tmp_path, temporary = _new_sibling_temp_file(target, path_guard=path_guard)
     try:
-        _copy_file(source, tmp_path)
-        copied = snapshot_file(tmp_path)
+        copied = _copy_file(
+            source,
+            temporary,
+            tmp_path,
+            path_guard=path_guard,
+        )
+        _close_temporary_file(temporary)
         if expected_target is None:
             _replace(tmp_path, target, path_guard=path_guard)
         else:
@@ -126,7 +134,8 @@ def atomic_copy(
             )
         return _verify_replacement(target, copied, target_label, path_guard=path_guard)
     finally:
-        if _temporary_path_is_safe(path_guard) and tmp_path.exists():
+        _best_effort_close_temporary_file(temporary)
+        if temporary.closed and _temporary_path_is_safe(path_guard) and tmp_path.exists():
             tmp_path.unlink()
 
 
@@ -140,10 +149,15 @@ def atomic_write_json(
 ) -> SyncFileSnapshot:
     contents = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
     _make_directory(path.parent, path_guard=path_guard)
-    tmp_path = _new_sibling_temp_path(path, path_guard=path_guard)
+    tmp_path, temporary = _new_sibling_temp_file(path, path_guard=path_guard)
     try:
-        _write_bytes(tmp_path, contents)
-        written = _snapshot_from_bytes(tmp_path, contents)
+        written = _write_bytes_to_temporary(
+            temporary,
+            tmp_path,
+            contents,
+            path_guard=path_guard,
+        )
+        _close_temporary_file(temporary)
         if expected_target is None:
             _replace(tmp_path, path, path_guard=path_guard)
         else:
@@ -156,7 +170,8 @@ def atomic_write_json(
             )
         return _verify_replacement(path, written, target_label, path_guard=path_guard)
     finally:
-        if _temporary_path_is_safe(path_guard) and tmp_path.exists():
+        _best_effort_close_temporary_file(temporary)
+        if temporary.closed and _temporary_path_is_safe(path_guard) and tmp_path.exists():
             tmp_path.unlink()
 
 
@@ -237,19 +252,20 @@ def _make_directory(
     stop=stop_after_attempt(4),
     reraise=True,
 )
-def _new_sibling_temp_path(
+def _new_sibling_temp_file(
     target: Path,
     *,
     path_guard: Callable[[], None] | None = None,
-) -> Path:
+) -> tuple[Path, BinaryIO]:
     _run_path_guard(path_guard)
-    with tempfile.NamedTemporaryFile(
+    temporary = tempfile.NamedTemporaryFile(
+        mode="w+b",
         delete=False,
         dir=target.parent,
         prefix=f".{target.name}.",
         suffix=".tmp",
-    ) as temporary:
-        return Path(temporary.name)
+    )
+    return Path(temporary.name), temporary
 
 
 @retry(
@@ -260,6 +276,16 @@ def _new_sibling_temp_path(
 )
 def _lstat(path: Path) -> Any:
     return path.lstat()
+
+
+@retry(
+    retry=retry_if_exception(_is_transient_filesystem_error),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+def _is_junction(path: Path) -> bool:
+    return path.is_junction()
 
 
 @retry(
@@ -288,8 +314,18 @@ def _read_bytes(path: Path) -> bytes:
     stop=stop_after_attempt(4),
     reraise=True,
 )
-def _write_bytes(path: Path, contents: bytes) -> None:
-    path.write_bytes(contents)
+def _write_bytes_to_temporary(
+    temporary: BinaryIO,
+    temporary_path: Path,
+    contents: bytes,
+    *,
+    path_guard: Callable[[], None] | None = None,
+) -> SyncFileSnapshot:
+    _run_path_guard(path_guard)
+    _reset_temporary_file(temporary)
+    _write_all(temporary, contents)
+    _flush_temporary_file(temporary)
+    return _snapshot_from_bytes(temporary_path, contents)
 
 
 @retry(
@@ -298,8 +334,66 @@ def _write_bytes(path: Path, contents: bytes) -> None:
     stop=stop_after_attempt(4),
     reraise=True,
 )
-def _copy_file(source: Path, target: Path) -> None:
-    shutil.copyfile(source, target)
+def _copy_file(
+    source: Path,
+    temporary: BinaryIO,
+    temporary_path: Path,
+    *,
+    path_guard: Callable[[], None] | None = None,
+) -> SyncFileSnapshot:
+    _run_path_guard(path_guard)
+    _reset_temporary_file(temporary)
+    digest = hashlib.sha256()
+    size_bytes = 0
+    with source.open("rb") as source_file:
+        while chunk := source_file.read(_COPY_CHUNK_SIZE):
+            _write_all(temporary, chunk)
+            digest.update(chunk)
+            size_bytes += len(chunk)
+    _flush_temporary_file(temporary)
+    return SyncFileSnapshot(
+        path=temporary_path,
+        exists=True,
+        sha256=digest.hexdigest(),
+        size_bytes=size_bytes,
+    )
+
+
+def _reset_temporary_file(temporary: BinaryIO) -> None:
+    temporary.seek(0)
+    temporary.truncate(0)
+
+
+def _write_all(temporary: BinaryIO, contents: bytes) -> None:
+    remaining = memoryview(contents)
+    while remaining:
+        written = temporary.write(remaining)
+        if written is None or written <= 0:
+            raise OSError(errno.EIO, "temporary file write made no progress")
+        remaining = remaining[written:]
+
+
+def _flush_temporary_file(temporary: BinaryIO) -> None:
+    temporary.flush()
+    os.fsync(temporary.fileno())
+
+
+@retry(
+    retry=retry_if_exception(_is_transient_filesystem_error),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+def _close_temporary_file(temporary: BinaryIO) -> None:
+    if not temporary.closed:
+        temporary.close()
+
+
+def _best_effort_close_temporary_file(temporary: BinaryIO) -> None:
+    try:
+        _close_temporary_file(temporary)
+    except OSError:
+        pass
 
 
 @retry(

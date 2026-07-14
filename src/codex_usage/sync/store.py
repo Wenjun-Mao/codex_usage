@@ -197,8 +197,8 @@ class RemoteStore:
 
     def _index_path_kind(self) -> str:
         kind = path_kind(self.index_path)
-        if kind == "symlink":
-            raise MalformedSyncIndexError(f"{SYNC_INDEX_FILENAME} must not be a symlink")
+        if kind in {"symlink", "junction"}:
+            raise MalformedSyncIndexError(f"{SYNC_INDEX_FILENAME} must not be a {kind}")
         if kind not in {"missing", "file"}:
             raise MalformedSyncIndexError(f"{SYNC_INDEX_FILENAME} must be a regular file")
         return kind
@@ -225,17 +225,17 @@ class RemoteStore:
 
     def _conversations_directory_kind(self) -> str:
         kind = path_kind(self.conversations_path)
-        if kind == "symlink":
-            raise MalformedSyncIndexError("conversations directory must not be a symlink")
+        if kind in {"symlink", "junction"}:
+            raise MalformedSyncIndexError(f"conversations directory must not be a {kind}")
         if kind not in {"missing", "directory"}:
             raise MalformedSyncIndexError(f"{SYNC_CONVERSATIONS_DIRNAME} must be a directory")
         return kind
 
     def _conversation_path_kind(self, path: Path) -> str:
         kind = path_kind(path)
-        if kind == "symlink":
+        if kind in {"symlink", "junction"}:
             raise MalformedSyncIndexError(
-                f"Remote conversation {path.name} must not be a symlink"
+                f"Remote conversation {path.name} must not be a {kind}"
             )
         return kind
 
