@@ -50,17 +50,32 @@ Sync folder, sync project, and sync conversation selections are managed with `Co
 
 ## Experimental Sync
 
-Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected Codex session JSONL files and matching session index entries. It does not upload data itself and does not sync Codex auth, settings, caches, logs, or SQLite databases.
+Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected active Codex conversation JSONLs and stores matching session-index metadata in a central catalog. It does not upload data itself and does not sync Codex auth, settings, caches, logs, archived conversations, or SQLite databases.
 
-The setup flow is project-first: choose the sync folder, choose projects with rough sync-size estimates, then choose all conversations in those projects or specific conversations. The command id for selecting conversations remains `codexUsage.selectSyncThreads` internally for compatibility, but the command palette shows `Codex Usage: Select Sync Conversations`.
+Continue a long-running Codex conversation on another computer when a normal handoff cannot complete because the conversation is too large. Sync transfers the original conversation JSONL without summarizing or repackaging its context.
+
+The setup flow is project-first: choose the sync folder, choose projects with rough sync-size estimates, then choose all conversations in those projects or specific conversations. Current sync discovery includes active `sessions` conversations only, not archived conversations. Deselecting a project or conversation never deletes its remote JSONL or catalog entry, and project mode discovers newly created matching active conversations on future runs. The command id for selecting conversations remains `codexUsage.selectSyncThreads` internally for compatibility, but the command palette shows `Codex Usage: Select Sync Conversations`.
+
+Version 2 writes this sync-folder layout:
+
+```text
+<sync-folder>/
+  conversations/
+    <portable-thread-filename>.jsonl
+  sync-index.json
+```
+
+Version 2 does not migrate or automatically clean up the earlier layout. Existing sync users must empty the old sync-folder contents themselves, then run sync again.
 
 Click the dashboard `Sync: ... ▾` control or run `Codex Usage: Sync Menu` to manage sync. The menu supports manual sync, status, pause/resume, changing the sync folder, changing projects, changing conversations, clearing the setup, and opening the sync folder. Clearing setup only forgets extension selections; it does not delete Codex logs or sync-folder files.
 
-The status bar is the primary background sync indicator. Automatic sync uses a focus cooldown, a file-change debounce, and failure backoff to avoid noisy repeated runs. Normal automatic success/failure details go to the Codex Usage output channel; popups are reserved for manual sync and action-needed failures such as conflicts.
+The status bar is the primary background sync indicator, with states including `Sync:Scanning`, `Sync:Pulling`, and `Sync:Pushing`. Automatic sync uses a focus cooldown, a file-change debounce, and failure backoff to avoid noisy repeated runs. Normal automatic success/failure details go to the Codex Usage output channel; popups are reserved for manual sync and action-needed failures such as conflicts.
 
 For manual-only sync, leave `codexUsage.sync.enabled` on and turn off both `codexUsage.sync.autoPull` and `codexUsage.sync.autoPush`. Run `Codex Usage: Sync Now` from the command palette or the dashboard action strip when you want to sync, and use `Codex Usage: Sync Status` to inspect selected conversations.
 
 Conversation sync is prefix-aware. Normal append-only progress on one computer is pulled or pushed automatically; true divergent edits on two computers are reported as conflicts and neither side is overwritten.
+
+Sync copies only selected active conversation JSONLs and preserves matching session-index metadata in its repairable catalog. Archived conversations can appear in usage totals but are not sync candidates.
 
 ### Archive/Delete Accounting
 

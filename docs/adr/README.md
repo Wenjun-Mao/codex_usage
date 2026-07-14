@@ -18,3 +18,4 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 | [0008](0008-three-way-prefix-aware-sync.md) | Use three-way prefix-aware sync to avoid unsafe overwrites. |
 | [0009](0009-public-private-documentation-boundary.md) | Separate public docs, ADRs, learning notes, and implementation history. |
 | [0010](0010-macos-apple-silicon-vsix-runtime.md) | Bundle a macOS Apple Silicon executable in the VSIX. |
+| [0011](0011-flat-single-process-sync.md) | Use flat conversation files and one plan-driven sync process. |
