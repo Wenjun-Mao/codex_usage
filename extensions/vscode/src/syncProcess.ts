@@ -38,6 +38,8 @@ export function runSyncProcess(options: RunSyncProcessOptions): Promise<SyncProc
       windowsHide: true,
       env: options.env,
     });
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
 
     let stdout = "";
     let stderr = "";
@@ -92,8 +94,8 @@ export function runSyncProcess(options: RunSyncProcessOptions): Promise<SyncProc
       }
     };
 
-    child.stdout.on("data", (chunk: Buffer) => {
-      const text = chunk.toString();
+    child.stdout.on("error", rejectOnce);
+    child.stdout.on("data", (text: string) => {
       stdout += text;
       options.onOutput(text);
     });
@@ -101,8 +103,8 @@ export function runSyncProcess(options: RunSyncProcessOptions): Promise<SyncProc
       stdoutEnded = true;
       settleAfterStreams();
     });
-    child.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString();
+    child.stderr.on("error", rejectOnce);
+    child.stderr.on("data", (text: string) => {
       stderr += text;
       options.onOutput(text);
       consumeStderrLines(text);

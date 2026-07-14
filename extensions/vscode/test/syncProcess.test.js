@@ -37,7 +37,7 @@ function conflictResult() {
   };
 }
 
-function fakeSyncChild({ stderrChunks = [], stdout = "", exitCode = 0 }) {
+function fakeSyncChild({ stderrChunks = [], stdout = "", stdoutChunks, exitCode = 0 }) {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
@@ -45,7 +45,14 @@ function fakeSyncChild({ stderrChunks = [], stdout = "", exitCode = 0 }) {
     for (const chunk of stderrChunks) {
       child.stderr.write(chunk);
     }
-    child.stdout.end(stdout);
+    if (stdoutChunks) {
+      for (const chunk of stdoutChunks) {
+        child.stdout.write(chunk);
+      }
+      child.stdout.end();
+    } else {
+      child.stdout.end(stdout);
+    }
     child.stderr.end();
     child.emit("close", exitCode);
   });
@@ -61,6 +68,13 @@ function processOptions(overrides = {}) {
     onOutput: () => undefined,
     ...overrides,
   };
+}
+
+function splitUtf8(text, character, byteOffset) {
+  const bytes = Buffer.from(text);
+  const characterStart = bytes.indexOf(Buffer.from(character));
+  assert.notEqual(characterStart, -1);
+  return [bytes.subarray(0, characterStart + byteOffset), bytes.subarray(characterStart + byteOffset)];
 }
 
 test("runSyncProcess spawns once and parses split, grouped, and residual progress lines", async () => {
@@ -103,6 +117,46 @@ test("runSyncProcess spawns once and parses split, grouped, and residual progres
   assert.deepEqual(completion.result, completedResult());
 });
 
+test("runSyncProcess preserves a multibyte stdout character split across Buffer chunks", async () => {
+  const result = completedResult();
+  result.pushed = ["thread-雪"];
+  const stdout = JSON.stringify(result);
+  const rawOutput = [];
+
+  const completion = await runSyncProcess(
+    processOptions({
+      onOutput: (text) => rawOutput.push(text),
+      spawnProcess: () =>
+        fakeSyncChild({
+          stdoutChunks: splitUtf8(stdout, "雪", 1),
+        }),
+    }),
+  );
+
+  assert.equal(completion.stdout, stdout);
+  assert.deepEqual(completion.result, result);
+  assert.equal(rawOutput.join(""), stdout);
+});
+
+test("runSyncProcess preserves multibyte stderr diagnostics split across Buffer chunks", async () => {
+  const stderr = '诊断: 同步\n{"type":"sync_progress","phase":"pulling"}\n';
+  const phases = [];
+
+  const completion = await runSyncProcess(
+    processOptions({
+      onProgress: (event) => phases.push(event.phase),
+      spawnProcess: () =>
+        fakeSyncChild({
+          stderrChunks: splitUtf8(stderr, "诊", 2),
+          stdout: JSON.stringify(completedResult()),
+        }),
+    }),
+  );
+
+  assert.equal(completion.stderr, stderr);
+  assert.deepEqual(phases, ["pulling"]);
+});
+
 test("runSyncProcess waits for close and both output streams before settling", async () => {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
@@ -128,6 +182,36 @@ test("runSyncProcess waits for close and both output streams before settling", a
   child.stderr.end();
   const completion = await completionPromise;
   assert.equal(completion.result.outcome, "completed");
+});
+
+test("runSyncProcess rejects stdout and stderr stream errors once when end and close follow", async (t) => {
+  for (const streamName of ["stdout", "stderr"]) {
+    await t.test(streamName, async () => {
+      const child = new EventEmitter();
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child[streamName].on("error", () => undefined);
+      let rejectionCount = 0;
+
+      const completion = runSyncProcess(
+        processOptions({
+          spawnProcess: () => child,
+        }),
+      ).catch((error) => {
+        rejectionCount += 1;
+        throw error;
+      });
+
+      child[streamName].emit("error", new Error(`${streamName} stream failed`));
+      child.stdout.end(JSON.stringify(completedResult()));
+      child.stderr.end();
+      child.emit("close", 0);
+
+      await assert.rejects(completion, { message: `${streamName} stream failed` });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(rejectionCount, 1);
+    });
+  }
 });
 
 test("runSyncProcess resolves a structured conflict result with exit code 2", async () => {
