@@ -86,12 +86,17 @@ def read_json_object_with_snapshot(path: Path) -> tuple[dict[str, Any] | None, S
 
 def path_kind(path: Path) -> str:
     try:
-        mode = _lstat(path).st_mode
+        path_stat = _lstat(path)
     except FileNotFoundError:
         return "missing"
+    mode = path_stat.st_mode
     if stat.S_ISLNK(mode):
         return "symlink"
-    if _is_junction(path):
+    mount_point_tag = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None)
+    if (
+        mount_point_tag is not None
+        and getattr(path_stat, "st_reparse_tag", None) == mount_point_tag
+    ):
         return "junction"
     if stat.S_ISDIR(mode):
         return "directory"
@@ -276,16 +281,6 @@ def _new_sibling_temp_file(
 )
 def _lstat(path: Path) -> Any:
     return path.lstat()
-
-
-@retry(
-    retry=retry_if_exception(_is_transient_filesystem_error),
-    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
-    stop=stop_after_attempt(4),
-    reraise=True,
-)
-def _is_junction(path: Path) -> bool:
-    return path.is_junction()
 
 
 @retry(

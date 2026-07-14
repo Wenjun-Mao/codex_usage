@@ -4,12 +4,14 @@ import errno
 import json
 import os
 import queue
+import stat
 import subprocess
 import sys
 import textwrap
 import threading
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -43,6 +45,9 @@ from codex_usage.sync.models import (
 )
 from codex_usage.sync.paths import portable_thread_filename, safe_session_target_path
 from codex_usage.sync.store import RemoteStore
+
+
+_WINDOWS_MOUNT_POINT_REPARSE_TAG = 0xA0000003
 
 
 class _TemporaryFileProxy:
@@ -1356,14 +1361,18 @@ def test_remote_store_rejects_simulated_conversations_junction_before_enumeratio
     marker = conversations / "thread-1.jsonl"
     marker_bytes = _session_jsonl("thread-1")
     marker.write_bytes(marker_bytes)
-    original_is_junction = Path.is_junction
+    original_lstat = Path.lstat
     original_iterdir = Path.iterdir
     enumeration_attempts = 0
 
-    def simulated_junction(path: Path) -> bool:
+    def mount_point_lstat(path: Path) -> Any:
         if path == conversations:
-            return True
-        return original_is_junction(path)
+            result = original_lstat(path)
+            return SimpleNamespace(
+                st_mode=result.st_mode,
+                st_reparse_tag=_WINDOWS_MOUNT_POINT_REPARSE_TAG,
+            )
+        return original_lstat(path)
 
     def reject_enumeration(path: Path) -> Any:
         nonlocal enumeration_attempts
@@ -1372,7 +1381,13 @@ def test_remote_store_rejects_simulated_conversations_junction_before_enumeratio
             raise AssertionError("junction contents must not be enumerated")
         return original_iterdir(path)
 
-    monkeypatch.setattr(Path, "is_junction", simulated_junction)
+    monkeypatch.setattr(
+        stat,
+        "IO_REPARSE_TAG_MOUNT_POINT",
+        _WINDOWS_MOUNT_POINT_REPARSE_TAG,
+        raising=False,
+    )
+    monkeypatch.setattr(Path, "lstat", mount_point_lstat)
     monkeypatch.setattr(Path, "iterdir", reject_enumeration)
 
     with pytest.raises(MalformedSyncIndexError, match="junction"):
@@ -1382,53 +1397,43 @@ def test_remote_store_rejects_simulated_conversations_junction_before_enumeratio
     assert marker.read_bytes() == marker_bytes
 
 
-def test_remote_store_retries_transient_junction_inspection(
+@pytest.mark.parametrize(
+    ("mode", "reparse_tag", "expected_kind"),
+    [
+        (stat.S_IFDIR | 0o755, _WINDOWS_MOUNT_POINT_REPARSE_TAG, "junction"),
+        (stat.S_IFLNK | 0o777, _WINDOWS_MOUNT_POINT_REPARSE_TAG, "symlink"),
+        (stat.S_IFDIR | 0o755, None, "directory"),
+    ],
+    ids=["mount-point", "true-symlink", "posix-directory"],
+)
+def test_path_kind_uses_one_lstat_result_for_reparse_classification(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    mode: int,
+    reparse_tag: int | None,
+    expected_kind: str,
 ) -> None:
-    root = tmp_path / "sync"
-    conversations = root / "conversations"
-    conversations.mkdir(parents=True)
-    original_is_junction = Path.is_junction
+    path = tmp_path / "entry"
     attempts = 0
 
-    def transient_junction_inspection(path: Path) -> bool:
+    def injected_lstat(candidate: Path) -> Any:
         nonlocal attempts
-        if path == conversations:
-            attempts += 1
-            if attempts < 3:
-                raise OSError(errno.EBUSY, "junction inspection is busy")
-        return original_is_junction(path)
+        assert candidate == path
+        attempts += 1
+        values: dict[str, Any] = {"st_mode": mode}
+        if reparse_tag is not None:
+            values["st_reparse_tag"] = reparse_tag
+        return SimpleNamespace(**values)
 
-    monkeypatch.setattr(Path, "is_junction", transient_junction_inspection)
+    monkeypatch.setattr(
+        stat,
+        "IO_REPARSE_TAG_MOUNT_POINT",
+        _WINDOWS_MOUNT_POINT_REPARSE_TAG,
+        raising=False,
+    )
+    monkeypatch.setattr(Path, "lstat", injected_lstat)
 
-    RemoteStore(root).load_inventory()
-
-    assert attempts == 3
-
-
-def test_remote_store_does_not_retry_permanent_junction_inspection(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    root = tmp_path / "sync"
-    conversations = root / "conversations"
-    conversations.mkdir(parents=True)
-    original_is_junction = Path.is_junction
-    attempts = 0
-
-    def denied_junction_inspection(path: Path) -> bool:
-        nonlocal attempts
-        if path == conversations:
-            attempts += 1
-            raise PermissionError(errno.EACCES, "junction inspection denied")
-        return original_is_junction(path)
-
-    monkeypatch.setattr(Path, "is_junction", denied_junction_inspection)
-
-    with pytest.raises(PermissionError):
-        RemoteStore(root).load_inventory()
-
+    assert sync_io.path_kind(path) == expected_kind
     assert attempts == 1
 
 
@@ -1442,7 +1447,22 @@ def test_path_kind_classifies_available_native_windows_junction() -> None:
         user_profile / "My Documents",
         program_data / "Application Data",
     )
-    junction = next((candidate for candidate in candidates if candidate.is_junction()), None)
+    mount_point_tag = stat.IO_REPARSE_TAG_MOUNT_POINT
+
+    def reparse_tag(candidate: Path) -> int | None:
+        try:
+            return getattr(candidate.lstat(), "st_reparse_tag", None)
+        except OSError:
+            return None
+
+    junction = next(
+        (
+            candidate
+            for candidate in candidates
+            if reparse_tag(candidate) == mount_point_tag
+        ),
+        None,
+    )
     if junction is None:
         pytest.skip("no standard native Windows junction is available to this CI account")
 
