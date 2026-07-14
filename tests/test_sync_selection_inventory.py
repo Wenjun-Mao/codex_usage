@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import codex_usage.sync.io as sync_io
+import codex_usage.sync.remote_reconciliation as remote_reconciliation
 from codex_usage.session_cache import (
     CacheStats,
     CachedFileSummary,
@@ -348,47 +349,67 @@ def test_load_inventory_omits_invalid_indexed_remote_task(
 ) -> None:
     sync_dir = tmp_path / "sync"
     _write_indexed_remote_task(sync_dir, contents)
+    local_data = _cached_local_task_data(tmp_path / "codex-home" / "sessions", "thread-1")
     before = _snapshot_tree(tmp_path)
 
-    result = load_sync_selection_inventory(
+    remote_only = load_sync_selection_inventory(
         _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
         sync_dir,
     )
+    with_local = load_sync_selection_inventory(local_data, sync_dir)
 
-    assert result.projects == ()
-    assert len(result.issues) == 1
-    assert result.issues[0].code == "unindexed_unreadable"
-    assert result.issues[0].thread_id == "thread-1"
-    assert issue_fragment in result.issues[0].message
+    assert remote_only.projects == ()
+    assert [(project.project_key, project.project_label) for project in with_local.projects] == [
+        ("repo-a", "Repo A")
+    ]
+    assert [(task.thread_id, task.availability) for task in with_local.projects[0].tasks] == [
+        ("thread-1", "local")
+    ]
+    for result in (remote_only, with_local):
+        assert len(result.issues) == 1
+        assert result.issues[0].code == "unindexed_unreadable"
+        assert result.issues[0].thread_id == "thread-1"
+        assert issue_fragment in result.issues[0].message
     assert _snapshot_tree(tmp_path) == before
 
 
-@pytest.mark.parametrize(
-    ("contents", "issue_fragment"),
-    _INVALID_INDEXED_CONVERSATIONS,
-)
-def test_load_inventory_keeps_matching_local_task_local_when_remote_is_invalid(
+def test_load_inventory_omits_indexed_remote_when_materialization_read_fails(
     tmp_path: Path,
-    contents: bytes,
-    issue_fragment: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sync_dir = tmp_path / "sync"
-    _write_indexed_remote_task(sync_dir, contents)
-    data = _cached_local_task_data(tmp_path / "codex-home" / "sessions", "thread-1")
+    _write_indexed_remote_task(sync_dir, _session_jsonl("thread-1"))
+    conversation_path = sync_dir / "conversations" / "thread-1.jsonl"
+    local_data = _cached_local_task_data(tmp_path / "codex-home" / "sessions", "thread-1")
+    original_read = remote_reconciliation.read_bytes_with_snapshot
+
+    def deny_conversation_read(path: Path) -> tuple[bytes | None, SyncFileSnapshot]:
+        if path == conversation_path:
+            raise PermissionError(f"Cannot read {path}")
+        return original_read(path)
+
+    monkeypatch.setattr(
+        remote_reconciliation,
+        "read_bytes_with_snapshot",
+        deny_conversation_read,
+    )
     before = _snapshot_tree(tmp_path)
 
-    result = load_sync_selection_inventory(data, sync_dir)
+    remote_only = load_sync_selection_inventory(
+        _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+        sync_dir,
+    )
+    with_local = load_sync_selection_inventory(local_data, sync_dir)
 
-    assert [(project.project_key, project.project_label) for project in result.projects] == [
-        ("repo-a", "Repo A")
-    ]
-    assert [(task.thread_id, task.availability) for task in result.projects[0].tasks] == [
+    assert remote_only.projects == ()
+    assert [(task.thread_id, task.availability) for task in with_local.projects[0].tasks] == [
         ("thread-1", "local")
     ]
-    assert len(result.issues) == 1
-    assert result.issues[0].code == "unindexed_unreadable"
-    assert result.issues[0].thread_id == "thread-1"
-    assert issue_fragment in result.issues[0].message
+    for result in (remote_only, with_local):
+        assert len(result.issues) == 1
+        assert result.issues[0].code == "unindexed_unreadable"
+        assert result.issues[0].thread_id == "thread-1"
+        assert "has no readable session_meta identity" in result.issues[0].message
     assert _snapshot_tree(tmp_path) == before
 
 

@@ -88,7 +88,7 @@ def _materialize_remote_for_selection(
     failed_validation_thread_ids = {
         issue.thread_id
         for issue in materialized.issues[issue_offset:]
-        if issue.code == "unindexed_unreadable" and issue.thread_id
+        if issue.code == "unindexed_unreadable"
     }
     if not failed_validation_thread_ids:
         return materialized

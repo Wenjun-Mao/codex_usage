@@ -501,6 +501,18 @@ def test_remote_index_rejects_thread_mapping_key_identity_mismatch() -> None:
         )
 
 
+@pytest.mark.parametrize("thread_id", ["", " \t"], ids=["empty", "whitespace"])
+def test_remote_index_rejects_blank_thread_ids(thread_id: str) -> None:
+    entry = replace(_remote_entry(), thread_id=thread_id)
+
+    with pytest.raises(ValueError, match="thread ids must not be blank"):
+        RemoteIndex(
+            format_version=SYNC_FORMAT_VERSION,
+            updated_at="",
+            threads={thread_id: entry},
+        )
+
+
 def test_local_sync_state_round_trips_with_version_2_marker() -> None:
     state = LocalSyncState(
         thread_id="thread-1",
@@ -772,6 +784,37 @@ def test_remote_store_rejects_malformed_index_without_mutating_it(
         RemoteStore(root).load_inventory()
 
     assert index_path.read_bytes() == contents
+
+
+@pytest.mark.parametrize("thread_id", ["", " \t"], ids=["empty", "whitespace"])
+def test_remote_store_rejects_blank_thread_id_index_without_mutating_it(
+    tmp_path: Path,
+    thread_id: str,
+) -> None:
+    root = tmp_path / "sync"
+    root.mkdir()
+    index_path = root / "sync-index.json"
+    contents = (
+        json.dumps(
+            {
+                "format_version": 2,
+                "updated_at": "",
+                "threads": {thread_id: _remote_entry().to_dict()},
+            },
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
+    index_path.write_bytes(contents)
+    store = RemoteStore(root)
+    before = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")))
+
+    with pytest.raises(MalformedSyncIndexError, match="thread ids must not be blank"):
+        store.load_inventory()
+
+    assert index_path.read_bytes() == contents
+    assert tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))) == before
+    assert not store.lock_path.exists()
 
 
 @pytest.mark.parametrize(

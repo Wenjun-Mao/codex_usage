@@ -104,6 +104,10 @@ class RemoteIndex:
         if self.format_version != SYNC_FORMAT_VERSION:
             raise ValueError(f"format_version must be {SYNC_FORMAT_VERSION}")
         for thread_id, entry in self.threads.items():
+            if not isinstance(thread_id, str):
+                raise ValueError("remote index thread ids must be strings")
+            if not thread_id.strip():
+                raise ValueError("remote index thread ids must not be blank")
             if not isinstance(entry, RemoteThreadEntry) or thread_id != entry.thread_id:
                 raise ValueError("remote index thread mapping key must match entry.thread_id")
 
