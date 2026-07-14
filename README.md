@@ -12,7 +12,7 @@ This repository contains:
 
 ## VS Code Preview Packages
 
-The current preview packages support Windows x64 and macOS Apple Silicon. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. Windows x64 packaging is CI-only; the GitHub Actions Windows job must build the package and pass its packaged smoke test before publication.
+The current preview packages support Windows x64 and macOS Apple Silicon. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. Release status: macOS Apple Silicon packaged inventory/push/pull verified locally; Windows x64 packaging is CI-only and remains a release gate. The GitHub Actions Windows job must build the package and pass its packaged smoke test before publication.
 
 Build and install the local macOS Apple Silicon VSIX:
 
@@ -106,7 +106,7 @@ Version 2 writes one byte-preserved JSONL per task and one repairable catalog:
   sync-index.json
 ```
 
-Version `0.1.34` intentionally invalidates the previous project/conversation selection state. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
+Version `0.1.34` changes the selection schema to exact task thread ids. It intentionally invalidates the previous project/conversation selection state and does not migrate those selectors. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
 
 Selection controls which exact active tasks participate. Deselecting a task never deletes its remote JSONL or index entry, and newly created tasks never join sync automatically.
 

@@ -18,7 +18,7 @@ Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local 
 
 ## Preview Status
 
-This Marketplace preview supports Windows x64 and macOS Apple Silicon. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Intel macOS is not supported. Windows x64 packaging is CI-only and must pass the GitHub Actions packaged smoke test before publication.
+This Marketplace preview supports Windows x64 and macOS Apple Silicon. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Intel macOS is not supported. Release status: macOS Apple Silicon packaged inventory/push/pull verified locally; Windows x64 packaging is CI-only and remains a release gate. The GitHub Actions packaged smoke test must pass before publication.
 
 ## Commands
 
@@ -66,7 +66,7 @@ Version 2 writes this sync-folder layout:
   sync-index.json
 ```
 
-Version `0.1.34` intentionally invalidates the previous project/conversation selection state. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
+Version `0.1.34` changes the selection schema to exact task thread ids. It intentionally invalidates the previous project/conversation selection state and does not migrate those selectors. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
 
 Click the dashboard `Sync: ... ▾` control or run `Codex Usage: Sync Menu` to manage sync. The menu supports manual sync, status, pause/resume, changing the sync folder or selected tasks, clearing the setup, and opening the sync folder. Clearing setup only forgets extension selections; it does not delete Codex logs or sync-folder files.
 

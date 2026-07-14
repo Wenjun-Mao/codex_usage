@@ -5,9 +5,10 @@
 - Replaced project/conversation setup with one project-grouped task picker that stores exact selected task thread ids.
 - Made project rows shortcuts for the tasks currently shown, so future tasks stay excluded until explicitly selected.
 - Added remote-only task discovery so a task can be selected and pulled on another computer before it exists locally.
-- Require one-time sync setup after upgrading; the version-2 remote layout is unchanged, so no remote cleanup or republish is required.
+- Changed the selection schema to exact task thread ids; this invalidates previous project/conversation selectors, does not migrate them, and shows one-time **Setup required** after upgrading.
+- Kept the version-2 remote layout unchanged, so no remote cleanup or republish is required. Version-1 folders still require a clean resync before use as version 2.
 - Use task in user-facing sync copy while retaining thread id for the technical CLI and storage contract.
-- Verify packaged inventory plus exact-task push/pull on macOS locally and on Windows in CI.
+- macOS Apple Silicon packaged inventory/push/pull verified locally; Windows x64 is a CI-only release gate.
 - Documented full-JSONL task sync as an option when built-in Codex handoff cannot complete for a very large task.
 
 ## 0.1.33 - Flat Single-Process Sync
