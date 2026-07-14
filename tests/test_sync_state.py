@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ntpath
+import os
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
@@ -281,9 +283,20 @@ def test_local_state_store_namespaces_records_by_sync_folder(tmp_path: Path) -> 
         second_store.write(state)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX path case contract")
 def test_sync_dir_fingerprint_preserves_posix_path_case(tmp_path: Path) -> None:
     assert sync_dir_fingerprint(tmp_path / "CodexSync") != sync_dir_fingerprint(
         tmp_path / "codexsync"
+    )
+
+
+def test_sync_dir_fingerprint_normalizes_windows_path_case() -> None:
+    assert sync_state._fingerprint_resolved_sync_dir(
+        r"C:\Users\Example\CodexSync",
+        ntpath.normcase,
+    ) == sync_state._fingerprint_resolved_sync_dir(
+        r"c:\users\example\codexsync",
+        ntpath.normcase,
     )
 
 

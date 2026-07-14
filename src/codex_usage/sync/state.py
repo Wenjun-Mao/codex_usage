@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import tempfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -81,7 +82,17 @@ class LocalStateStore:
 
 
 def sync_dir_fingerprint(sync_dir: Path) -> str:
-    normalized = os.path.normcase(str(sync_dir.resolve(strict=False))).replace("\\", "/")
+    return _fingerprint_resolved_sync_dir(
+        str(sync_dir.resolve(strict=False)),
+        os.path.normcase,
+    )
+
+
+def _fingerprint_resolved_sync_dir(
+    resolved_path: str,
+    normcase: Callable[[str], str],
+) -> str:
+    normalized = normcase(resolved_path).replace("\\", "/")
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
