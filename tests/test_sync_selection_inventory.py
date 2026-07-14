@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -225,6 +227,67 @@ def test_load_inventory_is_read_only(tmp_path: Path) -> None:
 
     load_sync_selection_inventory(data, sync_dir)
 
+    assert _snapshot_tree(tmp_path) == before
+
+
+def test_load_inventory_discovers_indexed_remote_task_without_local_sessions(
+    tmp_path: Path,
+) -> None:
+    sync_dir = tmp_path / "sync"
+    conversation_path = sync_dir / "conversations" / "thread-1.jsonl"
+    conversation_path.parent.mkdir(parents=True)
+    conversation_path.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-07-14T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "thread-1",
+                    "timestamp": "2026-07-14T12:00:00Z",
+                    "cwd": "/repo/a",
+                    "git": {"repository_url": "https://github.com/example/repo-a.git"},
+                },
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    snapshot = sync_io.snapshot_file(conversation_path)
+    entry = replace(
+        _remote_task(
+            "thread-1",
+            "Remote task",
+            "repo-a",
+            "Repo A",
+            "2026-07-14T12:00:00Z",
+        ),
+        sha256=snapshot.sha256,
+        size_bytes=snapshot.size_bytes,
+    )
+    index = RemoteIndex(
+        format_version=2,
+        updated_at="2026-07-14T12:00:00Z",
+        threads={entry.thread_id: entry},
+    )
+    (sync_dir / "sync-index.json").write_text(
+        json.dumps(index.to_dict(), separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    before = _snapshot_tree(tmp_path)
+
+    result = load_sync_selection_inventory(
+        _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+        sync_dir,
+    )
+
+    assert [(project.project_key, project.project_label) for project in result.projects] == [
+        ("repo-a", "Repo A")
+    ]
+    assert [
+        (task.thread_id, task.title, task.availability) for task in result.projects[0].tasks
+    ] == [("thread-1", "Remote task", "remote")]
+    assert result.issues == ()
     assert _snapshot_tree(tmp_path) == before
 
 

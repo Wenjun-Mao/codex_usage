@@ -162,5 +162,7 @@ def load_sync_selection_inventory(
     sync_dir: Path,
 ) -> SyncSelectionInventory:
     local = build_local_inventory(data)
-    remote = RemoteStore(sync_dir).load_inventory()
+    store = RemoteStore(sync_dir)
+    remote = store.load_inventory()
+    remote = store.materialize_selected(remote, tuple(remote.index.threads))
     return build_sync_selection_inventory(local, remote)
