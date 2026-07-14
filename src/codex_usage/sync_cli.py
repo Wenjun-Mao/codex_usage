@@ -8,7 +8,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Protocol
 
-from codex_usage.discovery import default_session_dir, find_session_dirs
+from codex_usage.discovery import default_session_dir
 from codex_usage.project_identity import normalize_project_key
 from codex_usage.reporting import print_json
 from codex_usage.session_cache import CachedSessionData
@@ -180,10 +180,6 @@ def _print_sync_status_summary(payload: dict[str, object]) -> None:
 
 
 def _sync_session_dirs(*, create: bool) -> list[Path]:
-    try:
-        return find_session_dirs()
-    except FileNotFoundError:
-        pass
     path = default_session_dir().expanduser()
     if create:
         path.mkdir(parents=True, exist_ok=True)

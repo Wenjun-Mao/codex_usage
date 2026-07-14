@@ -10,7 +10,7 @@ import pytest
 
 import codex_usage.cli as cli_module
 import codex_usage.sync_cli as sync_cli
-from codex_usage.sync_cli import normalize_thread_ids
+from codex_usage.sync_cli import _sync_session_dirs, normalize_thread_ids
 
 
 def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
@@ -50,6 +50,7 @@ def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
     assert '"phase":"pulling"' not in pushed.stderr.replace(" ", "")
 
     target_home = tmp_path / "target"
+    (target_home / "archived_sessions").mkdir(parents=True)
     pulled = _run_cli(
         [
             "sync",
@@ -65,6 +66,39 @@ def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
 
     assert json.loads(pulled.stdout)["counts"]["pulled"] == 1
     assert len(list((target_home / "sessions").rglob("*.jsonl"))) == 1
+    assert not list((target_home / "archived_sessions").rglob("*.jsonl"))
+
+
+def test_sync_run_root_creates_active_sessions_when_only_archive_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex_home = tmp_path / "codex"
+    archived_sessions = codex_home / "archived_sessions"
+    archived_sessions.mkdir(parents=True)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    session_dirs = _sync_session_dirs(create=True)
+
+    assert session_dirs == [codex_home / "sessions"]
+    assert (codex_home / "sessions").is_dir()
+    assert archived_sessions not in session_dirs
+
+
+def test_sync_status_root_returns_active_sessions_without_creating_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex_home = tmp_path / "codex"
+    archived_sessions = codex_home / "archived_sessions"
+    archived_sessions.mkdir(parents=True)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    session_dirs = _sync_session_dirs(create=False)
+
+    assert session_dirs == [codex_home / "sessions"]
+    assert not (codex_home / "sessions").exists()
+    assert archived_sessions not in session_dirs
 
 
 def test_cli_sync_help_exposes_only_run_and_status() -> None:
