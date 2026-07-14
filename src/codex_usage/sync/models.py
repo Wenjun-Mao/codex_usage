@@ -259,6 +259,10 @@ class SyncPlan:
     def has_issues(self) -> bool:
         return bool(self.issues)
 
+    @property
+    def has_blocking_issues(self) -> bool:
+        return any(item.action == "issue" for item in self.items)
+
     def to_dict(self) -> dict[str, list[dict[str, Any]]]:
         return {
             "threads": [item.to_dict() for item in self.items],
