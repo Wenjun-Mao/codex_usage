@@ -47,14 +47,10 @@ export type ThreadsCommandOptions = {
   projectTransitions?: ProjectTransitionsSettings;
 };
 
-export const SYNC_CONVERSATION_MODE_VALUES = ["selectedConversations", "allInProjects"] as const;
-export type SyncConversationMode = (typeof SYNC_CONVERSATION_MODE_VALUES)[number];
-
 export type SyncSettings = {
   enabled: boolean;
   dir: string;
-  projectKeys: string[];
-  conversationMode: SyncConversationMode;
+  selectionVersion: number;
   threadIds: string[];
   autoPull: boolean;
   autoPush: boolean;
@@ -77,52 +73,13 @@ export type ProjectChoice = {
   picked: boolean;
 };
 
-export type ThreadChoice = {
-  threadId: string;
-  label: string;
-  description: string;
-  detail: string;
-  totalTokens: number;
-  estimatedSyncBytes: number;
-  picked: boolean;
-};
-
-export type SyncProjectChoice = {
-  key: string;
-  label: string;
-  description: string;
-  detail: string;
-  totalTokens: number;
-  conversationCount: number;
-  estimatedSyncBytes: number;
-  picked: boolean;
-};
-
-export type SyncProjectQuickPickItem = {
-  label: string;
-  description?: string;
-  detail?: string;
-  picked?: boolean;
-  projectKey: string;
-};
-
-export type SyncConversationQuickPickItem = {
-  label: string;
-  description?: string;
-  detail?: string;
-  picked?: boolean;
-  threadId?: string;
-  allConversations?: boolean;
-};
-
 export type SyncMenuAction =
   | "syncNow"
   | "syncStatus"
   | "pauseSync"
   | "resumeSync"
   | "changeFolder"
-  | "changeProjects"
-  | "changeConversations"
+  | "changeTasks"
   | "clearSync"
   | "openSyncFolder";
 
@@ -154,15 +111,15 @@ export type WebviewControlState = {
   range: ReportRange;
   projectKeys: string[];
   theme: ReportTheme;
-  sync?: Pick<SyncSettings, "enabled" | "dir" | "projectKeys" | "conversationMode" | "threadIds">;
+  sync?: Pick<SyncSettings, "enabled" | "dir" | "selectionVersion" | "threadIds">;
   versionLabel?: string;
 };
 
 export const PROJECT_KEYS_STATE_KEY = "projectKeys";
 export const SYNC_DIR_STATE_KEY = "syncDir";
 export const SYNC_THREAD_IDS_STATE_KEY = "syncThreadIds";
-export const SYNC_PROJECT_KEYS_STATE_KEY = "syncProjectKeys";
-export const SYNC_CONVERSATION_MODE_STATE_KEY = "syncConversationMode";
+export const SYNC_SELECTION_VERSION = 2;
+export const SYNC_SELECTION_VERSION_STATE_KEY = "syncSelectionVersion";
 
 export type GlobalStateReader = {
   get<T>(key: string, defaultValue: T): T;
@@ -223,31 +180,32 @@ export function readSyncThreadIdsState(state?: GlobalStateReader): string[] {
   return normalizeThreadIds(state?.get(SYNC_THREAD_IDS_STATE_KEY, []));
 }
 
-export function normalizeSyncConversationMode(value: unknown): SyncConversationMode {
-  return typeof value === "string" && SYNC_CONVERSATION_MODE_VALUES.includes(value as SyncConversationMode)
-    ? (value as SyncConversationMode)
-    : "selectedConversations";
-}
-
-export function readSyncProjectKeysState(state?: GlobalStateReader): string[] {
-  return normalizeProjectKeys(state?.get(SYNC_PROJECT_KEYS_STATE_KEY, []));
-}
-
-export function readSyncConversationModeState(state?: GlobalStateReader): SyncConversationMode {
-  return normalizeSyncConversationMode(state?.get(SYNC_CONVERSATION_MODE_STATE_KEY, "selectedConversations"));
+export function readSyncSelectionVersionState(state?: GlobalStateReader): number {
+  return state?.get<number>(SYNC_SELECTION_VERSION_STATE_KEY, 0) === SYNC_SELECTION_VERSION
+    ? SYNC_SELECTION_VERSION
+    : 0;
 }
 
 export function normalizeSyncSettings(value: unknown): SyncSettings {
   const input = isRecord(value) ? value : {};
+  const selectionVersion = input.selectionVersion === SYNC_SELECTION_VERSION ? SYNC_SELECTION_VERSION : 0;
   return {
     enabled: input.enabled === true,
     dir: typeof input.dir === "string" ? input.dir.trim() : "",
-    projectKeys: normalizeProjectKeys(input.projectKeys),
-    conversationMode: normalizeSyncConversationMode(input.conversationMode),
-    threadIds: normalizeThreadIds(input.threadIds),
-    autoPull: input.autoPull === false ? false : true,
-    autoPush: input.autoPush === false ? false : true,
+    selectionVersion,
+    threadIds: selectionVersion === SYNC_SELECTION_VERSION ? normalizeThreadIds(input.threadIds) : [],
+    autoPull: input.autoPull !== false,
+    autoPush: input.autoPush !== false,
   };
+}
+
+export function hasValidSyncSelection(settings: SyncSettings): boolean {
+  const normalized = normalizeSyncSettings(settings);
+  return Boolean(
+    normalized.dir &&
+    normalized.selectionVersion === SYNC_SELECTION_VERSION &&
+    normalized.threadIds.length > 0
+  );
 }
 
 export function syncBackoffMs(failureCount: number): number {
@@ -269,7 +227,7 @@ export function syncFailureRequiresNotification(message: string): boolean {
     text.includes("conflict") ||
     text.includes("not configured") ||
     text.includes("bundled codex-usage executable was not found") ||
-    text.includes("no codex conversations are selected")
+    text.includes("no codex tasks are selected")
   );
 }
 
@@ -470,129 +428,6 @@ export function parseProjectChoices(summaryJson: string, selectedProjectKeys: st
   return choices;
 }
 
-export function parseThreadChoices(threadsJson: string, selectedThreadIds: string[] = []): ThreadChoice[] {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(threadsJson);
-  } catch (error) {
-    throw new Error(`Could not parse Codex thread JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
-
-  if (!isRecord(payload) || !Array.isArray(payload.threads)) {
-    throw new Error("Codex thread JSON did not contain a threads array.");
-  }
-
-  const selected = new Set(normalizeThreadIds(selectedThreadIds));
-  const seen = new Set<string>();
-  const choices: ThreadChoice[] = [];
-  for (const row of payload.threads) {
-    if (!isRecord(row) || typeof row.thread_id !== "string") {
-      continue;
-    }
-    const threadId = row.thread_id.trim();
-    if (!threadId || seen.has(threadId)) {
-      continue;
-    }
-    const label = typeof row.title === "string" && row.title.trim() ? row.title.trim() : threadId;
-    const project = typeof row.project_label === "string" && row.project_label.trim() ? row.project_label.trim() : "unknown";
-    const updated = typeof row.updated_at === "string" ? row.updated_at : "";
-    const totalTokens = numberValue(row.total_tokens);
-    const estimatedSyncBytes = numberValue(row.estimated_sync_bytes);
-    choices.push({
-      threadId,
-      label,
-      totalTokens,
-      estimatedSyncBytes,
-      description: `${project} | ${formatInt(totalTokens)} tokens | ${formatBytes(estimatedSyncBytes)}`,
-      detail: updated ? `${threadId} | ${updated}` : threadId,
-      picked: selected.has(threadId),
-    });
-    seen.add(threadId);
-  }
-  return choices;
-}
-
-export function parseSyncProjectChoices(threadsJson: string, selectedProjectKeys: string[] = []): SyncProjectChoice[] {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(threadsJson);
-  } catch (error) {
-    throw new Error(`Could not parse Codex thread JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  if (!isRecord(payload) || !Array.isArray(payload.threads)) {
-    throw new Error("Codex thread JSON did not contain a threads array.");
-  }
-
-  const selected = new Set(normalizeProjectKeys(selectedProjectKeys));
-  const byProject = new Map<string, SyncProjectChoice>();
-  for (const row of payload.threads) {
-    if (!isRecord(row) || typeof row.project_key !== "string") {
-      continue;
-    }
-    const key = row.project_key.trim();
-    if (!key) {
-      continue;
-    }
-    const label = stringValue(row.project_label) || key;
-    const totalTokens = numberValue(row.total_tokens);
-    const estimatedBytes = numberValue(row.estimated_sync_bytes);
-    const existing = byProject.get(key);
-    if (existing) {
-      existing.totalTokens += totalTokens;
-      existing.conversationCount += 1;
-      existing.estimatedSyncBytes += estimatedBytes;
-      existing.description = syncProjectDescription(existing.conversationCount, existing.estimatedSyncBytes);
-      continue;
-    }
-    byProject.set(key, {
-      key,
-      label,
-      totalTokens,
-      conversationCount: 1,
-      estimatedSyncBytes: estimatedBytes,
-      description: syncProjectDescription(1, estimatedBytes),
-      detail: key,
-      picked: selected.has(key),
-    });
-  }
-  return [...byProject.values()].sort((a, b) => b.estimatedSyncBytes - a.estimatedSyncBytes);
-}
-
-export function syncProjectQuickPickItems(
-  choices: SyncProjectChoice[],
-  selectedProjectKeys: string[],
-): SyncProjectQuickPickItem[] {
-  const selected = new Set(normalizeProjectKeys(selectedProjectKeys));
-  return choices.map((choice) => ({
-    label: choice.label,
-    description: choice.description,
-    detail: choice.detail,
-    picked: selected.has(choice.key),
-    projectKey: choice.key,
-  }));
-}
-
-export function syncConversationQuickPickItems(
-  choices: ThreadChoice[],
-  mode: SyncConversationMode,
-): SyncConversationQuickPickItem[] {
-  return [
-    {
-      label: "All conversations in selected projects",
-      description: "Automatically include current and future conversations for these projects",
-      picked: mode === "allInProjects",
-      allConversations: true,
-    },
-    ...choices.map((choice) => ({
-      label: choice.label,
-      description: choice.description,
-      detail: choice.detail,
-      picked: mode === "selectedConversations" ? choice.picked : false,
-      threadId: choice.threadId,
-    })),
-  ];
-}
-
 export function parseTransitionChoices(transitionsJson: string): TransitionChoice[] {
   let payload: unknown;
   try {
@@ -786,55 +621,34 @@ function renderWebviewControls(state: WebviewControlState): string {
 
 export function syncControlLabel(sync: WebviewControlState["sync"]): string {
   const normalized = normalizeSyncSettings(sync ?? {});
+  if (!hasValidSyncSelection(normalized)) {
+    return "Sync: Setup required ▾";
+  }
   if (!normalized.enabled) {
     return "Sync: Off ▾";
   }
-  if (!normalized.dir) {
-    return "Sync: Select Folder ▾";
-  }
-  if (normalized.projectKeys.length === 0 && normalized.threadIds.length === 0) {
-    return "Sync: Select Projects ▾";
-  }
-  if (normalized.conversationMode === "allInProjects") {
-    const count = normalized.projectKeys.length;
-    if (count === 1) {
-      return "Sync: All conversations in 1 project ▾";
-    }
-    return `Sync: All conversations in ${count} projects ▾`;
-  }
-  if (normalized.threadIds.length === 0) {
-    return "Sync: Select Conversations ▾";
-  }
   if (normalized.threadIds.length === 1) {
-    return "Sync: 1 conversation ▾";
+    return "Sync: 1 task ▾";
   }
-  return `Sync: ${normalized.threadIds.length} conversations ▾`;
+  return `Sync: ${normalized.threadIds.length} tasks ▾`;
 }
 
 export function syncMenuQuickPickItems(sync: SyncSettings): SyncMenuQuickPickItem[] {
   const settings = normalizeSyncSettings(sync);
-  const projectCount = settings.projectKeys.length;
-  const conversationCount = settings.conversationMode === "allInProjects" ? 0 : settings.threadIds.length;
-  const conversationDescription =
-    settings.conversationMode === "allInProjects"
-      ? projectCount === 1
-        ? "All conversations in 1 project"
-        : `All conversations in ${projectCount} projects`
-      : conversationCount === 1
-        ? "1 selected"
-        : `${conversationCount} selected`;
+  const taskCount = settings.threadIds.length;
+  const taskDescription = taskCount === 1 ? "1 selected" : `${taskCount} selected`;
 
   const primary: SyncMenuQuickPickItem = settings.enabled
     ? {
         label: "$(sync) Sync Now",
-        description: "Pull then push selected conversations",
-        detail: "Run one manual sync using the current folder, project, and conversation selections.",
+        description: "Pull then push selected tasks",
+        detail: "Run one manual sync using the current folder and task selections.",
         action: "syncNow",
       }
     : {
         label: "$(play) Resume Sync",
-        description: settings.dir ? "Paused" : "Setup needed",
-        detail: "Turn sync back on without changing the selected folder, projects, or conversations.",
+        description: hasValidSyncSelection(settings) ? "Paused" : "Setup needed",
+        detail: "Turn sync back on without changing the selected folder or tasks.",
         action: "resumeSync",
       };
 
@@ -842,7 +656,7 @@ export function syncMenuQuickPickItems(sync: SyncSettings): SyncMenuQuickPickIte
     primary,
     {
       label: "$(info) Sync Status",
-      description: "Inspect selected conversations",
+      description: "Inspect selected tasks",
       detail: "Show local/remote state, conflicts, missing files, and memory warnings.",
       action: "syncStatus",
     },
@@ -852,7 +666,7 @@ export function syncMenuQuickPickItems(sync: SyncSettings): SyncMenuQuickPickIte
     items.push({
       label: "$(debug-pause) Pause Sync",
       description: "Stop automatic and manual sync",
-      detail: "Keeps the selected folder, projects, and conversations so sync can be resumed later.",
+      detail: "Keeps the selected folder and tasks so sync can be resumed later.",
       action: "pauseSync",
     });
   }
@@ -865,16 +679,10 @@ export function syncMenuQuickPickItems(sync: SyncSettings): SyncMenuQuickPickIte
       action: "changeFolder",
     },
     {
-      label: "$(repo) Change Projects",
-      description: projectCount === 1 ? "1 selected" : `${projectCount} selected`,
-      detail: "Choose which Codex projects are eligible for sync.",
-      action: "changeProjects",
-    },
-    {
-      label: "$(comment-discussion) Change Conversations",
-      description: conversationDescription,
-      detail: "Choose all conversations in selected projects or specific conversations.",
-      action: "changeConversations",
+      label: "$(checklist) Change Tasks",
+      description: taskDescription,
+      detail: "Choose the exact Codex tasks to sync.",
+      action: "changeTasks",
     },
     {
       label: "$(trash) Clear Sync Setup",
@@ -961,28 +769,6 @@ function transitionDetail(options: {
 
 function formatInt(value: number): string {
   return Math.round(value).toLocaleString("en-US");
-}
-
-function syncProjectDescription(conversationCount: number, estimatedBytes: number): string {
-  const conversationLabel = `${conversationCount} conversation${conversationCount === 1 ? "" : "s"}`;
-  return `${conversationLabel} | ${formatBytes(estimatedBytes)} estimated sync size`;
-}
-
-function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB"];
-  let size = value;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  if (unitIndex === 0) {
-    return `${Math.round(size)} ${units[unitIndex]}`;
-  }
-  return `${size.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function appendCodexSessionDirs(candidates: string[], codexRoot: string): void {

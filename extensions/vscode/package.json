@@ -49,8 +49,7 @@
     "onCommand:codexUsage.reviewProjectTransitions",
     "onCommand:codexUsage.openSyncMenu",
     "onCommand:codexUsage.configureSync",
-    "onCommand:codexUsage.selectSyncProjects",
-    "onCommand:codexUsage.selectSyncThreads",
+    "onCommand:codexUsage.selectSyncTasks",
     "onCommand:codexUsage.syncNow",
     "onCommand:codexUsage.syncStatus",
     "onCommand:codexUsage.openSyncFolder",
@@ -96,12 +95,8 @@
         "title": "Codex Usage: Configure Sync"
       },
       {
-        "command": "codexUsage.selectSyncProjects",
-        "title": "Codex Usage: Select Sync Projects"
-      },
-      {
-        "command": "codexUsage.selectSyncThreads",
-        "title": "Codex Usage: Select Sync Conversations"
+        "command": "codexUsage.selectSyncTasks",
+        "title": "Codex Usage: Select Sync Tasks"
       },
       {
         "command": "codexUsage.syncNow",
@@ -150,17 +145,17 @@
         "codexUsage.sync.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable experimental Codex sync for manual Sync Now and optional automatic pull/push."
+          "description": "Enable experimental Codex task sync for manual Sync Now and optional automatic pull/push."
         },
         "codexUsage.sync.autoPull": {
           "type": "boolean",
           "default": true,
-          "description": "Optional automatic pull of selected conversation updates when VS Code activates or gains focus. Turn off for manual-only sync."
+          "description": "Optional automatic pull of selected task updates when VS Code activates or gains focus. Turn off for manual-only sync."
         },
         "codexUsage.sync.autoPush": {
           "type": "boolean",
           "default": true,
-          "description": "Optional automatic push of selected conversation updates after watched Codex session files change. Turn off for manual-only sync."
+          "description": "Optional automatic push of selected task updates after watched Codex session files change. Turn off for manual-only sync."
         }
       }
     }

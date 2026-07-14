@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -60,17 +62,16 @@ function syncResult(outcome = "completed", overrides = {}) {
   };
 }
 
-test("buildSyncRunArgs passes projects directly without resolving threads", () => {
+test("buildSyncRunArgs passes exact task ids without project selectors", () => {
   assert.deepEqual(
-    buildSyncRunArgs({ syncDir: "/sync", projectKeys: ["repo-a"], threadIds: [], autoTransitions: false }),
-    ["sync", "run", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--project-key", "repo-a"],
+    buildSyncRunArgs({ syncDir: "/sync", threadIds: ["thread-1"], autoTransitions: false }),
+    ["sync", "run", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--thread-id", "thread-1"],
   );
 });
 
 test("sync argument builders normalize repeatable selectors and preserve JSON flag position", () => {
   const options = {
     syncDir: " /sync ",
-    projectKeys: [" repo-a ", "", "repo-a", "repo-b"],
     threadIds: [" thread-1 ", "thread-1", "thread-2"],
     autoTransitions: true,
   };
@@ -81,10 +82,6 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     "--json",
     "--sync-dir",
     "/sync",
-    "--project-key",
-    "repo-a",
-    "--project-key",
-    "repo-b",
     "--thread-id",
     "thread-1",
     "--thread-id",
@@ -96,15 +93,27 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     "--json",
     "--sync-dir",
     "/sync",
-    "--project-key",
-    "repo-a",
-    "--project-key",
-    "repo-b",
     "--thread-id",
     "thread-1",
     "--thread-id",
     "thread-2",
   ]);
+  assert.doesNotMatch(buildSyncRunArgs(options).join(" "), /--project-key/);
+  assert.doesNotMatch(buildSyncStatusArgs(options).join(" "), /--project-key/);
+});
+
+test("sync command options expose only the exact task selector contract", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/syncProtocol.ts"), "utf8");
+  const optionsContract = source.slice(
+    source.indexOf("export type SyncCommandOptions"),
+    source.indexOf("export type SyncProgressPhase"),
+  );
+
+  assert.match(optionsContract, /syncDir:\s*string/);
+  assert.match(optionsContract, /threadIds:\s*string\[\]/);
+  assert.match(optionsContract, /autoTransitions:\s*boolean/);
+  assert.doesNotMatch(optionsContract, /projectKeys/);
+  assert.doesNotMatch(source, /--project-key/);
 });
 
 test("parseSyncProgressLine accepts only typed phase events", () => {
@@ -221,7 +230,7 @@ test("parseSyncStatusSummary counts states and memory warnings", () => {
   assert.equal(summary.remoteChanges, 0);
   assert.equal(summary.fastForwards, 0);
   assert.equal(summary.issues, 0);
-  assert.match(summary.message, /2 conversations/);
+  assert.match(summary.message, /2 tasks/);
   assert.match(summary.message, /1 synced/);
   assert.match(summary.message, /1 conflict/);
 });

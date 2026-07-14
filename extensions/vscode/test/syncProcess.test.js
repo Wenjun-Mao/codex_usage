@@ -321,7 +321,7 @@ test("runSyncProcess reports ENOENT once even if close follows the child error",
   assert.equal(rejectionCount, 1);
 });
 
-test("extension sync orchestration has no resolver or legacy three-command path", () => {
+test("extension sync orchestration uses one inventory-backed task picker contract", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const coreSource = fs.readFileSync(path.join(__dirname, "../src/core.ts"), "utf8");
 
@@ -336,7 +336,20 @@ test("extension sync orchestration has no resolver or legacy three-command path"
     assert.doesNotMatch(extensionSource, new RegExp(`\\b${removedName}\\b`));
     assert.doesNotMatch(coreSource, new RegExp(`\\b${removedName}\\b`));
   }
+  assert.doesNotMatch(extensionSource, /selectSyncProjectSettings|selectSyncThreadSettings|conversationMode/);
+  assert.match(extensionSource, /buildSyncInventoryArgs/);
+  assert.match(extensionSource, /parseSyncInventory/);
+  assert.match(extensionSource, /createQuickPick/);
+  assert.match(extensionSource, /SYNC_SELECTION_VERSION_STATE_KEY/);
+  assert.match(extensionSource, /selectionVersion:\s*readSyncSelectionVersionState/);
+  assert.doesNotMatch(extensionSource, /projectKeys:\s*settings\.sync/);
 
+  assert.equal((extensionSource.match(/registerCommand\("codexUsage\.selectSyncTasks"/g) || []).length, 1);
+  assert.doesNotMatch(extensionSource, /registerCommand\("codexUsage\.selectSync(?:Projects|Threads)"/);
+});
+
+test("routine sync and status validate schema-v2 task selection before spawning", () => {
+  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const runSyncSource = extensionSource.slice(
     extensionSource.indexOf("async function runSyncNow"),
     extensionSource.indexOf("async function showSyncStatus"),
@@ -345,20 +358,108 @@ test("extension sync orchestration has no resolver or legacy three-command path"
     extensionSource.indexOf("async function showSyncStatus"),
     extensionSource.indexOf("async function openSyncFolder"),
   );
+
+  const runGuard = runSyncSource.indexOf("if (!hasValidSyncSelection(settings.sync))");
+  const runSpawn = runSyncSource.indexOf("runSyncProcess(");
+  assert.ok(runGuard >= 0 && runGuard < runSpawn);
+  assert.match(runSyncSource.slice(runGuard, runSpawn), /return false;/);
   assert.equal((runSyncSource.match(/runSyncProcess\(/g) || []).length, 1);
+  assert.doesNotMatch(runSyncSource, /buildSyncInventoryArgs|parseSyncInventory|runCodexUsage\(/);
   assert.doesNotMatch(runSyncSource, /buildThreadsArgs|sync\", \"status|sync\", \"import|sync\", \"export/);
   assert.match(
     runSyncSource,
     /outcomeStatus \?\? \(message\.toLowerCase\(\)\.includes\("conflict"\) \? "conflict" : "issue"\)/,
   );
+
+  const statusGuard = statusSource.indexOf("if (!hasValidSyncSelection(settings.sync))");
+  const statusSpawn = statusSource.indexOf("runCodexUsage(");
+  assert.ok(statusGuard >= 0 && statusGuard < statusSpawn);
+  assert.match(statusSource.slice(statusGuard, statusSpawn), /return;/);
   assert.equal((statusSource.match(/runCodexUsage\(/g) || []).length, 1);
   assert.equal((statusSource.match(/buildSyncStatusArgs\(/g) || []).length, 1);
-  assert.doesNotMatch(statusSource, /buildThreadsArgs|runSyncProcess/);
-  assert.equal((extensionSource.match(/buildThreadsArgs\(/g) || []).length, 2);
+  assert.doesNotMatch(statusSource, /buildSyncInventoryArgs|parseSyncInventory|buildThreadsArgs|runSyncProcess/);
 
   for (const commandSource of [runSyncSource, statusSource]) {
-    assert.match(commandSource, /conversationMode === "allInProjects"\s*\? settings\.sync\.projectKeys\s*:\s*\[\]/);
-    assert.match(commandSource, /conversationMode === "selectedConversations"\s*\? settings\.sync\.threadIds\s*:\s*\[\]/);
+    assert.match(commandSource, /threadIds:\s*settings\.sync\.threadIds/);
+    assert.doesNotMatch(commandSource, /projectKeys|conversationMode/);
     assert.match(commandSource, /autoTransitions: settings\.projectTransitions\.autoDetect/);
   }
+});
+
+test("folder and exact task setup commits only after picker acceptance", () => {
+  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
+  const selectionSource = extensionSource.slice(
+    extensionSource.indexOf("async function selectSyncTaskSettings"),
+    extensionSource.indexOf("async function configureSync"),
+  );
+  const configureSource = extensionSource.slice(
+    extensionSource.indexOf("async function configureSync"),
+    extensionSource.indexOf("async function showSyncMenu"),
+  );
+  const changeFolderSource = extensionSource.slice(
+    extensionSource.indexOf("async function changeSyncFolder"),
+    extensionSource.indexOf("async function clearSyncSetup"),
+  );
+
+  assert.match(selectionSource, /buildSyncInventoryArgs\(\{\s*syncDir,/);
+  assert.match(selectionSource, /const inventory = parseSyncInventory\(result\.stdout\)/);
+  assert.match(selectionSource, /buildTaskPickerItems\(inventory, settings\.sync\.threadIds\)/);
+  assert.match(selectionSource, /showSyncTaskPicker\(rows, settings\.sync\.threadIds\)/);
+
+  const inventoryRun = selectionSource.indexOf("runCodexUsage(");
+  const selectionGuard = selectionSource.indexOf("if (!selectedThreadIds)");
+  const enabledWrite = selectionSource.indexOf('"sync.enabled"');
+  const stateWrites = [...selectionSource.matchAll(/context\.globalState\.update\(/g)].map((match) => match.index);
+  assert.ok(inventoryRun >= 0 && inventoryRun < selectionGuard);
+  assert.ok(enabledWrite > selectionGuard);
+  assert.equal(stateWrites.length, 3);
+  assert.ok(stateWrites.every((index) => index > selectionGuard));
+  assert.match(selectionSource.slice(selectionGuard, stateWrites[0]), /return false;/);
+  assert.match(selectionSource, /globalState\.update\(SYNC_DIR_STATE_KEY, syncDir\)/);
+  assert.match(selectionSource, /globalState\.update\(SYNC_THREAD_IDS_STATE_KEY, selectedThreadIds\)/);
+  assert.match(selectionSource, /globalState\.update\(SYNC_SELECTION_VERSION_STATE_KEY, SYNC_SELECTION_VERSION\)/);
+
+  assert.ok(configureSource.indexOf("pickSyncFolder(") < configureSource.indexOf("selectSyncTaskSettings("));
+  assert.ok(changeFolderSource.indexOf("pickSyncFolder(") < changeFolderSource.indexOf("selectSyncTaskSettings("));
+});
+
+test("task picker adapter canonicalizes hierarchical selections and settles once", () => {
+  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
+  const pickerSource = extensionSource.slice(
+    extensionSource.indexOf("function showSyncTaskPicker"),
+    extensionSource.indexOf("async function selectSyncTaskSettings"),
+  );
+
+  assert.match(pickerSource, /createQuickPick<TaskQuickPickItem>\(\)/);
+  assert.match(pickerSource, /canSelectMany = true/);
+  assert.match(pickerSource, /kind:\s*vscode\.QuickPickItemKind\.Separator/);
+  assert.doesNotMatch(pickerSource, /\.\.\.row/);
+  assert.ok(
+    pickerSource.indexOf("reduceTaskSelection(selectedThreadIds, removed") <
+      pickerSource.indexOf("reduceTaskSelection(selectedThreadIds, added"),
+  );
+  assert.match(pickerSource, /selectedPickerItemIds\(rows, selectedThreadIds\)/);
+  assert.match(pickerSource, /Select at least one Codex task/);
+  assert.match(pickerSource, /let settled = false/);
+});
+
+test("clear and migration retain only the deprecated folder migration contract", () => {
+  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
+  const clearSource = extensionSource.slice(
+    extensionSource.indexOf("async function clearSyncSetup"),
+    extensionSource.indexOf("async function refreshSyncUi"),
+  );
+  const migrationSource = extensionSource.slice(
+    extensionSource.indexOf("async function migrateDeprecatedSyncSettings"),
+    extensionSource.indexOf("function readSettings"),
+  );
+
+  const versionClear = clearSource.indexOf("globalState.update(SYNC_SELECTION_VERSION_STATE_KEY, 0)");
+  const folderClear = clearSource.indexOf("globalState.update(SYNC_DIR_STATE_KEY, undefined)");
+  const idsClear = clearSource.indexOf("globalState.update(SYNC_THREAD_IDS_STATE_KEY, undefined)");
+  assert.ok(versionClear >= 0 && versionClear < folderClear && folderClear < idsClear);
+  assert.doesNotMatch(clearSource, /SYNC_PROJECT_KEYS_STATE_KEY|SYNC_CONVERSATION_MODE_STATE_KEY/);
+
+  assert.match(migrationSource, /config\.get<string>\("sync\.dir", ""\)/);
+  assert.doesNotMatch(migrationSource, /sync\.threadIds|sync\.projectKeys|sync\.conversationMode/);
 });

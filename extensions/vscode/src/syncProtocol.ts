@@ -1,6 +1,5 @@
 export type SyncCommandOptions = {
   syncDir: string;
-  projectKeys: string[];
   threadIds: string[];
   autoTransitions: boolean;
 };
@@ -127,7 +126,6 @@ function buildSyncArgs(command: "run" | "status", options: SyncCommandOptions): 
   if (options.autoTransitions === false) {
     args.push("--no-auto-transitions");
   }
-  appendSelectors(args, "--project-key", options.projectKeys);
   appendSelectors(args, "--thread-id", options.threadIds);
   return args;
 }
@@ -362,7 +360,7 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
   }
 
   const total = rows.length;
-  const parts = [`${total} conversation${total === 1 ? "" : "s"}`, `${synced} synced`];
+  const parts = [`${total} task${total === 1 ? "" : "s"}`, `${synced} synced`];
   appendCount(parts, localChanges, "local change");
   appendCount(parts, remoteChanges, "remote change");
   appendCount(parts, fastForwards, "fast-forward");

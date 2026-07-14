@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 const packageJson = require("../package.json");
 
+const core = require("../out/core");
 const {
   buildReportArgs,
   buildCodexUsageEnv,
@@ -19,18 +20,15 @@ const {
   SYNC_AUTO_WARNING_COOLDOWN_MS,
   SYNC_FILE_CHANGE_DEBOUNCE_MS,
   SYNC_FOCUS_COOLDOWN_MS,
-  normalizeSyncConversationMode,
+  hasValidSyncSelection,
   normalizeSyncSettings,
   normalizeTheme,
   normalizeRange,
   parseProjectChoices,
-  parseSyncProjectChoices,
   readProjectKeysState,
-  readSyncConversationModeState,
   readSyncDirState,
-  readSyncProjectKeysState,
+  readSyncSelectionVersionState,
   readSyncThreadIdsState,
-  parseThreadChoices,
   parseTransitionChoices,
   renderErrorHtml,
   renderLoadingHtml,
@@ -38,13 +36,13 @@ const {
   shouldRefreshAfterSyncSetupStep,
   syncBackoffMs,
   syncControlLabel,
-  syncConversationQuickPickItems,
   syncFailureRequiresNotification,
   syncMenuQuickPickItems,
-  syncProjectQuickPickItems,
   syncStatusKindLabel,
+  SYNC_SELECTION_VERSION,
+  SYNC_SELECTION_VERSION_STATE_KEY,
   WEBVIEW_COMMANDS,
-} = require("../out/core");
+} = core;
 
 test("buildReportArgs includes optional CLI arguments for the bundled executable", () => {
   const args = buildReportArgs({
@@ -156,22 +154,20 @@ test("normalizeTheme falls back to auto for unknown settings", () => {
   assert.equal(normalizeTheme(undefined), "auto");
 });
 
-test("normalizeSyncSettings trims folder and thread ids with safe defaults", () => {
+test("normalizeSyncSettings accepts exact thread ids only for selection schema version 2", () => {
   assert.deepEqual(
     normalizeSyncSettings({
       enabled: true,
-      dir: " D:/sync ",
-      projectKeys: [" repo-a ", "repo-b"],
-      conversationMode: "allInProjects",
+      dir: " D:/Sync ",
+      selectionVersion: 2,
       threadIds: [" t1 ", "", "t1", "t2"],
       autoPull: false,
       autoPush: true,
     }),
     {
       enabled: true,
-      dir: "D:/sync",
-      projectKeys: ["repo-a", "repo-b"],
-      conversationMode: "allInProjects",
+      dir: "D:/Sync",
+      selectionVersion: 2,
       threadIds: ["t1", "t2"],
       autoPull: false,
       autoPush: true,
@@ -180,12 +176,13 @@ test("normalizeSyncSettings trims folder and thread ids with safe defaults", () 
   assert.deepEqual(normalizeSyncSettings({}), {
     enabled: false,
     dir: "",
-    projectKeys: [],
-    conversationMode: "selectedConversations",
+    selectionVersion: 0,
     threadIds: [],
     autoPull: true,
     autoPush: true,
   });
+  assert.deepEqual(normalizeSyncSettings({ threadIds: ["legacy"] }).threadIds, []);
+  assert.deepEqual(normalizeSyncSettings({ selectionVersion: 1, threadIds: ["legacy"] }).threadIds, []);
 });
 
 test("project keys are normalized from extension global state", () => {
@@ -198,7 +195,7 @@ test("project keys are normalized from extension global state", () => {
   assert.deepEqual(readProjectKeysState(state), ["repo-a", "repo-b"]);
 });
 
-test("sync folder and thread ids are normalized from extension global state", () => {
+test("sync folder, selection version, and thread ids are normalized from extension global state", () => {
   const state = {
     get(key, fallback) {
       if (key === "syncDir") {
@@ -207,40 +204,67 @@ test("sync folder and thread ids are normalized from extension global state", ()
       if (key === "syncThreadIds") {
         return [" t1 ", "", "t1", "t2"];
       }
+      if (key === "syncSelectionVersion") {
+        return 2;
+      }
       return fallback;
     },
   };
 
   assert.equal(readSyncDirState(state), "D:/CodexSync");
+  assert.equal(readSyncSelectionVersionState(state), 2);
   assert.deepEqual(readSyncThreadIdsState(state), ["t1", "t2"]);
+  assert.equal(SYNC_SELECTION_VERSION, 2);
+  assert.equal(SYNC_SELECTION_VERSION_STATE_KEY, "syncSelectionVersion");
 });
 
-test("sync project keys and conversation mode are normalized from extension global state", () => {
+test("sync selection version rejects legacy and unknown global state", () => {
   const state = {
     get(key, fallback) {
-      if (key === "syncProjectKeys") {
-        return [" repo-a ", "", "repo-a", "repo-b"];
-      }
-      if (key === "syncConversationMode") {
-        return "allInProjects";
-      }
-      return fallback;
+      return key === "syncSelectionVersion" ? 1 : fallback;
     },
   };
 
-  assert.deepEqual(readSyncProjectKeysState(state), ["repo-a", "repo-b"]);
-  assert.equal(readSyncConversationModeState(state), "allInProjects");
-  assert.equal(normalizeSyncConversationMode("selectedConversations"), "selectedConversations");
-  assert.equal(normalizeSyncConversationMode("allInProjects"), "allInProjects");
-  assert.equal(normalizeSyncConversationMode("other"), "selectedConversations");
+  assert.equal(readSyncSelectionVersionState(state), 0);
+  assert.equal(readSyncSelectionVersionState(undefined), 0);
+});
+
+test("sync selection validity requires a folder, schema version 2, and at least one exact task", () => {
+  assert.equal(
+    hasValidSyncSelection(
+      normalizeSyncSettings({
+        enabled: true,
+        dir: "D:/Sync",
+        selectionVersion: 2,
+        threadIds: ["t1"],
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    hasValidSyncSelection(
+      normalizeSyncSettings({
+        enabled: true,
+        dir: "D:/Sync",
+        selectionVersion: 1,
+        threadIds: ["legacy"],
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    hasValidSyncSelection(
+      normalizeSyncSettings({ enabled: true, dir: "D:/Sync", selectionVersion: 2, threadIds: [] }),
+    ),
+    false,
+  );
 });
 
 test("sync menu exposes pause resume change and clear actions", () => {
   const enabledItems = syncMenuQuickPickItems({
     enabled: true,
     dir: "D:/CodexSync",
-    projectKeys: ["repo-a"],
-    conversationMode: "selectedConversations",
+    selectionVersion: 2,
     threadIds: ["t1"],
     autoPull: true,
     autoPush: true,
@@ -253,22 +277,20 @@ test("sync menu exposes pause resume change and clear actions", () => {
       "syncStatus",
       "pauseSync",
       "changeFolder",
-      "changeProjects",
-      "changeConversations",
+      "changeTasks",
       "clearSync",
       "openSyncFolder",
     ],
   );
   assert.match(enabledItems[2].label, /Pause Sync/);
   assert.match(enabledItems[4].description, /1 selected/);
-  assert.match(enabledItems[5].description, /1 selected/);
-  assert.match(enabledItems[6].detail, /does not delete/i);
+  assert.equal(enabledItems[4].label, "$(checklist) Change Tasks");
+  assert.match(enabledItems[5].detail, /does not delete/i);
 
   const pausedItems = syncMenuQuickPickItems({
     enabled: false,
     dir: "D:/CodexSync",
-    projectKeys: ["repo-a"],
-    conversationMode: "selectedConversations",
+    selectionVersion: 2,
     threadIds: ["t1"],
     autoPull: true,
     autoPush: true,
@@ -297,7 +319,7 @@ test("syncFailureRequiresNotification only elevates action-needed auto failures"
   assert.equal(syncFailureRequiresNotification("Codex sync has 1 conflict. Run Codex Usage: Sync Status."), true);
   assert.equal(syncFailureRequiresNotification("Bundled codex-usage executable was not found at C:/x/codex-usage.exe."), true);
   assert.equal(syncFailureRequiresNotification("Codex sync is not configured."), true);
-  assert.equal(syncFailureRequiresNotification("No Codex conversations are selected for sync."), true);
+  assert.equal(syncFailureRequiresNotification("No Codex tasks are selected for sync."), true);
   assert.equal(syncFailureRequiresNotification("PermissionError: [WinError 5] Access is denied"), false);
   assert.equal(syncFailureRequiresNotification("codex-usage exited with code 1"), false);
 });
@@ -321,6 +343,7 @@ test("empty sync global state uses safe defaults", () => {
   };
 
   assert.equal(readSyncDirState(state), "");
+  assert.equal(readSyncSelectionVersionState(state), 0);
   assert.deepEqual(readSyncThreadIdsState(state), []);
 });
 
@@ -431,111 +454,6 @@ test("parseProjectChoices reads project rows for QuickPick", () => {
   assert.equal(choices[1].picked, true);
 });
 
-test("parseThreadChoices reads selected thread rows for QuickPick", () => {
-  const choices = parseThreadChoices(
-    JSON.stringify({
-      threads: [
-        {
-          thread_id: "t1",
-          title: "Build sync",
-          project_label: "codex_usage",
-          updated_at: "2026-05-23T18:00:00Z",
-          total_tokens: 12345,
-        },
-      ],
-    }),
-    ["t1"],
-  );
-
-  assert.equal(choices.length, 1);
-  assert.equal(choices[0].threadId, "t1");
-  assert.equal(choices[0].label, "Build sync");
-  assert.match(choices[0].description, /codex_usage/);
-  assert.match(choices[0].description, /0 B/);
-  assert.equal(choices[0].picked, true);
-});
-
-test("parseSyncProjectChoices groups conversations and estimates disk usage by project", () => {
-  const choices = parseSyncProjectChoices(
-    JSON.stringify({
-      threads: [
-        {
-          thread_id: "thread-1",
-          title: "One",
-          project_key: "repo-a",
-          project_label: "repo-a",
-          total_tokens: 1000,
-          estimated_sync_bytes: 1536,
-        },
-        {
-          thread_id: "thread-2",
-          title: "Two",
-          project_key: "repo-a",
-          project_label: "repo-a",
-          total_tokens: 2000,
-          estimated_sync_bytes: 2048,
-        },
-      ],
-    }),
-    ["repo-a"],
-  );
-
-  assert.equal(choices.length, 1);
-  assert.equal(choices[0].key, "repo-a");
-  assert.equal(choices[0].conversationCount, 2);
-  assert.equal(choices[0].estimatedSyncBytes, 3584);
-  assert.match(choices[0].description, /2 conversations/);
-  assert.match(choices[0].description, /3\.5 KB/);
-  assert.equal(choices[0].picked, true);
-});
-
-test("syncProjectQuickPickItems adds explicit project choices without exposing raw settings", () => {
-  const items = syncProjectQuickPickItems(
-    [
-      {
-        key: "repo-a",
-        label: "repo-a",
-        description: "1 conversation | 1.5 KB estimated sync size",
-        detail: "https://github.com/example/repo-a",
-        totalTokens: 1000,
-        conversationCount: 1,
-        estimatedSyncBytes: 1536,
-        picked: false,
-      },
-    ],
-    ["repo-a"],
-  );
-
-  assert.equal(items.length, 1);
-  assert.equal(items[0].label, "repo-a");
-  assert.equal(items[0].projectKey, "repo-a");
-  assert.equal(items[0].picked, true);
-});
-
-test("syncConversationQuickPickItems adds an all-conversations default item", () => {
-  const items = syncConversationQuickPickItems(
-    [
-      {
-        threadId: "thread-1",
-        label: "Review dashboard",
-        description: "codex_usage | 1,000 tokens | 1.5 KB",
-        detail: "thread-1 | 2026-05-24T10:00:00Z",
-        totalTokens: 1000,
-        estimatedSyncBytes: 1536,
-        picked: false,
-      },
-    ],
-    "allInProjects",
-  );
-
-  assert.equal(items[0].label, "All conversations in selected projects");
-  assert.equal(items[0].allConversations, true);
-  assert.equal(items[0].picked, true);
-  assert.equal(items[1].label, "Review dashboard");
-  assert.match(items[1].description, /1\.5 KB/);
-  assert.equal(items[1].threadId, "thread-1");
-});
-
 test("parseTransitionChoices reads detected project transitions for QuickPick", () => {
   const choices = parseTransitionChoices(
     JSON.stringify({
@@ -579,8 +497,7 @@ test("injectWebviewControls adds command links without scripts or external URLs"
     sync: {
       enabled: true,
       dir: "D:/CodexSync",
-      projectKeys: ["repo-a"],
-      conversationMode: "selectedConversations",
+      selectionVersion: 2,
       threadIds: ["t1", "t2"],
     },
     versionLabel: "v0.1.9",
@@ -596,7 +513,7 @@ test("injectWebviewControls adds command links without scripts or external URLs"
   assert.doesNotMatch(out, /command:codexUsage.reviewProjectTransitions/);
   assert.match(out, /Projects: 2 selected/);
   assert.match(out, /Theme: Night/);
-  assert.match(out, /Sync: 2 conversations/);
+  assert.match(out, /Sync: 2 tasks/);
   assert.doesNotMatch(out, />Sync Now<\/a>/);
   assert.doesNotMatch(out, />Sync Status<\/a>/);
   assert.doesNotMatch(out, />Transitions<\/a>/);
@@ -607,28 +524,30 @@ test("injectWebviewControls adds command links without scripts or external URLs"
 
 test("sync control labels read as menu controls", () => {
   assert.equal(
-    syncControlLabel({ enabled: false, dir: "", projectKeys: [], conversationMode: "selectedConversations", threadIds: [] }),
+    syncControlLabel({ enabled: false, dir: "", selectionVersion: 0, threadIds: [] }),
+    "Sync: Setup required ▾",
+  );
+  assert.equal(
+    syncControlLabel({
+      enabled: true,
+      dir: "D:/CodexSync",
+      selectionVersion: 2,
+      threadIds: ["t1"],
+    }),
+    "Sync: 1 task ▾",
+  );
+  assert.equal(
+    syncControlLabel({
+      enabled: false,
+      dir: "D:/CodexSync",
+      selectionVersion: 2,
+      threadIds: ["t1", "t2"],
+    }),
     "Sync: Off ▾",
   );
   assert.equal(
-    syncControlLabel({
-      enabled: true,
-      dir: "D:/CodexSync",
-      projectKeys: ["repo-a"],
-      conversationMode: "selectedConversations",
-      threadIds: ["t1"],
-    }),
-    "Sync: 1 conversation ▾",
-  );
-  assert.equal(
-    syncControlLabel({
-      enabled: true,
-      dir: "D:/CodexSync",
-      projectKeys: ["repo-a", "repo-b"],
-      conversationMode: "allInProjects",
-      threadIds: [],
-    }),
-    "Sync: All conversations in 2 projects ▾",
+    syncControlLabel({ enabled: true, dir: "D:/CodexSync", selectionVersion: 1, threadIds: ["legacy"] }),
+    "Sync: Setup required ▾",
   );
 });
 
@@ -640,36 +559,36 @@ test("injectWebviewControls labels unconfigured sync states", () => {
       range: "7d",
       projectKeys: [],
       theme: "auto",
-      sync: { enabled: false, dir: "", projectKeys: [], conversationMode: "selectedConversations", threadIds: [] },
+      sync: { enabled: false, dir: "", selectionVersion: 0, threadIds: [] },
     }),
-    /Sync: Off/,
+    /Sync: Setup required/,
   );
   assert.match(
     injectWebviewControls(html, {
       range: "7d",
       projectKeys: [],
       theme: "auto",
-      sync: { enabled: true, dir: "", projectKeys: [], conversationMode: "selectedConversations", threadIds: [] },
+      sync: { enabled: true, dir: "", selectionVersion: 2, threadIds: ["t1"] },
     }),
-    /Sync: Select Folder/,
+    /Sync: Setup required/,
   );
   assert.match(
     injectWebviewControls(html, {
       range: "7d",
       projectKeys: [],
       theme: "auto",
-      sync: { enabled: true, dir: "D:\/CodexSync", projectKeys: [], conversationMode: "selectedConversations", threadIds: [] },
+      sync: { enabled: true, dir: "D:\/CodexSync", selectionVersion: 1, threadIds: ["legacy"] },
     }),
-    /Sync: Select Projects/,
+    /Sync: Setup required/,
   );
   assert.match(
     injectWebviewControls(html, {
       range: "7d",
       projectKeys: [],
       theme: "auto",
-      sync: { enabled: true, dir: "D:\/CodexSync", projectKeys: ["repo-a", "repo-b"], conversationMode: "allInProjects", threadIds: [] },
+      sync: { enabled: true, dir: "D:\/CodexSync", selectionVersion: 2, threadIds: ["t1", "t2"] },
     }),
-    /Sync: All conversations in 2 projects/,
+    /Sync: 2 tasks/,
   );
 });
 
@@ -713,15 +632,39 @@ test("package metadata describes manual-only sync mode clearly", () => {
   assert.match(properties["codexUsage.sync.enabled"].description, /optional automatic/i);
   assert.match(properties["codexUsage.sync.autoPull"].description, /optional/i);
   assert.match(properties["codexUsage.sync.autoPush"].description, /optional/i);
-  assert.doesNotMatch(properties["codexUsage.sync.enabled"].description, /selected-thread/i);
+  for (const key of ["codexUsage.sync.enabled", "codexUsage.sync.autoPull", "codexUsage.sync.autoPush"]) {
+    assert.match(properties[key].description, /task/i);
+    assert.doesNotMatch(properties[key].description, /conversation|project/i);
+  }
 });
 
-test("package metadata uses project and conversation wording for sync commands", () => {
+test("package metadata contributes one exact task selection command", () => {
   const commands = new Map(packageJson.contributes.commands.map((item) => [item.command, item.title]));
 
   assert.equal(commands.get("codexUsage.openSyncMenu"), "Codex Usage: Sync Menu");
-  assert.equal(commands.get("codexUsage.selectSyncProjects"), "Codex Usage: Select Sync Projects");
-  assert.equal(commands.get("codexUsage.selectSyncThreads"), "Codex Usage: Select Sync Conversations");
+  assert.equal(commands.get("codexUsage.selectSyncTasks"), "Codex Usage: Select Sync Tasks");
+  assert.equal(commands.has("codexUsage.selectSyncProjects"), false);
+  assert.equal(commands.has("codexUsage.selectSyncThreads"), false);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncTasks"), true);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncProjects"), false);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncThreads"), false);
+});
+
+test("core no longer exports legacy sync project or conversation selection contracts", () => {
+  for (const name of [
+    "SYNC_CONVERSATION_MODE_VALUES",
+    "SYNC_PROJECT_KEYS_STATE_KEY",
+    "SYNC_CONVERSATION_MODE_STATE_KEY",
+    "normalizeSyncConversationMode",
+    "readSyncProjectKeysState",
+    "readSyncConversationModeState",
+    "parseSyncProjectChoices",
+    "parseThreadChoices",
+    "syncProjectQuickPickItems",
+    "syncConversationQuickPickItems",
+  ]) {
+    assert.equal(core[name], undefined, `${name} should not be exported`);
+  }
 });
 
 test("windows VSIX package script creates the release output directory", () => {
