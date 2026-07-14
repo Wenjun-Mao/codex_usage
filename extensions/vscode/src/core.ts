@@ -1,5 +1,8 @@
 import * as path from "path";
 
+export { parseSyncStatusSummary } from "./syncProtocol";
+export type { SyncStatusSummary } from "./syncProtocol";
+
 export const RANGE_VALUES = ["today", "yesterday", "7d", "30d", "month", "all"] as const;
 export type ReportRange = (typeof RANGE_VALUES)[number];
 export const THEME_VALUES = ["auto", "day", "night"] as const;
@@ -154,18 +157,6 @@ export type TransitionChoice = {
     evidence: string[];
     thread_ids: string[];
   };
-};
-
-export type SyncStatusSummary = {
-  total: number;
-  synced: number;
-  conflicts: number;
-  missing: number;
-  memoryWarnings: number;
-  localChanges: number;
-  remoteChanges: number;
-  fastForwards: number;
-  message: string;
 };
 
 export type WebviewControlState = {
@@ -689,76 +680,6 @@ export function parseTransitionChoices(transitionsJson: string): TransitionChoic
     });
   }
   return choices;
-}
-
-export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(statusJson);
-  } catch (error) {
-    throw new Error(`Could not parse Codex sync status JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const rows = isRecord(payload) && Array.isArray(payload.threads) ? payload.threads : [];
-  let synced = 0;
-  let conflicts = 0;
-  let missing = 0;
-  let memoryWarnings = 0;
-  let localChanges = 0;
-  let remoteChanges = 0;
-  let fastForwards = 0;
-  for (const row of rows) {
-    if (!isRecord(row)) {
-      continue;
-    }
-    const state = typeof row.state === "string" ? row.state : "";
-    if (state === "synced") {
-      synced += 1;
-    } else if (state === "conflict") {
-      conflicts += 1;
-    } else if (state === "missing") {
-      missing += 1;
-    } else if (state === "local_ahead" || state === "local_only") {
-      localChanges += 1;
-    } else if (state === "remote_ahead" || state === "remote_only") {
-      remoteChanges += 1;
-    } else if (state === "fast_forward_push" || state === "fast_forward_pull") {
-      fastForwards += 1;
-    }
-    if (numberValue(row.memory_database_rows) > 0) {
-      memoryWarnings += 1;
-    }
-  }
-  const total = rows.length;
-  const parts = [`${total} conversation${total === 1 ? "" : "s"}`, `${synced} synced`];
-  if (localChanges) {
-    parts.push(`${localChanges} local change${localChanges === 1 ? "" : "s"}`);
-  }
-  if (remoteChanges) {
-    parts.push(`${remoteChanges} remote change${remoteChanges === 1 ? "" : "s"}`);
-  }
-  if (fastForwards) {
-    parts.push(`${fastForwards} fast-forward${fastForwards === 1 ? "" : "s"}`);
-  }
-  if (conflicts) {
-    parts.push(`${conflicts} conflict${conflicts === 1 ? "" : "s"}`);
-  }
-  if (missing) {
-    parts.push(`${missing} missing`);
-  }
-  if (memoryWarnings) {
-    parts.push(`${memoryWarnings} memory warning${memoryWarnings === 1 ? "" : "s"}`);
-  }
-  return {
-    total,
-    synced,
-    conflicts,
-    missing,
-    memoryWarnings,
-    localChanges,
-    remoteChanges,
-    fastForwards,
-    message: parts.join(", "),
-  };
 }
 
 export function injectWebviewControls(reportHtml: string, state: WebviewControlState): string {

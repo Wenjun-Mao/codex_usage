@@ -33,7 +33,6 @@ const {
   readSyncDirState,
   readSyncProjectKeysState,
   readSyncThreadIdsState,
-  parseSyncStatusSummary,
   parseThreadChoices,
   parseTransitionChoices,
   renderErrorHtml,
@@ -600,48 +599,6 @@ test("parseTransitionChoices reads detected project transitions for QuickPick", 
 test("parseTransitionChoices rejects invalid JSON payloads", () => {
   assert.throws(() => parseTransitionChoices("{"), /Could not parse Codex transition JSON/);
   assert.throws(() => parseTransitionChoices("{}"), /project_transitions array/);
-});
-
-test("parseSyncStatusSummary counts states and memory warnings", () => {
-  const summary = parseSyncStatusSummary(
-    JSON.stringify({
-      threads: [
-        { thread_id: "t1", state: "synced", memory_database_rows: 0 },
-        { thread_id: "t2", state: "conflict", memory_database_rows: 2 },
-      ],
-    }),
-  );
-
-  assert.equal(summary.total, 2);
-  assert.equal(summary.synced, 1);
-  assert.equal(summary.conflicts, 1);
-  assert.equal(summary.memoryWarnings, 1);
-  assert.equal(summary.localChanges, 0);
-  assert.equal(summary.remoteChanges, 0);
-  assert.equal(summary.fastForwards, 0);
-  assert.match(summary.message, /2 conversations/);
-  assert.match(summary.message, /1 synced/);
-  assert.match(summary.message, /1 conflict/);
-});
-
-test("parseSyncStatusSummary describes planned pull push and fast-forward states", () => {
-  const summary = parseSyncStatusSummary(
-    JSON.stringify({
-      threads: [
-        { thread_id: "a", state: "local_ahead" },
-        { thread_id: "b", state: "remote_ahead" },
-        { thread_id: "c", state: "fast_forward_push" },
-        { thread_id: "d", state: "fast_forward_pull" },
-        { thread_id: "e", state: "synced" },
-      ],
-    }),
-  );
-
-  assert.equal(summary.total, 5);
-  assert.equal(summary.synced, 1);
-  assert.match(summary.message, /1 local change/);
-  assert.match(summary.message, /1 remote change/);
-  assert.match(summary.message, /2 fast-forward/);
 });
 
 test("injectWebviewControls adds command links without scripts or external URLs", () => {
