@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import shutil
@@ -7,9 +8,41 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from codex_usage.sync.models import SyncFileSnapshot
+
+
+_TRANSIENT_ERRNOS = frozenset(
+    {
+        errno.EAGAIN,
+        errno.EBUSY,
+        errno.EINTR,
+        errno.ETIMEDOUT,
+        *(
+            value
+            for name in ("ESTALE", "ETXTBSY")
+            if (value := getattr(errno, name, None)) is not None
+        ),
+    }
+)
+_TRANSIENT_WINERRORS = frozenset(
+    {
+        32,  # ERROR_SHARING_VIOLATION
+        33,  # ERROR_LOCK_VIOLATION
+        54,  # ERROR_NETWORK_BUSY
+        121,  # ERROR_SEM_TIMEOUT
+        170,  # ERROR_BUSY
+        1237,  # ERROR_RETRY
+    }
+)
+_PERMANENT_FILESYSTEM_ERRORS = (FileNotFoundError, PermissionError, NotADirectoryError, IsADirectoryError)
+
+
+def _is_transient_filesystem_error(error: BaseException) -> bool:
+    if not isinstance(error, OSError) or isinstance(error, _PERMANENT_FILESYSTEM_ERRORS):
+        return False
+    return error.errno in _TRANSIENT_ERRNOS or getattr(error, "winerror", None) in _TRANSIENT_WINERRORS
 
 
 def snapshot_file(path: Path | None) -> SyncFileSnapshot:
@@ -67,7 +100,7 @@ def _new_sibling_temp_path(target: Path) -> Path:
 
 
 @retry(
-    retry=retry_if_exception_type(OSError),
+    retry=retry_if_exception(_is_transient_filesystem_error),
     wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
     stop=stop_after_attempt(4),
     reraise=True,
@@ -77,7 +110,7 @@ def _read_bytes(path: Path) -> bytes:
 
 
 @retry(
-    retry=retry_if_exception_type(OSError),
+    retry=retry_if_exception(_is_transient_filesystem_error),
     wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
     stop=stop_after_attempt(4),
     reraise=True,
@@ -87,7 +120,7 @@ def _write_bytes(path: Path, contents: bytes) -> None:
 
 
 @retry(
-    retry=retry_if_exception_type(OSError),
+    retry=retry_if_exception(_is_transient_filesystem_error),
     wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
     stop=stop_after_attempt(4),
     reraise=True,
@@ -97,7 +130,7 @@ def _copy_file(source: Path, target: Path) -> None:
 
 
 @retry(
-    retry=retry_if_exception_type(OSError),
+    retry=retry_if_exception(_is_transient_filesystem_error),
     wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
     stop=stop_after_attempt(4),
     reraise=True,

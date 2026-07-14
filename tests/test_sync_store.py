@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -70,13 +71,44 @@ def test_atomic_write_retries_transient_replace_errors(tmp_path: Path, monkeypat
         nonlocal attempts
         attempts += 1
         if attempts < 3:
-            raise OSError("cloud folder is temporarily busy")
+            raise OSError(errno.EBUSY, "cloud folder is temporarily busy")
         return original_replace(path, destination)
 
     monkeypatch.setattr(Path, "replace", flaky_replace)
     atomic_write_json(target, {"format_version": 2, "threads": {}})
     assert attempts == 3
     assert json.loads(target.read_text(encoding="utf-8"))["format_version"] == 2
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError(errno.ENOENT, "target parent disappeared"),
+        PermissionError(errno.EACCES, "target is not writable"),
+        OSError(errno.EINVAL, "invalid filesystem operation"),
+    ],
+    ids=["missing", "permission", "permanent-oserror"],
+)
+def test_atomic_write_does_not_retry_permanent_replace_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: OSError,
+) -> None:
+    target = tmp_path / "sync-index.json"
+    attempts = 0
+
+    def failing_replace(_path: Path, _destination: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        raise error
+
+    monkeypatch.setattr(Path, "replace", failing_replace)
+
+    with pytest.raises(type(error)):
+        atomic_write_json(target, {"format_version": 2, "threads": {}})
+
+    assert attempts == 1
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 def _remote_entry(thread_id: str = "thread-1") -> RemoteThreadEntry:
@@ -158,6 +190,8 @@ def test_version_2_index_round_trips_without_losing_original_thread_ids() -> Non
     "payload",
     [
         {},
+        {"format_version": 1, "updated_at": "", "threads": {}},
+        {"format_version": 3, "updated_at": "", "threads": {}},
         {"format_version": "2", "updated_at": "", "threads": {}},
         {"format_version": 2, "updated_at": "", "threads": []},
         {"format_version": 2, "updated_at": "", "threads": {}, "extra": True},
@@ -166,6 +200,15 @@ def test_version_2_index_round_trips_without_losing_original_thread_ids() -> Non
 def test_remote_index_from_dict_rejects_non_contract_payloads(payload: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         RemoteIndex.from_dict(payload)
+
+
+def test_remote_index_rejects_thread_mapping_key_identity_mismatch() -> None:
+    with pytest.raises(ValueError, match="thread mapping key"):
+        RemoteIndex(
+            format_version=SYNC_FORMAT_VERSION,
+            updated_at="",
+            threads={"thread-1": _remote_entry("thread-2")},
+        )
 
 
 def test_local_sync_state_round_trips_with_version_2_marker() -> None:
@@ -222,6 +265,35 @@ def test_sync_plan_derives_optimistic_expectations_and_flat_diagnostics(tmp_path
         ],
         "issues": [{"code": "warning", "message": "Review this", "thread_id": "thread-1"}],
     }
+
+
+@pytest.mark.parametrize(
+    "issues",
+    [(), (SyncIssue("missing_remote_file", "Another thread is missing", "thread-2"),)],
+    ids=["missing-diagnostic", "wrong-thread-diagnostic"],
+)
+def test_sync_plan_rejects_issue_actions_without_matching_diagnostics(
+    tmp_path: Path,
+    issues: tuple[SyncIssue, ...],
+) -> None:
+    item = _plan_item(tmp_path, state="issue", action="issue")
+
+    with pytest.raises(ValueError, match="structured SyncIssue"):
+        SyncPlan(items=(item,), issues=issues, discovered_count=1, remote_count=0, selected_count=1)
+
+
+def test_sync_plan_issue_actions_and_result_counts_share_diagnostics(tmp_path: Path) -> None:
+    item = _plan_item(tmp_path, state="issue", action="issue")
+    issue = SyncIssue("missing_remote_file", "Remote conversation is missing", item.thread_id)
+    plan = SyncPlan(items=(item,), issues=(issue,), discovered_count=1, remote_count=0, selected_count=1)
+    timings = SyncTimings(discovery=0, planning=1, pull=0, push=0, index=0, total=1)
+
+    result = SyncRunResult.blocked(plan, timings)
+
+    assert plan.has_issues is True
+    assert result.issues == (issue,)
+    assert result.counts.issues == 1
+    assert result.to_dict()["issues"] == [issue.to_dict()]
 
 
 def test_sync_run_result_constructors_derive_counts_and_exact_payload_keys(tmp_path: Path) -> None:

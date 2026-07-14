@@ -71,6 +71,9 @@ class RemoteIndex:
     updated_at: str
     threads: dict[str, RemoteThreadEntry]
 
+    def __post_init__(self) -> None:
+        self._validate_contract()
+
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> RemoteIndex:
         _require_object(value, _REMOTE_INDEX_KEYS, "remote index")
@@ -90,11 +93,19 @@ class RemoteIndex:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        self._validate_contract()
         return {
             "format_version": self.format_version,
             "updated_at": self.updated_at,
             "threads": {thread_id: entry.to_dict() for thread_id, entry in self.threads.items()},
         }
+
+    def _validate_contract(self) -> None:
+        if self.format_version != SYNC_FORMAT_VERSION:
+            raise ValueError(f"format_version must be {SYNC_FORMAT_VERSION}")
+        for thread_id, entry in self.threads.items():
+            if not isinstance(entry, RemoteThreadEntry) or thread_id != entry.thread_id:
+                raise ValueError("remote index thread mapping key must match entry.thread_id")
 
 
 @dataclass(frozen=True)
@@ -223,6 +234,17 @@ class SyncPlan:
     remote_count: int
     selected_count: int
 
+    def __post_init__(self) -> None:
+        issue_thread_ids = {issue.thread_id for issue in self.issues}
+        missing_diagnostics = [
+            item.thread_id
+            for item in self.items
+            if item.action == "issue" and item.thread_id not in issue_thread_ids
+        ]
+        if missing_diagnostics:
+            thread_ids = ", ".join(sorted(missing_diagnostics))
+            raise ValueError(f"issue-action items require a structured SyncIssue for thread ids: {thread_ids}")
+
     def expected_remote_entries(self) -> dict[str, RemoteThreadEntry | None]:
         return {item.thread_id: item.expected_remote_entry for item in self.items}
 
@@ -235,7 +257,7 @@ class SyncPlan:
 
     @property
     def has_issues(self) -> bool:
-        return bool(self.issues) or any(item.action == "issue" for item in self.items)
+        return bool(self.issues)
 
     def to_dict(self) -> dict[str, list[dict[str, Any]]]:
         return {
