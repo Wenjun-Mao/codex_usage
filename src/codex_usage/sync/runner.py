@@ -225,22 +225,25 @@ def execute_pulls(
     if not actions:
         return ()
     emit(callback, "pulling")
+    validated_actions: list[tuple[SyncPlanItem, RemoteThreadEntry]] = []
+    for item in actions:
+        remote_entry = remote.index.threads[item.thread_id]
+        require_remote_index_thread_identity(
+            item.thread_id,
+            remote_entry.thread_id,
+            remote_entry.index_entry,
+        )
+        validated_actions.append((item, remote_entry))
     completed: list[str] = []
     index_entries: dict[Path, list[dict[str, object]]] = {}
     backup_dirs: dict[Path, Path] = {}
     label = _backup_label()
     try:
-        for item in actions:
+        for item, remote_entry in validated_actions:
             _validate_local_snapshot(item)
             _validate_remote_snapshot(item)
             if item.local.path is None or item.remote.path is None:
                 raise ValueError("pull action requires local and remote paths")
-            remote_entry = remote.index.threads[item.thread_id]
-            require_remote_index_thread_identity(
-                item.thread_id,
-                remote_entry.thread_id,
-                remote_entry.index_entry,
-            )
             session_dir = _session_dir(item, local)
             backup_dir = backup_dirs.setdefault(session_dir, _backup_dir(item, label))
             if item.local.exists:
