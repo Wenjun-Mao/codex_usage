@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import tempfile
 from datetime import UTC, datetime
@@ -17,14 +18,15 @@ from tenacity import (
 
 from codex_usage.session_files import (
     codex_home_from_session_dir,
-    read_index_entries,
     timestamp_key,
 )
+from codex_usage.sync.errors import ConcurrentLocalChangeError, ConcurrentRemoteChangeError
 from codex_usage.sync.io import (
     atomic_copy,
     atomic_write_json,
     atomic_write_text,
     path_kind,
+    read_bytes_with_snapshot,
     read_json_object,
 )
 from codex_usage.sync.models import LocalSyncState, SyncFileSnapshot, SyncPlanItem
@@ -79,7 +81,7 @@ class LocalStateStore:
 
 
 def sync_dir_fingerprint(sync_dir: Path) -> str:
-    normalized = str(sync_dir.resolve(strict=False)).replace("\\", "/").casefold()
+    normalized = os.path.normcase(str(sync_dir.resolve(strict=False))).replace("\\", "/")
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
@@ -125,11 +127,12 @@ def merge_session_index(
     backup_dir: Path,
 ) -> None:
     index_path = codex_home_from_session_dir(session_dir) / "session_index.jsonl"
-    if index_path.is_file():
+    contents, index_snapshot = read_bytes_with_snapshot(index_path)
+    if index_snapshot.exists:
         atomic_copy(index_path, backup_dir / "session_index.jsonl")
 
     entries: dict[str, dict[str, Any]] = {}
-    for entry in [*read_index_entries(index_path), *new_entries]:
+    for entry in [*_parse_session_index(contents), *new_entries]:
         thread_id = str(entry.get("id") or "")
         if not thread_id:
             continue
@@ -141,7 +144,35 @@ def merge_session_index(
 
     ordered = sorted(entries.values(), key=lambda item: timestamp_key(str(item.get("updated_at") or "")))
     contents = "".join(json.dumps(entry, separators=(",", ":")) + "\n" for entry in ordered)
-    atomic_write_text(index_path, contents)
+    try:
+        atomic_write_text(
+            index_path,
+            contents,
+            expected_target=index_snapshot,
+            target_label="session index",
+        )
+    except ConcurrentRemoteChangeError as error:
+        raise ConcurrentLocalChangeError(
+            "local session index changed during snapshot-checked replacement"
+        ) from error
+
+
+def _parse_session_index(contents: bytes | None) -> list[dict[str, Any]]:
+    if contents is None:
+        return []
+    try:
+        lines = contents.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return []
+    entries: list[dict[str, Any]] = []
+    for line in lines:
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            entries.append(value)
+    return entries
 
 
 def memory_database_row_counts(

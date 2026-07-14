@@ -3,15 +3,11 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import replace
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from codex_usage.models import SessionMetadata
-from codex_usage.parser import parse_timestamp
-from codex_usage.project_identity import resolve_project_identity
 from codex_usage.sync.constants import (
     SYNC_CONVERSATIONS_DIRNAME,
     SYNC_FORMAT_VERSION,
@@ -35,9 +31,16 @@ from codex_usage.sync.models import (
     RemoteInventory,
     RemoteThreadEntry,
     SyncFileSnapshot,
-    SyncIssue,
 )
-from codex_usage.sync.paths import portable_thread_filename
+from codex_usage.sync.paths import (
+    is_direct_conversation_path,
+    is_direct_jsonl_filename,
+    portable_thread_filename,
+)
+from codex_usage.sync.remote_reconciliation import (
+    materialize_selected_remote,
+    reconcile_remote_discovery,
+)
 
 
 class RemoteStore:
@@ -65,15 +68,25 @@ class RemoteStore:
     def load_inventory(self) -> RemoteInventory:
         self._reject_legacy_layout()
         persisted_index, index_snapshot = self._read_index()
-        files = self._snapshot_conversation_files()
-        index, repaired_thread_ids, issues = self._reconcile_index(persisted_index, files)
-        return RemoteInventory(
-            persisted_index=persisted_index,
-            index=index,
-            index_snapshot=index_snapshot,
-            files=files,
-            repaired_thread_ids=tuple(repaired_thread_ids),
-            issues=tuple(issues),
+        discovered_files = self._list_conversation_files()
+        return reconcile_remote_discovery(
+            self.root,
+            persisted_index,
+            index_snapshot,
+            discovered_files,
+            self._guard_conversation_target,
+        )
+
+    def materialize_selected(
+        self,
+        inventory: RemoteInventory,
+        selected_thread_ids: tuple[str, ...],
+    ) -> RemoteInventory:
+        return materialize_selected_remote(
+            self.root,
+            inventory,
+            selected_thread_ids,
+            self._guard_conversation_target,
         )
 
     def validate_selected(
@@ -102,7 +115,7 @@ class RemoteStore:
         expected_target: SyncFileSnapshot,
     ) -> SyncFileSnapshot:
         self._require_transaction()
-        if not _is_direct_jsonl_filename(filename):
+        if not is_direct_jsonl_filename(filename):
             raise ValueError("remote conversation target must be a direct JSONL filename")
         target = self.conversations_path / filename
         if expected_target.path != target:
@@ -121,25 +134,48 @@ class RemoteStore:
         base: RemoteInventory,
         changed: dict[str, RemoteThreadEntry],
         written: dict[str, SyncFileSnapshot],
+        *,
+        expected_entries: dict[str, RemoteThreadEntry | None],
+        expected_files: dict[str, SyncFileSnapshot],
     ) -> RemoteIndex:
         self._require_transaction()
-        self._validate_commit_inputs(base, changed, written)
+        self._validate_commit_inputs(
+            base,
+            changed,
+            written,
+            expected_entries,
+            expected_files,
+        )
         repaired = {
             thread_id: base.index.threads[thread_id]
             for thread_id in base.repaired_thread_ids
             if thread_id in base.index.threads
         }
-        selected_entries = {thread_id: base.persisted_index.threads.get(thread_id) for thread_id in repaired | changed}
+        validated_entries = dict(expected_entries)
+        validated_files = dict(expected_files)
+        for thread_id in repaired | changed:
+            validated_entries.setdefault(
+                thread_id,
+                base.persisted_index.threads.get(thread_id),
+            )
 
         latest, latest_snapshot = self._read_index()
-        self._validate_selected_entries(selected_entries, latest)
+        self._validate_selected_entries(validated_entries, latest)
 
         merged = dict(base.index.threads)
         merged.update(latest.threads)
         merged.update(repaired)
         merged.update(changed)
         self._validate_file_claims(merged)
-        self._validate_commit_files(base, selected_entries, written, merged)
+        for thread_id in repaired | changed:
+            if thread_id not in validated_files:
+                expected = written.get(thread_id, base.files.get(thread_id))
+                if expected is None:
+                    raise ValueError(
+                        f"missing expected remote file snapshot for {thread_id!r}"
+                    )
+                validated_files[thread_id] = expected
+        self._validate_commit_files(validated_files, written, merged)
         committed = RemoteIndex(
             format_version=SYNC_FORMAT_VERSION,
             updated_at=_now_iso(),
@@ -206,12 +242,12 @@ class RemoteStore:
     def _guard_index_target(self) -> None:
         self._index_path_kind()
 
-    def _snapshot_conversation_files(self) -> dict[str, SyncFileSnapshot]:
+    def _list_conversation_files(self) -> dict[str, Path]:
         conversations_kind = self._conversations_directory_kind()
         if conversations_kind == "missing":
             return {}
 
-        snapshots: dict[str, SyncFileSnapshot] = {}
+        discovered: dict[str, Path] = {}
         paths = sorted(
             (path for path in list_directory(self.conversations_path) if path.suffix == ".jsonl"),
             key=lambda item: item.name,
@@ -220,8 +256,8 @@ class RemoteStore:
             if self._conversation_path_kind(path) != "file":
                 raise MalformedSyncIndexError(f"Remote conversation {path.name} must be a regular file")
             relative_path = f"{SYNC_CONVERSATIONS_DIRNAME}/{path.name}"
-            snapshots[relative_path] = snapshot_file(path)
-        return snapshots
+            discovered[relative_path] = path
+        return discovered
 
     def _conversations_directory_kind(self) -> str:
         kind = path_kind(self.conversations_path)
@@ -252,126 +288,6 @@ class RemoteStore:
         if not self._lock.is_locked:
             raise RuntimeError("Remote store mutation requires a held transaction")
 
-    def _reconcile_index(
-        self,
-        persisted_index: RemoteIndex,
-        files: dict[str, SyncFileSnapshot],
-    ) -> tuple[RemoteIndex, list[str], list[SyncIssue]]:
-        effective_threads = dict(persisted_index.threads)
-        files_by_thread: dict[str, SyncFileSnapshot] = {}
-        repaired_thread_ids: list[str] = []
-        issues: list[SyncIssue] = []
-        missing_thread_ids: set[str] = set()
-
-        claimed_paths = {entry.file for entry in persisted_index.threads.values()}
-        for thread_id, entry in persisted_index.threads.items():
-            snapshot = files.get(entry.file, SyncFileSnapshot(path=self.root / entry.file, exists=False))
-            files_by_thread[thread_id] = snapshot
-            if not snapshot.exists:
-                missing_thread_ids.add(thread_id)
-                continue
-
-            metadata = _read_explicit_session_metadata(snapshot.path)
-            if metadata is None:
-                issues.append(
-                    SyncIssue(
-                        "unindexed_unreadable",
-                        f"Remote conversation {entry.file} has no readable session_meta identity",
-                        thread_id,
-                    )
-                )
-                continue
-            if metadata.session_id != thread_id:
-                issues.append(
-                    SyncIssue(
-                        "unindexed_unreadable",
-                        f"Remote conversation {entry.file} contains thread id {metadata.session_id!r}, "
-                        f"not indexed id {thread_id!r}",
-                        thread_id,
-                    )
-                )
-                continue
-            if entry.sha256 != snapshot.sha256 or entry.size_bytes != snapshot.size_bytes:
-                effective_threads[thread_id] = replace(
-                    entry,
-                    sha256=snapshot.sha256,
-                    size_bytes=snapshot.size_bytes,
-                )
-                repaired_thread_ids.append(thread_id)
-
-        reconstruction_candidates: dict[str, list[tuple[str, SyncFileSnapshot, SessionMetadata]]] = {}
-        for relative_path in sorted(files.keys() - claimed_paths):
-            snapshot = files[relative_path]
-            if not _is_direct_conversation_path(relative_path):
-                issues.append(
-                    SyncIssue(
-                        "unindexed_unreadable",
-                        f"Remote conversation {relative_path} is not a portable direct JSONL path and was "
-                        "left untouched",
-                    )
-                )
-                continue
-            metadata = _read_explicit_session_metadata(snapshot.path)
-            if metadata is None:
-                issues.append(_unreadable_issue(relative_path))
-                continue
-            reconstruction_candidates.setdefault(metadata.session_id, []).append(
-                (relative_path, snapshot, metadata)
-            )
-
-        for thread_id, candidates in reconstruction_candidates.items():
-            if thread_id in missing_thread_ids and len(candidates) == 1:
-                relative_path, snapshot, metadata = candidates[0]
-                effective_threads[thread_id] = _relink_entry(
-                    effective_threads[thread_id],
-                    relative_path,
-                    snapshot,
-                    metadata,
-                )
-                files_by_thread[thread_id] = snapshot
-                repaired_thread_ids.append(thread_id)
-                missing_thread_ids.remove(thread_id)
-                continue
-            if thread_id in effective_threads or len(candidates) > 1:
-                for relative_path, _, _ in candidates:
-                    issues.append(
-                        SyncIssue(
-                            "unindexed_unreadable",
-                            f"Remote conversation {relative_path} cannot be indexed because multiple remote "
-                            f"files claim thread id {thread_id!r}",
-                            thread_id if thread_id in effective_threads else "",
-                        )
-                    )
-                continue
-
-            relative_path, snapshot, metadata = candidates[0]
-            repaired = _reconstruct_entry(relative_path, snapshot, metadata)
-            effective_threads[thread_id] = repaired
-            files_by_thread[thread_id] = snapshot
-            repaired_thread_ids.append(thread_id)
-
-        for thread_id in sorted(missing_thread_ids):
-            entry = persisted_index.threads[thread_id]
-            issues.append(
-                SyncIssue(
-                    "missing_remote_file",
-                    f"Remote conversation {entry.file} is missing",
-                    thread_id,
-                )
-            )
-
-        files.clear()
-        files.update(files_by_thread)
-        return (
-            RemoteIndex(
-                format_version=SYNC_FORMAT_VERSION,
-                updated_at=persisted_index.updated_at,
-                threads=effective_threads,
-            ),
-            repaired_thread_ids,
-            issues,
-        )
-
     def _validate_file_claims(self, threads: dict[str, RemoteThreadEntry]) -> None:
         owners: dict[str, str] = {}
         for thread_id, entry in threads.items():
@@ -382,7 +298,7 @@ class RemoteStore:
                     f"Threads {owner!r} and {thread_id!r} claim the same remote file {entry.file!r}"
                 )
         for thread_id, entry in threads.items():
-            if not _is_direct_conversation_path(entry.file):
+            if not is_direct_conversation_path(entry.file, SYNC_CONVERSATIONS_DIRNAME):
                 raise MalformedSyncIndexError(
                     f"Thread {thread_id!r} file must be a relative direct child of "
                     f"{SYNC_CONVERSATIONS_DIRNAME}/"
@@ -419,10 +335,14 @@ class RemoteStore:
 
     def _validate_commit_inputs(
         self,
-        base: RemoteInventory,
+        _base: RemoteInventory,
         changed: dict[str, RemoteThreadEntry],
         written: dict[str, SyncFileSnapshot],
+        expected_entries: dict[str, RemoteThreadEntry | None],
+        expected_files: dict[str, SyncFileSnapshot],
     ) -> None:
+        if expected_entries.keys() != expected_files.keys():
+            raise ValueError("selected remote entries and files must have the same thread ids")
         invalid_entries = [
             thread_id
             for thread_id, entry in changed.items()
@@ -442,16 +362,17 @@ class RemoteStore:
 
     def _validate_commit_files(
         self,
-        base: RemoteInventory,
-        selected_entries: dict[str, RemoteThreadEntry | None],
+        expected_files: dict[str, SyncFileSnapshot],
         written: dict[str, SyncFileSnapshot],
         committed_entries: dict[str, RemoteThreadEntry],
     ) -> None:
-        for thread_id in selected_entries:
-            expected = written.get(thread_id, base.files.get(thread_id))
-            if expected is None:
-                raise ValueError(f"missing expected remote file snapshot for {thread_id!r}")
-            path = self._selected_file_path(thread_id, committed_entries[thread_id], expected)
+        for thread_id, planned in expected_files.items():
+            expected = written.get(thread_id, planned)
+            path = self._selected_file_path(
+                thread_id,
+                committed_entries.get(thread_id),
+                expected,
+            )
             self._guard_conversation_target(path)
             actual = snapshot_file(path)
             if actual != expected:
@@ -459,125 +380,6 @@ class RemoteStore:
                 raise ConcurrentRemoteChangeError(
                     f"Remote {label} changed after planning for thread {thread_id!r}"
                 )
-
-
-def _is_direct_conversation_path(value: str) -> bool:
-    if value != value.strip() or "\\" in value:
-        return False
-    posix_path = PurePosixPath(value)
-    windows_path = PureWindowsPath(value)
-    return (
-        not posix_path.is_absolute()
-        and not windows_path.is_absolute()
-        and not windows_path.drive
-        and posix_path.parts == (SYNC_CONVERSATIONS_DIRNAME, posix_path.name)
-        and _is_direct_jsonl_filename(posix_path.name)
-    )
-
-
-def _is_direct_jsonl_filename(value: str) -> bool:
-    if value != value.strip() or not value or "\\" in value:
-        return False
-    posix_path = PurePosixPath(value)
-    windows_path = PureWindowsPath(value)
-    return (
-        not posix_path.is_absolute()
-        and not windows_path.is_absolute()
-        and not windows_path.drive
-        and len(posix_path.parts) == 1
-        and len(windows_path.parts) == 1
-        and posix_path.name == value
-        and posix_path.suffix == ".jsonl"
-        and portable_thread_filename(posix_path.stem) == value
-    )
-
-
-def _read_explicit_session_metadata(path: Path | None) -> SessionMetadata | None:
-    if path is None:
-        return None
-    try:
-        contents, _ = read_bytes_with_snapshot(path)
-    except OSError:
-        return None
-    if contents is None:
-        return None
-    lines = contents.splitlines()
-    for raw_line in lines:
-        try:
-            value = json.loads(raw_line)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            continue
-        if not isinstance(value, dict) or value.get("type") != "session_meta":
-            continue
-        payload = value.get("payload")
-        if not isinstance(payload, dict):
-            return None
-        thread_id = payload.get("id")
-        if not isinstance(thread_id, str) or not thread_id.strip():
-            return None
-        git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
-        return SessionMetadata(
-            session_id=thread_id,
-            file_path=path,
-            timestamp=parse_timestamp(payload.get("timestamp")) or parse_timestamp(value.get("timestamp")),
-            cwd=str(payload.get("cwd") or ""),
-            git_repository_url=str(git.get("repository_url") or ""),
-        )
-    return None
-
-
-def _reconstruct_entry(
-    relative_path: str,
-    snapshot: SyncFileSnapshot,
-    metadata: SessionMetadata,
-) -> RemoteThreadEntry:
-    identity = resolve_project_identity(metadata)
-    return RemoteThreadEntry(
-        thread_id=metadata.session_id,
-        file=relative_path,
-        source_relative_path=f"synced/{portable_thread_filename(metadata.session_id)}",
-        index_entry={"id": metadata.session_id},
-        project_key=identity.key,
-        project_label=identity.label,
-        project_aliases=identity.aliases,
-        sha256=snapshot.sha256,
-        size_bytes=snapshot.size_bytes,
-        session_updated_at=_timestamp_iso(metadata),
-        exported_at="",
-        source_machine_id="",
-    )
-
-
-def _relink_entry(
-    entry: RemoteThreadEntry,
-    relative_path: str,
-    snapshot: SyncFileSnapshot,
-    metadata: SessionMetadata,
-) -> RemoteThreadEntry:
-    identity = resolve_project_identity(metadata)
-    return replace(
-        entry,
-        file=relative_path,
-        project_key=identity.key,
-        project_label=identity.label,
-        project_aliases=identity.aliases,
-        sha256=snapshot.sha256,
-        size_bytes=snapshot.size_bytes,
-        session_updated_at=_timestamp_iso(metadata) or entry.session_updated_at,
-    )
-
-
-def _timestamp_iso(metadata: SessionMetadata) -> str:
-    if metadata.timestamp is None:
-        return ""
-    return metadata.timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _unreadable_issue(relative_path: str) -> SyncIssue:
-    return SyncIssue(
-        "unindexed_unreadable",
-        f"Remote conversation {relative_path} has no readable session_meta identity and was left untouched",
-    )
 
 
 def _now_iso() -> str:

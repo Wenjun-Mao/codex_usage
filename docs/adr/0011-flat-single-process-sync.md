@@ -50,6 +50,8 @@ Conversation files and the index are written through sibling temporary files and
 
 Verified byte transfer and repairable bookkeeping are separate guarantees. A run may be interrupted after conversation bytes are installed but before local base state, session-index metadata, or the remote catalog is committed. When the bytes already match, a later no-op run may reconcile that bookkeeping without copying the conversation again.
 
+Local `session_index.jsonl` reconciliation is optimistic and snapshot checked. Sync reads the existing index bytes and their snapshot together, merges pulled metadata in memory, and atomically replaces the file only while that snapshot remains current. A concurrent Codex update is authoritative local activity: sync preserves it, reports a semantic concurrent-local-change issue, and does not retry the stale merge as transient I/O.
+
 Machine mode is a strict protocol: progress is statefully decoded UTF-8 JSONL on stderr, and stdout contains exactly one final JSON object. Consumers parse the final result only after the process closes and both stdout and stderr have ended; the contract does not impose a cross-stream emission order. Results use structured `completed`, `conflict`, or `issue` outcomes; diagnostics must not corrupt either channel.
 
 Version 2 performs no migration and no automatic destructive cleanup. Users with version-1 contents must empty the old sync-folder contents themselves and rerun sync to publish the version-2 representation.
@@ -60,12 +62,13 @@ Version 2 performs no migration and no automatic destructive cleanup. Users with
 - Keep per-conversation directories and sidecars. This leaves metadata fragmented and increases partial-state combinations.
 - Add automatic version-1 migration or cleanup. This adds a permanent compatibility path and risks deleting user-owned cloud-folder data.
 - Claim a distributed transaction across cloud providers. Their filesystem abstractions do not offer a portable lock or compare-and-swap contract.
+- Retry or blindly replace a concurrently changed local session index. That can discard a Codex update and treats stale merge input as a transient filesystem failure rather than a semantic concurrency outcome.
 
 ## Consequences
 
 Large selections require one discovery pass and one executable launch from the extension. The remote folder is directly inspectable, and interrupted metadata updates can be repaired from verified conversation files. Conflict behavior remains conservative and byte based.
 
-The central index can temporarily lag durable files. Concurrent non-cooperating writers can still race, so a run may stop with an issue after completing some verified file actions. Temporary files can remain detached after a detected parent swap and may require manual inspection.
+The central index can temporarily lag durable files. Concurrent non-cooperating writers can still race, so a run may stop with an issue after completing some verified file actions. A concurrent local session-index update also stops bookkeeping replacement and may require the next run to reconcile against the newer local catalog. Temporary files can remain detached after a detected parent swap and may require manual inspection.
 
 ## Guardrails
 
@@ -74,4 +77,5 @@ The central index can temporarily lag durable files. Concurrent non-cooperating 
 - Keep status and execution on the same planner, and preflight conflicts before transfer.
 - Revalidate selected remote state before observable mutations and merge unrelated index entries at the final commit.
 - Verify conversation replacements by hash and size; keep bookkeeping repairable on a later no-op run.
+- Snapshot-check local session-index replacement; preserve concurrent Codex updates and report them as semantic issues without retry.
 - Keep version-1 cleanup explicit and user performed. Do not add migration-only or destructive cleanup behavior without a new ADR.

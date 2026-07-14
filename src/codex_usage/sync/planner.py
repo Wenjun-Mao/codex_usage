@@ -14,7 +14,11 @@ from codex_usage.sync.models import (
     SyncPlan,
     SyncPlanItem,
 )
-from codex_usage.sync.paths import portable_thread_filename, safe_session_target_path
+from codex_usage.sync.paths import (
+    is_portable_session_relative_path,
+    portable_thread_filename,
+    safe_session_target_path,
+)
 from codex_usage.sync.state import LocalStateStore, memory_database_row_counts
 from codex_usage.threads import ThreadInfo
 
@@ -55,6 +59,16 @@ def build_sync_plan(
     sync_dir: Path,
 ) -> SyncPlan:
     selected_ids = tuple(dict.fromkeys(selected_thread_ids))
+    unmaterialized = [
+        thread_id
+        for thread_id in selected_ids
+        if thread_id in remote.index.threads and thread_id not in remote.files
+    ]
+    if unmaterialized:
+        thread_ids = ", ".join(sorted(unmaterialized))
+        raise ValueError(
+            f"Selected remote entries must be materialized before planning: {thread_ids}"
+        )
     issues = list(remote.issues)
     items: list[SyncPlanItem] = []
     session_dirs = {
@@ -226,8 +240,11 @@ def _metadata_for_action(
         for session_dir in local.session_dirs:
             root = session_dir.resolve(strict=False)
             if root in resolved.parents:
+                relative_path = resolved.relative_to(root).as_posix()
+                if not is_portable_session_relative_path(relative_path):
+                    relative_path = f"synced/{portable_thread_filename(thread_id)}"
                 return (
-                    resolved.relative_to(root).as_posix(),
+                    relative_path,
                     local_thread.project_key,
                     local_thread.project_label,
                     local_thread.updated_at,

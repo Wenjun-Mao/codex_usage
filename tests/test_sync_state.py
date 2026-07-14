@@ -11,6 +11,7 @@ import pytest
 import codex_usage.sync.planner as sync_planner
 import codex_usage.sync.state as sync_state
 from codex_usage.sync.io import snapshot_file
+from codex_usage.sync.errors import ConcurrentLocalChangeError
 from codex_usage.sync.models import (
     LocalInventory,
     LocalSyncState,
@@ -280,6 +281,12 @@ def test_local_state_store_namespaces_records_by_sync_folder(tmp_path: Path) -> 
         second_store.write(state)
 
 
+def test_sync_dir_fingerprint_preserves_posix_path_case(tmp_path: Path) -> None:
+    assert sync_dir_fingerprint(tmp_path / "CodexSync") != sync_dir_fingerprint(
+        tmp_path / "codexsync"
+    )
+
+
 def test_local_sync_state_requires_exact_v2_version(tmp_path: Path) -> None:
     state = _local_state(tmp_path / "sync")
     valid = state.to_dict()
@@ -399,6 +406,43 @@ def test_session_index_merge_keeps_newest_entry_and_backs_up_original(tmp_path: 
     rows = [json.loads(line) for line in index_path.read_text().splitlines()]
     assert rows == [other, newer]
     assert (backup_dir / "session_index.jsonl").read_bytes() == original_bytes
+
+
+def test_session_index_merge_preserves_concurrent_codex_update(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    index_path = tmp_path / "codex" / "session_index.jsonl"
+    index_path.parent.mkdir(parents=True)
+    original = {
+        "id": "thread-1",
+        "thread_name": "original",
+        "updated_at": "2026-07-13T10:00:00Z",
+    }
+    pulled = {
+        "id": "thread-2",
+        "thread_name": "pulled",
+        "updated_at": "2026-07-13T11:00:00Z",
+    }
+    concurrent = {
+        "id": "thread-3",
+        "thread_name": "created by Codex",
+        "updated_at": "2026-07-13T12:00:00Z",
+    }
+    index_path.write_text(json.dumps(original) + "\n", encoding="utf-8")
+    original_atomic_write = sync_state.atomic_write_text
+
+    def write_after_concurrent_update(path: Path, value: str, **kwargs: object):
+        path.write_text(json.dumps(concurrent) + "\n", encoding="utf-8")
+        return original_atomic_write(path, value, **kwargs)
+
+    monkeypatch.setattr(sync_state, "atomic_write_text", write_after_concurrent_update)
+
+    with pytest.raises(ConcurrentLocalChangeError, match="local session index changed"):
+        merge_session_index(sessions, [pulled], tmp_path / "backups" / "run")
+
+    assert index_path.read_text(encoding="utf-8") == json.dumps(concurrent) + "\n"
 
 
 def test_memory_database_diagnostic_tolerates_missing_schema(tmp_path: Path) -> None:

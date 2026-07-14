@@ -100,6 +100,20 @@ def _snapshot_bytes(tmp_path: Path, name: str, value: bytes | None) -> SyncFileS
     return snapshot_file(path)
 
 
+def test_build_sync_plan_rejects_unmaterialized_selected_remote_entry(
+    tmp_path: Path,
+) -> None:
+    remote = _remote_inventory(_remote_entry("thread-1"))
+
+    with pytest.raises(ValueError, match="must be materialized before planning"):
+        build_sync_plan(
+            _local_inventory(),
+            remote,
+            ("thread-1",),
+            tmp_path / "sync",
+        )
+
+
 @pytest.mark.parametrize(
     ("local", "remote", "base", "expected_state", "expected_action"),
     [

@@ -704,6 +704,32 @@ def _write_indexed_conversation(
     )
 
 
+def _materialized_inventory(
+    store: RemoteStore,
+    *thread_ids: str,
+) -> RemoteInventory:
+    return store.materialize_selected(store.load_inventory(), tuple(thread_ids))
+
+
+def _commit_index(
+    store: RemoteStore,
+    base: RemoteInventory,
+    changed: dict[str, RemoteThreadEntry],
+    written: dict[str, SyncFileSnapshot],
+) -> RemoteIndex:
+    selected_ids = tuple(thread_id for thread_id in changed if thread_id in base.files)
+    return store.commit_index(
+        base,
+        changed,
+        written,
+        expected_entries={
+            thread_id: base.persisted_index.threads.get(thread_id)
+            for thread_id in selected_ids
+        },
+        expected_files={thread_id: base.files[thread_id] for thread_id in selected_ids},
+    )
+
+
 def test_remote_store_loads_empty_folder_without_writing(tmp_path: Path) -> None:
     root = tmp_path / "sync"
     store = RemoteStore(root)
@@ -754,6 +780,7 @@ def test_remote_store_rejects_malformed_index_without_mutating_it(
         "thread-1.jsonl",
         "../thread-1.jsonl",
         "conversations/nested/thread-1.jsonl",
+        "conversations//thread-1.jsonl",
         "conversations\\thread-1.jsonl",
         "C:\\conversations\\thread-1.jsonl",
     ],
@@ -768,6 +795,29 @@ def test_remote_store_rejects_non_direct_conversation_file_claims(
 
     with pytest.raises(MalformedSyncIndexError, match="direct child"):
         RemoteStore(root).load_inventory()
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "2026/CON/thread.jsonl",
+        "2026/CONOUT$/thread.jsonl",
+        "2026/COM¹/thread.jsonl",
+        "2026/thread.jsonl:alternate",
+        "2026/inva<lid/thread.jsonl",
+        "2026/control\x01/thread.jsonl",
+        "2026/trailing./thread.jsonl",
+        "2026/trailing /thread.jsonl",
+        "2026/thread.txt",
+        "2026//thread.jsonl",
+        "2026/./thread.jsonl",
+    ],
+)
+def test_safe_session_target_path_rejects_nonportable_windows_paths(
+    tmp_path: Path,
+    relative_path: str,
+) -> None:
+    assert safe_session_target_path(tmp_path / "sessions", relative_path) is None
 
 
 def test_remote_store_rejects_duplicate_remote_filename_claims(tmp_path: Path) -> None:
@@ -796,7 +846,8 @@ def test_remote_store_reports_indexed_missing_file_without_writing(tmp_path: Pat
     _write_index(root, {entry.thread_id: entry})
     before = (root / "sync-index.json").read_bytes()
 
-    inventory = RemoteStore(root).load_inventory()
+    store = RemoteStore(root)
+    inventory = _materialized_inventory(store, entry.thread_id)
 
     assert inventory.files[entry.thread_id] == SyncFileSnapshot(
         path=root / entry.file,
@@ -824,7 +875,8 @@ def test_remote_store_relinks_missing_index_claim_to_matching_unindexed_jsonl(
     path.write_bytes(_session_jsonl(stale.thread_id))
     index_before = (root / "sync-index.json").read_bytes()
 
-    inventory = RemoteStore(root).load_inventory()
+    store = RemoteStore(root)
+    inventory = _materialized_inventory(store, stale.thread_id)
 
     repaired = inventory.index.threads[stale.thread_id]
     assert repaired.file == "conversations/recovered.jsonl"
@@ -847,7 +899,8 @@ def test_remote_store_repairs_stale_hash_and_size_in_memory_only(tmp_path: Path)
     file_path = root / stale.file
     file_before = file_path.read_bytes()
 
-    inventory = RemoteStore(root).load_inventory()
+    store = RemoteStore(root)
+    inventory = _materialized_inventory(store, stale.thread_id)
 
     assert inventory.persisted_index.threads[stale.thread_id] == stale
     assert inventory.index.threads[stale.thread_id] == actual
@@ -865,7 +918,8 @@ def test_remote_store_reports_index_and_jsonl_thread_identity_mismatch(tmp_path:
     file_path = root / entry.file
     before = file_path.read_bytes()
 
-    inventory = RemoteStore(root).load_inventory()
+    store = RemoteStore(root)
+    inventory = _materialized_inventory(store, entry.thread_id)
 
     assert inventory.index.threads[entry.thread_id] == entry
     assert inventory.repaired_thread_ids == ()
@@ -1060,7 +1114,7 @@ def test_remote_store_mutations_require_held_transaction(tmp_path: Path) -> None
     with pytest.raises(RuntimeError, match="held transaction"):
         store.write_conversation(source, target.name, SyncFileSnapshot(target, False))
     with pytest.raises(RuntimeError, match="held transaction"):
-        store.commit_index(base, {}, {})
+        store.commit_index(base, {}, {}, expected_entries={}, expected_files={})
 
     assert not root.exists()
 
@@ -1080,7 +1134,7 @@ def test_write_conversation_rejects_parent_swap_before_temp_population_without_e
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     source = tmp_path / "source.jsonl"
     source.write_bytes(_session_jsonl("thread-1") + b"our-change\n")
     conversations = root / "conversations"
@@ -1136,7 +1190,7 @@ def test_write_conversation_rejects_parent_swap_during_temp_population_retry(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     source = tmp_path / "source.jsonl"
     source.write_bytes(_session_jsonl("thread-1") + b"our-change\n")
     conversations = root / "conversations"
@@ -1476,7 +1530,7 @@ def test_validate_selected_rejects_conversations_directory_swapped_to_symlink(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    inventory = store.load_inventory()
+    inventory = _materialized_inventory(store, entry.thread_id)
     external = tmp_path / "external-conversations"
     (root / "conversations").rename(external)
     _symlink_or_skip(root / "conversations", external, target_is_directory=True)
@@ -1635,7 +1689,7 @@ def test_write_conversation_rejects_target_changed_after_earlier_validation(tmp_
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     store.validate_selected(
         {entry.thread_id: entry},
         {entry.thread_id: base.files[entry.thread_id]},
@@ -1691,7 +1745,7 @@ def test_write_conversation_revalidates_target_before_replace_retry(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     source = tmp_path / "source.jsonl"
     source.write_bytes(_session_jsonl("thread-1") + b"our-change\n")
     target = root / entry.file
@@ -1730,7 +1784,7 @@ def test_write_conversation_rejects_directory_symlink_swap_before_replace(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     source = tmp_path / "source.jsonl"
     source.write_bytes(_session_jsonl("thread-1") + b"our-change\n")
     conversations = root / "conversations"
@@ -1781,7 +1835,7 @@ def test_write_conversation_rejects_directory_symlink_swap_before_replace_retry(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     source = tmp_path / "source.jsonl"
     source.write_bytes(_session_jsonl("thread-1") + b"our-change\n")
     conversations = root / "conversations"
@@ -1819,7 +1873,8 @@ def test_validate_selected_detects_selected_index_change(tmp_path: Path) -> None
     root = tmp_path / "sync"
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
-    inventory = RemoteStore(root).load_inventory()
+    store = RemoteStore(root)
+    inventory = _materialized_inventory(store, entry.thread_id)
     changed = replace(entry, project_label="changed elsewhere")
     _write_index(root, {changed.thread_id: changed}, updated_at="after")
 
@@ -1834,7 +1889,8 @@ def test_validate_selected_detects_selected_file_change(tmp_path: Path) -> None:
     root = tmp_path / "sync"
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
-    inventory = RemoteStore(root).load_inventory()
+    store = RemoteStore(root)
+    inventory = _materialized_inventory(store, entry.thread_id)
     (root / entry.file).write_bytes(_session_jsonl("thread-1") + b"changed\n")
 
     with pytest.raises(ConcurrentRemoteChangeError, match="conversation file"):
@@ -1849,7 +1905,8 @@ def test_validate_selected_ignores_unrelated_index_and_file_changes(tmp_path: Pa
     selected = _write_indexed_conversation(root, "thread-1")
     unrelated = _write_indexed_conversation(root, "thread-2")
     _write_index(root, {selected.thread_id: selected, unrelated.thread_id: unrelated})
-    inventory = RemoteStore(root).load_inventory()
+    store = RemoteStore(root)
+    inventory = _materialized_inventory(store, selected.thread_id)
     unrelated_path = root / unrelated.file
     unrelated_path.write_bytes(unrelated_path.read_bytes() + b"changed\n")
     unrelated_snapshot = snapshot_file(unrelated_path)
@@ -1902,7 +1959,7 @@ def test_commit_index_rejects_change_after_latest_merge_read(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     concurrent = RemoteIndex(
         format_version=2,
         updated_at="external",
@@ -1939,7 +1996,7 @@ def test_commit_index_rejects_change_after_latest_merge_read(
 
     with store.transaction():
         with pytest.raises(ConcurrentRemoteChangeError, match="before index replacement"):
-            store.commit_index(base, {entry.thread_id: replace(entry, exported_at="ours")}, {})
+            _commit_index(store, base, {entry.thread_id: replace(entry, exported_at="ours")}, {})
 
     assert (root / "sync-index.json").read_bytes() == concurrent_bytes
 
@@ -1952,7 +2009,7 @@ def test_commit_index_rejects_index_symlink_swap_after_latest_merge_read(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     index_path = root / "sync-index.json"
     external = tmp_path / "external-index.json"
     external.write_bytes(index_path.read_bytes())
@@ -1982,7 +2039,7 @@ def test_commit_index_rejects_index_symlink_swap_after_latest_merge_read(
 
     with store.transaction():
         with pytest.raises(MalformedSyncIndexError, match="sync-index.json.*symlink"):
-            store.commit_index(base, {entry.thread_id: replace(entry, exported_at="ours")}, {})
+            _commit_index(store, base, {entry.thread_id: replace(entry, exported_at="ours")}, {})
 
     assert external.read_bytes() == before
     assert original_index.read_bytes() == before
@@ -1996,7 +2053,7 @@ def test_commit_index_verifies_bytes_after_replacement(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     index_path = root / "sync-index.json"
     original_replace = Path.replace
 
@@ -2010,7 +2067,7 @@ def test_commit_index_verifies_bytes_after_replacement(
 
     with store.transaction():
         with pytest.raises(ConcurrentRemoteChangeError, match="after index replacement"):
-            store.commit_index(base, {entry.thread_id: replace(entry, exported_at="ours")}, {})
+            _commit_index(store, base, {entry.thread_id: replace(entry, exported_at="ours")}, {})
 
     assert index_path.read_bytes() == b'{"external":true}\n'
 
@@ -2021,7 +2078,7 @@ def test_commit_index_merges_unrelated_latest_entries_without_deleting(tmp_path:
     retained = _write_indexed_conversation(root, "thread-2")
     _write_index(root, {selected.thread_id: selected, retained.thread_id: retained})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, selected.thread_id)
 
     source = tmp_path / "selected-source.jsonl"
     source.write_bytes(_session_jsonl("thread-1") + b'{"type":"response_item"}\n')
@@ -2050,7 +2107,8 @@ def test_commit_index_merges_unrelated_latest_entries_without_deleting(tmp_path:
             updated_at="concurrent",
         )
 
-        committed = store.commit_index(
+        committed = _commit_index(
+            store,
             base,
             {selected.thread_id: selected_changed},
             {selected.thread_id: selected_written},
@@ -2074,12 +2132,13 @@ def test_commit_index_preserves_unrelated_base_entry_omitted_from_stale_latest(
     unrelated = _write_indexed_conversation(root, "thread-2")
     _write_index(root, {selected.thread_id: selected, unrelated.thread_id: unrelated})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, selected.thread_id)
 
     _write_index(root, {selected.thread_id: selected}, updated_at="stale-latest")
     selected_changed = replace(selected, exported_at="ours")
     with store.transaction():
-        committed = store.commit_index(
+        committed = _commit_index(
+            store,
             base,
             {selected.thread_id: selected_changed},
             {},
@@ -2102,7 +2161,7 @@ def test_commit_index_persists_safe_inventory_repairs(tmp_path: Path) -> None:
     base = store.load_inventory()
 
     with store.transaction():
-        committed = store.commit_index(base, {}, {})
+        committed = _commit_index(store, base, {}, {})
 
     assert committed.threads == base.index.threads
     assert RemoteIndex.from_dict(read_json_object(root / "sync-index.json") or {}) == committed
@@ -2114,13 +2173,13 @@ def test_commit_index_detects_selected_entry_change_after_planning(tmp_path: Pat
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     concurrent = replace(entry, project_label="concurrent")
     _write_index(root, {entry.thread_id: concurrent}, updated_at="concurrent")
 
     with store.transaction():
         with pytest.raises(ConcurrentRemoteChangeError, match="index entry"):
-            store.commit_index(base, {entry.thread_id: replace(entry, exported_at="after")}, {})
+            _commit_index(store, base, {entry.thread_id: replace(entry, exported_at="after")}, {})
 
     assert RemoteIndex.from_dict(read_json_object(root / "sync-index.json") or {}).threads == {
         entry.thread_id: concurrent
@@ -2134,12 +2193,12 @@ def test_commit_index_detects_selected_entry_disappearance_after_planning(
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     _write_index(root, {}, updated_at="concurrent-removal")
 
     with store.transaction():
         with pytest.raises(ConcurrentRemoteChangeError, match="index entry"):
-            store.commit_index(base, {entry.thread_id: replace(entry, exported_at="after")}, {})
+            _commit_index(store, base, {entry.thread_id: replace(entry, exported_at="after")}, {})
 
     assert RemoteIndex.from_dict(read_json_object(root / "sync-index.json") or {}).threads == {}
 
@@ -2149,13 +2208,13 @@ def test_commit_index_detects_selected_unwritten_file_change(tmp_path: Path) -> 
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     path = root / entry.file
     path.write_bytes(path.read_bytes() + b"concurrent\n")
 
     with store.transaction():
         with pytest.raises(ConcurrentRemoteChangeError, match="conversation file"):
-            store.commit_index(base, {entry.thread_id: replace(entry, exported_at="after")}, {})
+            _commit_index(store, base, {entry.thread_id: replace(entry, exported_at="after")}, {})
 
 
 def test_commit_index_detects_written_file_change_before_commit(tmp_path: Path) -> None:
@@ -2163,7 +2222,7 @@ def test_commit_index_detects_written_file_change_before_commit(tmp_path: Path) 
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     source = tmp_path / "source.jsonl"
     source.write_bytes(_session_jsonl("thread-1") + b"written\n")
     with store.transaction():
@@ -2176,7 +2235,7 @@ def test_commit_index_detects_written_file_change_before_commit(tmp_path: Path) 
         (root / entry.file).write_bytes(source.read_bytes() + b"concurrent\n")
 
         with pytest.raises(ConcurrentRemoteChangeError, match="written conversation file"):
-            store.commit_index(base, {entry.thread_id: changed}, {entry.thread_id: written})
+            _commit_index(store, base, {entry.thread_id: changed}, {entry.thread_id: written})
 
 
 def test_commit_index_rejects_unwritten_entry_pointing_to_another_file(tmp_path: Path) -> None:
@@ -2184,13 +2243,13 @@ def test_commit_index_rejects_unwritten_entry_pointing_to_another_file(tmp_path:
     entry = _write_indexed_conversation(root, "thread-1")
     _write_index(root, {entry.thread_id: entry})
     store = RemoteStore(root)
-    base = store.load_inventory()
+    base = _materialized_inventory(store, entry.thread_id)
     redirected = replace(entry, file="conversations/other.jsonl")
     before = (root / "sync-index.json").read_bytes()
 
     with store.transaction():
         with pytest.raises(ValueError, match="snapshot path does not match"):
-            store.commit_index(base, {entry.thread_id: redirected}, {})
+            _commit_index(store, base, {entry.thread_id: redirected}, {})
 
     assert (root / "sync-index.json").read_bytes() == before
 
@@ -2206,6 +2265,6 @@ def test_commit_index_rejects_duplicate_filename_before_writing(tmp_path: Path) 
 
     with store.transaction():
         with pytest.raises(MalformedSyncIndexError, match="same remote file"):
-            store.commit_index(base, {duplicate.thread_id: duplicate}, {})
+            _commit_index(store, base, {duplicate.thread_id: duplicate}, {})
 
     assert (root / "sync-index.json").read_bytes() == before

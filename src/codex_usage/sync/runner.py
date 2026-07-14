@@ -36,6 +36,7 @@ from codex_usage.sync.models import (
 )
 from codex_usage.sync.paths import portable_thread_filename
 from codex_usage.sync.planner import build_sync_plan
+from codex_usage.sync.remote_reconciliation import promote_matching_local_metadata
 from codex_usage.sync.state import (
     LocalStateStore,
     backup_local_session,
@@ -92,11 +93,16 @@ def sync_status(
     local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
     try:
-        remote = store.load_inventory()
+        _, plan = _prepare_sync_plan(
+            local,
+            store,
+            sync_dir,
+            project_keys,
+            thread_ids,
+        )
     except SyncStoreError as error:
         return _load_failure_plan(local, error)
-    selected = resolve_selected_thread_ids(local, remote, project_keys, thread_ids)
-    return build_sync_plan(local, remote, selected, sync_dir)
+    return plan
 
 
 def run_sync(
@@ -121,11 +127,13 @@ def run_sync(
         with store.transaction():
             blocked = False
             with timer.measure("planning"):
-                remote = store.load_inventory()
-                selected = resolve_selected_thread_ids(
-                    local, remote, project_keys, thread_ids
+                remote, plan = _prepare_sync_plan(
+                    local,
+                    store,
+                    sync_dir,
+                    project_keys,
+                    thread_ids,
                 )
-                plan = build_sync_plan(local, remote, selected, sync_dir)
                 if plan.blocks_execution:
                     save_conflict_candidates(plan)
                     blocked = True
@@ -169,6 +177,20 @@ def run_sync(
         pushed=pushed,
         timings=timer.finish(),
     )
+
+
+def _prepare_sync_plan(
+    local: LocalInventory,
+    store: RemoteStore,
+    sync_dir: Path,
+    project_keys: list[str],
+    thread_ids: list[str],
+) -> tuple[RemoteInventory, SyncPlan]:
+    remote = store.load_inventory()
+    selected = resolve_selected_thread_ids(local, remote, project_keys, thread_ids)
+    remote = store.materialize_selected(remote, selected)
+    plan = build_sync_plan(local, remote, selected, sync_dir)
+    return promote_matching_local_metadata(remote, local, plan), plan
 
 
 def emit(callback: Callable[[SyncProgressEvent], None] | None, phase: str) -> None:
@@ -303,10 +325,18 @@ def commit_remote_index_once(
     store: RemoteStore,
     pushed: PushExecution,
 ) -> None:
-    del plan
+    expected_entries = plan.expected_remote_entries()
+    expected_files = plan.expected_remote_snapshots()
     if not pushed.entries and not remote.repaired_thread_ids:
+        store.validate_selected(expected_entries, expected_files)
         return
-    store.commit_index(remote, pushed.entries, pushed.snapshots)
+    store.commit_index(
+        remote,
+        pushed.entries,
+        pushed.snapshots,
+        expected_entries=expected_entries,
+        expected_files=expected_files,
+    )
 
 
 def _remote_entry(
