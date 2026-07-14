@@ -86,10 +86,9 @@ class RemoteStore:
 
         latest, _ = self._read_index()
         self._validate_selected_entries(expected_entries, latest)
-        self._conversations_directory_kind()
         for thread_id, expected in expected_files.items():
             path = self._selected_file_path(thread_id, expected_entries[thread_id], expected)
-            self._reject_symlinked_conversation(path)
+            self._guard_conversation_target(path)
             actual = snapshot_file(path)
             if actual != expected:
                 raise ConcurrentRemoteChangeError(
@@ -108,13 +107,13 @@ class RemoteStore:
         target = self.conversations_path / filename
         if expected_target.path != target:
             raise ValueError("expected remote conversation snapshot path must match target")
-        self._conversations_directory_kind()
-        self._reject_symlinked_conversation(target)
+        self._guard_conversation_target(target)
         return atomic_copy(
             source,
             target,
             expected_target=expected_target,
             target_label="conversation",
+            path_guard=lambda: self._guard_conversation_target(target),
         )
 
     def commit_index(
@@ -135,7 +134,8 @@ class RemoteStore:
         latest, latest_snapshot = self._read_index()
         self._validate_selected_entries(selected_entries, latest)
 
-        merged = dict(latest.threads)
+        merged = dict(base.index.threads)
+        merged.update(latest.threads)
         merged.update(repaired)
         merged.update(changed)
         self._validate_file_claims(merged)
@@ -150,6 +150,7 @@ class RemoteStore:
             committed.to_dict(),
             expected_target=latest_snapshot,
             target_label="index",
+            path_guard=self._guard_index_target,
         )
         return committed
 
@@ -166,11 +167,18 @@ class RemoteStore:
         expected_snapshot: SyncFileSnapshot | None = None,
     ) -> tuple[RemoteIndex, SyncFileSnapshot]:
         try:
-            contents, index_snapshot = read_bytes_with_snapshot(self.index_path)
+            index_kind = self._index_path_kind()
+            if index_kind == "missing":
+                contents = None
+                index_snapshot = SyncFileSnapshot(path=self.index_path, exists=False)
+            else:
+                contents, index_snapshot = read_bytes_with_snapshot(self.index_path)
             if expected_snapshot is not None and index_snapshot != expected_snapshot:
                 raise ConcurrentRemoteChangeError(
                     "Remote index changed after its visible snapshot"
                 )
+            if index_kind == "file" and contents is None:
+                raise ConcurrentRemoteChangeError("Remote index changed while it was being read")
             if contents is None:
                 return (
                     RemoteIndex(format_version=SYNC_FORMAT_VERSION, updated_at="", threads={}),
@@ -187,6 +195,17 @@ class RemoteStore:
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError) as error:
             raise MalformedSyncIndexError(f"Malformed {SYNC_INDEX_FILENAME}: {error}") from error
 
+    def _index_path_kind(self) -> str:
+        kind = path_kind(self.index_path)
+        if kind == "symlink":
+            raise MalformedSyncIndexError(f"{SYNC_INDEX_FILENAME} must not be a symlink")
+        if kind not in {"missing", "file"}:
+            raise MalformedSyncIndexError(f"{SYNC_INDEX_FILENAME} must be a regular file")
+        return kind
+
+    def _guard_index_target(self) -> None:
+        self._index_path_kind()
+
     def _snapshot_conversation_files(self) -> dict[str, SyncFileSnapshot]:
         conversations_kind = self._conversations_directory_kind()
         if conversations_kind == "missing":
@@ -198,8 +217,7 @@ class RemoteStore:
             key=lambda item: item.name,
         )
         for path in paths:
-            self._reject_symlinked_conversation(path)
-            if path_kind(path) != "file":
+            if self._conversation_path_kind(path) != "file":
                 raise MalformedSyncIndexError(f"Remote conversation {path.name} must be a regular file")
             relative_path = f"{SYNC_CONVERSATIONS_DIRNAME}/{path.name}"
             snapshots[relative_path] = snapshot_file(path)
@@ -213,10 +231,21 @@ class RemoteStore:
             raise MalformedSyncIndexError(f"{SYNC_CONVERSATIONS_DIRNAME} must be a directory")
         return kind
 
-    def _reject_symlinked_conversation(self, path: Path) -> None:
-        if path_kind(path) == "symlink":
+    def _conversation_path_kind(self, path: Path) -> str:
+        kind = path_kind(path)
+        if kind == "symlink":
             raise MalformedSyncIndexError(
                 f"Remote conversation {path.name} must not be a symlink"
+            )
+        return kind
+
+    def _guard_conversation_target(self, path: Path) -> None:
+        if path.parent != self.conversations_path:
+            raise ValueError("remote conversation target must be inside conversations/")
+        self._conversations_directory_kind()
+        if self._conversation_path_kind(path) not in {"missing", "file"}:
+            raise MalformedSyncIndexError(
+                f"Remote conversation {path.name} must be a regular file"
             )
 
     def _require_transaction(self) -> None:
@@ -418,13 +447,12 @@ class RemoteStore:
         written: dict[str, SyncFileSnapshot],
         committed_entries: dict[str, RemoteThreadEntry],
     ) -> None:
-        self._conversations_directory_kind()
         for thread_id in selected_entries:
             expected = written.get(thread_id, base.files.get(thread_id))
             if expected is None:
                 raise ValueError(f"missing expected remote file snapshot for {thread_id!r}")
             path = self._selected_file_path(thread_id, committed_entries[thread_id], expected)
-            self._reject_symlinked_conversation(path)
+            self._guard_conversation_target(path)
             actual = snapshot_file(path)
             if actual != expected:
                 label = "written conversation file" if thread_id in written else "conversation file"

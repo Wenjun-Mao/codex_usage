@@ -6,6 +6,7 @@ import json
 import shutil
 import stat
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -106,19 +107,26 @@ def atomic_copy(
     *,
     expected_target: SyncFileSnapshot | None = None,
     target_label: str = "file",
+    path_guard: Callable[[], None] | None = None,
 ) -> SyncFileSnapshot:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = _new_sibling_temp_path(target)
+    _make_directory(target.parent, path_guard=path_guard)
+    tmp_path = _new_sibling_temp_path(target, path_guard=path_guard)
     try:
         _copy_file(source, tmp_path)
         copied = snapshot_file(tmp_path)
         if expected_target is None:
-            _replace(tmp_path, target)
+            _replace(tmp_path, target, path_guard=path_guard)
         else:
-            _replace_if_expected(tmp_path, target, expected_target, target_label)
-        return _verify_replacement(target, copied, target_label)
+            _replace_if_expected(
+                tmp_path,
+                target,
+                expected_target,
+                target_label,
+                path_guard=path_guard,
+            )
+        return _verify_replacement(target, copied, target_label, path_guard=path_guard)
     finally:
-        if tmp_path.exists():
+        if _temporary_path_is_safe(path_guard) and tmp_path.exists():
             tmp_path.unlink()
 
 
@@ -128,20 +136,27 @@ def atomic_write_json(
     *,
     expected_target: SyncFileSnapshot | None = None,
     target_label: str = "file",
+    path_guard: Callable[[], None] | None = None,
 ) -> SyncFileSnapshot:
     contents = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = _new_sibling_temp_path(path)
+    _make_directory(path.parent, path_guard=path_guard)
+    tmp_path = _new_sibling_temp_path(path, path_guard=path_guard)
     try:
         _write_bytes(tmp_path, contents)
         written = _snapshot_from_bytes(tmp_path, contents)
         if expected_target is None:
-            _replace(tmp_path, path)
+            _replace(tmp_path, path, path_guard=path_guard)
         else:
-            _replace_if_expected(tmp_path, path, expected_target, target_label)
-        return _verify_replacement(path, written, target_label)
+            _replace_if_expected(
+                tmp_path,
+                path,
+                expected_target,
+                target_label,
+                path_guard=path_guard,
+            )
+        return _verify_replacement(path, written, target_label, path_guard=path_guard)
     finally:
-        if tmp_path.exists():
+        if _temporary_path_is_safe(path_guard) and tmp_path.exists():
             tmp_path.unlink()
 
 
@@ -169,6 +184,8 @@ def _verify_replacement(
     path: Path,
     temporary_snapshot: SyncFileSnapshot,
     target_label: str,
+    *,
+    path_guard: Callable[[], None] | None = None,
 ) -> SyncFileSnapshot:
     expected = SyncFileSnapshot(
         path=path,
@@ -176,6 +193,7 @@ def _verify_replacement(
         sha256=temporary_snapshot.sha256,
         size_bytes=temporary_snapshot.size_bytes,
     )
+    _run_path_guard(path_guard)
     actual = snapshot_file(path)
     if actual != expected:
         raise ConcurrentRemoteChangeError(
@@ -184,7 +202,47 @@ def _verify_replacement(
     return actual
 
 
-def _new_sibling_temp_path(target: Path) -> Path:
+def _temporary_path_is_safe(path_guard: Callable[[], None] | None) -> bool:
+    # A swapped guarded parent is no longer safe to traverse for temp cleanup.
+    try:
+        _run_path_guard(path_guard)
+    except Exception:
+        return False
+    return True
+
+
+def _run_path_guard(path_guard: Callable[[], None] | None) -> None:
+    if path_guard is not None:
+        path_guard()
+
+
+@retry(
+    retry=retry_if_exception(_is_transient_filesystem_error),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+def _make_directory(
+    path: Path,
+    *,
+    path_guard: Callable[[], None] | None = None,
+) -> None:
+    _run_path_guard(path_guard)
+    path.mkdir(parents=True, exist_ok=True)
+
+
+@retry(
+    retry=retry_if_exception(_is_transient_filesystem_error),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+def _new_sibling_temp_path(
+    target: Path,
+    *,
+    path_guard: Callable[[], None] | None = None,
+) -> Path:
+    _run_path_guard(path_guard)
     with tempfile.NamedTemporaryFile(
         delete=False,
         dir=target.parent,
@@ -250,7 +308,13 @@ def _copy_file(source: Path, target: Path) -> None:
     stop=stop_after_attempt(4),
     reraise=True,
 )
-def _replace(source: Path, target: Path) -> None:
+def _replace(
+    source: Path,
+    target: Path,
+    *,
+    path_guard: Callable[[], None] | None = None,
+) -> None:
+    _run_path_guard(path_guard)
     source.replace(target)
 
 
@@ -265,6 +329,9 @@ def _replace_if_expected(
     target: Path,
     expected_target: SyncFileSnapshot,
     target_label: str,
+    *,
+    path_guard: Callable[[], None] | None = None,
 ) -> None:
+    _run_path_guard(path_guard)
     _validate_expected_target(target, expected_target, target_label)
     source.replace(target)
