@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import errno
 import json
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,7 @@ from codex_usage.sync.errors import (
     MissingRemoteConversationError,
     SyncStoreError,
 )
-from codex_usage.sync.io import atomic_copy, atomic_write_json, snapshot_file
+from codex_usage.sync.io import atomic_copy, atomic_write_json, read_json_object, snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
     LocalSyncState,
@@ -34,6 +34,7 @@ from codex_usage.sync.models import (
     SyncTimings,
 )
 from codex_usage.sync.paths import portable_thread_filename, safe_session_target_path
+from codex_usage.sync.store import RemoteStore
 
 
 def test_portable_thread_filename_is_stable_and_windows_safe() -> None:
@@ -402,3 +403,524 @@ def test_snapshot_file_hashes_raw_bytes(tmp_path: Path) -> None:
         sha256="ea5dbf9596d187e9500f23e9a680109475341cf4e81f7e043f7d97152c10772f",
         size_bytes=2,
     )
+
+
+def _session_jsonl(
+    thread_id: str,
+    *,
+    cwd: str = "/Users/example/repo",
+    repository_url: str = "https://github.com/example/repo.git",
+) -> bytes:
+    event = {
+        "timestamp": "2026-07-13T12:00:00Z",
+        "type": "session_meta",
+        "payload": {
+            "id": thread_id,
+            "timestamp": "2026-07-13T12:00:00Z",
+            "cwd": cwd,
+            "git": {"repository_url": repository_url},
+        },
+    }
+    return (json.dumps(event, separators=(",", ":")) + "\n").encode()
+
+
+def _write_index(root: Path, entries: dict[str, RemoteThreadEntry], *, updated_at: str = "before") -> None:
+    index = RemoteIndex(format_version=2, updated_at=updated_at, threads=entries)
+    atomic_write_json(root / "sync-index.json", index.to_dict())
+
+
+def _write_indexed_conversation(
+    root: Path,
+    thread_id: str,
+    *,
+    contents: bytes | None = None,
+) -> RemoteThreadEntry:
+    path = root / "conversations" / portable_thread_filename(thread_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(contents if contents is not None else _session_jsonl(thread_id))
+    snapshot = snapshot_file(path)
+    return replace(
+        _remote_entry(thread_id),
+        sha256=snapshot.sha256,
+        size_bytes=snapshot.size_bytes,
+    )
+
+
+def test_remote_store_loads_empty_folder_without_writing(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    store = RemoteStore(root)
+
+    inventory = store.load_inventory()
+
+    assert inventory.index.format_version == 2
+    assert inventory.index.threads == {}
+    assert inventory.files == {}
+    assert not root.exists()
+
+
+def test_remote_store_rejects_version_1_layout_without_mutating_it(tmp_path: Path) -> None:
+    legacy = tmp_path / "sync" / "threads" / "thread-1"
+    legacy.mkdir(parents=True)
+    (legacy / "session.jsonl").write_text("{}\n", encoding="utf-8")
+    before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+
+    with pytest.raises(LegacySyncLayoutError, match="empty the sync folder"):
+        RemoteStore(tmp_path / "sync").load_inventory()
+
+    assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [b"{not-json\n", b"[]\n", b'{"format_version":1,"updated_at":"","threads":{}}\n'],
+    ids=["invalid-json", "not-object", "wrong-version"],
+)
+def test_remote_store_rejects_malformed_index_without_mutating_it(
+    tmp_path: Path,
+    contents: bytes,
+) -> None:
+    root = tmp_path / "sync"
+    root.mkdir()
+    index_path = root / "sync-index.json"
+    index_path.write_bytes(contents)
+
+    with pytest.raises(MalformedSyncIndexError):
+        RemoteStore(root).load_inventory()
+
+    assert index_path.read_bytes() == contents
+
+
+@pytest.mark.parametrize(
+    "claimed_path",
+    [
+        "thread-1.jsonl",
+        "../thread-1.jsonl",
+        "conversations/nested/thread-1.jsonl",
+        "conversations\\thread-1.jsonl",
+        "C:\\conversations\\thread-1.jsonl",
+    ],
+)
+def test_remote_store_rejects_non_direct_conversation_file_claims(
+    tmp_path: Path,
+    claimed_path: str,
+) -> None:
+    root = tmp_path / "sync"
+    entry = replace(_remote_entry(), file=claimed_path)
+    _write_index(root, {entry.thread_id: entry})
+
+    with pytest.raises(MalformedSyncIndexError, match="direct child"):
+        RemoteStore(root).load_inventory()
+
+
+def test_remote_store_rejects_duplicate_remote_filename_claims(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    first = _remote_entry("thread-1")
+    second = replace(_remote_entry("thread-2"), file=first.file)
+    _write_index(root, {first.thread_id: first, second.thread_id: second})
+
+    with pytest.raises(MalformedSyncIndexError, match="same remote file"):
+        RemoteStore(root).load_inventory()
+
+
+def test_remote_store_rejects_case_insensitive_remote_filename_collisions(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    first = replace(_remote_entry("thread-1"), file="conversations/shared.jsonl")
+    second = replace(_remote_entry("thread-2"), file="conversations/SHARED.jsonl")
+    _write_index(root, {first.thread_id: first, second.thread_id: second})
+
+    with pytest.raises(MalformedSyncIndexError, match="same remote file"):
+        RemoteStore(root).load_inventory()
+
+
+def test_remote_store_reports_indexed_missing_file_without_writing(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    entry = _remote_entry()
+    _write_index(root, {entry.thread_id: entry})
+    before = (root / "sync-index.json").read_bytes()
+
+    inventory = RemoteStore(root).load_inventory()
+
+    assert inventory.files[entry.thread_id] == SyncFileSnapshot(
+        path=root / entry.file,
+        exists=False,
+    )
+    assert inventory.issues == (
+        SyncIssue(
+            "missing_remote_file",
+            f"Remote conversation {entry.file} is missing",
+            entry.thread_id,
+        ),
+    )
+    assert inventory.repaired_thread_ids == ()
+    assert (root / "sync-index.json").read_bytes() == before
+
+
+def test_remote_store_relinks_missing_index_claim_to_matching_unindexed_jsonl(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "sync"
+    stale = _remote_entry("thread-1")
+    _write_index(root, {stale.thread_id: stale})
+    path = root / "conversations" / "recovered.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(_session_jsonl(stale.thread_id))
+    index_before = (root / "sync-index.json").read_bytes()
+
+    inventory = RemoteStore(root).load_inventory()
+
+    repaired = inventory.index.threads[stale.thread_id]
+    assert repaired.file == "conversations/recovered.jsonl"
+    assert repaired.source_relative_path == stale.source_relative_path
+    assert repaired.index_entry == stale.index_entry
+    assert repaired.sha256 == snapshot_file(path).sha256
+    assert repaired.size_bytes == snapshot_file(path).size_bytes
+    assert inventory.files[stale.thread_id] == snapshot_file(path)
+    assert inventory.repaired_thread_ids == (stale.thread_id,)
+    assert inventory.issues == ()
+    assert (root / "sync-index.json").read_bytes() == index_before
+
+
+def test_remote_store_repairs_stale_hash_and_size_in_memory_only(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    actual = _write_indexed_conversation(root, "thread-1")
+    stale = replace(actual, sha256="stale", size_bytes=1)
+    _write_index(root, {stale.thread_id: stale})
+    index_before = (root / "sync-index.json").read_bytes()
+    file_path = root / stale.file
+    file_before = file_path.read_bytes()
+
+    inventory = RemoteStore(root).load_inventory()
+
+    assert inventory.persisted_index.threads[stale.thread_id] == stale
+    assert inventory.index.threads[stale.thread_id] == actual
+    assert inventory.files[stale.thread_id] == snapshot_file(file_path)
+    assert inventory.repaired_thread_ids == (stale.thread_id,)
+    assert inventory.issues == ()
+    assert (root / "sync-index.json").read_bytes() == index_before
+    assert file_path.read_bytes() == file_before
+
+
+def test_remote_store_reports_index_and_jsonl_thread_identity_mismatch(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1", contents=_session_jsonl("thread-2"))
+    _write_index(root, {entry.thread_id: entry})
+    file_path = root / entry.file
+    before = file_path.read_bytes()
+
+    inventory = RemoteStore(root).load_inventory()
+
+    assert inventory.index.threads[entry.thread_id] == entry
+    assert inventory.repaired_thread_ids == ()
+    assert len(inventory.issues) == 1
+    assert inventory.issues[0].code == "unindexed_unreadable"
+    assert inventory.issues[0].thread_id == entry.thread_id
+    assert "contains thread id 'thread-2'" in inventory.issues[0].message
+    assert file_path.read_bytes() == before
+
+
+def test_remote_store_reconstructs_unindexed_jsonl_without_rewriting_it(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    path = root / "conversations" / "unindexed.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(_session_jsonl("Owner/Repo"))
+    before = path.read_bytes()
+
+    inventory = RemoteStore(root).load_inventory()
+
+    repaired = inventory.index.threads["Owner/Repo"]
+    assert inventory.persisted_index.threads == {}
+    assert repaired.file == "conversations/unindexed.jsonl"
+    assert repaired.source_relative_path == f"synced/{portable_thread_filename('Owner/Repo')}"
+    assert repaired.index_entry == {"id": "Owner/Repo"}
+    assert repaired.project_key == "https://github.com/example/repo"
+    assert repaired.project_label == "repo"
+    assert repaired.project_aliases == ("/users/example/repo",)
+    assert repaired.sha256 == snapshot_file(path).sha256
+    assert repaired.size_bytes == len(before)
+    assert repaired.session_updated_at == "2026-07-13T12:00:00Z"
+    assert inventory.files["Owner/Repo"] == snapshot_file(path)
+    assert inventory.repaired_thread_ids == ("Owner/Repo",)
+    assert inventory.issues == ()
+    assert path.read_bytes() == before
+    assert not (root / "sync-index.json").exists()
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [b"not-json\n", b'{"type":"session_meta","payload":{}}\n', b"\xff\xfe\n"],
+    ids=["invalid-json", "missing-id", "invalid-utf8"],
+)
+def test_remote_store_reports_unindexed_unreadable_jsonl_without_mutation(
+    tmp_path: Path,
+    contents: bytes,
+) -> None:
+    root = tmp_path / "sync"
+    path = root / "conversations" / "unreadable.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(contents)
+
+    inventory = RemoteStore(root).load_inventory()
+
+    assert inventory.index.threads == {}
+    assert inventory.files == {}
+    assert len(inventory.issues) == 1
+    assert inventory.issues[0].code == "unindexed_unreadable"
+    assert inventory.issues[0].thread_id == ""
+    assert "conversations/unreadable.jsonl" in inventory.issues[0].message
+    assert path.read_bytes() == contents
+    assert not (root / "sync-index.json").exists()
+
+
+def test_remote_store_leaves_unportable_unindexed_jsonl_unrepaired(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    path = root / "conversations" / "Mixed-Case.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(_session_jsonl("thread-1"))
+
+    inventory = RemoteStore(root).load_inventory()
+
+    assert inventory.index.threads == {}
+    assert inventory.files == {}
+    assert len(inventory.issues) == 1
+    assert inventory.issues[0].code == "unindexed_unreadable"
+    assert "portable direct JSONL path" in inventory.issues[0].message
+    assert path.read_bytes() == _session_jsonl("thread-1")
+
+
+def test_remote_store_reports_duplicate_reconstructed_thread_identity(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    conversations = root / "conversations"
+    conversations.mkdir(parents=True)
+    (conversations / "first.jsonl").write_bytes(_session_jsonl("thread-1"))
+    (conversations / "second.jsonl").write_bytes(_session_jsonl("thread-1"))
+
+    inventory = RemoteStore(root).load_inventory()
+
+    assert inventory.index.threads == {}
+    assert inventory.files == {}
+    assert len(inventory.issues) == 2
+    assert {issue.code for issue in inventory.issues} == {"unindexed_unreadable"}
+    assert all("multiple remote files" in issue.message for issue in inventory.issues)
+
+
+def test_remote_store_write_conversation_preserves_bytes(tmp_path: Path) -> None:
+    source = tmp_path / "source.jsonl"
+    source.write_bytes(b'{"type":"session_meta"}\n\xff\x00')
+    store = RemoteStore(tmp_path / "sync")
+
+    written = store.write_conversation(source, "thread-1.jsonl")
+
+    target = tmp_path / "sync" / "conversations" / "thread-1.jsonl"
+    assert target.read_bytes() == source.read_bytes()
+    assert written == snapshot_file(target)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "../escape.jsonl",
+        "nested/thread.jsonl",
+        "/tmp/thread.jsonl",
+        "CON.jsonl",
+        "Mixed-Case.jsonl",
+    ],
+)
+def test_remote_store_write_conversation_rejects_non_filename_targets(
+    tmp_path: Path,
+    filename: str,
+) -> None:
+    source = tmp_path / "source.jsonl"
+    source.write_bytes(b"{}\n")
+
+    with pytest.raises(ValueError, match="direct JSONL filename"):
+        RemoteStore(tmp_path / "sync").write_conversation(source, filename)
+
+    assert not (tmp_path / "sync").exists()
+
+
+def test_validate_selected_detects_selected_index_change(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {entry.thread_id: entry})
+    inventory = RemoteStore(root).load_inventory()
+    changed = replace(entry, project_label="changed elsewhere")
+    _write_index(root, {changed.thread_id: changed}, updated_at="after")
+
+    with pytest.raises(ConcurrentRemoteChangeError, match="index entry"):
+        RemoteStore(root).validate_selected(
+            {entry.thread_id: entry},
+            {entry.thread_id: inventory.files[entry.thread_id]},
+        )
+
+
+def test_validate_selected_detects_selected_file_change(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {entry.thread_id: entry})
+    inventory = RemoteStore(root).load_inventory()
+    (root / entry.file).write_bytes(_session_jsonl("thread-1") + b"changed\n")
+
+    with pytest.raises(ConcurrentRemoteChangeError, match="conversation file"):
+        RemoteStore(root).validate_selected(
+            {entry.thread_id: entry},
+            {entry.thread_id: inventory.files[entry.thread_id]},
+        )
+
+
+def test_validate_selected_ignores_unrelated_index_and_file_changes(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    selected = _write_indexed_conversation(root, "thread-1")
+    unrelated = _write_indexed_conversation(root, "thread-2")
+    _write_index(root, {selected.thread_id: selected, unrelated.thread_id: unrelated})
+    inventory = RemoteStore(root).load_inventory()
+    unrelated_path = root / unrelated.file
+    unrelated_path.write_bytes(unrelated_path.read_bytes() + b"changed\n")
+    unrelated_snapshot = snapshot_file(unrelated_path)
+    unrelated = replace(
+        unrelated,
+        sha256=unrelated_snapshot.sha256,
+        size_bytes=unrelated_snapshot.size_bytes,
+    )
+    _write_index(root, {selected.thread_id: selected, unrelated.thread_id: unrelated}, updated_at="after")
+
+    RemoteStore(root).validate_selected(
+        {selected.thread_id: selected},
+        {selected.thread_id: inventory.files[selected.thread_id]},
+    )
+
+
+def test_commit_index_merges_unrelated_latest_entries_without_deleting(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    selected = _write_indexed_conversation(root, "thread-1")
+    retained = _write_indexed_conversation(root, "thread-2")
+    _write_index(root, {selected.thread_id: selected, retained.thread_id: retained})
+    store = RemoteStore(root)
+    base = store.load_inventory()
+
+    source = tmp_path / "selected-source.jsonl"
+    source.write_bytes(_session_jsonl("thread-1") + b'{"type":"response_item"}\n')
+    selected_written = store.write_conversation(source, portable_thread_filename("thread-1"))
+    selected_changed = replace(
+        selected,
+        sha256=selected_written.sha256,
+        size_bytes=selected_written.size_bytes,
+        exported_at="after",
+    )
+
+    added = _write_indexed_conversation(root, "thread-3")
+    retained_latest = replace(retained, project_label="updated elsewhere")
+    _write_index(
+        root,
+        {
+            selected.thread_id: selected,
+            retained_latest.thread_id: retained_latest,
+            added.thread_id: added,
+        },
+        updated_at="concurrent",
+    )
+
+    committed = store.commit_index(
+        base,
+        {selected.thread_id: selected_changed},
+        {selected.thread_id: selected_written},
+    )
+
+    assert committed.threads == {
+        selected.thread_id: selected_changed,
+        retained_latest.thread_id: retained_latest,
+        added.thread_id: added,
+    }
+    assert RemoteIndex.from_dict(read_json_object(root / "sync-index.json") or {}) == committed
+    assert (root / retained.file).is_file()
+    assert (root / added.file).is_file()
+
+
+def test_commit_index_persists_safe_inventory_repairs(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    path = root / "conversations" / "orphan.jsonl"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(_session_jsonl("thread-1"))
+    store = RemoteStore(root)
+    base = store.load_inventory()
+
+    committed = store.commit_index(base, {}, {})
+
+    assert committed.threads == base.index.threads
+    assert RemoteIndex.from_dict(read_json_object(root / "sync-index.json") or {}) == committed
+    assert path.read_bytes() == _session_jsonl("thread-1")
+
+
+def test_commit_index_detects_selected_entry_change_after_planning(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {entry.thread_id: entry})
+    store = RemoteStore(root)
+    base = store.load_inventory()
+    concurrent = replace(entry, project_label="concurrent")
+    _write_index(root, {entry.thread_id: concurrent}, updated_at="concurrent")
+
+    with pytest.raises(ConcurrentRemoteChangeError, match="index entry"):
+        store.commit_index(base, {entry.thread_id: replace(entry, exported_at="after")}, {})
+
+    assert RemoteIndex.from_dict(read_json_object(root / "sync-index.json") or {}).threads == {
+        entry.thread_id: concurrent
+    }
+
+
+def test_commit_index_detects_selected_unwritten_file_change(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {entry.thread_id: entry})
+    store = RemoteStore(root)
+    base = store.load_inventory()
+    path = root / entry.file
+    path.write_bytes(path.read_bytes() + b"concurrent\n")
+
+    with pytest.raises(ConcurrentRemoteChangeError, match="conversation file"):
+        store.commit_index(base, {entry.thread_id: replace(entry, exported_at="after")}, {})
+
+
+def test_commit_index_detects_written_file_change_before_commit(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {entry.thread_id: entry})
+    store = RemoteStore(root)
+    base = store.load_inventory()
+    source = tmp_path / "source.jsonl"
+    source.write_bytes(_session_jsonl("thread-1") + b"written\n")
+    written = store.write_conversation(source, portable_thread_filename("thread-1"))
+    changed = replace(entry, sha256=written.sha256, size_bytes=written.size_bytes)
+    (root / entry.file).write_bytes(source.read_bytes() + b"concurrent\n")
+
+    with pytest.raises(ConcurrentRemoteChangeError, match="written conversation file"):
+        store.commit_index(base, {entry.thread_id: changed}, {entry.thread_id: written})
+
+
+def test_commit_index_rejects_unwritten_entry_pointing_to_another_file(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    entry = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {entry.thread_id: entry})
+    store = RemoteStore(root)
+    base = store.load_inventory()
+    redirected = replace(entry, file="conversations/other.jsonl")
+    before = (root / "sync-index.json").read_bytes()
+
+    with pytest.raises(ValueError, match="snapshot path does not match"):
+        store.commit_index(base, {entry.thread_id: redirected}, {})
+
+    assert (root / "sync-index.json").read_bytes() == before
+
+
+def test_commit_index_rejects_duplicate_filename_before_writing(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    retained = _write_indexed_conversation(root, "thread-1")
+    _write_index(root, {retained.thread_id: retained})
+    store = RemoteStore(root)
+    base = store.load_inventory()
+    duplicate = replace(_remote_entry("thread-2"), file=retained.file)
+    before = (root / "sync-index.json").read_bytes()
+
+    with pytest.raises(MalformedSyncIndexError, match="same remote file"):
+        store.commit_index(base, {duplicate.thread_id: duplicate}, {})
+
+    assert (root / "sync-index.json").read_bytes() == before
