@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -19,7 +19,7 @@ from codex_usage.sync.errors import (
 )
 from codex_usage.sync.inventory import (
     build_local_inventory,
-    resolve_selected_thread_ids,
+    normalize_selected_thread_ids,
 )
 from codex_usage.sync.io import atomic_copy, snapshot_file
 from codex_usage.sync.models import (
@@ -87,8 +87,7 @@ def sync_status(
     *,
     data: CachedSessionData,
     sync_dir: Path,
-    project_keys: list[str],
-    thread_ids: list[str],
+    thread_ids: Iterable[str],
 ) -> SyncPlan:
     local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
@@ -97,7 +96,6 @@ def sync_status(
             local,
             store,
             sync_dir,
-            project_keys,
             thread_ids,
         )
     except SyncStoreError as error:
@@ -109,8 +107,7 @@ def run_sync(
     *,
     data: CachedSessionData,
     sync_dir: Path,
-    project_keys: list[str],
-    thread_ids: list[str],
+    thread_ids: Iterable[str],
     machine_id: str,
     discovery_ms: int = 0,
     on_progress: Callable[[SyncProgressEvent], None] | None = None,
@@ -131,7 +128,6 @@ def run_sync(
                     local,
                     store,
                     sync_dir,
-                    project_keys,
                     thread_ids,
                 )
                 if plan.blocks_execution:
@@ -183,11 +179,10 @@ def _prepare_sync_plan(
     local: LocalInventory,
     store: RemoteStore,
     sync_dir: Path,
-    project_keys: list[str],
-    thread_ids: list[str],
+    thread_ids: Iterable[str],
 ) -> tuple[RemoteInventory, SyncPlan]:
     remote = store.load_inventory()
-    selected = resolve_selected_thread_ids(local, remote, project_keys, thread_ids)
+    selected = normalize_selected_thread_ids(thread_ids)
     remote = store.materialize_selected(remote, selected)
     plan = build_sync_plan(local, remote, selected, sync_dir)
     return promote_matching_local_metadata(remote, local, plan), plan

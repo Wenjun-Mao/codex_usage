@@ -196,7 +196,6 @@ def _run(
     return run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id=machine_id,
         on_progress=progress.append if progress is not None else None,

@@ -10,7 +10,7 @@ import pytest
 
 import codex_usage.cli as cli_module
 import codex_usage.sync_cli as sync_cli
-from codex_usage.sync_cli import _sync_session_dirs, normalize_thread_ids
+from codex_usage.sync_cli import _sync_session_dirs
 
 
 def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
@@ -37,8 +37,8 @@ def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
             "run",
             "--sync-dir",
             str(sync_dir),
-            "--project-key",
-            "/repo/first",
+            "--thread-id",
+            "thread-1",
             "--json",
         ],
         env={"CODEX_HOME": str(source_home)},
@@ -57,8 +57,8 @@ def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
             "run",
             "--sync-dir",
             str(sync_dir),
-            "--project-key",
-            "/repo/first",
+            "--thread-id",
+            "thread-1",
             "--json",
         ],
         env={"CODEX_HOME": str(target_home)},
@@ -214,7 +214,7 @@ def test_sync_inventory_prints_one_human_summary_line(
     assert capsys.readouterr().out == "Sync inventory: 2 projects, 3 tasks, 1 issues.\n"
 
 
-def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_selectors(
+def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_thread_ids(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -253,7 +253,6 @@ def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_selector
     )
     args = _args(
         tmp_path,
-        project_key=[" /repo/first ", "/repo/first"],
         thread_id=[" Thread/One ", "Thread/One"],
         no_auto_transitions=True,
     )
@@ -265,13 +264,13 @@ def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_selector
     assert calls[0] == ("load", [tmp_path / "sessions"], False)
     assert calls[1][0] == "run"
     assert calls[1][1]["data"] is data
-    assert calls[1][1]["project_keys"] == ["/repo/first"]
-    assert calls[1][1]["thread_ids"] == ["Thread/One"]
+    assert calls[1][1]["thread_ids"] == ("Thread/One",)
+    assert "project_keys" not in calls[1][1]
     assert captured.err.splitlines()[0] == '{"type":"sync_progress","phase":"scanning"}'
     assert json.loads(captured.out)["outcome"] == "completed"
 
 
-def test_sync_commands_reject_empty_selector_union(
+def test_sync_commands_reject_empty_task_selection(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -282,8 +281,30 @@ def test_sync_commands_reject_empty_selector_union(
     assert exit_code == 2
     assert (
         capsys.readouterr().err.strip()
-        == "codex-usage: Select at least one project key or thread id for sync."
+        == "codex-usage: Select at least one task with --thread-id for sync."
     )
+
+
+@pytest.mark.parametrize("sync_command", ["run", "status"])
+def test_sync_execution_commands_reject_project_key(sync_command: str, tmp_path: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "codex_usage.cli",
+            "sync",
+            sync_command,
+            "--sync-dir",
+            str(tmp_path / "sync"),
+            "--project-key",
+            "/repo/first",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "unrecognized arguments: --project-key /repo/first" in result.stderr
 
 
 def test_sync_status_uses_noncreating_default_path_and_returns_zero_for_issues(
@@ -321,7 +342,7 @@ def test_sync_status_uses_noncreating_default_path_and_returns_zero_for_issues(
     )
 
     exit_code = sync_cli.handle_sync_status(
-        _args(tmp_path, project_key=["/repo/first"], thread_id=None),
+        _args(tmp_path, thread_id=["thread-1"]),
         load_session_data,
     )
 
@@ -330,6 +351,8 @@ def test_sync_status_uses_noncreating_default_path_and_returns_zero_for_issues(
     assert calls[0] == ("load", [default_sessions], True)
     assert calls[1][0] == "status"
     assert calls[1][1]["data"] is data
+    assert calls[1][1]["thread_ids"] == ("thread-1",)
+    assert "project_keys" not in calls[1][1]
     assert not default_sessions.exists()
     assert captured.err.splitlines()[0] == '{"type":"sync_progress","phase":"scanning"}'
     assert json.loads(captured.out)["issues"][0]["code"] == "legacy_sync_layout"
@@ -351,7 +374,7 @@ def test_sync_run_returns_two_and_one_human_summary_for_conflict(
             to_dict=lambda: {"outcome": "conflict", "counts": {}},
         ),
     )
-    args = _args(tmp_path, project_key=None, thread_id=["thread-1"], json=False)
+    args = _args(tmp_path, thread_id=["thread-1"], json=False)
 
     exit_code = sync_cli.handle_sync_run(args, lambda *args, **kwargs: object())
 
@@ -361,18 +384,9 @@ def test_sync_run_returns_two_and_one_human_summary_for_conflict(
     assert not captured.out.startswith("{")
 
 
-def test_normalize_thread_ids_preserves_case_and_slashes() -> None:
-    thread_ids = normalize_thread_ids(
-        [" Owner/Repo ", "Owner/Repo", "owner/repo", "thread-1"]
-    )
-
-    assert thread_ids == ["Owner/Repo", "owner/repo", "thread-1"]
-
-
 def _args(tmp_path: Path, **overrides) -> Namespace:
     values = {
         "sync_dir": tmp_path / "sync",
-        "project_key": None,
         "thread_id": None,
         "machine_id": "machine-a",
         "no_auto_transitions": False,

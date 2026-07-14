@@ -19,7 +19,6 @@ def test_run_sync_pushes_flat_bytes_and_one_index(tmp_path: Path) -> None:
     result = run_sync(
         data=data,
         sync_dir=tmp_path / "sync",
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -31,6 +30,35 @@ def test_run_sync_pushes_flat_bytes_and_one_index(tmp_path: Path) -> None:
     ).read_bytes() == source.read_bytes()
     assert (tmp_path / "sync" / "sync-index.json").is_file()
     assert not (tmp_path / "sync" / "threads").exists()
+
+
+def test_new_task_in_same_project_remains_excluded_after_initial_selection(
+    tmp_path: Path,
+) -> None:
+    sessions = tmp_path / "sessions"
+    _write_session(sessions, "selected-a", tmp_path / "repo", total=100)
+    _write_session(sessions, "selected-b", tmp_path / "repo", total=100)
+    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+
+    first = run_sync(
+        data=data,
+        sync_dir=tmp_path / "sync",
+        thread_ids=["selected-a", "selected-b"],
+        machine_id="a",
+    )
+
+    _write_session(sessions, "future", tmp_path / "repo", total=100)
+    refreshed = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    second = run_sync(
+        data=refreshed,
+        sync_dir=tmp_path / "sync",
+        thread_ids=["selected-a", "selected-b"],
+        machine_id="a",
+    )
+
+    assert set(first.pushed) == {"selected-a", "selected-b"}
+    assert second.pushed == ()
+    assert not (tmp_path / "sync" / "conversations" / "future.jsonl").exists()
 
 
 def test_run_sync_pulls_before_pushes_in_one_transaction(tmp_path: Path) -> None:
@@ -46,7 +74,6 @@ def test_run_sync_pulls_before_pushes_in_one_transaction(tmp_path: Path) -> None
     run_sync(
         data=source_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["remote-thread"],
         machine_id="source",
     )
@@ -61,7 +88,6 @@ def test_run_sync_pulls_before_pushes_in_one_transaction(tmp_path: Path) -> None
     result = run_sync(
         data=target_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["remote-thread", "local-thread"],
         machine_id="target",
         on_progress=progress.append,
@@ -91,7 +117,6 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
     run_sync(
         data=initial,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -106,7 +131,6 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
     result = run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -133,7 +157,6 @@ def test_conflict_result_includes_completed_planning_timing(
     run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -148,7 +171,6 @@ def test_conflict_result_includes_completed_planning_timing(
     result = run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -162,9 +184,9 @@ def test_runner_public_interfaces_are_keyword_only(tmp_path: Path) -> None:
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
 
     with pytest.raises(TypeError):
-        run_sync(data, tmp_path / "sync", [], ["thread-1"], "a")
+        run_sync(data, tmp_path / "sync", ["thread-1"], "a")
     with pytest.raises(TypeError):
-        transaction_status(data, tmp_path / "sync", [], ["thread-1"])
+        transaction_status(data, tmp_path / "sync", ["thread-1"])
 
 
 def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> None:
@@ -182,7 +204,6 @@ def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> 
     run_sync(
         data=initial,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -194,7 +215,6 @@ def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> 
     result = run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -234,7 +254,6 @@ def test_run_sync_returns_typed_issue_when_local_changes_after_planning(
     result = run_sync(
         data=data,
         sync_dir=tmp_path / "sync",
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -256,7 +275,6 @@ def test_run_sync_returns_typed_issue_for_visible_remote_change(
     run_sync(
         data=initial,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -276,7 +294,6 @@ def test_run_sync_returns_typed_issue_for_visible_remote_change(
     result = run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -303,7 +320,6 @@ def test_interrupted_unindexed_jsonl_is_repaired_on_next_run(
     interrupted = run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -318,7 +334,6 @@ def test_interrupted_unindexed_jsonl_is_repaired_on_next_run(
     repaired = run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -347,7 +362,6 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
     run_sync(
         data=initial_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -369,7 +383,6 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
     interrupted = run_sync(
         data=newer_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -380,7 +393,6 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
     repaired = run_sync(
         data=newer_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -412,7 +424,6 @@ def test_matching_local_bytes_do_not_replace_newer_remote_metadata(tmp_path: Pat
     run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -430,7 +441,6 @@ def test_matching_local_bytes_do_not_replace_newer_remote_metadata(tmp_path: Pat
     result = run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
@@ -455,7 +465,6 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
     run_sync(
         data=source_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1", "thread-2"],
         machine_id="source",
     )
@@ -484,7 +493,6 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
     plan = transaction_status(
         data=target_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
     )
 
@@ -506,7 +514,6 @@ def test_final_commit_validates_pulled_remote_file_during_simultaneous_push(
     run_sync(
         data=source_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["remote-thread"],
         machine_id="source",
     )
@@ -528,7 +535,6 @@ def test_final_commit_validates_pulled_remote_file_during_simultaneous_push(
     result = run_sync(
         data=target_data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["remote-thread", "local-thread"],
         machine_id="target",
     )
@@ -569,8 +575,7 @@ def test_run_sync_builds_each_inventory_once_and_emits_only_push_phase(
     result = run_sync(
         data=data,
         sync_dir=tmp_path / "sync",
-        project_keys=[],
-        thread_ids=[],
+        thread_ids=[f"thread-{number}" for number in range(20)],
         machine_id="a",
         on_progress=progress.append,
     )
@@ -607,7 +612,6 @@ def test_sync_status_is_read_only_and_builds_local_inventory_once(
     plan = transaction_status(
         data=data,
         sync_dir=tmp_path / "sync",
-        project_keys=[],
         thread_ids=["thread-1"],
     )
 
@@ -632,7 +636,6 @@ def test_unselected_remote_diagnostic_does_not_block_selected_push(
     result = run_sync(
         data=data,
         sync_dir=sync_dir,
-        project_keys=[],
         thread_ids=["thread-1"],
         machine_id="a",
     )
