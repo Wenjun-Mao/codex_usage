@@ -14,8 +14,13 @@ def test_sync_package_exports_only_v2_models_and_runner_contract() -> None:
         "SyncPlan",
         "SyncPlanItem",
         "SyncProgressEvent",
+        "SyncProjectInventoryItem",
         "SyncRunResult",
+        "SyncSelectionInventory",
+        "SyncTaskInventoryItem",
         "SyncTimings",
+        "build_sync_selection_inventory",
+        "load_sync_selection_inventory",
         "run_sync",
         "sync_status",
     ]
