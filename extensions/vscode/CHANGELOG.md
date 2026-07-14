@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.34 - Exact Task Sync Selection
+
+- Replaced project/conversation setup with one project-grouped task picker that stores exact selected task thread ids.
+- Made project rows shortcuts for the tasks currently shown, so future tasks stay excluded until explicitly selected.
+- Added remote-only task discovery so a task can be selected and pulled on another computer before it exists locally.
+- Require one-time sync setup after upgrading; the version-2 remote layout is unchanged, so no remote cleanup or republish is required.
+- Use task in user-facing sync copy while retaining thread id for the technical CLI and storage contract.
+- Verify packaged inventory plus exact-task push/pull on macOS locally and on Windows in CI.
+- Documented full-JSONL task sync as an option when built-in Codex handoff cannot complete for a very large task.
+
 ## 0.1.33
 
 - Store each synced conversation as one flat JSONL file and run each sync in one process for lower startup and scan overhead.

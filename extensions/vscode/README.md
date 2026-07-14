@@ -12,13 +12,13 @@ Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local 
 - Supports multi-project filtering from detected project keys.
 - Supports auto/day/night dashboard theme switching.
 - Detects high-confidence project transitions and can split dashboard usage after verified local repository changes.
-- Adds experimental selected-conversation sync through a user-provided local sync folder.
+- Adds experimental exact-task sync through a user-provided local sync folder.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, daily/hourly views, project breakdown, and model mix.
 - Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
 
 ## Preview Status
 
-This Marketplace preview supports Windows x64 and macOS Apple Silicon. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Intel macOS is not supported.
+This Marketplace preview supports Windows x64 and macOS Apple Silicon. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Intel macOS is not supported. Windows x64 packaging is CI-only and must pass the GitHub Actions packaged smoke test before publication.
 
 ## Commands
 
@@ -30,8 +30,7 @@ This Marketplace preview supports Windows x64 and macOS Apple Silicon. The insta
 - `Codex Usage: Review Project Transitions`
 - `Codex Usage: Sync Menu`
 - `Codex Usage: Configure Sync`
-- `Codex Usage: Select Sync Projects`
-- `Codex Usage: Select Sync Conversations`
+- `Codex Usage: Select Sync Tasks`
 - `Codex Usage: Sync Now`
 - `Codex Usage: Sync Status`
 - `Codex Usage: Open Sync Folder`
@@ -42,19 +41,21 @@ This Marketplace preview supports Windows x64 and macOS Apple Silicon. The insta
 - `codexUsage.range`: dashboard range, default `30d`.
 - `codexUsage.theme`: `auto`, `day`, or `night`. Auto follows your active VS Code theme.
 - `codexUsage.projectTransitions.autoDetect`: automatically split usage after high-confidence local repository transitions.
-- `codexUsage.sync.enabled`: enable experimental selected-conversation sync.
+- `codexUsage.sync.enabled`: enable experimental selected-task sync.
 - `codexUsage.sync.autoPull` / `codexUsage.sync.autoPush`: automatic sync behavior.
 
 Project filtering is managed with `Codex Usage: Select Projects` and is stored as extension UI state, not as a user setting.
-Sync folder, sync project, and sync conversation selections are managed with `Codex Usage: Configure Sync` and stored as extension UI state, not as user settings.
+The sync folder and exact task selections are managed with `Codex Usage: Configure Sync` and stored as extension UI state, not as user settings.
 
 ## Experimental Sync
 
-Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected active Codex conversation JSONLs and stores matching session-index metadata in a central catalog. It does not upload data itself and does not sync Codex auth, settings, caches, logs, archived conversations, or SQLite databases.
+Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected active Codex task JSONLs and stores matching session-index metadata in a central catalog. It does not upload data itself and does not sync Codex auth, settings, caches, logs, archived tasks, or SQLite databases.
 
-Continue a long-running Codex conversation on another computer when a normal handoff cannot complete because the conversation is too large. Sync transfers the original conversation JSONL without summarizing or repackaging its context.
+A built-in Codex handoff can fail on a very large task. Task sync is designed for that usage scenario: it preserves the task as a full JSONL without summarizing or repackaging its context, so the same long-running task can continue on another computer.
 
-The setup flow is project-first: choose the sync folder, choose projects with rough sync-size estimates, then choose all conversations in those projects or specific conversations. Current sync discovery includes active `sessions` conversations only, not archived conversations. Deselecting a project or conversation never deletes its remote JSONL or catalog entry, and project mode discovers newly created matching active conversations on future runs. The command id for selecting conversations remains `codexUsage.selectSyncThreads` internally for compatibility, but the command palette shows `Codex Usage: Select Sync Conversations`.
+Setup uses one project-grouped `Select Tasks` picker after the sync folder is chosen. Project rows are current-task shortcuts: each row selects or deselects only the tasks currently shown beneath it. Remote-only tasks are discovered from the sync folder, including on a device where they have not been pulled. Future tasks under an already represented project remain excluded until explicitly selected. Deselecting a task never deletes its remote JSONL or catalog entry.
+
+In user-facing UI and documentation, each selectable Codex sidebar item is a **task**. The CLI and storage contracts use its technical thread id through fields such as `thread_id` and the `--thread-id` option.
 
 Version 2 writes this sync-folder layout:
 
@@ -65,17 +66,17 @@ Version 2 writes this sync-folder layout:
   sync-index.json
 ```
 
-Version 2 does not migrate or automatically clean up the earlier layout. Existing sync users must empty the old sync-folder contents themselves, then run sync again.
+Version `0.1.34` intentionally invalidates the previous project/conversation selection state. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
 
-Click the dashboard `Sync: ... ▾` control or run `Codex Usage: Sync Menu` to manage sync. The menu supports manual sync, status, pause/resume, changing the sync folder, changing projects, changing conversations, clearing the setup, and opening the sync folder. Clearing setup only forgets extension selections; it does not delete Codex logs or sync-folder files.
+Click the dashboard `Sync: ... ▾` control or run `Codex Usage: Sync Menu` to manage sync. The menu supports manual sync, status, pause/resume, changing the sync folder or selected tasks, clearing the setup, and opening the sync folder. Clearing setup only forgets extension selections; it does not delete Codex logs or sync-folder files.
 
 The status bar is the primary background sync indicator, with states including `Sync:Scanning`, `Sync:Pulling`, and `Sync:Pushing`. Automatic sync uses a focus cooldown, a file-change debounce, and failure backoff to avoid noisy repeated runs. Normal automatic success/failure details go to the Codex Usage output channel; popups are reserved for manual sync and action-needed failures such as conflicts.
 
-For manual-only sync, leave `codexUsage.sync.enabled` on and turn off both `codexUsage.sync.autoPull` and `codexUsage.sync.autoPush`. Run `Codex Usage: Sync Now` from the command palette or the dashboard action strip when you want to sync, and use `Codex Usage: Sync Status` to inspect selected conversations.
+For manual-only sync, leave `codexUsage.sync.enabled` on and turn off both `codexUsage.sync.autoPull` and `codexUsage.sync.autoPush`. Run `Codex Usage: Sync Now` from the command palette or the dashboard action strip when you want to sync, and use `Codex Usage: Sync Status` to inspect selected tasks.
 
-Conversation sync is prefix-aware. Normal append-only progress on one computer is pulled or pushed automatically; true divergent edits on two computers are reported as conflicts and neither side is overwritten.
+Task sync is prefix-aware. Normal append-only progress on one computer is pulled or pushed automatically; true divergent edits on two computers are reported as conflicts and neither side is overwritten.
 
-Sync copies only selected active conversation JSONLs and preserves matching session-index metadata in its repairable catalog. Archived conversations can appear in usage totals but are not sync candidates.
+Sync copies only selected active task JSONLs and preserves matching session-index metadata in its repairable catalog. Archived tasks can appear in usage totals but are not sync candidates.
 
 ### Archive/Delete Accounting
 
@@ -140,14 +141,7 @@ Codex fast mode is counted through the token usage that Codex records. At the mo
 
 ## Development
 
-Windows x64 on Windows/PowerShell from `extensions/vscode`:
-
-```powershell
-npm install
-npm run build
-npm test
-npm run package:vsix:win
-```
+Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, packages the VSIX, and exercises inventory plus exact-task push/pull through the packaged executable.
 
 macOS Apple Silicon on macOS/bash from `extensions/vscode`:
 

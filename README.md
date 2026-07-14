@@ -12,15 +12,9 @@ This repository contains:
 
 ## VS Code Preview Packages
 
-The current preview packages support Windows x64 and macOS Apple Silicon. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation.
+The current preview packages support Windows x64 and macOS Apple Silicon. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. Windows x64 packaging is CI-only; the GitHub Actions Windows job must build the package and pass its packaged smoke test before publication.
 
-Build and install the local VSIX:
-
-```powershell
-cd extensions/vscode
-npm run package:vsix:win
-code --install-extension ..\..\output\releases\codex-usage-dashboard-win32-x64.vsix --force
-```
+Build and install the local macOS Apple Silicon VSIX:
 
 ```bash
 cd extensions/vscode
@@ -38,8 +32,7 @@ Available commands:
 - `Codex Usage: Select Theme`
 - `Codex Usage: Sync Menu`
 - `Codex Usage: Configure Sync`
-- `Codex Usage: Select Sync Projects`
-- `Codex Usage: Select Sync Conversations`
+- `Codex Usage: Select Sync Tasks`
 - `Codex Usage: Sync Now`
 - `Codex Usage: Sync Status`
 - `Codex Usage: Open Sync Folder`
@@ -56,6 +49,7 @@ uv run codex-usage report --range 30d --output output/report.html
 uv run codex-usage report --range all --theme night --output output/night-report.html
 uv run codex-usage transitions suggest --json
 uv run codex-usage threads --project-key https://github.com/example/demo --json
+uv run codex-usage sync inventory --sync-dir D:\CodexSync --json
 uv run codex-usage sync run --sync-dir D:\CodexSync --thread-id <thread-id> --json
 uv run codex-usage sync status --sync-dir D:\CodexSync --thread-id <thread-id> --json
 ```
@@ -69,7 +63,7 @@ By default, the tool looks for Codex session storage at:
 - `~/.codex/sessions`
 - `~/.codex/archived_sessions`
 
-Dashboard and usage-report discovery includes active and archived session roots when they exist. Conversation sync uses only the active `sessions` roots. Set `CODEX_HOME` when you need to point the CLI at a different Codex home for testing or migration.
+Dashboard and usage-report discovery includes active and archived session roots when they exist. Task sync uses only the active `sessions` roots. Set `CODEX_HOME` when you need to point the CLI at a different Codex home for testing or migration.
 
 Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser/system color-scheme preference. In VS Code, auto follows the active VS Code theme. You can force a report with `--theme day` or `--theme night`, or set `CODEX_USAGE_THEME`.
 
@@ -93,15 +87,17 @@ Codex fast mode is counted through the token usage that Codex records. Current C
 The report uses no remote assets, JavaScript, or Python chart libraries. It is safe to open locally and is designed to fit inside a VS Code webview.
 The dashboard uses the same tokenized day/night design system as the VS Code extension, including dark-mode-friendly charts and tables.
 
-## Experimental Conversation Sync
+## Experimental Task Sync
 
-The VS Code preview can sync selected Codex conversations through a bring-your-own local sync folder such as iCloud Drive, OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Run `Codex Usage: Configure Sync` to choose a sync folder, select one or more projects, see a rough sync-size estimate for each project, then choose whether to sync all conversations in those projects or only specific conversations.
+The VS Code preview can sync selected Codex tasks through a bring-your-own local sync folder such as iCloud Drive, OneDrive, Dropbox, Syncthing, or a network drive. Sync is off by default. Run `Codex Usage: Configure Sync` to choose a sync folder and select exact tasks in one project-grouped `Select Tasks` picker.
 
-Continue a long-running Codex conversation on another computer when a normal handoff cannot complete because the conversation is too large. Sync transfers the original conversation JSONL without summarizing or repackaging its context.
+A built-in Codex handoff can fail on a very large task. Task sync is designed for that usage scenario: it preserves the task as a full JSONL without summarizing or repackaging its context, so the same long-running task can continue on another computer.
 
-Projects match the repo/workspace identities shown in Project Breakdown. Conversations are individual Codex sessions inside those projects. Current sync discovery includes active `sessions` conversations only, not archived conversations. Size estimates are based on local session JSONL file sizes plus a small central-index allowance, so they are useful for cloud-storage planning but not exact billing or provider overhead. The extension stores the sync folder, selected sync projects, and selected conversations as local VS Code extension UI state, not as raw settings you need to edit by hand.
+Projects match the repo/workspace identities shown in Project Breakdown. Project rows are current-task shortcuts that select or deselect only the tasks shown beneath them in that inventory snapshot. Remote-only tasks are discovered from the sync folder and can be selected on a device where they do not exist locally. Future tasks under an already represented project remain excluded until explicitly selected. The extension stores the sync folder and exact selected task ids as local VS Code extension UI state, not as raw settings you need to edit by hand.
 
-Version 2 writes one byte-preserved JSONL per conversation and one repairable catalog:
+In user-facing UI and documentation, each selectable Codex sidebar item is a **task**. The CLI and storage contracts use its technical thread id through fields such as `thread_id` and the `--thread-id` option.
+
+Version 2 writes one byte-preserved JSONL per task and one repairable catalog:
 
 ```text
 <sync-folder>/
@@ -110,19 +106,19 @@ Version 2 writes one byte-preserved JSONL per conversation and one repairable ca
   sync-index.json
 ```
 
-Version 2 does not migrate or automatically clean up the earlier layout. Existing sync users must empty the old sync-folder contents themselves, then run sync again.
+Version `0.1.34` intentionally invalidates the previous project/conversation selection state. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
 
-Selection controls which active conversations participate; deselecting a project or conversation never deletes its remote JSONL or index entry. Project mode discovers newly created matching active conversations on future runs.
+Selection controls which exact active tasks participate. Deselecting a task never deletes its remote JSONL or index entry, and newly created tasks never join sync automatically.
 
-Sync is managed from the dashboard `Sync: ... ▾` menu, where you can pause/resume, change the folder, change projects or conversations, clear setup, run manual sync, and inspect status.
+Sync is managed from the dashboard `Sync: ... ▾` menu, where you can pause/resume, change the folder or selected tasks, clear setup, run manual sync, and inspect status.
 
 Background sync is intentionally quiet. The VS Code status bar shows the current sync state, such as `Sync:Off`, `Sync:Idle`, `Sync:Waiting`, `Sync:Scanning`, `Sync:Pulling`, `Sync:Pushing`, `Sync:Conflict`, or `Sync:Issue`. Automatic sync logs details to the Codex Usage output channel; visible notifications are reserved for manual sync and action-needed failures.
 
-Manual-only sync is supported: keep Sync Enabled on, turn Auto Pull and Auto Push off, then use `Codex Usage: Sync Now` from the command palette or the dashboard action strip. Use `Sync Status` to inspect selected conversation state without running a full sync.
+Manual-only sync is supported: keep Sync Enabled on, turn Auto Pull and Auto Push off, then use `Codex Usage: Sync Now` from the command palette or the dashboard action strip. Use `Sync Status` to inspect selected task state without running a full sync.
 
-Sync uses three-way state per conversation. If one side only appends new Codex JSONL events, the beta treats it as a fast-forward and pulls or pushes automatically. If both computers append different tails to the same conversation, sync stops and preserves both sides for review.
+Sync uses three-way state per task. If one side only appends new Codex JSONL events, the beta treats it as a fast-forward and pulls or pushes automatically. If both computers append different tails to the same task, sync stops and preserves both sides for review.
 
-The sync MVP copies only selected active conversation JSONLs and preserves their matching session-index metadata through the repairable catalog. It does not sync `auth.json`, settings, caches, logs, archived conversations, or SQLite databases. If local memory database rows are detected for a selected conversation, sync status reports that they are not synced by this beta.
+The sync MVP copies only selected active task JSONLs and preserves their matching session-index metadata through the repairable catalog. It does not sync `auth.json`, settings, caches, logs, archived tasks, or SQLite databases. If local memory database rows are detected for a selected task, sync status reports that they are not synced by this beta.
 
 ## Archived And Deleted Conversations
 

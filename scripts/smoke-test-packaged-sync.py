@@ -72,21 +72,15 @@ def _write_source_home(source_home: Path) -> Path:
     return source_jsonl
 
 
-def _run_sync(executable: Path, codex_home: Path, sync_dir: Path) -> dict[str, object]:
+def _run_json(
+    executable: Path,
+    codex_home: Path,
+    args: list[str],
+) -> dict[str, object]:
     environment = os.environ.copy()
     environment["CODEX_HOME"] = str(codex_home)
-    command = [
-        str(executable),
-        "sync",
-        "run",
-        "--sync-dir",
-        str(sync_dir),
-        "--thread-id",
-        THREAD_ID,
-        "--json",
-    ]
     completed = subprocess.run(
-        command,
+        [str(executable), *args],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -95,7 +89,7 @@ def _run_sync(executable: Path, codex_home: Path, sync_dir: Path) -> dict[str, o
     )
     if completed.returncode != 0:
         raise RuntimeError(
-            f"Packaged sync exited with code {completed.returncode}.\n"
+            f"Packaged command exited with code {completed.returncode}.\n"
             f"stdout:\n{completed.stdout}\n"
             f"stderr:\n{completed.stderr}"
         )
@@ -104,13 +98,21 @@ def _run_sync(executable: Path, codex_home: Path, sync_dir: Path) -> dict[str, o
         result = json.loads(completed.stdout)
     except json.JSONDecodeError as error:
         raise RuntimeError(
-            "Packaged sync stdout was not one JSON object.\n"
+            "Packaged command stdout was not one JSON object.\n"
             f"stdout:\n{completed.stdout}\n"
             f"stderr:\n{completed.stderr}"
         ) from error
     if not isinstance(result, dict):
-        raise RuntimeError(f"Packaged sync returned non-object JSON: {result!r}")
+        raise RuntimeError(f"Packaged command returned non-object JSON: {result!r}")
     return result
+
+
+def _run_sync(executable: Path, codex_home: Path, sync_dir: Path) -> dict[str, object]:
+    return _run_json(
+        executable,
+        codex_home,
+        ["sync", "run", "--sync-dir", str(sync_dir), "--thread-id", THREAD_ID, "--json"],
+    )
 
 
 def main() -> int:
@@ -128,6 +130,13 @@ def main() -> int:
         sync_dir = root / "sync"
         source_jsonl = _write_source_home(source_home)
 
+        local_inventory = _run_json(
+            executable,
+            source_home,
+            ["sync", "inventory", "--sync-dir", str(sync_dir), "--json"],
+        )
+        assert local_inventory["projects"][0]["tasks"][0]["availability"] == "local"
+
         pushed = _run_sync(executable, source_home, sync_dir)
         remote_jsonl = sync_dir / "conversations" / f"{THREAD_ID}.jsonl"
         sync_index = sync_dir / "sync-index.json"
@@ -137,6 +146,13 @@ def main() -> int:
         assert remote_jsonl.read_bytes() == source_jsonl.read_bytes()
         assert json.loads(sync_index.read_text(encoding="utf-8"))["format_version"] == 2
 
+        remote_inventory = _run_json(
+            executable,
+            target_home,
+            ["sync", "inventory", "--sync-dir", str(sync_dir), "--json"],
+        )
+        assert remote_inventory["projects"][0]["tasks"][0]["availability"] == "remote"
+
         pulled = _run_sync(executable, target_home, sync_dir)
         imported_jsonl = target_home / "sessions" / SESSION_RELATIVE_PATH
 
@@ -144,7 +160,10 @@ def main() -> int:
         assert imported_jsonl.read_bytes() == source_jsonl.read_bytes()
         assert not (sync_dir / "threads").exists()
 
-    print("Packaged sync smoke passed: pushed=1 pulled=1 format_version=2")
+    print(
+        "Packaged sync smoke passed: "
+        "inventory=local,remote pushed=1 pulled=1 format_version=2"
+    )
     return 0
 
 
