@@ -20,7 +20,7 @@ export const SYNC_FILE_CHANGE_DEBOUNCE_MS = 30_000;
 export const SYNC_FOCUS_COOLDOWN_MS = 5 * 60_000;
 export const SYNC_AUTO_WARNING_COOLDOWN_MS = 5 * 60_000;
 
-export const SYNC_STATUS_KIND_VALUES = ["off", "idle", "waiting", "pulling", "pushing", "conflict", "issue"] as const;
+export const SYNC_STATUS_KIND_VALUES = ["off", "idle", "waiting", "scanning", "pulling", "pushing", "conflict", "issue"] as const;
 export type SyncStatusKind = (typeof SYNC_STATUS_KIND_VALUES)[number];
 
 export type ProjectTransitionsSettings = {
@@ -45,15 +45,6 @@ export type SummaryCommandOptions = {
 export type ThreadsCommandOptions = {
   projectKeys?: string[];
   projectTransitions?: ProjectTransitionsSettings;
-};
-
-export type SyncCommandOptions = {
-  syncDir: string;
-  threadIds: string[];
-};
-
-export type SyncImportCommandOptions = SyncCommandOptions & {
-  conflictPolicy?: string;
 };
 
 export const SYNC_CONVERSATION_MODE_VALUES = ["selectedConversations", "allInProjects"] as const;
@@ -292,6 +283,9 @@ export function syncStatusKindLabel(kind: SyncStatusKind): string {
   if (kind === "waiting") {
     return "Waiting";
   }
+  if (kind === "scanning") {
+    return "Scanning";
+  }
   if (kind === "pulling") {
     return "Pulling";
   }
@@ -406,35 +400,6 @@ export function buildThreadsArgs(options: ThreadsCommandOptions): string[] {
 export function buildTransitionSuggestArgs(): string[] {
   const args = ["transitions", "suggest", "--json"];
   return args;
-}
-
-export function buildSyncExportArgs(options: SyncCommandOptions): string[] {
-  const args = ["sync", "export"];
-  appendSyncArgs(args, options);
-  return args;
-}
-
-export function buildSyncImportArgs(options: SyncImportCommandOptions): string[] {
-  const args = ["sync", "import"];
-  appendSyncArgs(args, options);
-  const policy = options.conflictPolicy === "remote" ? "remote" : "skip";
-  args.push("--conflict-policy", policy);
-  return args;
-}
-
-export function buildSyncStatusArgs(options: SyncCommandOptions): string[] {
-  const args = ["sync", "status", "--json"];
-  appendSyncArgs(args, options);
-  return args;
-}
-
-function appendSyncArgs(args: string[], options: SyncCommandOptions): void {
-  if (options.syncDir.trim()) {
-    args.push("--sync-dir", options.syncDir.trim());
-  }
-  for (const threadId of normalizeThreadIds(options.threadIds)) {
-    args.push("--thread-id", threadId);
-  }
 }
 
 function appendProjectTransitionArgs(

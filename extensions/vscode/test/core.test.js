@@ -8,9 +8,6 @@ const {
   buildReportArgs,
   buildCodexUsageEnv,
   buildSummaryArgs,
-  buildSyncExportArgs,
-  buildSyncImportArgs,
-  buildSyncStatusArgs,
   buildThreadsArgs,
   cacheDbPath,
   buildTransitionSuggestArgs,
@@ -95,41 +92,12 @@ test("buildSummaryArgs includes project JSON arguments and project filters", () 
   assert.doesNotMatch(args.join(" "), /uv|codex-usage/);
 });
 
-test("sync CLI argument builders use bundled executable subcommands only", () => {
+test("thread picker argument builder uses the bundled executable subcommand only", () => {
   assert.deepEqual(buildThreadsArgs({ projectKeys: ["repo-a"] }), [
     "threads",
     "--json",
     "--project-key",
     "repo-a",
-  ]);
-  assert.deepEqual(buildSyncExportArgs({ syncDir: "D:/sync", threadIds: ["t1", "t2"] }), [
-    "sync",
-    "export",
-    "--sync-dir",
-    "D:/sync",
-    "--thread-id",
-    "t1",
-    "--thread-id",
-    "t2",
-  ]);
-  assert.deepEqual(buildSyncImportArgs({ syncDir: "D:/sync", threadIds: ["t1"], conflictPolicy: "remote" }), [
-    "sync",
-    "import",
-    "--sync-dir",
-    "D:/sync",
-    "--thread-id",
-    "t1",
-    "--conflict-policy",
-    "remote",
-  ]);
-  assert.deepEqual(buildSyncStatusArgs({ syncDir: "D:/sync", threadIds: ["t1"] }), [
-    "sync",
-    "status",
-    "--json",
-    "--sync-dir",
-    "D:/sync",
-    "--thread-id",
-    "t1",
   ]);
 });
 
@@ -338,6 +306,7 @@ test("syncStatusKindLabel maps scheduler states to concise status bar labels", (
   assert.equal(syncStatusKindLabel("off"), "Off");
   assert.equal(syncStatusKindLabel("idle"), "Idle");
   assert.equal(syncStatusKindLabel("waiting"), "Waiting");
+  assert.equal(syncStatusKindLabel("scanning"), "Scanning");
   assert.equal(syncStatusKindLabel("pulling"), "Pulling");
   assert.equal(syncStatusKindLabel("pushing"), "Pushing");
   assert.equal(syncStatusKindLabel("conflict"), "Conflict");

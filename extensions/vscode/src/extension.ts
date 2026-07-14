@@ -9,9 +9,6 @@ import {
   buildCodexUsageEnv,
   buildReportArgs,
   buildSummaryArgs,
-  buildSyncExportArgs,
-  buildSyncImportArgs,
-  buildSyncStatusArgs,
   buildThreadsArgs,
   buildTransitionSuggestArgs,
   bundledExecutablePath,
@@ -36,7 +33,6 @@ import {
   readSyncDirState,
   readSyncProjectKeysState,
   readSyncThreadIdsState,
-  parseSyncStatusSummary,
   parseThreadChoices,
   parseTransitionChoices,
   renderErrorHtml,
@@ -58,6 +54,8 @@ import {
   THEME_VALUES,
   WEBVIEW_COMMANDS,
 } from "./core";
+import { buildSyncRunArgs, buildSyncStatusArgs, parseSyncStatusSummary } from "./syncProtocol";
+import { runSyncProcess } from "./syncProcess";
 
 let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
@@ -772,31 +770,55 @@ async function runScheduledSync(context: vscode.ExtensionContext, reason: SyncRe
 
 async function runSyncNow(context: vscode.ExtensionContext, reason: SyncReason): Promise<boolean> {
   const settings = readSettings(context);
+  let outcomeStatus: "conflict" | "issue" | undefined;
   try {
+    const options = {
+      syncDir: settings.sync.dir,
+      projectKeys:
+        settings.sync.conversationMode === "allInProjects" ? settings.sync.projectKeys : [],
+      threadIds:
+        settings.sync.conversationMode === "selectedConversations" ? settings.sync.threadIds : [],
+      autoTransitions: settings.projectTransitions.autoDetect,
+    };
+    if (options.projectKeys.length === 0 && options.threadIds.length === 0) {
+      throw new Error("No Codex conversations are selected for sync.");
+    }
     const executablePath = await resolveBundledExecutable(context);
     const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
-    await vscode.window.withProgress(
+    const completion = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
         title: "Syncing Codex conversations",
       },
       async () => {
-        const options = await resolvedSyncOptions(context, settings);
-        if (options.threadIds.length === 0) {
-          throw new Error("No Codex conversations are selected for sync.");
-        }
-        setSyncStatus(context, "pulling");
-        const status = await runCodexUsage(executablePath, buildSyncStatusArgs(options), env);
-        const summary = parseSyncStatusSummary(status.stdout);
-        if (summary.conflicts > 0) {
-          setSyncStatus(context, "conflict", `${summary.conflicts} conflict${summary.conflicts === 1 ? "" : "s"}`);
-          throw new Error(`Codex sync has ${summary.conflicts} conflict${summary.conflicts === 1 ? "" : "s"}. Run Codex Usage: Sync Status.`);
-        }
-        await runCodexUsage(executablePath, buildSyncImportArgs(options), env);
-        setSyncStatus(context, "pushing");
-        await runCodexUsage(executablePath, buildSyncExportArgs(options), env);
+        const args = buildSyncRunArgs(options);
+        output.appendLine(`> ${executablePath} ${args.join(" ")}`);
+        setSyncStatus(context, "scanning");
+        return runSyncProcess({
+          executablePath,
+          args,
+          env,
+          onProgress: (event) => setSyncStatus(context, event.phase),
+          onOutput: (text) => output.append(text),
+        });
       },
     );
+    if (completion.result.outcome === "conflict") {
+      outcomeStatus = "conflict";
+      const count = completion.result.counts.conflicts;
+      const detail = count > 0 ? `${count} conflict${count === 1 ? "" : "s"}` : "conflicts";
+      const message = `Codex sync has ${detail}. Run Codex Usage: Sync Status.`;
+      setSyncStatus(context, "conflict", message);
+      throw new Error(message);
+    }
+    if (completion.result.outcome === "issue") {
+      outcomeStatus = "issue";
+      const firstIssue = completion.result.issues.find((issue) => issue.message.trim())?.message.trim();
+      const count = completion.result.counts.issues;
+      const message = firstIssue || `Codex sync reported ${count} issue${count === 1 ? "" : "s"}.`;
+      setSyncStatus(context, "issue", message);
+      throw new Error(message);
+    }
     if (reason === "manual") {
       void vscode.window.showInformationMessage("Codex sync complete.");
     } else {
@@ -806,7 +828,8 @@ async function runSyncNow(context: vscode.ExtensionContext, reason: SyncReason):
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
-    setSyncStatus(context, message.toLowerCase().includes("conflict") ? "conflict" : "issue", message);
+    const failureStatus = outcomeStatus ?? (message.toLowerCase().includes("conflict") ? "conflict" : "issue");
+    setSyncStatus(context, failureStatus, message);
     if (reason === "manual") {
       void vscode.window.showWarningMessage(`Codex sync failed: ${message}`);
       return false;
@@ -834,13 +857,20 @@ async function showSyncStatus(context: vscode.ExtensionContext): Promise<void> {
     return;
   }
   try {
-    const executablePath = await resolveBundledExecutable(context);
-    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
-    const options = await resolvedSyncOptions(context, settings);
-    if (options.threadIds.length === 0) {
+    const options = {
+      syncDir: settings.sync.dir,
+      projectKeys:
+        settings.sync.conversationMode === "allInProjects" ? settings.sync.projectKeys : [],
+      threadIds:
+        settings.sync.conversationMode === "selectedConversations" ? settings.sync.threadIds : [],
+      autoTransitions: settings.projectTransitions.autoDetect,
+    };
+    if (options.projectKeys.length === 0 && options.threadIds.length === 0) {
       await offerConfigureSync(context, "No Codex conversations are selected for sync.");
       return;
     }
+    const executablePath = await resolveBundledExecutable(context);
+    const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     const result = await runCodexUsage(executablePath, buildSyncStatusArgs(options), env);
     const summary = parseSyncStatusSummary(result.stdout);
     output.appendLine(`[sync] ${summary.message}`);
@@ -1084,33 +1114,6 @@ function mergePendingSyncReason(existing: SyncReason | undefined, next: SyncReas
     return "watch";
   }
   return "auto";
-}
-
-async function resolveSyncThreadIds(context: vscode.ExtensionContext, settings: ExtensionSettings): Promise<string[]> {
-  if (settings.sync.conversationMode === "selectedConversations") {
-    return settings.sync.threadIds;
-  }
-  if (settings.sync.projectKeys.length === 0) {
-    return [];
-  }
-  const executablePath = await resolveBundledExecutable(context);
-  const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
-  const result = await runCodexUsage(
-    executablePath,
-    buildThreadsArgs({
-      projectKeys: settings.sync.projectKeys,
-      projectTransitions: settings.projectTransitions,
-    }),
-    env,
-  );
-  return parseThreadChoices(result.stdout, []).map((choice) => choice.threadId);
-}
-
-async function resolvedSyncOptions(context: vscode.ExtensionContext, settings: ExtensionSettings) {
-  return {
-    syncDir: settings.sync.dir,
-    threadIds: await resolveSyncThreadIds(context, settings),
-  };
 }
 
 function syncStatusBadge(settings: ExtensionSettings, status: SyncStatusKind): string {
