@@ -111,6 +111,91 @@ def _empty_cached_data(session_dir: Path) -> CachedSessionData:
     )
 
 
+def _cached_local_task_data(session_dir: Path, thread_id: str) -> CachedSessionData:
+    session_dir.mkdir(parents=True)
+    session_path = session_dir / f"{thread_id}.jsonl"
+    session_path.write_bytes(b"{}\n")
+    summary = CachedFileSummary(
+        file_path=session_path,
+        session_dir=session_dir,
+        session_id=thread_id,
+        cwd="/repo/a",
+        project_key="repo-a",
+        project_label="Repo A",
+        project_aliases=(),
+        git_repository_url="",
+        git_branch="",
+        memory_mode="",
+        has_base_instructions=False,
+        session_bytes=3,
+        estimated_sync_bytes=4099,
+    )
+    return CachedSessionData(
+        session_dirs=[session_dir],
+        files=[session_path],
+        records=[],
+        file_summaries={session_path: summary},
+        project_transitions=[],
+        stats=CacheStats(files_total=1, files_current=1),
+        file_errors={},
+    )
+
+
+def _session_jsonl(thread_id: str) -> bytes:
+    event = {
+        "timestamp": "2026-07-14T12:00:00Z",
+        "type": "session_meta",
+        "payload": {
+            "id": thread_id,
+            "timestamp": "2026-07-14T12:00:00Z",
+            "cwd": "/repo/a",
+            "git": {"repository_url": "https://github.com/example/repo-a.git"},
+        },
+    }
+    return (json.dumps(event, separators=(",", ":")) + "\n").encode()
+
+
+def _write_indexed_remote_task(sync_dir: Path, contents: bytes) -> None:
+    conversation_path = sync_dir / "conversations" / "thread-1.jsonl"
+    conversation_path.parent.mkdir(parents=True)
+    conversation_path.write_bytes(contents)
+    snapshot = sync_io.snapshot_file(conversation_path)
+    entry = replace(
+        _remote_task(
+            "thread-1",
+            "Remote task",
+            "repo-a",
+            "Repo A",
+            "2026-07-14T12:00:00Z",
+        ),
+        sha256=snapshot.sha256,
+        size_bytes=snapshot.size_bytes,
+    )
+    index = RemoteIndex(
+        format_version=2,
+        updated_at="2026-07-14T12:00:00Z",
+        threads={entry.thread_id: entry},
+    )
+    (sync_dir / "sync-index.json").write_text(
+        json.dumps(index.to_dict(), separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+
+_INVALID_INDEXED_CONVERSATIONS = (
+    pytest.param(
+        b"not-json\n",
+        "has no readable session_meta identity",
+        id="no-readable-session-meta",
+    ),
+    pytest.param(
+        _session_jsonl("different-thread"),
+        "contains thread id 'different-thread'",
+        id="mismatched-thread-id",
+    ),
+)
+
+
 def test_build_inventory_merges_by_thread_id_and_groups_projects() -> None:
     local = LocalInventory(
         session_dirs=(Path("/codex/sessions"),),
@@ -234,46 +319,7 @@ def test_load_inventory_discovers_indexed_remote_task_without_local_sessions(
     tmp_path: Path,
 ) -> None:
     sync_dir = tmp_path / "sync"
-    conversation_path = sync_dir / "conversations" / "thread-1.jsonl"
-    conversation_path.parent.mkdir(parents=True)
-    conversation_path.write_text(
-        json.dumps(
-            {
-                "timestamp": "2026-07-14T12:00:00Z",
-                "type": "session_meta",
-                "payload": {
-                    "id": "thread-1",
-                    "timestamp": "2026-07-14T12:00:00Z",
-                    "cwd": "/repo/a",
-                    "git": {"repository_url": "https://github.com/example/repo-a.git"},
-                },
-            },
-            separators=(",", ":"),
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    snapshot = sync_io.snapshot_file(conversation_path)
-    entry = replace(
-        _remote_task(
-            "thread-1",
-            "Remote task",
-            "repo-a",
-            "Repo A",
-            "2026-07-14T12:00:00Z",
-        ),
-        sha256=snapshot.sha256,
-        size_bytes=snapshot.size_bytes,
-    )
-    index = RemoteIndex(
-        format_version=2,
-        updated_at="2026-07-14T12:00:00Z",
-        threads={entry.thread_id: entry},
-    )
-    (sync_dir / "sync-index.json").write_text(
-        json.dumps(index.to_dict(), separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
+    _write_indexed_remote_task(sync_dir, _session_jsonl("thread-1"))
     before = _snapshot_tree(tmp_path)
 
     result = load_sync_selection_inventory(
@@ -288,6 +334,86 @@ def test_load_inventory_discovers_indexed_remote_task_without_local_sessions(
         (task.thread_id, task.title, task.availability) for task in result.projects[0].tasks
     ] == [("thread-1", "Remote task", "remote")]
     assert result.issues == ()
+    assert _snapshot_tree(tmp_path) == before
+
+
+@pytest.mark.parametrize(
+    ("contents", "issue_fragment"),
+    _INVALID_INDEXED_CONVERSATIONS,
+)
+def test_load_inventory_omits_invalid_indexed_remote_task(
+    tmp_path: Path,
+    contents: bytes,
+    issue_fragment: str,
+) -> None:
+    sync_dir = tmp_path / "sync"
+    _write_indexed_remote_task(sync_dir, contents)
+    before = _snapshot_tree(tmp_path)
+
+    result = load_sync_selection_inventory(
+        _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+        sync_dir,
+    )
+
+    assert result.projects == ()
+    assert len(result.issues) == 1
+    assert result.issues[0].code == "unindexed_unreadable"
+    assert result.issues[0].thread_id == "thread-1"
+    assert issue_fragment in result.issues[0].message
+    assert _snapshot_tree(tmp_path) == before
+
+
+@pytest.mark.parametrize(
+    ("contents", "issue_fragment"),
+    _INVALID_INDEXED_CONVERSATIONS,
+)
+def test_load_inventory_keeps_matching_local_task_local_when_remote_is_invalid(
+    tmp_path: Path,
+    contents: bytes,
+    issue_fragment: str,
+) -> None:
+    sync_dir = tmp_path / "sync"
+    _write_indexed_remote_task(sync_dir, contents)
+    data = _cached_local_task_data(tmp_path / "codex-home" / "sessions", "thread-1")
+    before = _snapshot_tree(tmp_path)
+
+    result = load_sync_selection_inventory(data, sync_dir)
+
+    assert [(project.project_key, project.project_label) for project in result.projects] == [
+        ("repo-a", "Repo A")
+    ]
+    assert [(task.thread_id, task.availability) for task in result.projects[0].tasks] == [
+        ("thread-1", "local")
+    ]
+    assert len(result.issues) == 1
+    assert result.issues[0].code == "unindexed_unreadable"
+    assert result.issues[0].thread_id == "thread-1"
+    assert issue_fragment in result.issues[0].message
+    assert _snapshot_tree(tmp_path) == before
+
+
+def test_load_inventory_keeps_valid_indexed_task_with_preexisting_thread_issue(
+    tmp_path: Path,
+) -> None:
+    sync_dir = tmp_path / "sync"
+    _write_indexed_remote_task(sync_dir, _session_jsonl("thread-1"))
+    (sync_dir / "conversations" / "duplicate.jsonl").write_bytes(
+        _session_jsonl("thread-1")
+    )
+    before = _snapshot_tree(tmp_path)
+
+    result = load_sync_selection_inventory(
+        _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+        sync_dir,
+    )
+
+    assert [(task.thread_id, task.availability) for task in result.projects[0].tasks] == [
+        ("thread-1", "remote")
+    ]
+    assert len(result.issues) == 1
+    assert result.issues[0].code == "unindexed_unreadable"
+    assert result.issues[0].thread_id == "thread-1"
+    assert "multiple remote files claim thread id" in result.issues[0].message
     assert _snapshot_tree(tmp_path) == before
 
 
@@ -337,34 +463,7 @@ def test_load_inventory_propagates_structural_errors_without_writes(
 
 
 def test_empty_remote_folder_returns_local_tasks(tmp_path: Path) -> None:
-    sessions = tmp_path / "sessions"
-    sessions.mkdir()
-    session_path = sessions / "local.jsonl"
-    session_path.write_bytes(b"{}\n")
-    summary = CachedFileSummary(
-        file_path=session_path,
-        session_dir=sessions,
-        session_id="local",
-        cwd="/repo/a",
-        project_key="repo-a",
-        project_label="Repo A",
-        project_aliases=(),
-        git_repository_url="",
-        git_branch="",
-        memory_mode="",
-        has_base_instructions=False,
-        session_bytes=3,
-        estimated_sync_bytes=4099,
-    )
-    data = CachedSessionData(
-        session_dirs=[sessions],
-        files=[session_path],
-        records=[],
-        file_summaries={session_path: summary},
-        project_transitions=[],
-        stats=CacheStats(files_total=1, files_current=1),
-        file_errors={},
-    )
+    data = _cached_local_task_data(tmp_path / "sessions", "local")
     sync_dir = tmp_path / "sync"
     sync_dir.mkdir()
 

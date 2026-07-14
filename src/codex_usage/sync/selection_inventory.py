@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -77,6 +77,32 @@ class _TaskCandidate:
 
 def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _materialize_remote_for_selection(
+    store: RemoteStore,
+    remote: RemoteInventory,
+) -> RemoteInventory:
+    issue_offset = len(remote.issues)
+    materialized = store.materialize_selected(remote, tuple(remote.index.threads))
+    failed_validation_thread_ids = {
+        issue.thread_id
+        for issue in materialized.issues[issue_offset:]
+        if issue.code == "unindexed_unreadable" and issue.thread_id
+    }
+    if not failed_validation_thread_ids:
+        return materialized
+
+    # Earlier same-code issues can describe separate unindexed files. Only issues
+    # appended by materialization identify indexed snapshots that failed identity validation.
+    return replace(
+        materialized,
+        files={
+            thread_id: snapshot
+            for thread_id, snapshot in materialized.files.items()
+            if thread_id not in failed_validation_thread_ids
+        },
+    )
 
 
 def build_sync_selection_inventory(
@@ -164,5 +190,5 @@ def load_sync_selection_inventory(
     local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
     remote = store.load_inventory()
-    remote = store.materialize_selected(remote, tuple(remote.index.threads))
+    remote = _materialize_remote_for_selection(store, remote)
     return build_sync_selection_inventory(local, remote)
