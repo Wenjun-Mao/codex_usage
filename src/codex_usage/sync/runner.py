@@ -10,6 +10,7 @@ from time import perf_counter_ns
 
 from codex_usage.session_cache import CachedSessionData
 from codex_usage.session_files import codex_home_from_session_dir, owning_session_dir
+from codex_usage.sync.bookkeeping import repair_matching_bookkeeping
 from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME
 from codex_usage.sync.errors import (
     ConcurrentLocalChangeError,
@@ -146,6 +147,7 @@ def run_sync(
                 )
                 pushed = push_execution.thread_ids
             with timer.measure("index"):
+                repair_matching_bookkeeping(plan, local, remote, sync_dir)
                 commit_remote_index_once(plan, remote, store, push_execution)
     except SyncStoreError as error:
         if plan is None:
@@ -238,19 +240,18 @@ def execute_pulls(
                     f"Remote conversation changed while pulling thread {item.thread_id!r}"
                 )
             _validate_remote_snapshot(item)
-            LocalStateStore(session_dir, _sync_dir(item)).record_success(
-                item, copied, item.remote
-            )
             remote_entry = remote.index.threads[item.thread_id]
             index_entries.setdefault(session_dir, []).append(
                 dict(remote_entry.index_entry)
             )
             completed.append(item.thread_id)
-    except SyncStoreError as error:
+            LocalStateStore(session_dir, _sync_dir(item)).record_success(
+                item, copied, item.remote
+            )
         _merge_pulled_indexes(index_entries, backup_dirs)
+    except SyncStoreError as error:
         error.pulled_thread_ids = tuple(completed)
         raise
-    _merge_pulled_indexes(index_entries, backup_dirs)
     return tuple(completed)
 
 
@@ -284,12 +285,12 @@ def execute_pushes(
                 )
             entry = _remote_entry(item, local, filename, written, machine_id)
             session_dir = _session_dir(item, local)
-            LocalStateStore(session_dir, store.root).record_success(
-                item, item.local, written
-            )
             snapshots[item.thread_id] = written
             entries[item.thread_id] = entry
             completed.append(item.thread_id)
+            LocalStateStore(session_dir, store.root).record_success(
+                item, item.local, written
+            )
     except SyncStoreError as error:
         error.pushed_thread_ids = tuple(completed)
         raise
