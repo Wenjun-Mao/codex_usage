@@ -46,7 +46,17 @@ def test_build_inventory_rejects_noncanonical_local_thread_ids(
     thread_id: str,
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, thread_id, "/repo/demo")
+    source_path = _write_session(
+        sessions,
+        thread_id,
+        "/repo/demo",
+        source_filename="noncanonical-thread-id.jsonl",
+    )
+    assert source_path.name == "noncanonical-thread-id.jsonl"
+    assert (
+        json.loads(source_path.read_text(encoding="utf-8"))["payload"]["id"]
+        == thread_id
+    )
     data = load_cached_session_data(
         [sessions],
         cache_dir=tmp_path / "cache",
@@ -94,7 +104,13 @@ def test_run_sync_rejects_padded_local_identity_before_any_sync_write(tmp_path: 
     assert not sync_dir.exists()
 
 
-def _write_session(sessions: Path, session_id: str, cwd: str) -> None:
+def _write_session(
+    sessions: Path,
+    session_id: str,
+    cwd: str,
+    *,
+    source_filename: str | None = None,
+) -> Path:
     day = sessions / "2026" / "07" / "13"
     day.mkdir(parents=True, exist_ok=True)
     rows = [
@@ -104,4 +120,8 @@ def _write_session(sessions: Path, session_id: str, cwd: str) -> None:
             "payload": {"id": session_id, "timestamp": "2026-07-13T12:00:00Z", "cwd": cwd},
         }
     ]
-    (day / f"{session_id}.jsonl").write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    source_path = day / (
+        source_filename if source_filename is not None else f"{session_id}.jsonl"
+    )
+    source_path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    return source_path
