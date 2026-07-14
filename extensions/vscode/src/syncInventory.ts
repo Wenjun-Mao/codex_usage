@@ -103,7 +103,7 @@ function parseProject(
 function parseTask(value: unknown, index: number, parentPath: string, threadIds: Set<string>): SyncInventoryTask {
   const path = `${parentPath}[${index}]`;
   const task = exactRecord(value, TASK_KEYS, path);
-  const threadId = stringField(task.thread_id, `${path}.thread_id`);
+  const threadId = canonicalThreadIdField(task.thread_id, `${path}.thread_id`);
   if (threadIds.has(threadId)) {
     invalidInventory(`${path}.thread_id`, "must be unique across projects");
   }
@@ -129,7 +129,7 @@ function parseIssue(value: unknown, index: number): SyncInventoryIssue {
   return {
     code: stringField(issue.code, `${path}.code`),
     message: stringField(issue.message, `${path}.message`),
-    threadId: stringField(issue.thread_id, `${path}.thread_id`),
+    threadId: optionalCanonicalThreadIdField(issue.thread_id, `${path}.thread_id`),
   };
 }
 
@@ -169,6 +169,22 @@ function stringField(value: unknown, path: string): string {
     invalidInventory(path, "must be a string");
   }
   return value;
+}
+
+function canonicalThreadIdField(value: unknown, path: string): string {
+  const threadId = stringField(value, path);
+  if (!threadId || threadId !== threadId.trim()) {
+    invalidInventory(path, "must be nonempty and equal to its own trim");
+  }
+  return threadId;
+}
+
+function optionalCanonicalThreadIdField(value: unknown, path: string): string {
+  const threadId = stringField(value, path);
+  if (threadId && threadId !== threadId.trim()) {
+    invalidInventory(path, "must be blank or equal to its own trim");
+  }
+  return threadId;
 }
 
 function nonnegativeInteger(value: unknown, path: string): number {

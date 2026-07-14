@@ -23,7 +23,6 @@ import {
   normalizeTheme,
   PROJECT_KEYS_STATE_KEY,
   SYNC_DIR_STATE_KEY,
-  SYNC_SELECTION_VERSION,
   SYNC_SELECTION_VERSION_STATE_KEY,
   SYNC_THREAD_IDS_STATE_KEY,
   parseProjectChoices,
@@ -53,6 +52,10 @@ import { buildSyncInventoryArgs, parseSyncInventory } from "./syncInventory";
 import { buildSyncRunArgs, buildSyncStatusArgs, parseSyncStatusSummary } from "./syncProtocol";
 import { runSyncProcess } from "./syncProcess";
 import {
+  SyncSetupMutationCoordinator,
+  type AsyncSyncSetupStore,
+} from "./syncSetupTransaction";
+import {
   buildTaskPickerItems,
   reduceTaskSelection,
   selectedPickerItemIds,
@@ -65,6 +68,7 @@ let statusItem: vscode.StatusBarItem;
 let syncWatchers: vscode.FileSystemWatcher[] = [];
 let syncWatcherDisposables: vscode.Disposable[] = [];
 let syncDebounce: NodeJS.Timeout | undefined;
+const syncSetupMutations = new SyncSetupMutationCoordinator();
 
 type SyncReason = "manual" | "auto" | "watch";
 
@@ -143,6 +147,9 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   const settingsWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
     if (!event.affectsConfiguration("codexUsage")) {
+      return;
+    }
+    if (syncSetupMutations.isMutating) {
       return;
     }
     updateStatusItem(readSettings(context));
@@ -505,29 +512,23 @@ async function selectSyncTaskSettings(
       return false;
     }
 
-    await context.globalState.update(SYNC_DIR_STATE_KEY, syncDir);
-    await context.globalState.update(SYNC_THREAD_IDS_STATE_KEY, selectedThreadIds);
-    await context.globalState.update(SYNC_SELECTION_VERSION_STATE_KEY, SYNC_SELECTION_VERSION);
-    if (options.enableAfterAccept) {
-      await vscode.workspace.getConfiguration("codexUsage").update(
-        "sync.enabled",
-        true,
-        vscode.ConfigurationTarget.Global,
-      );
-    }
+    await syncSetupMutations.commit(syncSetupStore(context), {
+      folder: syncDir,
+      threadIds: selectedThreadIds,
+      enabled: options.enableAfterAccept ? true : undefined,
+    });
+    await syncSetupMutations.whenIdle();
     output.appendLine(
       `[sync] Sync configured for ${selectedThreadIds.length} task${selectedThreadIds.length === 1 ? "" : "s"}: ${syncDir}`,
     );
-    updateStatusItem(readSettings(context));
-    configureSyncWatcher(context);
-    if (panel && shouldRefreshAfterSyncSetupStep(options)) {
-      await refreshDashboard(context, panel);
-    }
+    await refreshSyncUi(context, shouldRefreshAfterSyncSetupStep(options));
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
-    void vscode.window.showErrorMessage(`Codex Usage failed to load sync tasks: ${message}`);
+    void vscode.window.showErrorMessage(`Codex Usage failed to configure sync tasks: ${message}`);
+    await syncSetupMutations.whenIdle();
+    await refreshSyncUi(context, shouldRefreshAfterSyncSetupStep(options));
     return false;
   } finally {
     updateStatusItem(readSettings(context));
@@ -624,17 +625,30 @@ async function handleSyncMenuAction(context: vscode.ExtensionContext, action: Sy
 }
 
 async function pauseSync(context: vscode.ExtensionContext): Promise<void> {
-  await vscode.workspace.getConfiguration("codexUsage").update("sync.enabled", false, vscode.ConfigurationTarget.Global);
+  try {
+    await syncSetupMutations.setEnabled(syncSetupStore(context), false);
+  } catch (error) {
+    await reportSyncSetupMutationFailure(context, "pause sync", error);
+    return;
+  }
+  await syncSetupMutations.whenIdle();
   output.appendLine("[sync] Sync paused from dashboard menu.");
   await refreshSyncUi(context);
 }
 
 async function resumeSync(context: vscode.ExtensionContext): Promise<void> {
-  if (!hasValidSyncSelection(readSettings(context).sync)) {
+  let resumed: boolean;
+  try {
+    resumed = await syncSetupMutations.setEnabled(syncSetupStore(context), true);
+  } catch (error) {
+    await reportSyncSetupMutationFailure(context, "resume sync", error);
+    return;
+  }
+  await syncSetupMutations.whenIdle();
+  if (!resumed) {
     await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
     return;
   }
-  await vscode.workspace.getConfiguration("codexUsage").update("sync.enabled", true, vscode.ConfigurationTarget.Global);
   output.appendLine("[sync] Sync resumed from dashboard menu.");
   await refreshSyncUi(context);
 }
@@ -657,19 +671,37 @@ async function clearSyncSetup(context: vscode.ExtensionContext): Promise<void> {
     return;
   }
 
-  await context.globalState.update(SYNC_SELECTION_VERSION_STATE_KEY, 0);
-  await context.globalState.update(SYNC_DIR_STATE_KEY, undefined);
-  await context.globalState.update(SYNC_THREAD_IDS_STATE_KEY, undefined);
-  await vscode.workspace.getConfiguration("codexUsage").update("sync.enabled", false, vscode.ConfigurationTarget.Global);
+  try {
+    await syncSetupMutations.clear(syncSetupStore(context));
+  } catch (error) {
+    await reportSyncSetupMutationFailure(context, "clear sync setup", error);
+    return;
+  }
+  await syncSetupMutations.whenIdle();
   output.appendLine("[sync] Sync setup cleared from dashboard menu.");
   await refreshSyncUi(context);
 }
 
-async function refreshSyncUi(context: vscode.ExtensionContext): Promise<void> {
+async function reportSyncSetupMutationFailure(
+  context: vscode.ExtensionContext,
+  action: string,
+  error: unknown,
+): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  output.appendLine(`[error] ${message}`);
+  void vscode.window.showErrorMessage(`Codex Usage failed to ${action}: ${message}`);
+  await syncSetupMutations.whenIdle();
+  await refreshSyncUi(context);
+}
+
+async function refreshSyncUi(
+  context: vscode.ExtensionContext,
+  refreshDashboardPanel = true,
+): Promise<void> {
   updateStatusItem(readSettings(context));
   configureSyncWatcher(context);
   resetSyncSchedulerWhenDisabled(context);
-  if (panel) {
+  if (panel && refreshDashboardPanel) {
     await refreshDashboard(context, panel);
   }
 }
@@ -958,6 +990,33 @@ function readSettings(context: vscode.ExtensionContext | undefined): ExtensionSe
     sync,
     projectTransitions: {
       autoDetect: config.get<boolean>("projectTransitions.autoDetect", true),
+    },
+  };
+}
+
+function syncSetupStore(context: vscode.ExtensionContext): AsyncSyncSetupStore {
+  const config = vscode.workspace.getConfiguration("codexUsage");
+  return {
+    async read() {
+      const threadIds = context.globalState.get<string[] | undefined>(SYNC_THREAD_IDS_STATE_KEY);
+      return {
+        folder: context.globalState.get<string | undefined>(SYNC_DIR_STATE_KEY),
+        threadIds: threadIds === undefined ? undefined : [...threadIds],
+        enabled: config.get<boolean>("sync.enabled", false),
+        version: context.globalState.get<number>(SYNC_SELECTION_VERSION_STATE_KEY, 0),
+      };
+    },
+    async writeVersion(value) {
+      await context.globalState.update(SYNC_SELECTION_VERSION_STATE_KEY, value);
+    },
+    async writeFolder(value) {
+      await context.globalState.update(SYNC_DIR_STATE_KEY, value);
+    },
+    async writeThreadIds(value) {
+      await context.globalState.update(SYNC_THREAD_IDS_STATE_KEY, value);
+    },
+    async writeEnabled(value) {
+      await config.update("sync.enabled", value, vscode.ConfigurationTarget.Global);
     },
   };
 }

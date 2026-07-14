@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from codex_usage.sync.constants import SYNC_FORMAT_VERSION
+from codex_usage.sync.identity import require_canonical_thread_id
 from codex_usage.threads import ThreadInfo
 
 
@@ -104,12 +105,25 @@ class RemoteIndex:
         if self.format_version != SYNC_FORMAT_VERSION:
             raise ValueError(f"format_version must be {SYNC_FORMAT_VERSION}")
         for thread_id, entry in self.threads.items():
-            if not isinstance(thread_id, str):
-                raise ValueError("remote index thread ids must be strings")
-            if not thread_id.strip():
-                raise ValueError("remote index thread ids must not be blank")
-            if not isinstance(entry, RemoteThreadEntry) or thread_id != entry.thread_id:
+            require_canonical_thread_id(
+                thread_id,
+                f"remote index threads[{thread_id!r}] key",
+            )
+            if not isinstance(entry, RemoteThreadEntry):
+                raise ValueError(
+                    f"remote index thread {thread_id!r} must be a RemoteThreadEntry"
+                )
+            require_canonical_thread_id(
+                entry.thread_id,
+                f"remote index thread {thread_id!r} entry.thread_id",
+            )
+            if thread_id != entry.thread_id:
                 raise ValueError("remote index thread mapping key must match entry.thread_id")
+            if "id" in entry.index_entry:
+                require_canonical_thread_id(
+                    entry.index_entry["id"],
+                    f"remote index thread {thread_id!r} entry.index_entry.id",
+                )
 
 
 @dataclass(frozen=True)
@@ -128,6 +142,21 @@ class LocalInventory:
     threads: dict[str, ThreadInfo]
     index_entries: dict[str, dict[str, Any]]
     discovered_count: int
+
+    def __post_init__(self) -> None:
+        for thread_id, thread in self.threads.items():
+            require_canonical_thread_id(
+                thread_id,
+                f"local sync inventory thread_id key {thread_id!r}",
+            )
+            require_canonical_thread_id(
+                thread.thread_id,
+                f"local sync inventory thread {thread_id!r}.thread_id",
+            )
+            if thread_id != thread.thread_id:
+                raise ValueError(
+                    "local sync inventory thread mapping key must match ThreadInfo.thread_id"
+                )
 
 
 @dataclass(frozen=True)

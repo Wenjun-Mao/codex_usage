@@ -20,6 +20,20 @@ Use task in user-facing UI and documentation. Retain thread id in technical Pyth
 
 Make the settings change intentionally breaking. A new selection-schema version gates sync configuration. Missing or obsolete versions ignore legacy selectors and require setup again without changing the selected folder, remote files, enabled state, or automatic-sync preferences. Do not ship migration-only code.
 
+A technical task identity is canonical only when it is a nonempty string equal to
+its own trim. Persisted, indexed, discovered, and emitted identities are never
+silently trimmed. Human selector input may still be normalized before lookup, but
+invalid local inventory aborts before sync can write and invalid remote index or
+session identities are rejected or omitted with strict diagnostics.
+
+Treat selection schema version 2 as the setup transaction's commit marker. Setup,
+reconfiguration, clear, pause, and resume share one serialized mutation queue. Each
+mutation reads its previous tuple inside the queue, writes version 0 before changing
+folder, exact thread IDs, or enabled state, and publishes version 2 only after every
+valid tuple field is durable. A failed write restores the previous tuple and restores
+its valid version last; incomplete rollback leaves version 0 so no new sync can start
+from mixed state.
+
 ## Alternatives Considered
 
 - Relabel the current picker without changing selectors. This preserves automatic future inclusion and remote-only discovery failures.
@@ -38,5 +52,9 @@ The extension needs hierarchical Quick Pick state management and a strict invent
 - Project rows are current-snapshot shortcuts, never durable project subscriptions.
 - Inventory is read-only and must not repair remote state on disk.
 - Legacy selectors never activate the new contract implicitly.
+- Technical thread IDs are nonempty and equal to their own trim at every stored or
+  emitted identity boundary; normalization is limited to selector input.
+- Selection version 2 is written last as the successful setup commit marker; version
+  0 gates every in-progress mutation and every incomplete rollback.
 - Deselecting a task never deletes its remote JSONL or index entry.
 - User-facing copy says task; technical contracts retain thread id.

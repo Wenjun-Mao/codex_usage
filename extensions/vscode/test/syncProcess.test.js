@@ -386,7 +386,7 @@ test("routine sync and status validate schema-v2 task selection before spawning"
   }
 });
 
-test("folder and exact task setup commits only after picker acceptance", () => {
+test("folder and exact task setup commits through the serialized transaction after picker acceptance", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const selectionSource = extensionSource.slice(
     extensionSource.indexOf("async function selectSyncTaskSettings"),
@@ -408,16 +408,18 @@ test("folder and exact task setup commits only after picker acceptance", () => {
 
   const inventoryRun = selectionSource.indexOf("runCodexUsage(");
   const selectionGuard = selectionSource.indexOf("if (!selectedThreadIds)");
-  const enabledWrite = selectionSource.indexOf('"sync.enabled"');
-  const stateWrites = [...selectionSource.matchAll(/context\.globalState\.update\(/g)].map((match) => match.index);
+  const transactionCommit = selectionSource.indexOf("syncSetupMutations.commit(");
+  const queueIdle = selectionSource.indexOf("syncSetupMutations.whenIdle()");
+  const refreshAfterCommit = selectionSource.indexOf("refreshSyncUi(");
   assert.ok(inventoryRun >= 0 && inventoryRun < selectionGuard);
-  assert.ok(enabledWrite > selectionGuard);
-  assert.equal(stateWrites.length, 3);
-  assert.ok(stateWrites.every((index) => index > selectionGuard));
-  assert.match(selectionSource.slice(selectionGuard, stateWrites[0]), /return false;/);
-  assert.match(selectionSource, /globalState\.update\(SYNC_DIR_STATE_KEY, syncDir\)/);
-  assert.match(selectionSource, /globalState\.update\(SYNC_THREAD_IDS_STATE_KEY, selectedThreadIds\)/);
-  assert.match(selectionSource, /globalState\.update\(SYNC_SELECTION_VERSION_STATE_KEY, SYNC_SELECTION_VERSION\)/);
+  assert.ok(transactionCommit > selectionGuard);
+  assert.ok(transactionCommit < queueIdle && queueIdle < refreshAfterCommit);
+  assert.match(selectionSource.slice(selectionGuard, transactionCommit), /return false;/);
+  assert.match(
+    selectionSource,
+    /syncSetupMutations\.commit\(syncSetupStore\(context\),\s*\{\s*folder: syncDir,\s*threadIds: selectedThreadIds,\s*enabled:/,
+  );
+  assert.doesNotMatch(selectionSource, /globalState\.update\(|getConfiguration\("codexUsage"\)\.update/);
 
   assert.ok(configureSource.indexOf("pickSyncFolder(") < configureSource.indexOf("selectSyncTaskSettings("));
   assert.ok(changeFolderSource.indexOf("pickSyncFolder(") < changeFolderSource.indexOf("selectSyncTaskSettings("));
@@ -463,7 +465,7 @@ test("status badge and tooltip prefer setup required for disabled invalid select
   assert.match(tooltipSource, /return "Sync: Setup required\. Select a folder and at least one Codex task\.";/);
 });
 
-test("clear and migration retain only the deprecated folder migration contract", () => {
+test("all user setup mutations share the transaction queue while migration stays folder-only", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const clearSource = extensionSource.slice(
     extensionSource.indexOf("async function clearSyncSetup"),
@@ -474,10 +476,21 @@ test("clear and migration retain only the deprecated folder migration contract",
     extensionSource.indexOf("function readSettings"),
   );
 
-  const versionClear = clearSource.indexOf("globalState.update(SYNC_SELECTION_VERSION_STATE_KEY, 0)");
-  const folderClear = clearSource.indexOf("globalState.update(SYNC_DIR_STATE_KEY, undefined)");
-  const idsClear = clearSource.indexOf("globalState.update(SYNC_THREAD_IDS_STATE_KEY, undefined)");
-  assert.ok(versionClear >= 0 && versionClear < folderClear && folderClear < idsClear);
+  const pauseSource = extensionSource.slice(
+    extensionSource.indexOf("async function pauseSync"),
+    extensionSource.indexOf("async function changeSyncFolder"),
+  );
+
+  assert.match(extensionSource, /new SyncSetupMutationCoordinator\(\)/);
+  assert.match(extensionSource, /function syncSetupStore\(/);
+  assert.match(extensionSource, /if \(syncSetupMutations\.isMutating\) \{\s*return;/);
+  assert.match(clearSource, /await syncSetupMutations\.clear\(syncSetupStore\(context\)\)/);
+  assert.match(clearSource, /await syncSetupMutations\.whenIdle\(\)[\s\S]*await refreshSyncUi\(context\)/);
+  assert.doesNotMatch(clearSource, /globalState\.update\(|getConfiguration\("codexUsage"\)\.update/);
+  assert.match(pauseSource, /syncSetupMutations\.setEnabled\(syncSetupStore\(context\), false\)/);
+  assert.match(pauseSource, /syncSetupMutations\.setEnabled\(syncSetupStore\(context\), true\)/);
+  assert.equal((pauseSource.match(/await syncSetupMutations\.whenIdle\(\)/g) || []).length, 2);
+  assert.doesNotMatch(pauseSource, /getConfiguration\("codexUsage"\)\.update/);
   assert.doesNotMatch(clearSource, /SYNC_PROJECT_KEYS_STATE_KEY|SYNC_CONVERSATION_MODE_STATE_KEY/);
 
   assert.match(migrationSource, /config\.get<string>\("sync\.dir", ""\)/);

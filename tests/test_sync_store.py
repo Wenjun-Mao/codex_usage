@@ -513,6 +513,55 @@ def test_remote_index_rejects_blank_thread_ids(thread_id: str) -> None:
         )
 
 
+@pytest.mark.parametrize("thread_id", [" thread-1", "thread-1 "], ids=["leading", "trailing"])
+def test_remote_index_rejects_padded_thread_keys_with_field_path(thread_id: str) -> None:
+    entry = replace(_remote_entry(), thread_id=thread_id)
+
+    with pytest.raises(ValueError, match=r"remote index threads\[.*\].*canonical"):
+        RemoteIndex(
+            format_version=SYNC_FORMAT_VERSION,
+            updated_at="",
+            threads={thread_id: entry},
+        )
+
+
+def test_remote_index_rejects_padded_entry_thread_id_with_field_path() -> None:
+    entry = replace(_remote_entry(), thread_id=" thread-1 ")
+
+    with pytest.raises(ValueError, match=r"remote index thread 'thread-1'.*thread_id.*canonical"):
+        RemoteIndex(
+            format_version=SYNC_FORMAT_VERSION,
+            updated_at="",
+            threads={"thread-1": entry},
+        )
+
+
+def test_remote_index_rejects_padded_index_entry_identity() -> None:
+    entry = replace(_remote_entry(), index_entry={"id": " thread-1 "})
+
+    with pytest.raises(ValueError, match=r"index_entry\.id.*canonical"):
+        RemoteIndex(
+            format_version=SYNC_FORMAT_VERSION,
+            updated_at="",
+            threads={entry.thread_id: entry},
+        )
+
+
+def test_remote_index_rejects_padded_and_canonical_identity_collision() -> None:
+    canonical = _remote_entry("thread-1")
+    padded = replace(
+        _remote_entry(" thread-1 "),
+        file="conversations/padded.jsonl",
+    )
+
+    with pytest.raises(ValueError, match=r"remote index threads\[' thread-1 '\].*canonical"):
+        RemoteIndex(
+            format_version=SYNC_FORMAT_VERSION,
+            updated_at="",
+            threads={canonical.thread_id: canonical, padded.thread_id: padded},
+        )
+
+
 def test_local_sync_state_round_trips_with_version_2_marker() -> None:
     state = LocalSyncState(
         thread_id="thread-1",
@@ -786,8 +835,12 @@ def test_remote_store_rejects_malformed_index_without_mutating_it(
     assert index_path.read_bytes() == contents
 
 
-@pytest.mark.parametrize("thread_id", ["", " \t"], ids=["empty", "whitespace"])
-def test_remote_store_rejects_blank_thread_id_index_without_mutating_it(
+@pytest.mark.parametrize(
+    "thread_id",
+    ["", " \t", " thread-1", "thread-1 "],
+    ids=["empty", "whitespace", "leading", "trailing"],
+)
+def test_remote_store_rejects_noncanonical_thread_id_index_without_mutating_it(
     tmp_path: Path,
     thread_id: str,
 ) -> None:
@@ -809,7 +862,7 @@ def test_remote_store_rejects_blank_thread_id_index_without_mutating_it(
     store = RemoteStore(root)
     before = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")))
 
-    with pytest.raises(MalformedSyncIndexError, match="thread ids must not be blank"):
+    with pytest.raises(MalformedSyncIndexError, match="canonical"):
         store.load_inventory()
 
     assert index_path.read_bytes() == contents
@@ -1023,6 +1076,43 @@ def test_remote_store_reports_unindexed_unreadable_jsonl_without_mutation(
     assert inventory.issues[0].thread_id == ""
     assert "conversations/unreadable.jsonl" in inventory.issues[0].message
     assert path.read_bytes() == contents
+    assert not (root / "sync-index.json").exists()
+
+
+def test_remote_store_omits_padded_unindexed_identity_without_mutation(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    path = root / "conversations" / "padded.jsonl"
+    path.parent.mkdir(parents=True)
+    contents = _session_jsonl(" thread-1 ")
+    path.write_bytes(contents)
+
+    inventory = RemoteStore(root).load_inventory()
+
+    assert inventory.index.threads == {}
+    assert inventory.files == {}
+    assert len(inventory.issues) == 1
+    assert inventory.issues[0].code == "unindexed_unreadable"
+    assert inventory.issues[0].thread_id == ""
+    assert path.read_bytes() == contents
+    assert not (root / "sync-index.json").exists()
+
+
+def test_remote_store_does_not_merge_padded_identity_with_canonical_task(tmp_path: Path) -> None:
+    root = tmp_path / "sync"
+    conversations = root / "conversations"
+    conversations.mkdir(parents=True)
+    canonical_path = conversations / "canonical.jsonl"
+    padded_path = conversations / "padded.jsonl"
+    canonical_path.write_bytes(_session_jsonl("thread-1"))
+    padded_path.write_bytes(_session_jsonl(" thread-1 "))
+
+    inventory = RemoteStore(root).load_inventory()
+
+    assert tuple(inventory.index.threads) == ("thread-1",)
+    assert inventory.files["thread-1"] == snapshot_file(canonical_path)
+    assert len(inventory.issues) == 1
+    assert "conversations/padded.jsonl" in inventory.issues[0].message
+    assert padded_path.read_bytes() == _session_jsonl(" thread-1 ")
     assert not (root / "sync-index.json").exists()
 
 

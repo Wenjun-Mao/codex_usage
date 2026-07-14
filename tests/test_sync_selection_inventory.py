@@ -194,6 +194,11 @@ _INVALID_INDEXED_CONVERSATIONS = (
         "contains thread id 'different-thread'",
         id="mismatched-thread-id",
     ),
+    pytest.param(
+        _session_jsonl(" thread-1 "),
+        "has no readable session_meta identity",
+        id="padded-thread-id",
+    ),
 )
 
 

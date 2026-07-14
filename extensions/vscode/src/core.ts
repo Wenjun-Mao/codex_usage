@@ -1,4 +1,5 @@
 import * as path from "path";
+import { VALID_SYNC_SELECTION_VERSION } from "./syncSetupTransaction";
 
 export { parseSyncStatusSummary } from "./syncProtocol";
 export type { SyncStatusSummary } from "./syncProtocol";
@@ -118,7 +119,7 @@ export type WebviewControlState = {
 export const PROJECT_KEYS_STATE_KEY = "projectKeys";
 export const SYNC_DIR_STATE_KEY = "syncDir";
 export const SYNC_THREAD_IDS_STATE_KEY = "syncThreadIds";
-export const SYNC_SELECTION_VERSION = 2;
+export const SYNC_SELECTION_VERSION = VALID_SYNC_SELECTION_VERSION;
 export const SYNC_SELECTION_VERSION_STATE_KEY = "syncSelectionVersion";
 
 export type GlobalStateReader = {

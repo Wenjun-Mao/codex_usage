@@ -11,6 +11,7 @@ from codex_usage.parser import parse_timestamp
 from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_files import timestamp_key
 from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME, SYNC_FORMAT_VERSION
+from codex_usage.sync.identity import is_canonical_thread_id
 from codex_usage.sync.io import read_bytes_with_snapshot
 from codex_usage.sync.models import (
     LocalInventory,
@@ -246,7 +247,7 @@ def _session_metadata_from_bytes(path: Path, contents: bytes) -> SessionMetadata
         if not isinstance(payload, dict):
             return None
         thread_id = payload.get("id")
-        if not isinstance(thread_id, str) or not thread_id.strip():
+        if not is_canonical_thread_id(thread_id):
             return None
         git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
         return SessionMetadata(

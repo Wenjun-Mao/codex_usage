@@ -120,6 +120,14 @@ test("inventory parser accepts every availability and the largest safe byte coun
   assert.equal(parsed.projects[0].tasks[2].estimatedSyncBytes, Number.MAX_SAFE_INTEGER);
 });
 
+test("inventory parser preserves a blank thread id for an unidentified issue", () => {
+  const parsed = parseSyncInventory(JSON.stringify(inventory({
+    issues: [inventoryIssue({ thread_id: "" })],
+  })));
+
+  assert.equal(parsed.issues[0].threadId, "");
+});
+
 test("inventory parser rejects contract violations at the failing field path", () => {
   const malformedCases = [
     {
@@ -181,6 +189,31 @@ test("inventory parser rejects contract violations at the failing field path", (
       path: "projects[1].tasks[0].thread_id",
     },
     {
+      name: "padded task thread id",
+      payload: inventory({
+        projects: [inventoryProject({ tasks: [inventoryTask({ thread_id: " thread-1 " })] })],
+      }),
+      path: "projects[0].tasks[0].thread_id",
+    },
+    {
+      name: "whitespace-only task thread id",
+      payload: inventory({
+        projects: [inventoryProject({ tasks: [inventoryTask({ thread_id: " \t " })] })],
+      }),
+      path: "projects[0].tasks[0].thread_id",
+    },
+    {
+      name: "padded task cannot coexist with its canonical identity",
+      payload: inventory({
+        projects: [
+          inventoryProject({
+            tasks: [inventoryTask(), inventoryTask({ thread_id: " thread-1 " })],
+          }),
+        ],
+      }),
+      path: "projects[0].tasks[1].thread_id",
+    },
+    {
       name: "invalid availability",
       payload: inventory({
         projects: [inventoryProject({ tasks: [inventoryTask({ availability: "missing" })] })],
@@ -216,6 +249,11 @@ test("inventory parser rejects contract violations at the failing field path", (
     {
       name: "malformed issue field",
       payload: inventory({ issues: [inventoryIssue({ thread_id: null })] }),
+      path: "issues[0].thread_id",
+    },
+    {
+      name: "padded identified issue thread id",
+      payload: inventory({ issues: [inventoryIssue({ thread_id: " thread-2 " })] }),
       path: "issues[0].thread_id",
     },
   ];
