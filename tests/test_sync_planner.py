@@ -10,6 +10,8 @@ import pytest
 
 from codex_usage.session_cache import load_cached_session_data
 import codex_usage.sync.inventory as inventory
+import codex_usage.sync.planner as sync_planner
+import codex_usage.sync.state as sync_state
 from codex_usage.sync.inventory import build_local_inventory, resolve_selected_thread_ids
 from codex_usage.sync.io import snapshot_file
 from codex_usage.sync.models import (
@@ -20,6 +22,8 @@ from codex_usage.sync.models import (
     RemoteThreadEntry,
     SyncFileSnapshot,
     SyncIssue,
+    SyncPlan,
+    SyncPlanItem,
 )
 from codex_usage.sync.planner import build_sync_plan, classify_snapshots
 from codex_usage.sync.state import (
@@ -113,6 +117,41 @@ def _snapshot_bytes(tmp_path: Path, name: str, value: bytes | None) -> SyncFileS
     return snapshot_file(path)
 
 
+def _plan_item(tmp_path: Path, *, state: str = "synced", action: str = "none") -> SyncPlanItem:
+    missing = SyncFileSnapshot(path=tmp_path / "missing.jsonl", exists=False)
+    return SyncPlanItem(
+        thread_id="thread-1",
+        state=state,
+        action=action,
+        reason="test",
+        local=missing,
+        remote=missing,
+        base_sha256="",
+        updated_at="2026-07-13T12:00:00Z",
+        source_relative_path="synced/thread-1.jsonl",
+        project_key="repo",
+        project_label="Repo",
+        memory_database_rows=0,
+        expected_remote_entry=None,
+    )
+
+
+def _local_state(sync_dir: Path, thread_id: str = "thread-1") -> LocalSyncState:
+    return LocalSyncState(
+        thread_id=thread_id,
+        sync_dir_fingerprint=sync_dir_fingerprint(sync_dir),
+        base_sha256="abc",
+        base_size_bytes=3,
+        base_updated_at="2026-07-13T12:00:00Z",
+        last_remote_sha256="abc",
+        last_local_sha256="abc",
+        source_relative_path=f"synced/{thread_id}.jsonl",
+        project_key="repo",
+        project_label="repo",
+        synced_at="2026-07-13T12:00:01Z",
+    )
+
+
 @pytest.mark.parametrize(
     ("local", "remote", "base", "expected_state", "expected_action"),
     [
@@ -122,6 +161,7 @@ def _snapshot_bytes(tmp_path: Path, name: str, value: bytes | None) -> SyncFileS
         (b"base+local", b"base", None, "fast_forward_push", "push"),
         (b"base", b"base+remote", None, "fast_forward_pull", "pull"),
         (b"left", b"right", b"base", "conflict", "conflict"),
+        (b"left", b"righty", None, "conflict", "conflict"),
         (b"local", None, None, "local_only", "push"),
         (None, b"remote", None, "remote_only", "pull"),
         (None, None, None, "missing", "skip"),
@@ -156,6 +196,70 @@ def test_equal_hashes_do_not_require_prefix_file_reads(tmp_path: Path) -> None:
     assert classify_snapshots(local, remote, "")[:2] == ("synced", "none")
 
 
+def test_equal_size_different_hashes_do_not_require_prefix_file_reads(tmp_path: Path) -> None:
+    local = _snapshot_bytes(tmp_path, "local.jsonl", b"left")
+    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b"rght")
+    assert local.path is not None
+    assert remote.path is not None
+    local.path.unlink()
+    remote.path.unlink()
+
+    assert classify_snapshots(local, remote, "")[:2] == ("conflict", "conflict")
+
+
+def test_different_sizes_check_only_possible_prefix_direction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local = _snapshot_bytes(tmp_path, "local.jsonl", b"longer")
+    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b"short")
+    calls: list[tuple[SyncFileSnapshot, SyncFileSnapshot]] = []
+
+    def not_a_prefix(prefix: SyncFileSnapshot, full: SyncFileSnapshot) -> bool:
+        calls.append((prefix, full))
+        return False
+
+    monkeypatch.setattr(sync_planner, "is_byte_prefix", not_a_prefix)
+
+    assert classify_snapshots(local, remote, "")[:2] == ("conflict", "conflict")
+    assert calls == [(remote, local)]
+
+
+@pytest.mark.parametrize(
+    ("state", "action"),
+    [("issue", "push"), ("synced", "issue")],
+)
+def test_sync_plan_requires_issue_state_and_action_together(
+    tmp_path: Path,
+    state: str,
+    action: str,
+) -> None:
+    item = _plan_item(tmp_path, state=state, action=action)
+
+    with pytest.raises(ValueError, match="state and action must both be 'issue'"):
+        SyncPlan(
+            items=(item,),
+            issues=(SyncIssue("test", "test", item.thread_id),),
+            discovered_count=1,
+            remote_count=0,
+            selected_count=1,
+        )
+
+
+def test_sync_plan_has_one_selected_execution_gate(tmp_path: Path) -> None:
+    diagnostic = SyncIssue("warning", "visible but unselected", "other")
+    clear = SyncPlan((_plan_item(tmp_path),), (diagnostic,), 1, 0, 1)
+    conflict = SyncPlan((_plan_item(tmp_path, state="conflict", action="conflict"),), (), 1, 0, 1)
+    issue_item = _plan_item(tmp_path, state="issue", action="issue")
+    issue = SyncPlan((issue_item,), (SyncIssue("test", "selected", "thread-1"),), 1, 0, 1)
+
+    assert clear.has_issues
+    assert not clear.blocks_execution
+    assert conflict.blocks_execution
+    assert issue.blocks_execution
+    assert not hasattr(clear, "has_blocking_issues")
+
+
 def test_planner_rejects_remote_path_traversal_without_mutating_local_files(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     sessions.mkdir(parents=True)
@@ -174,6 +278,25 @@ def test_planner_rejects_remote_path_traversal_without_mutating_local_files(tmp_
     assert plan.issues[-1].thread_id == "thread-1"
     assert not (tmp_path / "codex" / "outside.jsonl").exists()
     assert tuple(sessions.rglob("*.jsonl")) == ()
+
+
+def test_planner_uses_portable_fallback_target_when_thread_is_missing_everywhere(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    sessions.mkdir(parents=True)
+
+    plan = build_sync_plan(
+        LocalInventory((sessions,), {}, {}, 0),
+        _remote_inventory(),
+        ("thread-1",),
+        tmp_path / "sync",
+    )
+
+    item = plan.items[0]
+    assert item.state == "missing"
+    assert item.action == "skip"
+    assert item.local.path == sessions / "synced" / "thread-1.jsonl"
+    assert item.source_relative_path == "synced/thread-1.jsonl"
+    assert not item.local.path.exists()
 
 
 def test_planner_rejects_discovered_local_path_outside_session_directory(tmp_path: Path) -> None:
@@ -201,7 +324,12 @@ def test_planner_prefers_discovered_local_path_over_remote_source_path(tmp_path:
     actual_path = sessions / "2026" / "07" / "13" / "actual.jsonl"
     actual_path.parent.mkdir(parents=True)
     actual_path.write_bytes(b"base+local")
-    thread = replace(_thread("thread-1"), session_path=actual_path)
+    thread = replace(
+        _thread("thread-1", project_key="local-project"),
+        session_path=actual_path,
+        project_label="Local Label",
+        updated_at="2026-07-13T13:00:00Z",
+    )
     sync_dir = tmp_path / "sync"
     remote_path = sync_dir / "conversations" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
@@ -209,6 +337,9 @@ def test_planner_prefers_discovered_local_path_over_remote_source_path(tmp_path:
     entry = replace(
         _remote_entry("thread-1"),
         source_relative_path="2026/06/01/duplicate.jsonl",
+        project_key="remote-project",
+        project_label="Remote Label",
+        session_updated_at="2026-07-13T11:00:00Z",
         sha256=snapshot_file(remote_path).sha256,
         size_bytes=remote_path.stat().st_size,
     )
@@ -226,9 +357,106 @@ def test_planner_prefers_discovered_local_path_over_remote_source_path(tmp_path:
         sync_dir,
     )
 
-    assert plan.items[0].local.path == actual_path
-    assert plan.items[0].state == "fast_forward_push"
+    item = plan.items[0]
+    assert item.local.path == actual_path
+    assert item.state == "fast_forward_push"
+    assert item.source_relative_path == "2026/07/13/actual.jsonl"
+    assert item.project_key == "local-project"
+    assert item.project_label == "Local Label"
+    assert item.updated_at == "2026-07-13T13:00:00Z"
     assert not (sessions / "2026" / "06" / "01" / "duplicate.jsonl").exists()
+
+
+@pytest.mark.parametrize(
+    ("local_bytes", "remote_bytes", "expected_state"),
+    [(b"same", b"same", "synced"), (b"left", b"rght", "conflict")],
+)
+def test_planner_uses_coherent_local_metadata_for_none_and_conflict(
+    tmp_path: Path,
+    local_bytes: bytes,
+    remote_bytes: bytes,
+    expected_state: str,
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    local_path = sessions / "actual.jsonl"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_bytes(local_bytes)
+    local_thread = replace(
+        _thread("thread-1", project_key="local-project"),
+        session_path=local_path,
+        project_label="Local Label",
+        updated_at="2026-07-13T13:00:00Z",
+    )
+    sync_dir = tmp_path / "sync"
+    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path.parent.mkdir(parents=True)
+    remote_path.write_bytes(remote_bytes)
+    remote_entry = replace(
+        _remote_entry("thread-1", project_key="remote-project"),
+        source_relative_path="remote/thread-1.jsonl",
+        project_label="Remote Label",
+        session_updated_at="2026-07-13T11:00:00Z",
+    )
+
+    plan = build_sync_plan(
+        LocalInventory((sessions,), {"thread-1": local_thread}, {}, 1),
+        _one_thread_remote(remote_entry, snapshot_file(remote_path)),
+        ("thread-1",),
+        sync_dir,
+    )
+
+    item = plan.items[0]
+    assert item.state == expected_state
+    assert (
+        item.source_relative_path,
+        item.project_key,
+        item.project_label,
+        item.updated_at,
+    ) == ("actual.jsonl", "local-project", "Local Label", "2026-07-13T13:00:00Z")
+
+
+def test_planner_uses_coherent_effective_remote_metadata_for_pull(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    local_path = sessions / "actual.jsonl"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_bytes(b"base")
+    local_thread = replace(
+        _thread("thread-1", project_key="local-project"),
+        session_path=local_path,
+        project_label="Local Label",
+        updated_at="2026-07-13T11:00:00Z",
+    )
+    sync_dir = tmp_path / "sync"
+    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path.parent.mkdir(parents=True)
+    remote_path.write_bytes(b"base+remote")
+    remote_entry = replace(
+        _remote_entry("thread-1", project_key="remote-project"),
+        source_relative_path="remote/thread-1.jsonl",
+        project_label="Remote Label",
+        session_updated_at="2026-07-13T13:00:00Z",
+    )
+
+    plan = build_sync_plan(
+        LocalInventory((sessions,), {"thread-1": local_thread}, {}, 1),
+        _one_thread_remote(remote_entry, snapshot_file(remote_path)),
+        ("thread-1",),
+        sync_dir,
+    )
+
+    item = plan.items[0]
+    assert item.state == "fast_forward_pull"
+    assert (
+        item.source_relative_path,
+        item.project_key,
+        item.project_label,
+        item.updated_at,
+    ) == (
+        "remote/thread-1.jsonl",
+        "remote-project",
+        "Remote Label",
+        "2026-07-13T13:00:00Z",
+    )
 
 
 def test_selected_missing_remote_file_becomes_issue_item(tmp_path: Path) -> None:
@@ -254,7 +482,7 @@ def test_selected_missing_remote_file_becomes_issue_item(tmp_path: Path) -> None
     assert plan.items[0].action == "issue"
     assert plan.items[0].expected_remote_entry == entry
     assert plan.issues == (issue,)
-    assert plan.has_blocking_issues
+    assert plan.blocks_execution
 
 
 def test_unselected_remote_issue_remains_visible_without_blocking_selected_work(tmp_path: Path) -> None:
@@ -276,7 +504,7 @@ def test_unselected_remote_issue_remains_visible_without_blocking_selected_work(
 
     assert plan.items[0].action == "push"
     assert plan.issues == (issue,)
-    assert not plan.has_blocking_issues
+    assert not plan.blocks_execution
 
 
 def test_planner_uses_effective_metadata_and_persisted_expected_entry(tmp_path: Path) -> None:
@@ -292,6 +520,7 @@ def test_planner_uses_effective_metadata_and_persisted_expected_entry(tmp_path: 
         source_relative_path="synced/repaired.jsonl",
         project_key="new",
         project_label="New Label",
+        session_updated_at="2026-07-13T14:00:00Z",
         sha256=snapshot_file(remote_path).sha256,
         size_bytes=remote_path.stat().st_size,
     )
@@ -310,6 +539,7 @@ def test_planner_uses_effective_metadata_and_persisted_expected_entry(tmp_path: 
     assert item.source_relative_path == "synced/repaired.jsonl"
     assert item.project_key == "new"
     assert item.project_label == "New Label"
+    assert item.updated_at == "2026-07-13T14:00:00Z"
 
 
 def test_planner_reports_memory_rows_without_writing_database_or_state(tmp_path: Path) -> None:
@@ -340,25 +570,49 @@ def test_planner_reports_memory_rows_without_writing_database_or_state(tmp_path:
     assert not (home / ".codex-sync-state").exists()
 
 
+def test_memory_database_diagnostic_reads_wal_snapshot_without_opening_live_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    database_path = tmp_path / "codex" / "state_5.sqlite"
+    database_path.parent.mkdir(parents=True)
+    connection = sqlite3.connect(database_path)
+    assert connection.execute("pragma journal_mode=wal").fetchone() == ("wal",)
+    connection.execute("pragma wal_autocheckpoint=0")
+    connection.execute("create table stage1_outputs (thread_id text)")
+    connection.commit()
+    connection.execute("pragma wal_checkpoint(truncate)")
+    connection.execute("insert into stage1_outputs values (?)", ("thread-1",))
+    connection.commit()
+    live_paths = tuple(Path(f"{database_path}{suffix}") for suffix in ("", "-wal", "-shm"))
+    before = {path: (path.exists(), path.read_bytes()) for path in live_paths}
+    original_connect = sqlite3.connect
+    opened_databases: list[str] = []
+
+    def tracking_connect(database: object, *args: object, **kwargs: object) -> sqlite3.Connection:
+        opened_databases.append(str(database))
+        return original_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(sync_state.sqlite3, "connect", tracking_connect)
+    try:
+        row_count = memory_database_row_count(sessions, "thread-1")
+    finally:
+        after = {path: (path.exists(), path.read_bytes()) for path in live_paths}
+        connection.close()
+
+    assert row_count == 1
+    assert after == before
+    assert all(database_path.resolve().as_uri() not in opened for opened in opened_databases)
+
+
 def test_local_state_store_namespaces_records_by_sync_folder(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     first_sync = tmp_path / "first-sync"
     second_sync = tmp_path / "second-sync"
     first_store = LocalStateStore(sessions, first_sync)
     second_store = LocalStateStore(sessions, second_sync)
-    state = LocalSyncState(
-        thread_id="thread-1",
-        sync_dir_fingerprint=sync_dir_fingerprint(first_sync),
-        base_sha256="abc",
-        base_size_bytes=3,
-        base_updated_at="2026-07-13T12:00:00Z",
-        last_remote_sha256="abc",
-        last_local_sha256="abc",
-        source_relative_path="synced/thread-1.jsonl",
-        project_key="repo",
-        project_label="repo",
-        synced_at="2026-07-13T12:00:01Z",
-    )
+    state = _local_state(first_sync)
 
     first_store.write(state)
 
@@ -367,6 +621,71 @@ def test_local_state_store_namespaces_records_by_sync_folder(tmp_path: Path) -> 
     assert first_store.path_for("thread-1") != second_store.path_for("thread-1")
     with pytest.raises(ValueError, match="different sync folder"):
         second_store.write(state)
+
+
+def test_local_sync_state_requires_exact_v2_version(tmp_path: Path) -> None:
+    state = _local_state(tmp_path / "sync")
+    valid = state.to_dict()
+
+    assert LocalSyncState.from_dict(valid) == state
+    for version in (None, 1, 3):
+        payload = dict(valid)
+        if version is None:
+            payload.pop("sync_version")
+        else:
+            payload["sync_version"] = version
+        assert LocalSyncState.from_dict(payload) is None
+
+
+def test_local_state_store_rejects_record_for_different_requested_thread(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    sync_dir = tmp_path / "sync"
+    store = LocalStateStore(sessions, sync_dir)
+    path = store.path_for("requested")
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(_local_state(sync_dir, "other").to_dict()))
+
+    assert store.read("requested") is None
+
+
+@pytest.mark.parametrize(
+    ("local_value", "remote_value", "expected_base"),
+    [(b"local", b"remote", b"local"), (None, b"remote", b"remote")],
+)
+def test_local_state_store_record_success_persists_fields_and_selects_base(
+    tmp_path: Path,
+    local_value: bytes | None,
+    remote_value: bytes | None,
+    expected_base: bytes,
+) -> None:
+    sync_dir = tmp_path / "sync"
+    store = LocalStateStore(tmp_path / "codex" / "sessions", sync_dir)
+    local = _snapshot_bytes(tmp_path, "local-state.jsonl", local_value)
+    remote = _snapshot_bytes(tmp_path, "remote-state.jsonl", remote_value)
+    item = replace(
+        _plan_item(tmp_path),
+        local=local,
+        remote=remote,
+        updated_at="2026-07-13T15:00:00Z",
+        source_relative_path="2026/07/13/thread-1.jsonl",
+        project_key="project-key",
+        project_label="Project Label",
+    )
+
+    store.record_success(item, local, remote)
+
+    state = store.read("thread-1")
+    assert state is not None
+    assert state.sync_dir_fingerprint == sync_dir_fingerprint(sync_dir)
+    assert state.base_sha256 == hashlib.sha256(expected_base).hexdigest()
+    assert state.base_size_bytes == len(expected_base)
+    assert state.base_updated_at == "2026-07-13T15:00:00Z"
+    assert state.last_local_sha256 == local.sha256
+    assert state.last_remote_sha256 == remote.sha256
+    assert state.source_relative_path == "2026/07/13/thread-1.jsonl"
+    assert state.project_key == "project-key"
+    assert state.project_label == "Project Label"
+    assert state.synced_at
 
 
 def test_local_state_store_ignores_malformed_base_record(tmp_path: Path) -> None:

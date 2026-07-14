@@ -21,7 +21,7 @@ from codex_usage.session_files import (
     read_index_entries,
     timestamp_key,
 )
-from codex_usage.sync.io import atomic_copy, atomic_write_json, read_json_object
+from codex_usage.sync.io import atomic_copy, atomic_write_json, path_kind, read_json_object
 from codex_usage.sync.models import LocalSyncState, SyncFileSnapshot, SyncPlanItem
 from codex_usage.sync.paths import portable_thread_filename
 
@@ -48,7 +48,11 @@ class LocalStateStore:
             state = LocalSyncState.from_dict(value) if value is not None else None
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
             return None
-        if state is None or state.sync_dir_fingerprint != sync_dir_fingerprint(self.sync_dir):
+        if (
+            state is None
+            or state.thread_id != thread_id
+            or state.sync_dir_fingerprint != sync_dir_fingerprint(self.sync_dir)
+        ):
             return None
         return state
 
@@ -134,11 +138,17 @@ def merge_session_index(
 
 def memory_database_row_count(session_dir: Path, thread_id: str) -> int:
     database_path = codex_home_from_session_dir(session_dir) / "state_5.sqlite"
-    if not database_path.is_file():
+    if path_kind(database_path) != "file":
         return 0
     try:
-        return _query_memory_database(database_path, thread_id)
-    except sqlite3.Error:
+        with tempfile.TemporaryDirectory(prefix="codex-usage-memory-") as temporary_dir:
+            copied_database = Path(temporary_dir) / database_path.name
+            for suffix in ("", "-wal", "-shm"):
+                source = Path(f"{database_path}{suffix}")
+                if path_kind(source) == "file":
+                    atomic_copy(source, Path(f"{copied_database}{suffix}"))
+            return _query_memory_database(copied_database, thread_id)
+    except (OSError, sqlite3.Error):
         return 0
 
 

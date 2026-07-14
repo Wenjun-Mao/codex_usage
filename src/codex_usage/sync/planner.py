@@ -4,7 +4,7 @@ from pathlib import Path
 
 from codex_usage.session_files import owning_session_dir
 from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME
-from codex_usage.sync.io import snapshot_file
+from codex_usage.sync.io import is_byte_prefix, snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
     RemoteInventory,
@@ -17,9 +17,6 @@ from codex_usage.sync.models import (
 from codex_usage.sync.paths import portable_thread_filename, safe_session_target_path
 from codex_usage.sync.state import LocalStateStore, memory_database_row_count
 from codex_usage.threads import ThreadInfo
-
-
-_PREFIX_CHUNK_SIZE = 1024 * 1024
 
 
 def classify_snapshots(
@@ -93,9 +90,11 @@ def build_sync_plan(
                 base_sha256,
             )
 
-        source_relative_path = _source_relative_path(
+        source_relative_path, project_key, project_label, updated_at = _metadata_for_action(
             local,
             thread_id,
+            action,
+            local_path,
             local_thread,
             effective_entry,
         )
@@ -108,18 +107,10 @@ def build_sync_plan(
                 local=local_snapshot,
                 remote=remote_snapshot,
                 base_sha256=base_sha256,
-                updated_at=_updated_at(action, local_thread, effective_entry),
+                updated_at=updated_at,
                 source_relative_path=source_relative_path,
-                project_key=(
-                    local_thread.project_key
-                    if local_thread is not None
-                    else effective_entry.project_key if effective_entry is not None else ""
-                ),
-                project_label=(
-                    local_thread.project_label
-                    if local_thread is not None
-                    else effective_entry.project_label if effective_entry is not None else ""
-                ),
+                project_key=project_key,
+                project_label=project_label,
                 memory_database_rows=(
                     memory_database_row_count(session_dir, thread_id) if session_dir is not None else 0
                 ),
@@ -201,53 +192,42 @@ def _remote_snapshot(
     )
 
 
-def _source_relative_path(
+def _metadata_for_action(
     local: LocalInventory,
     thread_id: str,
+    action: str,
+    local_path: Path | None,
     local_thread: ThreadInfo | None,
     remote_entry: RemoteThreadEntry | None,
-) -> str:
-    if remote_entry is not None:
-        return remote_entry.source_relative_path
-    if local_thread is not None:
-        resolved = local_thread.session_path.resolve(strict=False)
+) -> tuple[str, str, str, str]:
+    if action in {"push", "none", "conflict"} and local_thread is not None and local_path is not None:
+        resolved = local_path.resolve(strict=False)
         for session_dir in local.session_dirs:
             root = session_dir.resolve(strict=False)
             if root in resolved.parents:
-                return resolved.relative_to(root).as_posix()
-    return f"synced/{portable_thread_filename(thread_id)}"
-
-
-def _updated_at(
-    action: str,
-    local_thread: ThreadInfo | None,
-    remote_entry: RemoteThreadEntry | None,
-) -> str:
-    if action == "pull" and remote_entry is not None:
-        return remote_entry.session_updated_at
-    if local_thread is not None:
-        return local_thread.updated_at
-    return remote_entry.session_updated_at if remote_entry is not None else ""
+                return (
+                    resolved.relative_to(root).as_posix(),
+                    local_thread.project_key,
+                    local_thread.project_label,
+                    local_thread.updated_at,
+                )
+    if remote_entry is not None:
+        return (
+            remote_entry.source_relative_path,
+            remote_entry.project_key,
+            remote_entry.project_label,
+            remote_entry.session_updated_at,
+        )
+    return f"synced/{portable_thread_filename(thread_id)}", "", "", ""
 
 
 def _prefix_relationship(local: SyncFileSnapshot, remote: SyncFileSnapshot) -> str:
     if local.path is None or remote.path is None:
         return "diverged"
-    if _is_byte_prefix(remote, local):
+    if local.size_bytes == remote.size_bytes:
+        return "diverged"
+    if local.size_bytes > remote.size_bytes and is_byte_prefix(remote, local):
         return "remote_prefix_of_local"
-    if _is_byte_prefix(local, remote):
+    if remote.size_bytes > local.size_bytes and is_byte_prefix(local, remote):
         return "local_prefix_of_remote"
     return "diverged"
-
-
-def _is_byte_prefix(prefix: SyncFileSnapshot, full: SyncFileSnapshot) -> bool:
-    if prefix.path is None or full.path is None or prefix.size_bytes > full.size_bytes:
-        return False
-    remaining = prefix.size_bytes
-    with prefix.path.open("rb") as prefix_file, full.path.open("rb") as full_file:
-        while remaining:
-            prefix_chunk = prefix_file.read(min(_PREFIX_CHUNK_SIZE, remaining))
-            if not prefix_chunk or full_file.read(len(prefix_chunk)) != prefix_chunk:
-                return False
-            remaining -= len(prefix_chunk)
-    return True

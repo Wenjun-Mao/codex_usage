@@ -142,6 +142,9 @@ class LocalSyncState:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> LocalSyncState | None:
+        sync_version = value.get("sync_version")
+        if type(sync_version) is not int or sync_version != SYNC_FORMAT_VERSION:
+            return None
         thread_id = str(value.get("thread_id") or "").strip()
         fingerprint = str(value.get("sync_dir_fingerprint") or "").strip()
         base_sha256 = str(value.get("base_sha256") or "").strip()
@@ -235,6 +238,16 @@ class SyncPlan:
     selected_count: int
 
     def __post_init__(self) -> None:
+        mismatched_issue_items = [
+            item.thread_id
+            for item in self.items
+            if (item.state == "issue") != (item.action == "issue")
+        ]
+        if mismatched_issue_items:
+            thread_ids = ", ".join(sorted(mismatched_issue_items))
+            raise ValueError(
+                f"Sync plan item state and action must both be 'issue' for thread ids: {thread_ids}"
+            )
         issue_thread_ids = {issue.thread_id for issue in self.issues}
         missing_diagnostics = [
             item.thread_id
@@ -260,8 +273,8 @@ class SyncPlan:
         return bool(self.issues)
 
     @property
-    def has_blocking_issues(self) -> bool:
-        return any(item.action == "issue" for item in self.items)
+    def blocks_execution(self) -> bool:
+        return self.has_conflicts or any(item.action == "issue" for item in self.items)
 
     def to_dict(self) -> dict[str, list[dict[str, Any]]]:
         return {

@@ -363,7 +363,7 @@ class SyncRunResult:
 
 `SyncRunResult` provides `blocked(plan: SyncPlan, timings: SyncTimings) -> SyncRunResult`, `failed(plan: SyncPlan, runtime_issue: SyncIssue, pulled: tuple[str, ...], pushed: tuple[str, ...], timings: SyncTimings) -> SyncRunResult`, and `completed(plan: SyncPlan, pulled: tuple[str, ...], pushed: tuple[str, ...], timings: SyncTimings) -> SyncRunResult` constructors so Task 6 has one place to derive counts and serialized payload fields.
 
-`SyncPlan` provides `expected_remote_entries() -> dict[str, RemoteThreadEntry | None]`, `expected_remote_snapshots() -> dict[str, SyncFileSnapshot]`, `has_conflicts`, and `has_issues`; all derive only from its immutable `items` and `issues`.
+`SyncPlan` provides `expected_remote_entries() -> dict[str, RemoteThreadEntry | None]`, `expected_remote_snapshots() -> dict[str, SyncFileSnapshot]`, `has_conflicts`, `has_issues`, and `blocks_execution`; all derive only from its immutable `items` and `issues`.
 
 `SyncPlan.to_dict()` returns `{"threads": [...], "issues": [...]}`. Each serialized item keeps the existing flat diagnostics (`thread_id`, `state`, `action`, `reason`, local/remote/base hashes and paths, project fields, source-relative path, update time, and memory warning). `SyncRunResult.to_dict()` returns exactly `outcome`, `counts`, `timings_ms`, `threads`, `pulled`, `pushed`, and `issues`, matching the Task 8 TypeScript parser.
 
@@ -843,7 +843,7 @@ def run_sync(*, data, sync_dir, project_keys, thread_ids, machine_id, discovery_
     remote = store.load_inventory()
     selected = resolve_selected_thread_ids(local, remote, project_keys, thread_ids)
     plan = build_sync_plan(local, remote, selected, sync_dir)
-    if plan.has_conflicts or plan.has_issues:
+    if plan.blocks_execution:
         save_conflict_candidates(plan)
         return SyncRunResult.blocked(plan, timings=timer.finish())
     validate_local_selected(plan)

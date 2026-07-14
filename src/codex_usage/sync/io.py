@@ -84,6 +84,25 @@ def read_json_object_with_snapshot(path: Path) -> tuple[dict[str, Any] | None, S
     return value, snapshot
 
 
+@retry(
+    retry=retry_if_exception(_is_transient_filesystem_error),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+def is_byte_prefix(prefix: SyncFileSnapshot, full: SyncFileSnapshot) -> bool:
+    if prefix.path is None or full.path is None or prefix.size_bytes > full.size_bytes:
+        return False
+    remaining = prefix.size_bytes
+    with prefix.path.open("rb") as prefix_file, full.path.open("rb") as full_file:
+        while remaining:
+            prefix_chunk = prefix_file.read(min(_COPY_CHUNK_SIZE, remaining))
+            if not prefix_chunk or full_file.read(len(prefix_chunk)) != prefix_chunk:
+                return False
+            remaining -= len(prefix_chunk)
+    return True
+
+
 def path_kind(path: Path) -> str:
     try:
         path_stat = _lstat(path)
