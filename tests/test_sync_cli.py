@@ -101,7 +101,7 @@ def test_sync_status_root_returns_active_sessions_without_creating_it(
     assert archived_sessions not in session_dirs
 
 
-def test_cli_sync_help_exposes_only_run_and_status() -> None:
+def test_cli_sync_help_exposes_inventory_run_and_status() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "codex_usage.cli", "sync", "--help"],
         check=True,
@@ -109,10 +109,109 @@ def test_cli_sync_help_exposes_only_run_and_status() -> None:
         text=True,
     )
 
-    assert "{run,status}" in result.stdout
+    assert "{inventory,run,status}" in result.stdout
     assert "import" not in result.stdout
     assert "export" not in result.stdout
     assert "--conflict-policy" not in result.stdout
+
+
+def test_sync_inventory_loads_local_data_once_and_prints_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    data = object()
+    calls: list[tuple[object, ...]] = []
+    expected = SimpleNamespace(
+        to_dict=lambda: {"inventory_version": 1, "projects": [], "issues": []}
+    )
+
+    def load(paths: list[Path], *, auto_transitions: bool) -> object:
+        calls.append((tuple(paths), auto_transitions))
+        return data
+
+    monkeypatch.setattr(
+        sync_cli, "_sync_session_dirs", lambda *, create: [tmp_path / "sessions"]
+    )
+    monkeypatch.setattr(
+        sync_cli, "load_sync_selection_inventory", lambda value, path: expected
+    )
+
+    exit_code = sync_cli.handle_sync_inventory(_args(tmp_path), load)
+
+    assert exit_code == 0
+    assert calls == [((tmp_path / "sessions",), True)]
+    assert json.loads(capsys.readouterr().out) == expected.to_dict()
+
+
+def test_cli_sync_inventory_lists_one_local_task_from_an_empty_remote_folder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    codex_home = tmp_path / "codex"
+    session_day = codex_home / "sessions" / "2026" / "04" / "29"
+    session_day.mkdir(parents=True)
+    _write_session(session_day / "thread-1.jsonl", "thread-1", "/repo/first", 100)
+    (codex_home / "session_index.jsonl").write_text(
+        json.dumps(
+            {
+                "id": "thread-1",
+                "thread_name": "First thread",
+                "updated_at": "2026-04-29T10:05:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    sync_dir = tmp_path / "sync"
+    sync_dir.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    exit_code = cli_module.main(
+        ["sync", "inventory", "--sync-dir", str(sync_dir), "--json"]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["inventory_version"] == 1
+    assert payload["issues"] == []
+    assert len(payload["projects"]) == 1
+    assert payload["projects"][0]["project_key"] == "/repo/first"
+    assert payload["projects"][0]["tasks"][0]["thread_id"] == "thread-1"
+    assert payload["projects"][0]["tasks"][0]["title"] == "First thread"
+    assert payload["projects"][0]["tasks"][0]["availability"] == "local"
+    assert list(sync_dir.iterdir()) == []
+
+
+def test_sync_inventory_prints_one_human_summary_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    inventory = SimpleNamespace(
+        to_dict=lambda: {
+            "inventory_version": 1,
+            "projects": [
+                {"tasks": [{"thread_id": "one"}, {"thread_id": "two"}]},
+                {"tasks": [{"thread_id": "three"}]},
+            ],
+            "issues": [{"code": "notice"}],
+        }
+    )
+    monkeypatch.setattr(
+        sync_cli, "_sync_session_dirs", lambda *, create: [tmp_path / "sessions"]
+    )
+    monkeypatch.setattr(
+        sync_cli, "load_sync_selection_inventory", lambda data, path: inventory
+    )
+
+    exit_code = sync_cli.handle_sync_inventory(
+        _args(tmp_path, json=False), lambda *args, **kwargs: object()
+    )
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == "Sync inventory: 2 projects, 3 tasks, 1 issues.\n"
 
 
 def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_selectors(

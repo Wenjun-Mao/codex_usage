@@ -13,7 +13,12 @@ from codex_usage.project_identity import normalize_project_key
 from codex_usage.reporting import print_json
 from codex_usage.session_cache import CachedSessionData
 from codex_usage.settings import get_settings
-from codex_usage.sync import SyncProgressEvent, run_sync, sync_status
+from codex_usage.sync import (
+    SyncProgressEvent,
+    load_sync_selection_inventory,
+    run_sync,
+    sync_status,
+)
 
 
 class SessionDataLoader(Protocol):
@@ -25,18 +30,12 @@ class SessionDataLoader(Protocol):
     ) -> CachedSessionData: ...
 
 
-def add_sync_options(parser: argparse.ArgumentParser) -> None:
+def add_sync_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--sync-dir",
         type=Path,
         required=True,
         help="Bring-your-own local sync folder.",
-    )
-    parser.add_argument(
-        "--project-key", action="append", help="Project key to sync. Repeat as needed."
-    )
-    parser.add_argument(
-        "--thread-id", action="append", help="Thread id to sync. Repeat as needed."
     )
     parser.add_argument(
         "--no-auto-transitions",
@@ -46,6 +45,34 @@ def add_sync_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--json", action="store_true", help="Print machine-readable JSON."
     )
+
+
+def add_sync_execution_options(parser: argparse.ArgumentParser) -> None:
+    add_sync_common_options(parser)
+    parser.add_argument(
+        "--project-key", action="append", help="Project key to sync. Repeat as needed."
+    )
+    parser.add_argument(
+        "--thread-id",
+        action="append",
+        help="Technical thread id for a selected Codex task. Repeat as needed.",
+    )
+
+
+def handle_sync_inventory(
+    args: argparse.Namespace, load_session_data: SessionDataLoader
+) -> int:
+    data, _ = _load_sync_data(
+        args,
+        create_sessions=False,
+        load_session_data=load_session_data,
+    )
+    payload = load_sync_selection_inventory(data, args.sync_dir).to_dict()
+    if args.json:
+        print_json(payload)
+    else:
+        _print_sync_inventory(payload)
+    return 0
 
 
 def handle_sync_run(
@@ -153,6 +180,21 @@ def _emit_sync_progress(event: SyncProgressEvent) -> None:
         json.dumps(event.to_dict(), separators=(",", ":")),
         file=sys.stderr,
         flush=True,
+    )
+
+
+def _print_sync_inventory(payload: dict[str, object]) -> None:
+    projects = payload["projects"]
+    issues = payload["issues"]
+    assert isinstance(projects, list) and isinstance(issues, list)
+    task_count = sum(
+        len(project.get("tasks", []))
+        for project in projects
+        if isinstance(project, dict) and isinstance(project.get("tasks"), list)
+    )
+    print(
+        f"Sync inventory: {len(projects)} projects, "
+        f"{task_count} tasks, {len(issues)} issues."
     )
 
 

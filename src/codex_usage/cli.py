@@ -36,7 +36,9 @@ from codex_usage.session_cache import CacheStats, CachedSessionData, load_cached
 from codex_usage.session_inventory import storage_snapshots
 from codex_usage.settings import get_settings
 from codex_usage.sync_cli import (
-    add_sync_options,
+    add_sync_common_options,
+    add_sync_execution_options,
+    handle_sync_inventory as sync_inventory_command,
     handle_sync_run as run_sync_command,
     handle_sync_status as sync_status_command,
 )
@@ -102,16 +104,26 @@ def build_parser() -> argparse.ArgumentParser:
     storage_snapshot_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     storage_snapshot_parser.set_defaults(handler=handle_storage_snapshot)
 
-    sync_parser = subparsers.add_parser("sync", help="Synchronize selected Codex threads.")
+    sync_parser = subparsers.add_parser("sync", help="Synchronize selected Codex tasks.")
     sync_subparsers = sync_parser.add_subparsers(dest="sync_command")
 
-    run_parser = sync_subparsers.add_parser("run", help="Synchronize selected threads.")
-    add_sync_options(run_parser)
+    inventory_parser = sync_subparsers.add_parser(
+        "inventory", help="List Codex tasks available for sync."
+    )
+    add_sync_common_options(inventory_parser)
+    inventory_parser.set_defaults(handler=handle_sync_inventory)
+
+    run_parser = sync_subparsers.add_parser(
+        "run", help="Synchronize selected Codex tasks."
+    )
+    add_sync_execution_options(run_parser)
     run_parser.add_argument("--machine-id", default=None, help="Source machine id for sync metadata.")
     run_parser.set_defaults(handler=handle_sync_run)
 
-    status_parser = sync_subparsers.add_parser("status", help="Show selected thread sync status.")
-    add_sync_options(status_parser)
+    status_parser = sync_subparsers.add_parser(
+        "status", help="Show sync status for selected Codex tasks."
+    )
+    add_sync_execution_options(status_parser)
     status_parser.set_defaults(handler=handle_sync_status)
 
     return parser
@@ -253,6 +265,10 @@ def handle_storage_snapshot(args: argparse.Namespace) -> int:
 
 def handle_sync_run(args: argparse.Namespace) -> int:
     return run_sync_command(args, _load_session_data)
+
+
+def handle_sync_inventory(args: argparse.Namespace) -> int:
+    return sync_inventory_command(args, _load_session_data)
 
 
 def handle_sync_status(args: argparse.Namespace) -> int:
