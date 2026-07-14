@@ -17,7 +17,7 @@ from codex_usage.session_files import (
     read_index_entries,
     timestamp_key,
 )
-from codex_usage.sync_constants import SYNC_METADATA_OVERHEAD_BYTES
+from codex_usage.sync_constants import SYNC_METADATA_OVERHEAD_BYTES as SYNC_METADATA_OVERHEAD_BYTES
 from codex_usage.sync_io import (
     atomic_copy,
     atomic_write_json,
@@ -29,6 +29,7 @@ from codex_usage.sync_io import (
     save_conflict_candidate,
     sha256_file,
 )
+from codex_usage.sync.runner import run_sync as run_sync
 from codex_usage.threads import ThreadInfo, list_threads
 
 
@@ -606,7 +607,6 @@ def _prefix_relationship(local: SyncFileSnapshot, remote: SyncFileSnapshot) -> s
     if _is_byte_prefix(local.path, remote.path):
         return "local_prefix_of_remote"
     return "diverged"
-
 
 
 
