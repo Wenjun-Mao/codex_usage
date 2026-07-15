@@ -2,7 +2,7 @@
 
 Date: 2026-07-13
 
-Status: Approved
+Status: Superseded in part by ADR 0013
 
 ## Goal
 

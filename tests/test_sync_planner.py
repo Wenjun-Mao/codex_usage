@@ -147,6 +147,42 @@ def test_planner_classifies_three_way_state(
     assert action == expected_action
 
 
+def test_planner_treats_distinct_materialized_local_and_remote_baselines_as_synced(
+    tmp_path: Path,
+) -> None:
+    local = _snapshot_bytes(tmp_path, "local.jsonl", b'local-cwd\nhistory')
+    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b'remote-cwd\nhistory')
+
+    state, action, reason = classify_snapshots(
+        local,
+        remote,
+        base_sha256=local.sha256,
+        last_local_sha256=local.sha256,
+        last_remote_sha256=remote.sha256,
+    )
+
+    assert (state, action) == ("synced", "none")
+    assert reason == "local and remote match their last synchronized versions"
+
+
+def test_planner_detects_real_local_change_from_distinct_materialized_baselines(
+    tmp_path: Path,
+) -> None:
+    previous_local = _snapshot_bytes(tmp_path, "previous-local.jsonl", b'local-cwd\nhistory')
+    local = _snapshot_bytes(tmp_path, "local.jsonl", b'local-cwd\nhistory\nnew turn')
+    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b'remote-cwd\nhistory')
+
+    state, action, _reason = classify_snapshots(
+        local,
+        remote,
+        base_sha256=previous_local.sha256,
+        last_local_sha256=previous_local.sha256,
+        last_remote_sha256=remote.sha256,
+    )
+
+    assert (state, action) == ("local_ahead", "push")
+
+
 def test_equal_hashes_do_not_require_prefix_file_reads(tmp_path: Path) -> None:
     local = _snapshot_bytes(tmp_path, "local.jsonl", b"same")
     remote = _snapshot_bytes(tmp_path, "remote.jsonl", b"same")
@@ -352,6 +388,7 @@ def test_planner_uses_coherent_effective_remote_metadata_for_pull(tmp_path: Path
         session_path=local_path,
         project_label="Local Label",
         updated_at="2026-07-13T11:00:00Z",
+        cwd=str(tmp_path / "remote-project"),
     )
     sync_dir = tmp_path / "sync"
     remote_path = sync_dir / "conversations" / "thread-1.jsonl"
@@ -365,7 +402,13 @@ def test_planner_uses_coherent_effective_remote_metadata_for_pull(tmp_path: Path
     )
 
     plan = build_sync_plan(
-        LocalInventory((sessions,), {"thread-1": local_thread}, {}, 1),
+        LocalInventory(
+            (sessions,),
+            {"thread-1": local_thread},
+            {},
+            1,
+            {"remote-project": (tmp_path / "remote-project",)},
+        ),
         _one_thread_remote(remote_entry, snapshot_file(remote_path)),
         ("thread-1",),
         sync_dir,

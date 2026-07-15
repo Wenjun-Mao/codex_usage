@@ -13,11 +13,13 @@ import codex_usage.sync_cli as sync_cli
 from codex_usage.sync_cli import _sync_session_dirs
 
 
-def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
+def test_cli_sync_push_and_pull_are_manual_directional_commands(tmp_path: Path) -> None:
     source_home = tmp_path / "source"
     source_day = source_home / "sessions" / "2026" / "04" / "29"
     source_day.mkdir(parents=True)
-    _write_session(source_day / "thread-1.jsonl", "thread-1", "/repo/first", 100)
+    project = tmp_path / "project"
+    project.mkdir()
+    _write_session(source_day / "thread-1.jsonl", "thread-1", str(project), 100)
     (source_home / "session_index.jsonl").write_text(
         json.dumps(
             {
@@ -34,7 +36,7 @@ def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
     pushed = _run_cli(
         [
             "sync",
-            "run",
+            "push",
             "--sync-dir",
             str(sync_dir),
             "--thread-id",
@@ -51,10 +53,14 @@ def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
 
     target_home = tmp_path / "target"
     (target_home / "archived_sessions").mkdir(parents=True)
+    (target_home / ".codex-global-state.json").write_text(
+        json.dumps({"electron-saved-workspace-roots": [str(project)]}),
+        encoding="utf-8",
+    )
     pulled = _run_cli(
         [
             "sync",
-            "run",
+            "pull",
             "--sync-dir",
             str(sync_dir),
             "--thread-id",
@@ -69,7 +75,7 @@ def test_cli_sync_run_replaces_import_and_export(tmp_path: Path) -> None:
     assert not list((target_home / "archived_sessions").rglob("*.jsonl"))
 
 
-def test_sync_run_root_creates_active_sessions_when_only_archive_exists(
+def test_sync_execution_root_creates_active_sessions_when_only_archive_exists(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -101,7 +107,7 @@ def test_sync_status_root_returns_active_sessions_without_creating_it(
     assert archived_sessions not in session_dirs
 
 
-def test_cli_sync_help_exposes_inventory_run_and_status() -> None:
+def test_cli_sync_help_exposes_manual_directional_commands_and_status() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "codex_usage.cli", "sync", "--help"],
         check=True,
@@ -109,7 +115,8 @@ def test_cli_sync_help_exposes_inventory_run_and_status() -> None:
         text=True,
     )
 
-    assert "{inventory,run,status}" in result.stdout
+    assert "{inventory,pull,push,status}" in result.stdout
+    assert "run" not in result.stdout
     assert "import" not in result.stdout
     assert "export" not in result.stdout
     assert "--conflict-policy" not in result.stdout
@@ -214,7 +221,7 @@ def test_sync_inventory_prints_one_human_summary_line(
     assert capsys.readouterr().out == "Sync inventory: 2 projects, 3 tasks, 1 issues.\n"
 
 
-def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_thread_ids(
+def test_sync_push_loads_cache_once_after_scanning_and_passes_normalized_thread_ids(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -226,7 +233,7 @@ def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_thread_i
         calls.append(("load", paths, auto_transitions))
         return data
 
-    def run_sync(**kwargs) -> SimpleNamespace:
+    def push_sync(**kwargs) -> SimpleNamespace:
         calls.append(("run", kwargs))
         return SimpleNamespace(
             outcome="completed",
@@ -245,7 +252,7 @@ def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_thread_i
     monkeypatch.setattr(
         sync_cli, "_sync_session_dirs", lambda *, create: [tmp_path / "sessions"]
     )
-    monkeypatch.setattr(sync_cli, "run_sync", run_sync)
+    monkeypatch.setattr(sync_cli, "push_sync", push_sync)
     monkeypatch.setattr(
         sync_cli,
         "get_settings",
@@ -257,7 +264,7 @@ def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_thread_i
         no_auto_transitions=True,
     )
 
-    exit_code = sync_cli.handle_sync_run(args, load_session_data)
+    exit_code = sync_cli.handle_sync_push(args, load_session_data)
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -268,6 +275,39 @@ def test_sync_run_loads_cache_once_after_scanning_and_passes_normalized_thread_i
     assert "project_keys" not in calls[1][1]
     assert captured.err.splitlines()[0] == '{"type":"sync_progress","phase":"scanning"}'
     assert json.loads(captured.out)["outcome"] == "completed"
+
+
+def test_sync_pull_calls_directional_runner_without_machine_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    result = SimpleNamespace(
+        outcome="completed",
+        to_dict=lambda: {"outcome": "completed", "counts": {}},
+    )
+    monkeypatch.setattr(
+        sync_cli, "_sync_session_dirs", lambda *, create: [tmp_path / "sessions"]
+    )
+    monkeypatch.setattr(
+        sync_cli,
+        "get_settings",
+        lambda: SimpleNamespace(auto_project_transitions=True),
+    )
+    monkeypatch.setattr(
+        sync_cli,
+        "pull_sync",
+        lambda **kwargs: calls.append(kwargs) or result,
+    )
+
+    exit_code = sync_cli.handle_sync_pull(
+        _args(tmp_path, thread_id=["thread-1"]),
+        lambda *args, **kwargs: object(),
+    )
+
+    assert exit_code == 0
+    assert calls[0]["thread_ids"] == ("thread-1",)
+    assert "machine_id" not in calls[0]
 
 
 def test_sync_commands_reject_empty_task_selection(
@@ -285,7 +325,7 @@ def test_sync_commands_reject_empty_task_selection(
     )
 
 
-@pytest.mark.parametrize("sync_command", ["run", "status"])
+@pytest.mark.parametrize("sync_command", ["pull", "push", "status"])
 def test_sync_execution_commands_reject_project_key(sync_command: str, tmp_path: Path) -> None:
     result = subprocess.run(
         [
@@ -358,7 +398,7 @@ def test_sync_status_uses_noncreating_default_path_and_returns_zero_for_issues(
     assert json.loads(captured.out)["issues"][0]["code"] == "legacy_sync_layout"
 
 
-def test_sync_run_returns_two_and_one_human_summary_for_conflict(
+def test_sync_push_returns_two_and_one_human_summary_for_conflict(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -368,7 +408,7 @@ def test_sync_run_returns_two_and_one_human_summary_for_conflict(
     )
     monkeypatch.setattr(
         sync_cli,
-        "run_sync",
+        "push_sync",
         lambda **kwargs: SimpleNamespace(
             outcome="conflict",
             to_dict=lambda: {"outcome": "conflict", "counts": {}},
@@ -376,7 +416,7 @@ def test_sync_run_returns_two_and_one_human_summary_for_conflict(
     )
     args = _args(tmp_path, thread_id=["thread-1"], json=False)
 
-    exit_code = sync_cli.handle_sync_run(args, lambda *args, **kwargs: object())
+    exit_code = sync_cli.handle_sync_push(args, lambda *args, **kwargs: object())
 
     captured = capsys.readouterr()
     assert exit_code == 2

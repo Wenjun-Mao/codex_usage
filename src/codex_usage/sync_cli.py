@@ -14,8 +14,10 @@ from codex_usage.session_cache import CachedSessionData
 from codex_usage.settings import get_settings
 from codex_usage.sync import (
     SyncProgressEvent,
+    SyncRunResult,
     load_sync_selection_inventory,
-    run_sync,
+    pull_sync,
+    push_sync,
     sync_status,
 )
 from codex_usage.sync.inventory import normalize_selected_thread_ids
@@ -72,7 +74,7 @@ def handle_sync_inventory(
     return 0
 
 
-def handle_sync_run(
+def handle_sync_pull(
     args: argparse.Namespace, load_session_data: SessionDataLoader
 ) -> int:
     thread_ids = _sync_thread_ids(args)
@@ -81,7 +83,26 @@ def handle_sync_run(
         create_sessions=True,
         load_session_data=load_session_data,
     )
-    result = run_sync(
+    result = pull_sync(
+        data=data,
+        sync_dir=args.sync_dir,
+        thread_ids=thread_ids,
+        discovery_ms=discovery_ms,
+        on_progress=_emit_sync_progress,
+    )
+    return _finish_sync_execution(args, result)
+
+
+def handle_sync_push(
+    args: argparse.Namespace, load_session_data: SessionDataLoader
+) -> int:
+    thread_ids = _sync_thread_ids(args)
+    data, discovery_ms = _load_sync_data(
+        args,
+        create_sessions=True,
+        load_session_data=load_session_data,
+    )
+    result = push_sync(
         data=data,
         sync_dir=args.sync_dir,
         thread_ids=thread_ids,
@@ -89,6 +110,10 @@ def handle_sync_run(
         discovery_ms=discovery_ms,
         on_progress=_emit_sync_progress,
     )
+    return _finish_sync_execution(args, result)
+
+
+def _finish_sync_execution(args: argparse.Namespace, result: SyncRunResult) -> int:
     payload = result.to_dict()
     if args.json:
         print_json(payload)

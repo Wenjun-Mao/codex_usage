@@ -15,7 +15,7 @@ THREAD_ID = "thread-1"
 SESSION_RELATIVE_PATH = Path("2026") / "04" / "29" / f"{THREAD_ID}.jsonl"
 TASK_TITLE = "Packaged sync smoke"
 TASK_UPDATED_AT = "2026-04-29T10:00:02Z"
-PROJECT_KEY = "/tmp/packaged-sync-smoke"
+PROJECT_KEY = "https://github.com/example/packaged-sync-smoke"
 PROJECT_LABEL = "packaged-sync-smoke"
 INVENTORY_VERSION = 1
 SYNC_FORMAT_VERSION = 2
@@ -30,7 +30,7 @@ def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text(payload, encoding="utf-8")
 
 
-def _write_source_home(source_home: Path) -> Path:
+def _write_source_home(source_home: Path, project_root: Path) -> Path:
     source_jsonl = source_home / "sessions" / SESSION_RELATIVE_PATH
     usage = {
         "input_tokens": 100,
@@ -48,7 +48,7 @@ def _write_source_home(source_home: Path) -> Path:
                 "payload": {
                     "id": THREAD_ID,
                     "timestamp": "2026-04-29T10:00:00Z",
-                    "cwd": "/tmp/packaged-sync-smoke",
+                    "cwd": str(project_root),
                 },
             },
             {
@@ -114,11 +114,18 @@ def _run_json(
     return result
 
 
-def _run_sync(executable: Path, codex_home: Path, sync_dir: Path) -> dict[str, object]:
+def _run_sync(
+    executable: Path,
+    codex_home: Path,
+    sync_dir: Path,
+    direction: str,
+) -> dict[str, object]:
+    if direction not in {"pull", "push"}:
+        raise ValueError(f"Unsupported packaged sync direction: {direction!r}")
     return _run_json(
         executable,
         codex_home,
-        ["sync", "run", "--sync-dir", str(sync_dir), "--thread-id", THREAD_ID, "--json"],
+        ["sync", direction, "--sync-dir", str(sync_dir), "--thread-id", THREAD_ID, "--json"],
     )
 
 
@@ -310,7 +317,19 @@ def main() -> int:
         source_home = root / "source-home"
         target_home = root / "target-home"
         sync_dir = root / "sync"
-        source_jsonl = _write_source_home(source_home)
+        project_root = root / "project"
+        git_dir = project_root / ".git"
+        git_dir.mkdir(parents=True)
+        (git_dir / "config").write_text(
+            f'[remote "origin"]\n\turl = {PROJECT_KEY}.git\n',
+            encoding="utf-8",
+        )
+        target_home.mkdir(parents=True)
+        (target_home / ".codex-global-state.json").write_text(
+            json.dumps({"electron-saved-workspace-roots": [str(project_root)]}),
+            encoding="utf-8",
+        )
+        source_jsonl = _write_source_home(source_home, project_root)
         source_bytes = _read_required_bytes(source_jsonl, "source task JSONL")
 
         local_inventory = _run_json(
@@ -324,7 +343,7 @@ def main() -> int:
             len(source_bytes) + LOCAL_METADATA_ESTIMATE_BYTES,
         )
 
-        pushed = _run_sync(executable, source_home, sync_dir)
+        pushed = _run_sync(executable, source_home, sync_dir, "push")
         _validate_sync_result(pushed, "push")
         _validate_remote_layout(sync_dir, source_bytes)
 
@@ -335,7 +354,7 @@ def main() -> int:
         )
         _validate_inventory(remote_inventory, "remote", len(source_bytes))
 
-        pulled = _run_sync(executable, target_home, sync_dir)
+        pulled = _run_sync(executable, target_home, sync_dir, "pull")
         imported_jsonl = target_home / "sessions" / SESSION_RELATIVE_PATH
         _validate_sync_result(pulled, "pull")
         _require_equal(

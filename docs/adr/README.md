@@ -20,3 +20,4 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 | [0010](0010-macos-apple-silicon-vsix-runtime.md) | Bundle a macOS Apple Silicon executable in the VSIX. |
 | [0011](0011-flat-single-process-sync.md) | Use flat conversation files and one plan-driven sync process. |
 | [0012](0012-exact-task-sync-selection.md) | Select exact Codex tasks from one project-grouped local and remote inventory. |
+| [0013](0013-manual-directional-cross-platform-sync.md) | Use explicit Pull and Push commands and rebind imported tasks to canonical local projects. |

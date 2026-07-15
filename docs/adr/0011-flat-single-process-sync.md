@@ -1,6 +1,6 @@
 # ADR 0011: Flat Single-Process Sync
 
-Status: Accepted
+Status: Superseded in part by ADR 0013
 
 Date: 2026-07-13
 

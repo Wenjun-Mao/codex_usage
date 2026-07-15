@@ -74,7 +74,7 @@ def inventory_payload(
         "inventory_version": 1,
         "projects": [
             {
-                "project_key": "/tmp/packaged-sync-smoke",
+                "project_key": "https://github.com/example/packaged-sync-smoke",
                 "project_label": "packaged-sync-smoke",
                 "tasks": [
                     {
@@ -240,7 +240,7 @@ def test_packaged_sync_smoke_orchestrates_isolated_exact_task_round_trip(
         ("sync", "inventory", "--sync-dir", sync_dir, "--json"),
         (
             "sync",
-            "run",
+            "push",
             "--sync-dir",
             sync_dir,
             "--thread-id",
@@ -250,7 +250,7 @@ def test_packaged_sync_smoke_orchestrates_isolated_exact_task_round_trip(
         ("sync", "inventory", "--sync-dir", sync_dir, "--json"),
         (
             "sync",
-            "run",
+            "pull",
             "--sync-dir",
             sync_dir,
             "--thread-id",
@@ -340,7 +340,7 @@ def test_packaged_sync_smoke_has_no_optimization_sensitive_asserts():
     assert not [node for node in ast.walk(tree) if isinstance(node, ast.Assert)]
 
 
-def test_release_metadata_versions_are_0_1_34():
+def test_release_metadata_versions_are_0_1_35():
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension_package = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -349,11 +349,11 @@ def test_release_metadata_versions_are_0_1_34():
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "0.1.34"
-    assert codex_usage_lock["version"] == "0.1.34"
-    assert extension_package["version"] == "0.1.34"
-    assert extension_lock["version"] == "0.1.34"
-    assert extension_lock["packages"][""]["version"] == "0.1.34"
+    assert pyproject["project"]["version"] == "0.1.35"
+    assert codex_usage_lock["version"] == "0.1.35"
+    assert extension_package["version"] == "0.1.35"
+    assert extension_lock["version"] == "0.1.35"
+    assert extension_lock["packages"][""]["version"] == "0.1.35"
 
 
 @pytest.mark.parametrize(

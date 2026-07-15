@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
+from typing import Literal
 
 from codex_usage.session_cache import CachedSessionData
 from codex_usage.session_files import codex_home_from_session_dir, owning_session_dir
@@ -38,6 +39,7 @@ from codex_usage.sync.models import (
 from codex_usage.sync.paths import portable_thread_filename
 from codex_usage.sync.planner import build_sync_plan
 from codex_usage.sync.remote_reconciliation import promote_matching_local_metadata
+from codex_usage.sync.session_materialization import materialize_session_cwd
 from codex_usage.sync.state import (
     LocalStateStore,
     backup_local_session,
@@ -104,7 +106,26 @@ def sync_status(
     return plan
 
 
-def run_sync(
+def pull_sync(
+    *,
+    data: CachedSessionData,
+    sync_dir: Path,
+    thread_ids: Iterable[str],
+    discovery_ms: int = 0,
+    on_progress: Callable[[SyncProgressEvent], None] | None = None,
+) -> SyncRunResult:
+    return _run_direction(
+        direction="pull",
+        data=data,
+        sync_dir=sync_dir,
+        thread_ids=thread_ids,
+        machine_id="",
+        discovery_ms=discovery_ms,
+        on_progress=on_progress,
+    )
+
+
+def push_sync(
     *,
     data: CachedSessionData,
     sync_dir: Path,
@@ -112,6 +133,27 @@ def run_sync(
     machine_id: str,
     discovery_ms: int = 0,
     on_progress: Callable[[SyncProgressEvent], None] | None = None,
+) -> SyncRunResult:
+    return _run_direction(
+        direction="push",
+        data=data,
+        sync_dir=sync_dir,
+        thread_ids=thread_ids,
+        machine_id=machine_id,
+        discovery_ms=discovery_ms,
+        on_progress=on_progress,
+    )
+
+
+def _run_direction(
+    *,
+    direction: Literal["pull", "push"],
+    data: CachedSessionData,
+    sync_dir: Path,
+    thread_ids: Iterable[str],
+    machine_id: str,
+    discovery_ms: int,
+    on_progress: Callable[[SyncProgressEvent], None] | None,
 ) -> SyncRunResult:
     timer = PhaseTimer(discovery_ms)
     with timer.measure("planning"):
@@ -144,16 +186,26 @@ def run_sync(
             if blocked:
                 return SyncRunResult.blocked(plan, timings=timer.finish())
 
-            with timer.measure("pull"):
-                pulled = execute_pulls(plan, local, remote, on_progress)
-            with timer.measure("push"):
-                push_execution = execute_pushes(
-                    plan, local, store, machine_id, on_progress
-                )
-                pushed = push_execution.thread_ids
+            push_execution = PushExecution((), {}, {})
+            if direction == "pull":
+                with timer.measure("pull"):
+                    pulled = execute_pulls(plan, local, remote, on_progress)
+            else:
+                with timer.measure("push"):
+                    push_execution = execute_pushes(
+                        plan, local, store, machine_id, on_progress
+                    )
+                    pushed = push_execution.thread_ids
             with timer.measure("index"):
-                repair_matching_bookkeeping(plan, local, remote, sync_dir)
-                commit_remote_index_once(plan, remote, store, push_execution)
+                repair_matching_bookkeeping(
+                    plan,
+                    local,
+                    remote,
+                    sync_dir,
+                    merge_remote_index=direction == "pull",
+                )
+                if direction == "push":
+                    commit_remote_index_once(plan, remote, store, push_execution)
     except SyncStoreError as error:
         if plan is None:
             failure_plan = _load_failure_plan(local, error)
@@ -250,19 +302,36 @@ def execute_pulls(
                 backup_local_session(item.local.path, backup_dir, item.thread_id)
             _validate_local_snapshot(item)
             try:
-                copied = atomic_copy(
-                    item.remote.path,
-                    item.local.path,
-                    expected_target=item.local,
-                    target_label="local conversation",
-                )
+                if item.local_project_root is None:
+                    copied = atomic_copy(
+                        item.remote.path,
+                        item.local.path,
+                        expected_target=item.local,
+                        target_label="local conversation",
+                    )
+                else:
+                    copied = materialize_session_cwd(
+                        item.remote.path,
+                        item.local.path,
+                        local_cwd=item.local_project_root,
+                        project_identities=frozenset(
+                            {
+                                remote_entry.project_key,
+                                *remote_entry.project_aliases,
+                            }
+                        ),
+                        expected_target=item.local,
+                        expected_source=item.remote,
+                    )
             except ConcurrentRemoteChangeError as error:
                 if snapshot_file(item.local.path) != item.local:
                     raise ConcurrentLocalChangeError(
                         f"Local conversation changed before replacement for thread {item.thread_id!r}"
                     ) from error
                 raise
-            if not _same_contents(copied, item.remote):
+            if item.local_project_root is None and not _same_contents(
+                copied, item.remote
+            ):
                 raise ConcurrentRemoteChangeError(
                     f"Remote conversation changed while pulling thread {item.thread_id!r}"
                 )

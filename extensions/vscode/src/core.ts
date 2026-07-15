@@ -17,11 +17,7 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.openSettings",
 ] as const;
 
-export const SYNC_FILE_CHANGE_DEBOUNCE_MS = 30_000;
-export const SYNC_FOCUS_COOLDOWN_MS = 5 * 60_000;
-export const SYNC_AUTO_WARNING_COOLDOWN_MS = 5 * 60_000;
-
-export const SYNC_STATUS_KIND_VALUES = ["off", "idle", "waiting", "scanning", "pulling", "pushing", "conflict", "issue"] as const;
+export const SYNC_STATUS_KIND_VALUES = ["off", "idle", "scanning", "pulling", "pushing", "conflict", "issue"] as const;
 export type SyncStatusKind = (typeof SYNC_STATUS_KIND_VALUES)[number];
 
 export type ProjectTransitionsSettings = {
@@ -53,8 +49,6 @@ export type SyncSettings = {
   dir: string;
   selectionVersion: number;
   threadIds: string[];
-  autoPull: boolean;
-  autoPush: boolean;
 };
 
 export type ExtensionSettings = {
@@ -75,7 +69,8 @@ export type ProjectChoice = {
 };
 
 export type SyncMenuAction =
-  | "syncNow"
+  | "pullTasks"
+  | "pushTasks"
   | "syncStatus"
   | "pauseSync"
   | "resumeSync"
@@ -124,12 +119,6 @@ export const SYNC_SELECTION_VERSION_STATE_KEY = "syncSelectionVersion";
 
 export type GlobalStateReader = {
   get<T>(key: string, defaultValue: T): T;
-};
-
-export type SessionDirDiscoveryOptions = {
-  codexHome?: string;
-  userProfile?: string;
-  homeDir?: string;
 };
 
 export function normalizeRange(value: unknown): ReportRange {
@@ -195,8 +184,6 @@ export function normalizeSyncSettings(value: unknown): SyncSettings {
     dir: typeof input.dir === "string" ? input.dir.trim() : "",
     selectionVersion,
     threadIds: selectionVersion === SYNC_SELECTION_VERSION ? normalizeThreadIds(input.threadIds) : [],
-    autoPull: input.autoPull !== false,
-    autoPush: input.autoPush !== false,
   };
 }
 
@@ -209,38 +196,12 @@ export function hasValidSyncSelection(settings: SyncSettings): boolean {
   );
 }
 
-export function syncBackoffMs(failureCount: number): number {
-  if (!Number.isFinite(failureCount) || failureCount <= 0) {
-    return 0;
-  }
-  if (failureCount === 1) {
-    return 60_000;
-  }
-  if (failureCount === 2) {
-    return 5 * 60_000;
-  }
-  return 15 * 60_000;
-}
-
-export function syncFailureRequiresNotification(message: string): boolean {
-  const text = message.toLowerCase();
-  return (
-    text.includes("conflict") ||
-    text.includes("not configured") ||
-    text.includes("bundled codex-usage executable was not found") ||
-    text.includes("no codex tasks are selected")
-  );
-}
-
 export function syncStatusKindLabel(kind: SyncStatusKind): string {
   if (kind === "off") {
     return "Off";
   }
   if (kind === "idle") {
     return "Idle";
-  }
-  if (kind === "waiting") {
-    return "Waiting";
   }
   if (kind === "scanning") {
     return "Scanning";
@@ -255,35 +216,6 @@ export function syncStatusKindLabel(kind: SyncStatusKind): string {
     return "Conflict";
   }
   return "Issue";
-}
-
-export function candidateSessionDirs(options: SessionDirDiscoveryOptions): string[] {
-  const candidates: string[] = [];
-  if (options.codexHome?.trim()) {
-    appendCodexSessionDirs(candidates, options.codexHome.trim());
-  }
-  if (options.userProfile?.trim()) {
-    appendCodexSessionDirs(candidates, path.join(options.userProfile.trim(), ".codex"));
-  }
-  if (options.homeDir?.trim()) {
-    appendCodexSessionDirs(candidates, path.join(options.homeDir.trim(), ".codex"));
-  }
-  return dedupePaths(candidates);
-}
-
-export function selectSessionDirsForWatcher(
-  candidates: string[],
-  codexHomeSet: boolean,
-  exists: (dir: string) => boolean,
-): string[] {
-  if (candidates.length === 0) {
-    return [];
-  }
-  if (codexHomeSet) {
-    return siblingSessionDirs(candidates, candidates[0]);
-  }
-  const existing = candidates.find((candidate) => exists(candidate));
-  return siblingSessionDirs(candidates, existing ?? candidates[0]);
 }
 
 export function cacheDirPath(globalStoragePath: string): string {
@@ -639,34 +571,43 @@ export function syncMenuQuickPickItems(sync: SyncSettings): SyncMenuQuickPickIte
   const taskCount = settings.threadIds.length;
   const taskDescription = taskCount === 1 ? "1 selected" : `${taskCount} selected`;
 
-  const primary: SyncMenuQuickPickItem = settings.enabled
-    ? {
-        label: "$(sync) Sync Now",
-        description: "Pull then push selected tasks",
-        detail: "Run one manual sync using the current folder and task selections.",
-        action: "syncNow",
-      }
-    : {
+  const items: SyncMenuQuickPickItem[] = settings.enabled
+    ? [
+        {
+          label: "$(cloud-download) Pull Tasks",
+          description: "Import remote changes",
+          detail: "Pull selected tasks and bind imported tasks to matching local projects.",
+          action: "pullTasks",
+        },
+        {
+          label: "$(cloud-upload) Push Tasks",
+          description: "Publish local changes",
+          detail: "Push selected local task changes after checking for remote updates.",
+          action: "pushTasks",
+        },
+      ]
+    : [
+        {
         label: "$(play) Resume Sync",
         description: hasValidSyncSelection(settings) ? "Paused" : "Setup needed",
-        detail: "Turn sync back on without changing the selected folder or tasks.",
+        detail: "Enable the manual pull and push commands without changing selections.",
         action: "resumeSync",
-      };
+        },
+      ];
 
-  const items: SyncMenuQuickPickItem[] = [
-    primary,
+  items.push(
     {
       label: "$(info) Sync Status",
       description: "Inspect selected tasks",
       detail: "Show local/remote state, conflicts, missing files, and memory warnings.",
       action: "syncStatus",
     },
-  ];
+  );
 
   if (settings.enabled) {
     items.push({
       label: "$(debug-pause) Pause Sync",
-      description: "Stop automatic and manual sync",
+      description: "Disable manual sync commands",
       detail: "Keeps the selected folder and tasks so sync can be resumed later.",
       action: "pauseSync",
     });
@@ -770,31 +711,6 @@ function transitionDetail(options: {
 
 function formatInt(value: number): string {
   return Math.round(value).toLocaleString("en-US");
-}
-
-function appendCodexSessionDirs(candidates: string[], codexRoot: string): void {
-  candidates.push(path.join(codexRoot, "sessions"));
-  candidates.push(path.join(codexRoot, "archived_sessions"));
-}
-
-function siblingSessionDirs(candidates: string[], selected: string): string[] {
-  const parent = path.dirname(selected);
-  return candidates.filter((candidate) => path.dirname(candidate) === parent);
-}
-
-function dedupePaths(paths: string[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const candidate of paths) {
-    const normalized = candidate.replace(/[\\/]+$/, "");
-    const key = normalized.toLocaleLowerCase();
-    if (!normalized || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    out.push(normalized);
-  }
-  return out;
 }
 
 function basicWebviewCss(): string {

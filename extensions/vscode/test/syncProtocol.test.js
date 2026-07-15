@@ -4,7 +4,8 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
-  buildSyncRunArgs,
+  buildSyncPullArgs,
+  buildSyncPushArgs,
   buildSyncStatusArgs,
   parseSyncProgressLine,
   parseSyncRunResult,
@@ -62,10 +63,14 @@ function syncResult(outcome = "completed", overrides = {}) {
   };
 }
 
-test("buildSyncRunArgs passes exact task ids without project selectors", () => {
+test("directional sync builders pass exact task ids without project selectors", () => {
   assert.deepEqual(
-    buildSyncRunArgs({ syncDir: "/sync", threadIds: ["thread-1"], autoTransitions: false }),
-    ["sync", "run", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--thread-id", "thread-1"],
+    buildSyncPullArgs({ syncDir: "/sync", threadIds: ["thread-1"], autoTransitions: false }),
+    ["sync", "pull", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--thread-id", "thread-1"],
+  );
+  assert.deepEqual(
+    buildSyncPushArgs({ syncDir: "/sync", threadIds: ["thread-1"], autoTransitions: false }),
+    ["sync", "push", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--thread-id", "thread-1"],
   );
 });
 
@@ -76,9 +81,20 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     autoTransitions: true,
   };
 
-  assert.deepEqual(buildSyncRunArgs(options), [
+  assert.deepEqual(buildSyncPullArgs(options), [
     "sync",
-    "run",
+    "pull",
+    "--json",
+    "--sync-dir",
+    "/sync",
+    "--thread-id",
+    "thread-1",
+    "--thread-id",
+    "thread-2",
+  ]);
+  assert.deepEqual(buildSyncPushArgs(options), [
+    "sync",
+    "push",
     "--json",
     "--sync-dir",
     "/sync",
@@ -98,7 +114,8 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     "--thread-id",
     "thread-2",
   ]);
-  assert.doesNotMatch(buildSyncRunArgs(options).join(" "), /--project-key/);
+  assert.doesNotMatch(buildSyncPullArgs(options).join(" "), /--project-key/);
+  assert.doesNotMatch(buildSyncPushArgs(options).join(" "), /--project-key/);
   assert.doesNotMatch(buildSyncStatusArgs(options).join(" "), /--project-key/);
 });
 

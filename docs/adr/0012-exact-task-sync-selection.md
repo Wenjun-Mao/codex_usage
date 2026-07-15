@@ -1,6 +1,6 @@
 # ADR 0012: Exact Task Sync Selection
 
-Status: Accepted
+Status: Accepted; mutation flow superseded by ADR 0013
 
 Date: 2026-07-14
 

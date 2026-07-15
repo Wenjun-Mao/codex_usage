@@ -109,15 +109,19 @@ const THREAD_KEYS = [
 const ISSUE_KEYS = ["code", "message", "thread_id"] as const;
 const PROGRESS_PHASES = new Set<SyncProgressPhase>(["scanning", "pulling", "pushing"]);
 
-export function buildSyncRunArgs(options: SyncCommandOptions): string[] {
-  return buildSyncArgs("run", options);
+export function buildSyncPullArgs(options: SyncCommandOptions): string[] {
+  return buildSyncArgs("pull", options);
+}
+
+export function buildSyncPushArgs(options: SyncCommandOptions): string[] {
+  return buildSyncArgs("push", options);
 }
 
 export function buildSyncStatusArgs(options: SyncCommandOptions): string[] {
   return buildSyncArgs("status", options);
 }
 
-function buildSyncArgs(command: "run" | "status", options: SyncCommandOptions): string[] {
+function buildSyncArgs(command: "pull" | "push" | "status", options: SyncCommandOptions): string[] {
   const args = ["sync", command, "--json"];
   const syncDir = options.syncDir.trim();
   if (syncDir) {

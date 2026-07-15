@@ -33,7 +33,8 @@ Available commands:
 - `Codex Usage: Sync Menu`
 - `Codex Usage: Configure Sync`
 - `Codex Usage: Select Sync Tasks`
-- `Codex Usage: Sync Now`
+- `Codex Usage: Pull Tasks`
+- `Codex Usage: Push Tasks`
 - `Codex Usage: Sync Status`
 - `Codex Usage: Open Sync Folder`
 - `Codex Usage: Open Settings`
@@ -50,7 +51,8 @@ uv run codex-usage report --range all --theme night --output output/night-report
 uv run codex-usage transitions suggest --json
 uv run codex-usage threads --project-key https://github.com/example/demo --json
 uv run codex-usage sync inventory --sync-dir D:\CodexSync --json
-uv run codex-usage sync run --sync-dir D:\CodexSync --thread-id <thread-id> --json
+uv run codex-usage sync pull --sync-dir D:\CodexSync --thread-id <thread-id> --json
+uv run codex-usage sync push --sync-dir D:\CodexSync --thread-id <thread-id> --json
 uv run codex-usage sync status --sync-dir D:\CodexSync --thread-id <thread-id> --json
 ```
 
@@ -108,15 +110,21 @@ Version 2 writes one byte-preserved JSONL per task and one repairable catalog:
 
 Version `0.1.34` changes the selection schema to exact task thread ids. It intentionally invalidates the previous project/conversation selection state and does not migrate those selectors. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
 
+Version `0.1.35` makes transfers manual and directional. `Pull Tasks` imports remote progress; `Push Tasks` publishes local progress. There are no activation, focus, timer, or file-change sync triggers. Both commands use the same three-way planner and stop before transfer on conflicts or blocking issues. A successful command can still report selected tasks that need the opposite direction.
+
+For cross-platform pulls, the destination project must already be open or saved in Codex. Sync matches the remote project to exactly one local checkout through canonical Git identity. It keeps the remote JSONL unchanged and rewrites `session_meta.payload.cwd` in every local metadata record that belongs to the matched project. Unrelated metadata and every non-metadata record remain byte-identical. Missing or ambiguous project matches block the pull instead of guessing, and a foreign-path task with unsynced local changes is never overwritten.
+
+If a task was already imported under another computer's path before this rebind, quit and reopen Codex after Pull so its local task index is rebuilt from the corrected JSONL. Sync does not patch Codex's SQLite database.
+
 Selection controls which exact active tasks participate. Deselecting a task never deletes its remote JSONL or index entry, and newly created tasks never join sync automatically.
 
-Sync is managed from the dashboard `Sync: ... ▾` menu, where you can pause/resume, change the folder or selected tasks, clear setup, run manual sync, and inspect status.
+Sync is managed from the dashboard `Sync: ... ▾` menu, where you can pull, push, pause/resume, change the folder or selected tasks, clear setup, and inspect status.
 
-Background sync is intentionally quiet. The VS Code status bar shows the current sync state, such as `Sync:Off`, `Sync:Idle`, `Sync:Waiting`, `Sync:Scanning`, `Sync:Pulling`, `Sync:Pushing`, `Sync:Conflict`, or `Sync:Issue`. Automatic sync logs details to the Codex Usage output channel; visible notifications are reserved for manual sync and action-needed failures.
+The VS Code status bar shows the current manual transfer state, such as `Sync:Off`, `Sync:Idle`, `Sync:Scanning`, `Sync:Pulling`, `Sync:Pushing`, `Sync:Conflict`, or `Sync:Issue`. Transfer details are written to the Codex Usage output channel.
 
-Manual-only sync is supported: keep Sync Enabled on, turn Auto Pull and Auto Push off, then use `Codex Usage: Sync Now` from the command palette or the dashboard action strip. Use `Sync Status` to inspect selected task state without running a full sync.
+Keep Sync Enabled on, then run `Codex Usage: Pull Tasks` or `Codex Usage: Push Tasks` from the command palette or Sync menu. Use `Sync Status` to inspect selected task state without transferring files.
 
-Sync uses three-way state per task. If one side only appends new Codex JSONL events, the beta treats it as a fast-forward and pulls or pushes automatically. If both computers append different tails to the same task, sync stops and preserves both sides for review.
+Sync uses three-way state per task. If one side only appends new Codex JSONL events, the beta treats it as a fast-forward when you run the matching direction. If both computers append different tails to the same task, sync stops and preserves both sides for review.
 
 The sync MVP copies only selected active task JSONLs and preserves their matching session-index metadata through the repairable catalog. It does not sync `auth.json`, settings, caches, logs, archived tasks, or SQLite databases. If local memory database rows are detected for a selected task, sync status reports that they are not synced by this beta.
 

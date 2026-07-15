@@ -19,6 +19,7 @@ from codex_usage.sync.paths import (
     portable_thread_filename,
     safe_session_target_path,
 )
+from codex_usage.sync.project_roots import cwd_matches_root, resolve_local_project_root
 from codex_usage.sync.state import LocalStateStore, memory_database_row_counts
 from codex_usage.threads import ThreadInfo
 
@@ -27,6 +28,9 @@ def classify_snapshots(
     local: SyncFileSnapshot,
     remote: SyncFileSnapshot,
     base_sha256: str,
+    *,
+    last_local_sha256: str = "",
+    last_remote_sha256: str = "",
 ) -> tuple[str, str, str]:
     if local.exists and remote.exists and local.sha256 == remote.sha256:
         return "synced", "none", "local and remote match"
@@ -36,6 +40,20 @@ def classify_snapshots(
         return "remote_only", "pull", "sync folder conversation is not local"
     if not local.exists and not remote.exists:
         return "missing", "skip", "conversation is missing locally and remotely"
+
+    if last_local_sha256 and last_remote_sha256:
+        local_changed = local.sha256 != last_local_sha256
+        remote_changed = remote.sha256 != last_remote_sha256
+        if not local_changed and not remote_changed:
+            return (
+                "synced",
+                "none",
+                "local and remote match their last synchronized versions",
+            )
+        if local_changed and not remote_changed:
+            return "local_ahead", "push", "local changed since last sync"
+        if remote_changed and not local_changed:
+            return "remote_ahead", "pull", "remote changed since last sync"
 
     local_changed = not base_sha256 or local.sha256 != base_sha256
     remote_changed = not base_sha256 or remote.sha256 != base_sha256
@@ -107,7 +125,54 @@ def build_sync_plan(
                 local_snapshot,
                 remote_snapshot,
                 base_sha256,
+                last_local_sha256=(
+                    state_record.last_local_sha256 if state_record is not None else ""
+                ),
+                last_remote_sha256=(
+                    state_record.last_remote_sha256 if state_record is not None else ""
+                ),
             )
+
+        local_project_root: Path | None = None
+        if (
+            not item_issues
+            and effective_entry is not None
+            and remote_snapshot.exists
+            and action in {"pull", "push", "none"}
+            and (action == "pull" or (local_thread is not None and local_thread.cwd))
+        ):
+            local_project_root, project_issue = resolve_local_project_root(
+                local,
+                local_thread,
+                effective_entry,
+            )
+            if project_issue is not None:
+                issues.append(project_issue)
+                item_issues.append(project_issue)
+                state = action = "issue"
+                reason = project_issue.message
+            elif (
+                local_thread is not None
+                and local_project_root is not None
+                and not cwd_matches_root(local_thread.cwd, local_project_root)
+            ):
+                if action == "push":
+                    project_issue = SyncIssue(
+                        "local_project_rebind_conflict",
+                        (
+                            f"Task {thread_id!r} has local changes but is still bound to "
+                            "a project path from another computer. Resolve the task before pushing."
+                        ),
+                        thread_id,
+                    )
+                    issues.append(project_issue)
+                    item_issues.append(project_issue)
+                    state = action = "issue"
+                    reason = project_issue.message
+                else:
+                    state = "project_rebind"
+                    action = "pull"
+                    reason = "task must be rebound to the matching local project"
 
         source_relative_path, project_key, project_label, updated_at = _metadata_for_action(
             local,
@@ -132,6 +197,7 @@ def build_sync_plan(
                 project_label=project_label,
                 memory_database_rows=memory_rows[thread_id],
                 expected_remote_entry=persisted_entry,
+                local_project_root=local_project_root,
             )
         )
 

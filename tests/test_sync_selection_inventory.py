@@ -245,6 +245,40 @@ def test_inventory_order_and_project_label_prefer_local_candidates() -> None:
     assert [task.thread_id for task in result.projects[0].tasks] == ["remote", "alpha", "beta"]
 
 
+def test_inventory_keeps_portable_remote_project_when_local_key_is_its_machine_alias() -> None:
+    local = _local_inventory(
+        replace(
+            _local_task(
+                "shared",
+                "Imported task",
+                "d:/projects/persona_generators",
+                "persona_generators",
+                "2026-07-14T12:00:00Z",
+            ),
+            project_aliases=(),
+        )
+    )
+    remote = _remote_inventory(
+        replace(
+            _remote_task(
+                "shared",
+                "Imported task",
+                "https://github.com/example/persona_generators",
+                "persona_generators",
+                "2026-07-14T12:00:00Z",
+            ),
+            project_aliases=("d:/projects/persona_generators",),
+        )
+    )
+
+    result = build_sync_selection_inventory(local, remote)
+
+    assert [project.project_key for project in result.projects] == [
+        "https://github.com/example/persona_generators"
+    ]
+    assert result.projects[0].tasks[0].availability == "both"
+
+
 def test_inventory_omits_missing_remote_files_and_keeps_issue() -> None:
     issue = SyncIssue("unidentified_remote_file", "Could not identify mystery.jsonl")
     remote = _remote_inventory(

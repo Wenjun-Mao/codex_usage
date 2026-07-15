@@ -31,7 +31,8 @@ This Marketplace preview supports Windows x64 and macOS Apple Silicon. The insta
 - `Codex Usage: Sync Menu`
 - `Codex Usage: Configure Sync`
 - `Codex Usage: Select Sync Tasks`
-- `Codex Usage: Sync Now`
+- `Codex Usage: Pull Tasks`
+- `Codex Usage: Push Tasks`
 - `Codex Usage: Sync Status`
 - `Codex Usage: Open Sync Folder`
 - `Codex Usage: Open Settings`
@@ -42,7 +43,6 @@ This Marketplace preview supports Windows x64 and macOS Apple Silicon. The insta
 - `codexUsage.theme`: `auto`, `day`, or `night`. Auto follows your active VS Code theme.
 - `codexUsage.projectTransitions.autoDetect`: automatically split usage after high-confidence local repository transitions.
 - `codexUsage.sync.enabled`: enable experimental selected-task sync.
-- `codexUsage.sync.autoPull` / `codexUsage.sync.autoPush`: automatic sync behavior.
 
 Project filtering is managed with `Codex Usage: Select Projects` and is stored as extension UI state, not as a user setting.
 The sync folder and exact task selections are managed with `Codex Usage: Configure Sync` and stored as extension UI state, not as user settings.
@@ -68,13 +68,19 @@ Version 2 writes this sync-folder layout:
 
 Version `0.1.34` changes the selection schema to exact task thread ids. It intentionally invalidates the previous project/conversation selection state and does not migrate those selectors. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
 
-Click the dashboard `Sync: ... ▾` control or run `Codex Usage: Sync Menu` to manage sync. The menu supports manual sync, status, pause/resume, changing the sync folder or selected tasks, clearing the setup, and opening the sync folder. Clearing setup only forgets extension selections; it does not delete Codex logs or sync-folder files.
+Version `0.1.35` replaces bidirectional Sync Now and all automatic triggers with explicit `Pull Tasks` and `Push Tasks` commands. Both directions share conflict preflight and snapshot validation, but each mutates only its named side. The result reports selected tasks that still need the opposite direction.
 
-The status bar is the primary background sync indicator, with states including `Sync:Scanning`, `Sync:Pulling`, and `Sync:Pushing`. Automatic sync uses a focus cooldown, a file-change debounce, and failure backoff to avoid noisy repeated runs. Normal automatic success/failure details go to the Codex Usage output channel; popups are reserved for manual sync and action-needed failures such as conflicts.
+For a cross-platform pull, open or save the destination checkout in Codex first. Sync requires one canonical Git identity match, leaves the remote JSONL unchanged, and rewrites `session_meta.payload.cwd` in every local metadata record for that project. Unrelated metadata and every non-metadata record remain byte-identical. Missing, ambiguous, or locally modified foreign-path tasks block safely.
 
-For manual-only sync, leave `codexUsage.sync.enabled` on and turn off both `codexUsage.sync.autoPull` and `codexUsage.sync.autoPush`. Run `Codex Usage: Sync Now` from the command palette or the dashboard action strip when you want to sync, and use `Codex Usage: Sync Status` to inspect selected tasks.
+If a task was already imported under another computer's path before this rebind, quit and reopen Codex after Pull so its local task index is rebuilt from the corrected JSONL. The extension never patches Codex's SQLite database.
 
-Task sync is prefix-aware. Normal append-only progress on one computer is pulled or pushed automatically; true divergent edits on two computers are reported as conflicts and neither side is overwritten.
+Click the dashboard `Sync: ... ▾` control or run `Codex Usage: Sync Menu` to manage sync. The menu supports pull, push, status, pause/resume, changing the sync folder or selected tasks, clearing the setup, and opening the sync folder. Clearing setup only forgets extension selections; it does not delete Codex logs or sync-folder files.
+
+The status bar shows explicit transfer states including `Sync:Scanning`, `Sync:Pulling`, and `Sync:Pushing`. Sync never runs on extension activation, window focus, a timer, or a Codex session file change. Transfer details go to the Codex Usage output channel, with visible completion and action-needed messages.
+
+Leave `codexUsage.sync.enabled` on and run `Codex Usage: Pull Tasks` or `Codex Usage: Push Tasks` when you want to transfer. Use `Codex Usage: Sync Status` to inspect selected tasks without transferring files.
+
+Task sync is prefix-aware. Normal append-only progress on one computer is transferred by the matching manual direction; true divergent edits on two computers are reported as conflicts and neither side is overwritten.
 
 Sync copies only selected active task JSONLs and preserves matching session-index metadata in its repairable catalog. Archived tasks can appear in usage totals but are not sync candidates.
 

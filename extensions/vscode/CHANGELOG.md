@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.35 - Manual Cross-Platform Task Transfer
+
+- Replaced Sync Now with separate Pull Tasks and Push Tasks commands.
+- Removed automatic activation, focus, timer, and file-change sync triggers.
+- Added safe canonical project matching and selective multi-record cwd rebinding for tasks pulled between Windows and macOS.
+- Preserve remote task JSONLs while tracking intentional local/remote hash differences with paired baselines.
+- Report tasks that still need the opposite direction after a successful manual transfer.
+
 ## 0.1.34 - Exact Task Sync Selection
 
 - Replaced project/conversation setup with one project-grouped task picker that stores exact selected task thread ids.

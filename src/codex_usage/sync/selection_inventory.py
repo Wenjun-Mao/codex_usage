@@ -123,6 +123,19 @@ def build_sync_selection_inventory(
             availability: TaskAvailability = "both" if remote_pair is not None else "local"
             project_key = local_task.project_key
             project_label = local_task.project_label
+            if remote_pair is not None:
+                remote_entry, _ = remote_pair
+                local_identities = {
+                    local_task.project_key,
+                    *local_task.project_aliases,
+                }
+                remote_identities = {
+                    remote_entry.project_key,
+                    *remote_entry.project_aliases,
+                }
+                if local_identities.intersection(remote_identities):
+                    project_key = remote_entry.project_key
+                    project_label = remote_entry.project_label
             candidate = _TaskCandidate(
                 project_key=project_key,
                 project_label=project_label,

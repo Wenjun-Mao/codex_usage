@@ -39,7 +39,8 @@ from codex_usage.sync_cli import (
     add_sync_common_options,
     add_sync_execution_options,
     handle_sync_inventory as sync_inventory_command,
-    handle_sync_run as run_sync_command,
+    handle_sync_pull as sync_pull_command,
+    handle_sync_push as sync_push_command,
     handle_sync_status as sync_status_command,
 )
 from codex_usage.threads import list_threads_from_cached_data
@@ -113,12 +114,20 @@ def build_parser() -> argparse.ArgumentParser:
     add_sync_common_options(inventory_parser)
     inventory_parser.set_defaults(handler=handle_sync_inventory)
 
-    run_parser = sync_subparsers.add_parser(
-        "run", help="Synchronize selected Codex tasks."
+    pull_parser = sync_subparsers.add_parser(
+        "pull", help="Pull selected Codex tasks from the sync folder."
     )
-    add_sync_execution_options(run_parser)
-    run_parser.add_argument("--machine-id", default=None, help="Source machine id for sync metadata.")
-    run_parser.set_defaults(handler=handle_sync_run)
+    add_sync_execution_options(pull_parser)
+    pull_parser.set_defaults(handler=handle_sync_pull)
+
+    push_parser = sync_subparsers.add_parser(
+        "push", help="Push selected Codex tasks to the sync folder."
+    )
+    add_sync_execution_options(push_parser)
+    push_parser.add_argument(
+        "--machine-id", default=None, help="Source machine id for sync metadata."
+    )
+    push_parser.set_defaults(handler=handle_sync_push)
 
     status_parser = sync_subparsers.add_parser(
         "status", help="Show sync status for selected Codex tasks."
@@ -263,8 +272,12 @@ def handle_storage_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
-def handle_sync_run(args: argparse.Namespace) -> int:
-    return run_sync_command(args, _load_session_data)
+def handle_sync_pull(args: argparse.Namespace) -> int:
+    return sync_pull_command(args, _load_session_data)
+
+
+def handle_sync_push(args: argparse.Namespace) -> int:
+    return sync_push_command(args, _load_session_data)
 
 
 def handle_sync_inventory(args: argparse.Namespace) -> int:

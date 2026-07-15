@@ -10,7 +10,7 @@ from codex_usage.sync.inventory import (
     build_local_inventory,
     normalize_selected_thread_ids,
 )
-from codex_usage.sync.runner import run_sync
+from codex_usage.sync.runner import push_sync
 
 
 def test_normalize_selected_thread_ids_is_exact_case_sensitive_and_deduplicated() -> None:
@@ -83,7 +83,7 @@ def test_build_inventory_rejects_padded_and_canonical_local_identity_collision(
         build_local_inventory(data)
 
 
-def test_run_sync_rejects_padded_local_identity_before_any_sync_write(tmp_path: Path) -> None:
+def test_push_sync_rejects_padded_local_identity_before_any_sync_write(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, " task ", "/repo/demo")
     data = load_cached_session_data(
@@ -94,7 +94,7 @@ def test_run_sync_rejects_padded_local_identity_before_any_sync_write(tmp_path: 
     sync_dir = tmp_path / "sync"
 
     with pytest.raises(ValueError, match="local sync inventory.*thread_id"):
-        run_sync(
+        push_sync(
             data=data,
             sync_dir=sync_dir,
             thread_ids=["task"],

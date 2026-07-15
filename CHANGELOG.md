@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.35 - Manual Cross-Platform Task Transfer
+
+- Replaced bidirectional Sync Now with explicit Pull Tasks and Push Tasks commands.
+- Removed activation, focus, timer, and Codex-session file watcher sync triggers; transfers now run only on direct user action.
+- Rebind pulled tasks to exactly one matching local Codex project through canonical Git identity, rewriting every matching-project local session metadata cwd while leaving remote JSONLs and unrelated records unchanged.
+- Added paired local/remote sync baselines so intentional cross-platform cwd materialization is not mistaken for a conversation edit.
+- Block missing or ambiguous project matches and locally modified foreign-path tasks instead of guessing, overwriting, or publishing unsafe state.
+- Kept shared three-way planning, conflict preflight, atomic replacement, backups, and concurrent-change validation in both directions.
+
 ## 0.1.34 - Exact Task Sync Selection
 
 - Replaced project/conversation setup with one project-grouped task picker that stores exact selected task thread ids.

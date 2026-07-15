@@ -21,7 +21,8 @@ def test_sync_package_exports_only_v2_models_and_runner_contract() -> None:
         "SyncTimings",
         "build_sync_selection_inventory",
         "load_sync_selection_inventory",
-        "run_sync",
+        "pull_sync",
+        "push_sync",
         "sync_status",
     ]
     assert not hasattr(sync_module, "export_threads")

@@ -13,13 +13,9 @@ const {
   cacheDbPath,
   buildTransitionSuggestArgs,
   bundledExecutablePath,
-  candidateSessionDirs,
   extensionVersionLabel,
   injectWebviewControls,
   injectWebviewCsp,
-  SYNC_AUTO_WARNING_COOLDOWN_MS,
-  SYNC_FILE_CHANGE_DEBOUNCE_MS,
-  SYNC_FOCUS_COOLDOWN_MS,
   hasValidSyncSelection,
   normalizeSyncSettings,
   normalizeTheme,
@@ -32,11 +28,8 @@ const {
   parseTransitionChoices,
   renderErrorHtml,
   renderLoadingHtml,
-  selectSessionDirsForWatcher,
   shouldRefreshAfterSyncSetupStep,
-  syncBackoffMs,
   syncControlLabel,
-  syncFailureRequiresNotification,
   syncMenuQuickPickItems,
   syncStatusKindLabel,
   SYNC_SELECTION_VERSION,
@@ -161,16 +154,12 @@ test("normalizeSyncSettings accepts exact thread ids only for selection schema v
       dir: " D:/Sync ",
       selectionVersion: 2,
       threadIds: [" t1 ", "", "t1", "t2"],
-      autoPull: false,
-      autoPush: true,
     }),
     {
       enabled: true,
       dir: "D:/Sync",
       selectionVersion: 2,
       threadIds: ["t1", "t2"],
-      autoPull: false,
-      autoPush: true,
     },
   );
   assert.deepEqual(normalizeSyncSettings({}), {
@@ -178,8 +167,6 @@ test("normalizeSyncSettings accepts exact thread ids only for selection schema v
     dir: "",
     selectionVersion: 0,
     threadIds: [],
-    autoPull: true,
-    autoPush: true,
   });
   assert.deepEqual(normalizeSyncSettings({ threadIds: ["legacy"] }).threadIds, []);
   assert.deepEqual(normalizeSyncSettings({ selectionVersion: 1, threadIds: ["legacy"] }).threadIds, []);
@@ -266,14 +253,13 @@ test("sync menu exposes pause resume change and clear actions", () => {
     dir: "D:/CodexSync",
     selectionVersion: 2,
     threadIds: ["t1"],
-    autoPull: true,
-    autoPush: true,
   });
 
   assert.deepEqual(
     enabledItems.map((item) => item.action),
     [
-      "syncNow",
+      "pullTasks",
+      "pushTasks",
       "syncStatus",
       "pauseSync",
       "changeFolder",
@@ -282,18 +268,18 @@ test("sync menu exposes pause resume change and clear actions", () => {
       "openSyncFolder",
     ],
   );
-  assert.match(enabledItems[2].label, /Pause Sync/);
-  assert.match(enabledItems[4].description, /1 selected/);
-  assert.equal(enabledItems[4].label, "$(checklist) Change Tasks");
-  assert.match(enabledItems[5].detail, /does not delete/i);
+  assert.match(enabledItems[0].label, /Pull Tasks/);
+  assert.match(enabledItems[1].label, /Push Tasks/);
+  assert.match(enabledItems[3].label, /Pause Sync/);
+  assert.match(enabledItems[5].description, /1 selected/);
+  assert.equal(enabledItems[5].label, "$(checklist) Change Tasks");
+  assert.match(enabledItems[6].detail, /does not delete/i);
 
   const pausedItems = syncMenuQuickPickItems({
     enabled: false,
     dir: "D:/CodexSync",
     selectionVersion: 2,
     threadIds: ["t1"],
-    autoPull: true,
-    autoPush: true,
   });
 
   assert.equal(pausedItems[0].action, "resumeSync");
@@ -301,33 +287,9 @@ test("sync menu exposes pause resume change and clear actions", () => {
   assert.match(pausedItems[0].description, /Paused/);
 });
 
-test("sync scheduler constants use calm background timing", () => {
-  assert.equal(SYNC_FILE_CHANGE_DEBOUNCE_MS, 30_000);
-  assert.equal(SYNC_FOCUS_COOLDOWN_MS, 5 * 60_000);
-  assert.equal(SYNC_AUTO_WARNING_COOLDOWN_MS, 5 * 60_000);
-});
-
-test("syncBackoffMs escalates auto retry delays and caps them", () => {
-  assert.equal(syncBackoffMs(0), 0);
-  assert.equal(syncBackoffMs(1), 60_000);
-  assert.equal(syncBackoffMs(2), 5 * 60_000);
-  assert.equal(syncBackoffMs(3), 15 * 60_000);
-  assert.equal(syncBackoffMs(20), 15 * 60_000);
-});
-
-test("syncFailureRequiresNotification only elevates action-needed auto failures", () => {
-  assert.equal(syncFailureRequiresNotification("Codex sync has 1 conflict. Run Codex Usage: Sync Status."), true);
-  assert.equal(syncFailureRequiresNotification("Bundled codex-usage executable was not found at C:/x/codex-usage.exe."), true);
-  assert.equal(syncFailureRequiresNotification("Codex sync is not configured."), true);
-  assert.equal(syncFailureRequiresNotification("No Codex tasks are selected for sync."), true);
-  assert.equal(syncFailureRequiresNotification("PermissionError: [WinError 5] Access is denied"), false);
-  assert.equal(syncFailureRequiresNotification("codex-usage exited with code 1"), false);
-});
-
-test("syncStatusKindLabel maps scheduler states to concise status bar labels", () => {
+test("syncStatusKindLabel maps manual transfer states to concise status bar labels", () => {
   assert.equal(syncStatusKindLabel("off"), "Off");
   assert.equal(syncStatusKindLabel("idle"), "Idle");
-  assert.equal(syncStatusKindLabel("waiting"), "Waiting");
   assert.equal(syncStatusKindLabel("scanning"), "Scanning");
   assert.equal(syncStatusKindLabel("pulling"), "Pulling");
   assert.equal(syncStatusKindLabel("pushing"), "Pushing");
@@ -345,41 +307,6 @@ test("empty sync global state uses safe defaults", () => {
   assert.equal(readSyncDirState(state), "");
   assert.equal(readSyncSelectionVersionState(state), 0);
   assert.deepEqual(readSyncThreadIdsState(state), []);
-});
-
-test("session directory candidates are discovered without a user setting", () => {
-  const dirs = candidateSessionDirs({
-    codexHome: "C:/Users/example/.codex",
-    userProfile: "C:/Users/example",
-    homeDir: "C:/Users/example",
-  });
-
-  assert.deepEqual(dirs, [
-    path.join("C:/Users/example/.codex", "sessions"),
-    path.join("C:/Users/example/.codex", "archived_sessions"),
-  ]);
-});
-
-test("watcher session directory selection follows discovery precedence", () => {
-  const candidates = [
-    "C:/codex/sessions",
-    "C:/codex/archived_sessions",
-    "C:/Users/example/.codex/sessions",
-    "C:/Users/example/.codex/archived_sessions",
-  ];
-
-  assert.deepEqual(selectSessionDirsForWatcher(candidates, true, () => false), [
-    "C:/codex/sessions",
-    "C:/codex/archived_sessions",
-  ]);
-  assert.deepEqual(selectSessionDirsForWatcher(candidates, false, (dir) => dir.includes("Users")), [
-    "C:/Users/example/.codex/sessions",
-    "C:/Users/example/.codex/archived_sessions",
-  ]);
-  assert.deepEqual(selectSessionDirsForWatcher(candidates, false, () => false), [
-    "C:/codex/sessions",
-    "C:/codex/archived_sessions",
-  ]);
 });
 
 test("buildCodexUsageEnv passes internal cache directory without removing process env", () => {
@@ -621,21 +548,16 @@ test("package metadata no longer contributes removed manual settings", () => {
   assert.equal(properties["codexUsage.sync.projectKeys"], undefined);
   assert.equal(properties["codexUsage.sync.conversationMode"], undefined);
   assert.ok(properties["codexUsage.sync.enabled"]);
-  assert.ok(properties["codexUsage.sync.autoPull"]);
-  assert.ok(properties["codexUsage.sync.autoPush"]);
+  assert.equal(properties["codexUsage.sync.autoPull"], undefined);
+  assert.equal(properties["codexUsage.sync.autoPush"], undefined);
 });
 
 test("package metadata describes manual-only sync mode clearly", () => {
   const properties = packageJson.contributes.configuration.properties;
 
-  assert.match(properties["codexUsage.sync.enabled"].description, /manual Sync Now/i);
-  assert.match(properties["codexUsage.sync.enabled"].description, /optional automatic/i);
-  assert.match(properties["codexUsage.sync.autoPull"].description, /optional/i);
-  assert.match(properties["codexUsage.sync.autoPush"].description, /optional/i);
-  for (const key of ["codexUsage.sync.enabled", "codexUsage.sync.autoPull", "codexUsage.sync.autoPush"]) {
-    assert.match(properties[key].description, /task/i);
-    assert.doesNotMatch(properties[key].description, /conversation|project/i);
-  }
+  assert.match(properties["codexUsage.sync.enabled"].description, /explicit Pull Tasks and Push Tasks/i);
+  assert.match(properties["codexUsage.sync.enabled"].description, /task/i);
+  assert.doesNotMatch(properties["codexUsage.sync.enabled"].description, /automatic/i);
 });
 
 test("package metadata contributes one exact task selection command", () => {
@@ -643,9 +565,15 @@ test("package metadata contributes one exact task selection command", () => {
 
   assert.equal(commands.get("codexUsage.openSyncMenu"), "Codex Usage: Sync Menu");
   assert.equal(commands.get("codexUsage.selectSyncTasks"), "Codex Usage: Select Sync Tasks");
+  assert.equal(commands.get("codexUsage.pullTasks"), "Codex Usage: Pull Tasks");
+  assert.equal(commands.get("codexUsage.pushTasks"), "Codex Usage: Push Tasks");
+  assert.equal(commands.has("codexUsage.syncNow"), false);
   assert.equal(commands.has("codexUsage.selectSyncProjects"), false);
   assert.equal(commands.has("codexUsage.selectSyncThreads"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncTasks"), true);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.pullTasks"), true);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.pushTasks"), true);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.syncNow"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncProjects"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncThreads"), false);
 });

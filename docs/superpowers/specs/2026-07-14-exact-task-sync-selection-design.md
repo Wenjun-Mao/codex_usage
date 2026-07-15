@@ -2,7 +2,7 @@
 
 Date: 2026-07-14
 
-Status: Approved
+Status: Approved; mutation flow superseded by ADR 0013
 
 ## Goal
 

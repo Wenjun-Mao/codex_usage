@@ -348,10 +348,10 @@ test("extension sync orchestration uses one inventory-backed task picker contrac
   assert.doesNotMatch(extensionSource, /registerCommand\("codexUsage\.selectSync(?:Projects|Threads)"/);
 });
 
-test("routine sync and status validate schema-v2 task selection before spawning", () => {
+test("manual directional sync and status validate schema-v2 task selection before spawning", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const runSyncSource = extensionSource.slice(
-    extensionSource.indexOf("async function runSyncNow"),
+    extensionSource.indexOf("async function executeSyncDirection"),
     extensionSource.indexOf("async function showSyncStatus"),
   );
   const statusSource = extensionSource.slice(
@@ -364,6 +364,8 @@ test("routine sync and status validate schema-v2 task selection before spawning"
   assert.ok(runGuard >= 0 && runGuard < runSpawn);
   assert.match(runSyncSource.slice(runGuard, runSpawn), /return false;/);
   assert.equal((runSyncSource.match(/runSyncProcess\(/g) || []).length, 1);
+  assert.equal((runSyncSource.match(/buildSyncPullArgs\(/g) || []).length, 1);
+  assert.equal((runSyncSource.match(/buildSyncPushArgs\(/g) || []).length, 1);
   assert.doesNotMatch(runSyncSource, /buildSyncInventoryArgs|parseSyncInventory|runCodexUsage\(/);
   assert.doesNotMatch(runSyncSource, /buildThreadsArgs|sync\", \"status|sync\", \"import|sync\", \"export/);
   assert.match(
@@ -384,6 +386,17 @@ test("routine sync and status validate schema-v2 task selection before spawning"
     assert.doesNotMatch(commandSource, /projectKeys|conversationMode/);
     assert.match(commandSource, /autoTransitions: settings\.projectTransitions\.autoDetect/);
   }
+});
+
+test("sync has no automatic focus activation or file watcher trigger", () => {
+  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
+
+  assert.match(extensionSource, /registerCommand\("codexUsage\.pullTasks"/);
+  assert.match(extensionSource, /registerCommand\("codexUsage\.pushTasks"/);
+  assert.doesNotMatch(extensionSource, /codexUsage\.syncNow/);
+  assert.doesNotMatch(extensionSource, /onDidChangeWindowState/);
+  assert.doesNotMatch(extensionSource, /createFileSystemWatcher/);
+  assert.doesNotMatch(extensionSource, /syncOnFocus|configureSyncWatcher|auto sync/);
 });
 
 test("folder and exact task setup commits through the serialized transaction after picker acceptance", () => {
@@ -453,7 +466,7 @@ test("status badge and tooltip prefer setup required for disabled invalid select
   );
   const tooltipSource = extensionSource.slice(
     extensionSource.indexOf("function syncStatusTooltip"),
-    extensionSource.indexOf("async function syncOnFocus"),
+    extensionSource.indexOf("function resetSyncRuntimeWhenDisabled"),
   );
 
   for (const statusSource of [badgeSource, tooltipSource]) {

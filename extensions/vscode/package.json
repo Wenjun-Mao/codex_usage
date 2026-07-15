@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
   "publisher": "wenjun-mao",
-  "version": "0.1.34",
+  "version": "0.1.35",
   "preview": true,
   "license": "MIT",
   "icon": "media/icon.png",
@@ -50,7 +50,8 @@
     "onCommand:codexUsage.openSyncMenu",
     "onCommand:codexUsage.configureSync",
     "onCommand:codexUsage.selectSyncTasks",
-    "onCommand:codexUsage.syncNow",
+    "onCommand:codexUsage.pullTasks",
+    "onCommand:codexUsage.pushTasks",
     "onCommand:codexUsage.syncStatus",
     "onCommand:codexUsage.openSyncFolder",
     "onStartupFinished"
@@ -99,8 +100,12 @@
         "title": "Codex Usage: Select Sync Tasks"
       },
       {
-        "command": "codexUsage.syncNow",
-        "title": "Codex Usage: Sync Now"
+        "command": "codexUsage.pullTasks",
+        "title": "Codex Usage: Pull Tasks"
+      },
+      {
+        "command": "codexUsage.pushTasks",
+        "title": "Codex Usage: Push Tasks"
       },
       {
         "command": "codexUsage.syncStatus",
@@ -145,17 +150,7 @@
         "codexUsage.sync.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable experimental Codex task sync for manual Sync Now and optional automatic pull/push."
-        },
-        "codexUsage.sync.autoPull": {
-          "type": "boolean",
-          "default": true,
-          "description": "Optional automatic pull of selected task updates when VS Code activates or gains focus. Turn off for manual-only sync."
-        },
-        "codexUsage.sync.autoPush": {
-          "type": "boolean",
-          "default": true,
-          "description": "Optional automatic push of selected task updates after watched Codex session files change. Turn off for manual-only sync."
+          "description": "Enable experimental Codex task sync through explicit Pull Tasks and Push Tasks commands."
         }
       }
     }

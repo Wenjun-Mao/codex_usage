@@ -1,6 +1,4 @@
 import * as fs from "fs/promises";
-import { existsSync } from "fs";
-import * as os from "os";
 import * as path from "path";
 import { spawn } from "child_process";
 import * as vscode from "vscode";
@@ -12,7 +10,6 @@ import {
   buildTransitionSuggestArgs,
   bundledExecutablePath,
   cacheDbPath,
-  candidateSessionDirs,
   extensionVersionLabel,
   injectWebviewControls,
   injectWebviewCsp,
@@ -33,15 +30,9 @@ import {
   parseTransitionChoices,
   renderErrorHtml,
   renderLoadingHtml,
-  selectSessionDirsForWatcher,
   shouldRefreshAfterSyncSetupStep,
-  SYNC_AUTO_WARNING_COOLDOWN_MS,
-  SYNC_FILE_CHANGE_DEBOUNCE_MS,
-  SYNC_FOCUS_COOLDOWN_MS,
   SyncMenuAction,
   SyncStatusKind,
-  syncBackoffMs,
-  syncFailureRequiresNotification,
   syncMenuQuickPickItems,
   syncStatusKindLabel,
   RANGE_VALUES,
@@ -49,7 +40,12 @@ import {
   WEBVIEW_COMMANDS,
 } from "./core";
 import { buildSyncInventoryArgs, parseSyncInventory } from "./syncInventory";
-import { buildSyncRunArgs, buildSyncStatusArgs, parseSyncStatusSummary } from "./syncProtocol";
+import {
+  buildSyncPullArgs,
+  buildSyncPushArgs,
+  buildSyncStatusArgs,
+  parseSyncStatusSummary,
+} from "./syncProtocol";
 import { runSyncProcess } from "./syncProcess";
 import {
   SyncSetupMutationCoordinator,
@@ -65,33 +61,20 @@ import {
 let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
-let syncWatchers: vscode.FileSystemWatcher[] = [];
-let syncWatcherDisposables: vscode.Disposable[] = [];
-let syncDebounce: NodeJS.Timeout | undefined;
 const syncSetupMutations = new SyncSetupMutationCoordinator();
 
-type SyncReason = "manual" | "auto" | "watch";
+type SyncDirection = "pull" | "push";
 
-type SyncSchedulerState = {
+type SyncRuntimeState = {
   inFlight: boolean;
-  pendingReason: SyncReason | undefined;
   status: SyncStatusKind;
-  lastAutoSyncAt: number;
-  nextAutoSyncAllowedAt: number;
-  autoFailureCount: number;
-  lastAutoWarningAt: number;
   lastSyncAt: number;
   lastError: string;
 };
 
-const syncScheduler: SyncSchedulerState = {
+const syncRuntime: SyncRuntimeState = {
   inFlight: false,
-  pendingReason: undefined,
   status: "off",
-  lastAutoSyncAt: 0,
-  nextAutoSyncAllowedAt: 0,
-  autoFailureCount: 0,
-  lastAutoWarningAt: 0,
   lastSyncAt: 0,
   lastError: "",
 };
@@ -136,8 +119,11 @@ export async function activate(context: vscode.ExtensionContext) {
   const selectSyncTasksCommand = vscode.commands.registerCommand("codexUsage.selectSyncTasks", async () => {
     await selectSyncTasks(context);
   });
-  const syncNowCommand = vscode.commands.registerCommand("codexUsage.syncNow", async () => {
-    await requestSync(context, "manual");
+  const pullTasksCommand = vscode.commands.registerCommand("codexUsage.pullTasks", async () => {
+    await runManualSync(context, "pull");
+  });
+  const pushTasksCommand = vscode.commands.registerCommand("codexUsage.pushTasks", async () => {
+    await runManualSync(context, "push");
   });
   const syncStatusCommand = vscode.commands.registerCommand("codexUsage.syncStatus", async () => {
     await showSyncStatus(context);
@@ -153,18 +139,11 @@ export async function activate(context: vscode.ExtensionContext) {
       return;
     }
     updateStatusItem(readSettings(context));
-    configureSyncWatcher(context);
-    resetSyncSchedulerWhenDisabled(context);
+    resetSyncRuntimeWhenDisabled(context);
     if (panel) {
       void refreshDashboard(context, panel);
     }
   });
-  const focusWatcher = vscode.window.onDidChangeWindowState((state) => {
-    if (state.focused) {
-      void syncOnFocus(context);
-    }
-  });
-
   context.subscriptions.push(
     openDashboardCommand,
     refreshDashboardCommand,
@@ -176,21 +155,17 @@ export async function activate(context: vscode.ExtensionContext) {
     openSyncMenuCommand,
     configureSyncCommand,
     selectSyncTasksCommand,
-    syncNowCommand,
+    pullTasksCommand,
+    pushTasksCommand,
     syncStatusCommand,
     openSyncFolderCommand,
     settingsWatcher,
-    focusWatcher,
     output,
     statusItem,
   );
-  configureSyncWatcher(context);
-  void syncOnFocus(context);
 }
 
 export function deactivate() {
-  disposeSyncWatchers();
-  clearSyncDebounce();
   panel = undefined;
 }
 
@@ -588,13 +563,12 @@ async function showSyncMenu(context: vscode.ExtensionContext): Promise<void> {
 }
 
 async function handleSyncMenuAction(context: vscode.ExtensionContext, action: SyncMenuAction): Promise<void> {
-  if (action === "syncNow") {
-    const settings = readSettings(context);
-    if (!settings.sync.enabled) {
-      await resumeSync(context);
-      return;
-    }
-    await requestSync(context, "manual");
+  if (action === "pullTasks") {
+    await runManualSync(context, "pull");
+    return;
+  }
+  if (action === "pushTasks") {
+    await runManualSync(context, "push");
     return;
   }
   if (action === "syncStatus") {
@@ -699,8 +673,7 @@ async function refreshSyncUi(
   refreshDashboardPanel = true,
 ): Promise<void> {
   updateStatusItem(readSettings(context));
-  configureSyncWatcher(context);
-  resetSyncSchedulerWhenDisabled(context);
+  resetSyncRuntimeWhenDisabled(context);
   if (panel && refreshDashboardPanel) {
     await refreshDashboard(context, panel);
   }
@@ -767,82 +740,49 @@ async function reviewProjectTransitions(context: vscode.ExtensionContext): Promi
   }
 }
 
-async function requestSync(context: vscode.ExtensionContext, reason: SyncReason): Promise<void> {
-  const settings = readSettings(context);
-  const now = Date.now();
+async function runManualSync(context: vscode.ExtensionContext, direction: SyncDirection): Promise<void> {
+  let settings = readSettings(context);
 
   if (!hasValidSyncSelection(settings.sync)) {
-    if (reason === "manual") {
-      await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
-    } else {
-      setSyncStatus(context, settings.sync.enabled ? "idle" : "off");
-    }
+    await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
     return;
   }
   if (!settings.sync.enabled) {
-    if (reason === "manual") {
-      await resumeSync(context);
-    } else {
-      setSyncStatus(context, "off");
-    }
-    return;
-  }
-
-  if (autoReason(reason)) {
-    if (now < syncScheduler.nextAutoSyncAllowedAt) {
-      output.appendLine(`[sync] auto sync skipped during backoff until ${new Date(syncScheduler.nextAutoSyncAllowedAt).toLocaleString()}`);
-      setSyncStatus(context, "waiting");
-      return;
-    }
-    if (reason === "auto" && now - syncScheduler.lastAutoSyncAt < SYNC_FOCUS_COOLDOWN_MS) {
-      output.appendLine("[sync] auto sync skipped during focus cooldown");
+    await resumeSync(context);
+    settings = readSettings(context);
+    if (!settings.sync.enabled) {
       return;
     }
   }
 
-  if (syncScheduler.inFlight) {
-    syncScheduler.pendingReason = mergePendingSyncReason(syncScheduler.pendingReason, reason);
-    output.appendLine(`[sync] sync already running; queued ${reason} follow-up`);
-    if (reason === "manual") {
-      void vscode.window.showInformationMessage("Codex sync is already running; another run will start afterward.");
-    }
+  if (syncRuntime.inFlight) {
+    void vscode.window.showInformationMessage(
+      "A Codex task transfer is already running. Try again when it finishes.",
+    );
     return;
   }
 
-  await runScheduledSync(context, reason);
+  await runDirectionalSync(context, direction);
 }
 
-async function runScheduledSync(context: vscode.ExtensionContext, reason: SyncReason): Promise<void> {
-  syncScheduler.inFlight = true;
-  syncScheduler.pendingReason = undefined;
-  if (autoReason(reason)) {
-    syncScheduler.lastAutoSyncAt = Date.now();
-  }
+async function runDirectionalSync(context: vscode.ExtensionContext, direction: SyncDirection): Promise<void> {
+  syncRuntime.inFlight = true;
   try {
-    const ok = await runSyncNow(context, reason);
+    const ok = await executeSyncDirection(context, direction);
     if (ok) {
-      syncScheduler.autoFailureCount = 0;
-      syncScheduler.nextAutoSyncAllowedAt = 0;
-      syncScheduler.lastError = "";
-      syncScheduler.lastSyncAt = Date.now();
+      syncRuntime.lastError = "";
+      syncRuntime.lastSyncAt = Date.now();
       setSyncStatus(context, readSettings(context).sync.enabled ? "idle" : "off");
     }
   } finally {
-    syncScheduler.inFlight = false;
-    const pending = syncScheduler.pendingReason;
-    syncScheduler.pendingReason = undefined;
-    if (pending && syncIsConfigured(readSettings(context))) {
-      void requestSync(context, pending);
-    }
+    syncRuntime.inFlight = false;
   }
 }
 
-async function runSyncNow(context: vscode.ExtensionContext, reason: SyncReason): Promise<boolean> {
+async function executeSyncDirection(context: vscode.ExtensionContext, direction: SyncDirection): Promise<boolean> {
   const settings = readSettings(context);
   if (!hasValidSyncSelection(settings.sync)) {
-    if (reason === "manual") {
-      await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
-    }
+    await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
     return false;
   }
   let outcomeStatus: "conflict" | "issue" | undefined;
@@ -857,10 +797,10 @@ async function runSyncNow(context: vscode.ExtensionContext, reason: SyncReason):
     const completion = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
-        title: "Syncing Codex tasks",
+        title: direction === "pull" ? "Pulling Codex tasks" : "Pushing Codex tasks",
       },
       async () => {
-        const args = buildSyncRunArgs(options);
+        const args = direction === "pull" ? buildSyncPullArgs(options) : buildSyncPushArgs(options);
         output.appendLine(`> ${executablePath} ${args.join(" ")}`);
         setSyncStatus(context, "scanning");
         return runSyncProcess({
@@ -888,33 +828,23 @@ async function runSyncNow(context: vscode.ExtensionContext, reason: SyncReason):
       setSyncStatus(context, "issue", message);
       throw new Error(message);
     }
-    if (reason === "manual") {
-      void vscode.window.showInformationMessage("Codex sync complete.");
-    } else {
-      output.appendLine(`[sync] auto sync complete (${reason})`);
-    }
+    const transferred = direction === "pull" ? completion.result.counts.pulled : completion.result.counts.pushed;
+    const oppositeAction = direction === "pull" ? "push" : "pull";
+    const pending = completion.result.threads.filter((thread) => thread.action === oppositeAction).length;
+    const verb = direction === "pull" ? "Pulled" : "Pushed";
+    const pendingText = pending
+      ? ` ${pending} selected task${pending === 1 ? "" : "s"} still need${pending === 1 ? "s" : ""} to ${oppositeAction}.`
+      : "";
+    void vscode.window.showInformationMessage(
+      `${verb} ${transferred} task${transferred === 1 ? "" : "s"}.${pendingText}`,
+    );
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
     const failureStatus = outcomeStatus ?? (message.toLowerCase().includes("conflict") ? "conflict" : "issue");
     setSyncStatus(context, failureStatus, message);
-    if (reason === "manual") {
-      void vscode.window.showWarningMessage(`Codex sync failed: ${message}`);
-      return false;
-    }
-
-    syncScheduler.autoFailureCount += 1;
-    const delay = syncBackoffMs(syncScheduler.autoFailureCount);
-    syncScheduler.nextAutoSyncAllowedAt = Date.now() + delay;
-    output.appendLine(`[sync] auto sync backoff ${Math.round(delay / 1000)}s after ${syncScheduler.autoFailureCount} failure(s)`);
-
-    const shouldNotify = syncFailureRequiresNotification(message);
-    const canNotify = Date.now() - syncScheduler.lastAutoWarningAt >= SYNC_AUTO_WARNING_COOLDOWN_MS;
-    if (shouldNotify && canNotify && readSettings(context).sync.enabled) {
-      syncScheduler.lastAutoWarningAt = Date.now();
-      void vscode.window.showWarningMessage(`Codex sync needs attention: ${message}`);
-    }
+    void vscode.window.showWarningMessage(`Codex ${direction} failed: ${message}`);
     return false;
   }
 }
@@ -980,8 +910,6 @@ function readSettings(context: vscode.ExtensionContext | undefined): ExtensionSe
     dir: readSyncDirState(context?.globalState),
     selectionVersion: readSyncSelectionVersionState(context?.globalState),
     threadIds: readSyncThreadIdsState(context?.globalState),
-    autoPull: config.get<boolean>("sync.autoPull", true),
-    autoPush: config.get<boolean>("sync.autoPush", true),
   });
   return {
     range: normalizeRange(config.get<string>("range", "30d")),
@@ -1133,7 +1061,7 @@ function updateStatusItem(settings: ExtensionSettings): void {
     projectCount > 0
       ? `Codex Usage: ${settings.range} (${projectCount})`
       : `Codex Usage: ${settings.range}`;
-  const syncStatus = syncStatusBadge(settings, syncScheduler.status);
+  const syncStatus = syncStatusBadge(settings, syncRuntime.status);
   if (syncStatus) {
     statusItem.text += ` ${syncStatus}`;
   }
@@ -1154,30 +1082,12 @@ function themeLabel(theme: ExtensionSettings["theme"]): string {
   return "Auto";
 }
 
-function syncIsConfigured(settings: ExtensionSettings): boolean {
-  return settings.sync.enabled && hasValidSyncSelection(settings.sync);
-}
-
 function setSyncStatus(context: vscode.ExtensionContext, status: SyncStatusKind, lastError = ""): void {
-  syncScheduler.status = status;
+  syncRuntime.status = status;
   if (lastError) {
-    syncScheduler.lastError = lastError;
+    syncRuntime.lastError = lastError;
   }
   updateStatusItem(readSettings(context));
-}
-
-function autoReason(reason: SyncReason): boolean {
-  return reason !== "manual";
-}
-
-function mergePendingSyncReason(existing: SyncReason | undefined, next: SyncReason): SyncReason {
-  if (existing === "manual" || next === "manual") {
-    return "manual";
-  }
-  if (existing === "watch" || next === "watch") {
-    return "watch";
-  }
-  return "auto";
 }
 
 function syncStatusBadge(settings: ExtensionSettings, status: SyncStatusKind): string {
@@ -1199,93 +1109,17 @@ function syncStatusTooltip(settings: ExtensionSettings): string {
   }
   const folder = settings.sync.dir ? "folder selected" : "folder not selected";
   const tasks = `${settings.sync.threadIds.length} task${settings.sync.threadIds.length === 1 ? "" : "s"} selected`;
-  const auto = `auto pull ${settings.sync.autoPull ? "on" : "off"}, auto push ${settings.sync.autoPush ? "on" : "off"}`;
-  const state = `state ${syncStatusKindLabel(syncScheduler.status === "off" ? "idle" : syncScheduler.status)}`;
-  const lastSync = syncScheduler.lastSyncAt ? `last sync ${new Date(syncScheduler.lastSyncAt).toLocaleString()}` : "no completed sync yet";
-  const nextRetry =
-    syncScheduler.nextAutoSyncAllowedAt > Date.now()
-      ? `next retry after ${new Date(syncScheduler.nextAutoSyncAllowedAt).toLocaleTimeString()}`
-      : "";
-  const lastError = syncScheduler.lastError ? `last error: ${syncScheduler.lastError}` : "";
-  return ["Sync: enabled", folder, tasks, auto, state, lastSync, nextRetry, lastError].filter(Boolean).join(". ") + ".";
+  const state = `state ${syncStatusKindLabel(syncRuntime.status === "off" ? "idle" : syncRuntime.status)}`;
+  const lastSync = syncRuntime.lastSyncAt ? `last transfer ${new Date(syncRuntime.lastSyncAt).toLocaleString()}` : "no completed transfer yet";
+  const lastError = syncRuntime.lastError ? `last error: ${syncRuntime.lastError}` : "";
+  return ["Sync: manual", folder, tasks, state, lastSync, lastError].filter(Boolean).join(". ") + ".";
 }
 
-async function syncOnFocus(context: vscode.ExtensionContext): Promise<void> {
-  const settings = readSettings(context);
-  if (!syncIsConfigured(settings)) {
-    return;
-  }
-  if (!settings.sync.autoPull && !settings.sync.autoPush) {
-    return;
-  }
-  await requestSync(context, "auto");
-}
-
-function configureSyncWatcher(context: vscode.ExtensionContext): void {
-  disposeSyncWatchers();
-  clearSyncDebounce();
-  const settings = readSettings(context);
-  if (!settings.sync.enabled || !settings.sync.autoPush) {
-    return;
-  }
-  const sessionDirs = selectSessionDirsForWatcher(
-    candidateSessionDirs({
-      codexHome: process.env.CODEX_HOME,
-      userProfile: process.env.USERPROFILE,
-      homeDir: os.homedir(),
-    }),
-    Boolean(process.env.CODEX_HOME?.trim()),
-    existsSync,
-  );
-  const schedule = () => {
-    const latestSettings = readSettings(context);
-    if (!latestSettings.sync.enabled || !latestSettings.sync.autoPush) {
-      clearSyncDebounce();
-      setSyncStatus(context, latestSettings.sync.enabled ? "idle" : "off");
-      return;
-    }
-    clearSyncDebounce();
-    setSyncStatus(context, "waiting");
-    syncDebounce = setTimeout(() => {
-      syncDebounce = undefined;
-      void requestSync(context, "watch");
-    }, SYNC_FILE_CHANGE_DEBOUNCE_MS);
-  };
-  for (const sessionDir of sessionDirs) {
-    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(sessionDir, "**/*.jsonl"));
-    syncWatchers.push(watcher);
-    syncWatcherDisposables.push(watcher.onDidCreate(schedule));
-    syncWatcherDisposables.push(watcher.onDidChange(schedule));
-  }
-}
-
-function resetSyncSchedulerWhenDisabled(context: vscode.ExtensionContext): void {
+function resetSyncRuntimeWhenDisabled(context: vscode.ExtensionContext): void {
   const settings = readSettings(context);
   if (settings.sync.enabled) {
     return;
   }
-  clearSyncDebounce();
-  syncScheduler.pendingReason = undefined;
-  syncScheduler.nextAutoSyncAllowedAt = 0;
-  syncScheduler.autoFailureCount = 0;
-  syncScheduler.lastError = "";
+  syncRuntime.lastError = "";
   setSyncStatus(context, "off");
-}
-
-function clearSyncDebounce(): void {
-  if (syncDebounce) {
-    clearTimeout(syncDebounce);
-    syncDebounce = undefined;
-  }
-}
-
-function disposeSyncWatchers(): void {
-  for (const disposable of syncWatcherDisposables) {
-    disposable.dispose();
-  }
-  for (const watcher of syncWatchers) {
-    watcher.dispose();
-  }
-  syncWatcherDisposables = [];
-  syncWatchers = [];
 }

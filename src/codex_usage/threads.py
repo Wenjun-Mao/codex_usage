@@ -41,6 +41,7 @@ class ThreadInfo:
     estimated_sync_bytes: int
     memory_mode: str = ""
     has_base_instructions: bool = False
+    cwd: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -105,6 +106,7 @@ def list_threads(
             estimated_sync_bytes=session_bytes + _ESTIMATED_SYNC_METADATA_BYTES,
             memory_mode=metadata.memory_mode,
             has_base_instructions=metadata.has_base_instructions,
+            cwd=metadata.cwd,
         )
         _store_latest_thread(threads, thread)
     return _sort_threads(threads)
@@ -158,6 +160,7 @@ def _thread_from_summary(
         estimated_sync_bytes=summary.estimated_sync_bytes,
         memory_mode=summary.memory_mode,
         has_base_instructions=summary.has_base_instructions,
+        cwd=summary.cwd,
     )
 
 

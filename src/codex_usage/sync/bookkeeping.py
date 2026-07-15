@@ -34,6 +34,8 @@ def repair_matching_bookkeeping(
     local: LocalInventory,
     remote: RemoteInventory,
     sync_dir: Path,
+    *,
+    merge_remote_index: bool = True,
 ) -> None:
     index_repairs: dict[Path, list[dict[str, Any]]] = {}
     for item in plan.items:
@@ -64,7 +66,7 @@ def repair_matching_bookkeeping(
         if not _state_is_current(existing_state, state_item, sync_dir):
             state_store.record_success(state_item, item.local, item.remote)
 
-        if index_needs_merge and remote_entry is not None:
+        if merge_remote_index and index_needs_merge and remote_entry is not None:
             index_repairs.setdefault(session_dir, []).append(
                 dict(remote_entry.index_entry)
             )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +135,7 @@ class LocalInventory:
     threads: dict[str, ThreadInfo]
     index_entries: dict[str, dict[str, Any]]
     discovered_count: int
+    project_roots: dict[str, tuple[Path, ...]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for thread_id, thread in self.threads.items():
@@ -232,6 +233,7 @@ class SyncPlanItem:
     project_label: str
     memory_database_rows: int
     expected_remote_entry: RemoteThreadEntry | None
+    local_project_root: Path | None = None
 
     def to_dict(self) -> dict[str, Any]:
         value: dict[str, Any] = {

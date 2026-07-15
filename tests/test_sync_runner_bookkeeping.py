@@ -4,7 +4,7 @@ from pathlib import Path
 import codex_usage.sync.bookkeeping as bookkeeping_module
 import codex_usage.sync.runner as runner_module
 from codex_usage.session_cache import load_cached_session_data
-from codex_usage.sync import run_sync
+from codex_usage.sync import pull_sync, push_sync
 from codex_usage.sync.errors import ConcurrentLocalChangeError
 from codex_usage.sync.state import LocalStateStore
 
@@ -20,7 +20,7 @@ def test_verified_pull_state_failure_is_reported_and_repaired_without_recopy(
         raise ConcurrentLocalChangeError("local state write failed")
 
     monkeypatch.setattr(LocalStateStore, "record_success", fail_state)
-    failed = _run(target_sessions, sync_dir, tmp_path / "target-cache", "target")
+    failed = _pull(target_sessions, sync_dir, tmp_path / "target-cache")
 
     target_path = target_sessions / source_path.relative_to(source_sessions)
     assert failed.outcome == "issue"
@@ -33,11 +33,10 @@ def test_verified_pull_state_failure_is_reported_and_repaired_without_recopy(
     monkeypatch.setattr(LocalStateStore, "record_success", original_record)
     monkeypatch.setattr(runner_module, "atomic_copy", _fail_conversation_copy)
     progress = []
-    repaired = _run(
+    repaired = _pull(
         target_sessions,
         sync_dir,
         tmp_path / "target-cache",
-        "target",
         progress,
     )
 
@@ -51,7 +50,7 @@ def test_verified_pull_state_failure_is_reported_and_repaired_without_recopy(
     monkeypatch.setattr(
         bookkeeping_module, "merge_session_index", _fail_bookkeeping_write
     )
-    settled = _run(target_sessions, sync_dir, tmp_path / "target-cache", "target")
+    settled = _pull(target_sessions, sync_dir, tmp_path / "target-cache")
     assert settled.outcome == "completed"
 
 
@@ -66,7 +65,7 @@ def test_verified_pull_index_failure_reports_pull_and_rerun_repairs_bookkeeping(
         raise ConcurrentLocalChangeError("local session index merge failed")
 
     monkeypatch.setattr(runner_module, "merge_session_index", fail_merge)
-    failed = _run(target_sessions, sync_dir, tmp_path / "target-cache", "target")
+    failed = _pull(target_sessions, sync_dir, tmp_path / "target-cache")
 
     assert failed.outcome == "issue"
     assert failed.pulled == ("thread-1",)
@@ -76,7 +75,7 @@ def test_verified_pull_index_failure_reports_pull_and_rerun_repairs_bookkeeping(
 
     monkeypatch.setattr(runner_module, "merge_session_index", original_merge)
     monkeypatch.setattr(runner_module, "atomic_copy", _fail_conversation_copy)
-    repaired = _run(target_sessions, sync_dir, tmp_path / "target-cache", "target")
+    repaired = _pull(target_sessions, sync_dir, tmp_path / "target-cache")
 
     assert repaired.outcome == "completed"
     assert repaired.pulled == repaired.pushed == ()
@@ -99,7 +98,7 @@ def test_verified_push_state_failure_is_reported_and_rerun_repairs_index_and_sta
         raise ConcurrentLocalChangeError("local state write failed")
 
     monkeypatch.setattr(LocalStateStore, "record_success", fail_state)
-    failed = _run(sessions, sync_dir, tmp_path / "cache", "source")
+    failed = _push(sessions, sync_dir, tmp_path / "cache", "source")
 
     remote_path = sync_dir / "conversations" / "thread-1.jsonl"
     assert failed.outcome == "issue"
@@ -111,7 +110,7 @@ def test_verified_push_state_failure_is_reported_and_rerun_repairs_index_and_sta
 
     monkeypatch.setattr(LocalStateStore, "record_success", original_record)
     monkeypatch.setattr(runner_module, "atomic_copy", _fail_conversation_copy)
-    repaired = _run(sessions, sync_dir, tmp_path / "cache", "source")
+    repaired = _push(sessions, sync_dir, tmp_path / "cache", "source")
 
     assert repaired.outcome == "completed"
     assert repaired.pulled == repaired.pushed == ()
@@ -131,14 +130,14 @@ def test_current_noop_run_does_not_rewrite_local_bookkeeping(
     sync_dir = tmp_path / "sync"
     _write_session(sessions, "thread-1", tmp_path / "repo")
     _write_index(home, "Remote title")
-    _run(sessions, sync_dir, tmp_path / "cache", "source")
+    _push(sessions, sync_dir, tmp_path / "cache", "source")
 
     monkeypatch.setattr(LocalStateStore, "write", _fail_bookkeeping_write)
     monkeypatch.setattr(
         bookkeeping_module, "merge_session_index", _fail_bookkeeping_write
     )
     progress = []
-    result = _run(sessions, sync_dir, tmp_path / "cache", "source", progress)
+    result = _push(sessions, sync_dir, tmp_path / "cache", "source", progress)
 
     assert result.outcome == "completed"
     assert result.pulled == result.pushed == ()
@@ -154,7 +153,7 @@ def test_noop_bookkeeping_repair_revalidates_matching_local_bytes(
     sync_dir = tmp_path / "sync"
     source = _write_session(sessions, "thread-1", tmp_path / "repo")
     _write_index(home, "Remote title")
-    _run(sessions, sync_dir, tmp_path / "cache", "source")
+    _push(sessions, sync_dir, tmp_path / "cache", "source")
     state_store = LocalStateStore(sessions, sync_dir)
     state_store.path_for("thread-1").unlink()
     original_pushes = runner_module.execute_pushes
@@ -165,7 +164,7 @@ def test_noop_bookkeeping_repair_revalidates_matching_local_bytes(
         return execution
 
     monkeypatch.setattr(runner_module, "execute_pushes", change_local_after_preflight)
-    result = _run(sessions, sync_dir, tmp_path / "cache", "source")
+    result = _push(sessions, sync_dir, tmp_path / "cache", "source")
 
     assert result.outcome == "issue"
     assert result.issues[-1].code == "concurrent_local_change"
@@ -178,14 +177,20 @@ def _seed_remote(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     target_sessions = tmp_path / "target" / "sessions"
     target_sessions.mkdir(parents=True)
     sync_dir = tmp_path / "sync"
-    source_path = _write_session(source_sessions, "thread-1", tmp_path / "repo")
+    project = tmp_path / "repo"
+    project.mkdir()
+    (target_sessions.parent / ".codex-global-state.json").write_text(
+        json.dumps({"electron-saved-workspace-roots": [str(project)]}),
+        encoding="utf-8",
+    )
+    source_path = _write_session(source_sessions, "thread-1", project)
     _write_index(source_home, "Remote title")
-    pushed = _run(source_sessions, sync_dir, tmp_path / "source-cache", "source")
+    pushed = _push(source_sessions, sync_dir, tmp_path / "source-cache", "source")
     assert pushed.pushed == ("thread-1",)
     return source_sessions, target_sessions, sync_dir, source_path
 
 
-def _run(
+def _push(
     sessions: Path,
     sync_dir: Path,
     cache_dir: Path,
@@ -193,11 +198,26 @@ def _run(
     progress: list | None = None,
 ):
     data = load_cached_session_data([sessions], cache_dir=cache_dir)
-    return run_sync(
+    return push_sync(
         data=data,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id=machine_id,
+        on_progress=progress.append if progress is not None else None,
+    )
+
+
+def _pull(
+    sessions: Path,
+    sync_dir: Path,
+    cache_dir: Path,
+    progress: list | None = None,
+):
+    data = load_cached_session_data([sessions], cache_dir=cache_dir)
+    return pull_sync(
+        data=data,
+        sync_dir=sync_dir,
+        thread_ids=["thread-1"],
         on_progress=progress.append if progress is not None else None,
     )
 
