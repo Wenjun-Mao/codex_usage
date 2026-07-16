@@ -144,7 +144,7 @@ export function createTaskTransferVscode(
         if (inventory.issues.length > 0) {
           void vscode.window.showWarningMessage(taskInventoryWarningMessage());
         }
-        return buildTaskPickerItems(inventory, []);
+        return buildTaskPickerItems(inventory, operation);
       },
       chooseTasks: (_operation, rows, initialThreadIds) =>
         showTaskTransferPicker(rows, initialThreadIds),

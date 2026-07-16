@@ -1,9 +1,14 @@
-import type { SyncInventory } from "./syncInventory";
-import { taskAvailabilityLabel, taskPickerDetail } from "./transferPresentation";
+import { filterInventoryForOperation, type SyncInventory } from "./syncInventory";
+import {
+  taskAvailabilityLabel,
+  taskPickerDetail,
+  taskStateLabel,
+  type TransferOperation,
+} from "./transferPresentation";
 
 export type TaskPickerItem = {
   id: string;
-  kind: "project" | "task" | "unavailable" | "separator";
+  kind: "project" | "task" | "separator";
   label: string;
   description: string;
   detail: string;
@@ -12,11 +17,14 @@ export type TaskPickerItem = {
   childThreadIds: string[];
 };
 
-export function buildTaskPickerItems(inventory: SyncInventory, storedThreadIds: unknown): TaskPickerItem[] {
+export function buildTaskPickerItems(
+  inventory: SyncInventory,
+  operation: TransferOperation,
+): TaskPickerItem[] {
   const items: TaskPickerItem[] = [];
-  const availableThreadIds = new Set<string>();
+  const visibleInventory = filterInventoryForOperation(inventory, operation);
 
-  for (const project of inventory.projects) {
+  for (const project of visibleInventory.projects) {
     const childThreadIds = project.tasks.map((task) => task.threadId);
     items.push({
       id: `project:${project.projectKey}`,
@@ -29,12 +37,11 @@ export function buildTaskPickerItems(inventory: SyncInventory, storedThreadIds: 
     });
 
     for (const task of project.tasks) {
-      availableThreadIds.add(task.threadId);
       items.push({
         id: `task:${task.threadId}`,
         kind: "task",
         label: task.title,
-        description: taskAvailabilityLabel(task.availability),
+        description: `${taskStateLabel(task.action, task.state)} | ${taskAvailabilityLabel(task.availability)}`,
         detail: taskPickerDetail(task.threadId, formatBytes(task.estimatedSyncBytes)),
         projectKey: project.projectKey,
         threadId: task.threadId,
@@ -43,32 +50,6 @@ export function buildTaskPickerItems(inventory: SyncInventory, storedThreadIds: 
     }
   }
 
-  const unavailableThreadIds = normalizeThreadIds(storedThreadIds)
-    .filter((threadId) => !availableThreadIds.has(threadId))
-    .sort();
-  if (unavailableThreadIds.length === 0) {
-    return items;
-  }
-
-  items.push({
-    id: "separator:unavailable",
-    kind: "separator",
-    label: "Unavailable selected tasks",
-    description: "",
-    detail: "",
-    childThreadIds: [],
-  });
-  for (const threadId of unavailableThreadIds) {
-    items.push({
-      id: `unavailable:${threadId}`,
-      kind: "unavailable",
-      label: threadId,
-      description: "Unavailable",
-      detail: taskPickerDetail(threadId),
-      threadId,
-      childThreadIds: [],
-    });
-  }
   return items;
 }
 
@@ -107,7 +88,7 @@ export function selectedPickerItemIds(items: TaskPickerItem[], selectedThreadIds
         item.childThreadIds.length > 0 && item.childThreadIds.every((threadId) => selected.has(threadId));
       return everyChildSelected ? [item.id] : [];
     }
-    if ((item.kind === "task" || item.kind === "unavailable") && item.threadId !== undefined) {
+    if (item.kind === "task" && item.threadId !== undefined) {
       return selected.has(item.threadId) ? [item.id] : [];
     }
     return [];

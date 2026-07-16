@@ -1,3 +1,5 @@
+import type { TransferOperation } from "./transferPresentation";
+
 export type SyncTaskAvailability = "local" | "remote" | "both";
 export type SyncProjectIdentityKind = "git" | "path";
 
@@ -89,6 +91,30 @@ export function parseSyncInventory(json: string): SyncInventory {
     ),
     issues: parseArray(inventory.issues, parseIssue, "issues"),
   };
+}
+
+export function filterInventoryForOperation(
+  inventory: SyncInventory,
+  operation: TransferOperation,
+): SyncInventory {
+  const projects = inventory.projects.flatMap((project) => {
+    const tasks = project.tasks.filter((task) => availableForOperation(task.availability, operation));
+    return tasks.length > 0 ? [{ ...project, tasks }] : [];
+  });
+  return { ...inventory, projects, issues: [...inventory.issues] };
+}
+
+function availableForOperation(
+  availability: SyncTaskAvailability,
+  operation: TransferOperation,
+): boolean {
+  if (operation === "import") {
+    return availability === "remote" || availability === "both";
+  }
+  if (operation === "export") {
+    return availability === "local" || availability === "both";
+  }
+  return true;
 }
 
 function parseProject(

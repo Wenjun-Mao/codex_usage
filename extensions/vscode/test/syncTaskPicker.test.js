@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+const { filterInventoryForOperation } = require("../out/syncInventory");
 const {
   buildTaskPickerItems,
   reduceTaskSelection,
@@ -9,11 +10,13 @@ const {
 
 function inventory() {
   return {
-    inventoryVersion: 1,
+    inventoryVersion: 2,
     projects: [
       {
         projectKey: "repo-a",
         projectLabel: "Repo A",
+        identityKind: "git",
+        candidateRoots: ["D:/Code/repo-a"],
         tasks: [
           {
             threadId: "thread-1",
@@ -21,6 +24,8 @@ function inventory() {
             updatedAt: "2026-07-14T12:00:00Z",
             estimatedSyncBytes: 1536,
             availability: "local",
+            state: "local_only",
+            action: "push",
           },
           {
             threadId: "thread-2",
@@ -28,12 +33,16 @@ function inventory() {
             updatedAt: "2026-07-13T12:00:00Z",
             estimatedSyncBytes: 2048,
             availability: "both",
+            state: "synced",
+            action: "none",
           },
         ],
       },
       {
         projectKey: "repo-b",
         projectLabel: "Repo B",
+        identityKind: "path",
+        candidateRoots: ["D:/Code/repo-b"],
         tasks: [
           {
             threadId: "thread-3",
@@ -41,6 +50,8 @@ function inventory() {
             updatedAt: "2026-07-12T12:00:00Z",
             estimatedSyncBytes: 512,
             availability: "remote",
+            state: "remote_only",
+            action: "pull",
           },
         ],
       },
@@ -49,132 +60,116 @@ function inventory() {
   };
 }
 
-test("project rows toggle current child tasks without selecting future ids", () => {
-  const items = buildTaskPickerItems(inventory(), []);
-  const project = items.find((item) => item.kind === "project" && item.projectKey === "repo-a");
-  const selected = reduceTaskSelection([], project, true);
+function taskIds(items) {
+  return items
+    .filter((item) => item.kind === "task")
+    .map((item) => item.threadId);
+}
 
-  assert.deepEqual(selected, ["thread-1", "thread-2"]);
-  assert.deepEqual(selectedPickerItemIds(items, selected), [
-    "project:repo-a",
-    "task:thread-1",
-    "task:thread-2",
+test("import lists transfer-folder tasks and starts unselected", () => {
+  const items = buildTaskPickerItems(inventory(), "import");
+
+  assert.deepEqual(taskIds(items), ["thread-2", "thread-3"]);
+  assert.deepEqual(selectedPickerItemIds(items, []), []);
+});
+
+test("export lists active local tasks and review lists the union", () => {
+  assert.deepEqual(taskIds(buildTaskPickerItems(inventory(), "export")), [
+    "thread-1",
+    "thread-2",
+  ]);
+  assert.deepEqual(taskIds(buildTaskPickerItems(inventory(), "review")), [
+    "thread-1",
+    "thread-2",
+    "thread-3",
   ]);
 });
 
-test("a filtered project toggle still uses every snapshot child", () => {
-  const items = buildTaskPickerItems(inventory(), []);
-  const project = items.find((item) => item.id === "project:repo-a");
-  const visibleRows = items.filter((item) => item.label.includes("Persona"));
+test("operation filtering drops empty projects without mutating the inventory", () => {
+  const source = inventory();
+  const filtered = filterInventoryForOperation(source, "export");
 
-  assert.equal(visibleRows.some((item) => item.threadId === "thread-2"), false);
-  assert.deepEqual(reduceTaskSelection([], project, true), ["thread-1", "thread-2"]);
+  assert.deepEqual(filtered.projects.map((project) => project.projectKey), ["repo-a"]);
+  assert.deepEqual(filtered.projects[0].tasks.map((task) => task.threadId), ["thread-1", "thread-2"]);
+  assert.deepEqual(source.projects.map((project) => project.tasks.length), [2, 1]);
 });
 
-test("project deselection removes every current child and preserves other selections", () => {
-  const items = buildTaskPickerItems(inventory(), []);
+test("project toggle selects only visible operation tasks", () => {
+  const items = buildTaskPickerItems(inventory(), "import");
+  const project = items.find((item) => item.id === "project:repo-a");
+
+  assert.deepEqual(project.childThreadIds, ["thread-2"]);
+  assert.deepEqual(reduceTaskSelection([], project, true), ["thread-2"]);
+});
+
+test("project deselection removes only visible operation tasks", () => {
+  const items = buildTaskPickerItems(inventory(), "import");
   const project = items.find((item) => item.id === "project:repo-a");
 
   assert.deepEqual(
-    reduceTaskSelection(["thread-1", "thread-3", "thread-2", "future-thread"], project, false),
-    ["thread-3", "future-thread"],
+    reduceTaskSelection(["thread-1", "thread-2", "thread-3"], project, false),
+    ["thread-1", "thread-3"],
+  );
+});
+
+test("task rows show state availability Task ID and transfer size", () => {
+  const task = buildTaskPickerItems(inventory(), "review")
+    .find((item) => item.id === "task:thread-3");
+
+  assert.equal(task.description, "Ready to import | In transfer folder");
+  assert.match(task.detail, /Task ID: thread-3/);
+  assert.match(task.detail, /estimated task transfer size/i);
+  assert.doesNotMatch(task.detail, /Thread ID|sync size/i);
+});
+
+test("rows preserve stable snapshot hierarchy and operation filtering", () => {
+  const items = buildTaskPickerItems(inventory(), "import");
+
+  assert.deepEqual(items.map((item) => item.id), [
+    "project:repo-a",
+    "task:thread-2",
+    "project:repo-b",
+    "task:thread-3",
+  ]);
+  assert.deepEqual(
+    items.filter((item) => item.kind === "project").map((item) => item.detail),
+    ["1 task", "1 task"],
   );
 });
 
 test("partial task selection leaves the project row unselected", () => {
-  const items = buildTaskPickerItems(inventory(), ["thread-1"]);
+  const items = buildTaskPickerItems(inventory(), "review");
 
   assert.deepEqual(selectedPickerItemIds(items, ["thread-1"]), ["task:thread-1"]);
 });
 
-test("missing stored ids remain selected under unavailable tasks", () => {
-  const items = buildTaskPickerItems(inventory(), ["missing-thread"]);
-  const separator = items.find((item) => item.kind === "separator");
-  const missing = items.find((item) => item.kind === "unavailable");
+test("filtered and unknown technical ids never become selected rows", () => {
+  const items = buildTaskPickerItems(inventory(), "import");
 
-  assert.equal(separator.label, "Unavailable selected tasks");
-  assert.equal(missing.threadId, "missing-thread");
-  assert.deepEqual(selectedPickerItemIds(items, ["missing-thread"]), ["unavailable:missing-thread"]);
+  assert.deepEqual(selectedPickerItemIds(items, ["thread-1", "missing-thread"]), []);
+  assert.equal(items.some((item) => item.id.includes("missing-thread")), false);
 });
 
-test("rows preserve snapshot hierarchy and sort unavailable ids", () => {
-  const items = buildTaskPickerItems(inventory(), ["z-missing", "thread-2", "a-missing"]);
-
-  assert.deepEqual(
-    items.map((item) => item.id),
-    [
-      "project:repo-a",
-      "task:thread-1",
-      "task:thread-2",
-      "project:repo-b",
-      "task:thread-3",
-      "separator:unavailable",
-      "unavailable:a-missing",
-      "unavailable:z-missing",
-    ],
-  );
-});
-
-test("task rows use Task Transfer availability, task id, and estimated size vocabulary", () => {
-  const taskItems = buildTaskPickerItems(inventory(), []).filter((item) => item.kind === "task");
-
-  assert.deepEqual(
-    taskItems.map((item) => item.description),
-    ["On this computer", "On both", "In transfer folder"],
-  );
-  assert.equal(taskItems[0].detail, "Task ID: thread-1 | Estimated task transfer size: 1.5 KB");
-  assert.equal(taskItems[2].detail, "Task ID: thread-3 | Estimated task transfer size: 512 B");
-  assert.doesNotMatch(JSON.stringify(taskItems), /This device|Sync folder|Thread ID|estimated sync size/i);
-  assert.equal(taskItems[0].childThreadIds.length, 0);
-});
-
-test("unavailable task rows display a Task ID without a Thread ID label", () => {
-  const unavailable = buildTaskPickerItems(inventory(), ["missing-thread"])
-    .find((item) => item.kind === "unavailable");
-
-  assert.equal(unavailable.detail, "Task ID: missing-thread");
-  assert.doesNotMatch(unavailable.detail, /^Thread ID:/i);
-});
-
-test("project rows report exact task counts", () => {
-  const projectItems = buildTaskPickerItems(inventory(), []).filter((item) => item.kind === "project");
-
-  assert.deepEqual(
-    projectItems.map((item) => item.detail),
-    ["2 tasks", "1 task"],
-  );
-});
-
-test("empty initial selection selects no picker rows", () => {
-  const items = buildTaskPickerItems(inventory(), []);
-
-  assert.deepEqual(selectedPickerItemIds(items, []), []);
-});
-
-test("selection normalization is stable, string-only, deduplicated, and case-sensitive", () => {
-  const items = buildTaskPickerItems(inventory(), ["Missing", "missing", "Missing", null, 7]);
-  const unavailableItems = items.filter((item) => item.kind === "unavailable");
+test("selection normalization is stable string-only and deduplicated", () => {
+  const items = buildTaskPickerItems(inventory(), "review");
   const thread = items.find((item) => item.id === "task:thread-1");
-  const separator = items.find((item) => item.kind === "separator");
 
   assert.deepEqual(
-    unavailableItems.map((item) => item.threadId),
-    ["Missing", "missing"],
+    reduceTaskSelection(["thread-2", "thread-2", null, 7], thread, true),
+    ["thread-2", "thread-1"],
   );
-  assert.deepEqual(reduceTaskSelection(["thread-2", "thread-2", null], thread, true), [
-    "thread-2",
-    "thread-1",
-  ]);
-  assert.deepEqual(reduceTaskSelection(["thread-2"], separator, true), ["thread-2"]);
 });
 
-test("task and unavailable rows toggle exactly one technical id", () => {
-  const items = buildTaskPickerItems(inventory(), ["missing-thread"]);
+test("technical task ids remain case-sensitive", () => {
+  const items = buildTaskPickerItems(inventory(), "review");
+
+  assert.deepEqual(selectedPickerItemIds(items, ["Thread-1", "thread-1"]), ["task:thread-1"]);
+});
+
+test("task rows toggle exactly one technical id", () => {
+  const items = buildTaskPickerItems(inventory(), "review");
   const task = items.find((item) => item.id === "task:thread-1");
-  const unavailable = items.find((item) => item.id === "unavailable:missing-thread");
 
   assert.deepEqual(reduceTaskSelection([], task, true), ["thread-1"]);
-  assert.deepEqual(reduceTaskSelection(["thread-1", "missing-thread"], unavailable, false), [
-    "thread-1",
-  ]);
+  assert.deepEqual(reduceTaskSelection(["thread-1", "thread-2"], task, false), ["thread-2"]);
 });
