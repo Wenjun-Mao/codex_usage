@@ -100,7 +100,7 @@ def test_verified_push_state_failure_is_reported_and_rerun_repairs_index_and_sta
     monkeypatch.setattr(LocalStateStore, "record_success", fail_state)
     failed = _push(sessions, sync_dir, tmp_path / "cache", "source")
 
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     assert failed.outcome == "issue"
     assert failed.pushed == ("thread-1",)
     assert failed.issues[-1].message == "local state write failed"
