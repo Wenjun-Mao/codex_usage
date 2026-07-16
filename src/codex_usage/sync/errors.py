@@ -13,6 +13,10 @@ class MalformedSyncIndexError(SyncStoreError):
     """The remote sync index does not satisfy the current transfer contract."""
 
 
+class TransferFormatMigrationError(SyncStoreError):
+    """The remote transfer folder cannot be migrated without risking data loss."""
+
+
 class MissingRemoteConversationError(SyncStoreError):
     """An indexed remote task is missing."""
 

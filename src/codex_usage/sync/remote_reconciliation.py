@@ -64,7 +64,7 @@ def reconcile_remote_discovery(
                 )
             )
             continue
-        snapshot, metadata = _materialize_task(path, path_guard)
+        snapshot, metadata = materialize_remote_task(path, path_guard)
         if metadata is None:
             issues.append(_unreadable_issue(relative_path))
             continue
@@ -136,7 +136,7 @@ def materialize_selected_remote(
         entry = effective_threads.get(thread_id)
         if entry is None or thread_id in files:
             continue
-        snapshot, metadata = _materialize_task(root / entry.file, path_guard)
+        snapshot, metadata = materialize_remote_task(root / entry.file, path_guard)
         files[thread_id] = snapshot
         if not snapshot.exists:
             if not _has_issue(issues, "missing_remote_file", thread_id):
@@ -223,7 +223,7 @@ def promote_matching_local_metadata(
     )
 
 
-def _materialize_task(
+def materialize_remote_task(
     path: Path,
     path_guard: PathGuard,
 ) -> tuple[SyncFileSnapshot, SessionMetadata | None]:

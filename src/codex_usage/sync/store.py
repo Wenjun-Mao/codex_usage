@@ -15,9 +15,9 @@ from codex_usage.sync.constants import (
 )
 from codex_usage.sync.errors import (
     ConcurrentRemoteChangeError,
-    LegacySyncLayoutError,
     MalformedSyncIndexError,
 )
+from codex_usage.sync.format_migration import migrate_remote_layout_v2_to_v3
 from codex_usage.sync.io import (
     atomic_copy,
     atomic_write_json,
@@ -66,7 +66,17 @@ class RemoteStore:
             yield self
 
     def load_inventory(self) -> RemoteInventory:
-        self._reject_legacy_layout()
+        if self._lock.is_locked:
+            return self._load_inventory_locked()
+        with self.transaction():
+            return self._load_inventory_locked()
+
+    def _load_inventory_locked(self) -> RemoteInventory:
+        self._require_transaction()
+        migrate_remote_layout_v2_to_v3(self.root)
+        return self._load_current_inventory()
+
+    def _load_current_inventory(self) -> RemoteInventory:
         persisted_index, index_snapshot = self._read_index()
         discovered_files = self._list_task_files()
         return reconcile_remote_discovery(
@@ -191,14 +201,6 @@ class RemoteStore:
             path_guard=self._guard_index_target,
         )
         return committed
-
-    def _reject_legacy_layout(self) -> None:
-        legacy_path = self.root / "threads"
-        if path_kind(legacy_path) != "missing":
-            raise LegacySyncLayoutError(
-                "Legacy version-1 sync layout detected; empty the sync folder and run sync again. "
-                "Automatic migration is not supported."
-            )
 
     def _read_index(
         self,

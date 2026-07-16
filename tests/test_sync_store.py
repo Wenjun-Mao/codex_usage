@@ -29,6 +29,7 @@ from codex_usage.sync.errors import (
     MalformedSyncIndexError,
     MissingRemoteConversationError,
     SyncStoreError,
+    TransferFormatMigrationError,
 )
 from codex_usage.sync.io import atomic_copy, atomic_write_json, read_json_object, snapshot_file
 from codex_usage.sync.models import (
@@ -781,6 +782,7 @@ def test_sync_store_errors_share_one_typed_base() -> None:
         MissingRemoteConversationError,
         ConcurrentLocalChangeError,
         ConcurrentRemoteChangeError,
+        TransferFormatMigrationError,
     ):
         assert issubclass(error_type, SyncStoreError)
 
@@ -882,33 +884,80 @@ def test_remote_store_loads_empty_folder_without_writing(tmp_path: Path) -> None
     assert not root.exists()
 
 
+def test_remote_store_load_inventory_migrates_while_transaction_is_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = RemoteStore(tmp_path / "sync")
+    lock_states: list[bool] = []
+
+    def observe_lock(_root: Path) -> None:
+        lock_states.append(store._lock.is_locked)
+
+    monkeypatch.setattr(sync_store, "migrate_remote_layout_v2_to_v3", observe_lock)
+
+    store.load_inventory()
+
+    assert lock_states == [True]
+    assert not store._lock.is_locked
+
+
+def test_remote_store_load_inventory_reuses_existing_transaction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = RemoteStore(tmp_path / "sync")
+    outer_transaction = store.transaction
+    lock_states: list[bool] = []
+
+    def observe_lock(_root: Path) -> None:
+        lock_states.append(store._lock.is_locked)
+
+    def unexpected_nested_transaction():
+        raise AssertionError("load_inventory must reuse the held transaction")
+
+    monkeypatch.setattr(sync_store, "migrate_remote_layout_v2_to_v3", observe_lock)
+    with outer_transaction():
+        monkeypatch.setattr(store, "transaction", unexpected_nested_transaction)
+        store.load_inventory()
+
+    assert lock_states == [True]
+    assert not store._lock.is_locked
+
+
 def test_remote_store_rejects_version_1_layout_without_mutating_it(tmp_path: Path) -> None:
-    legacy = tmp_path / "sync" / "threads" / "thread-1"
+    root = tmp_path / "sync"
+    legacy = root / "threads" / "thread-1"
     legacy.mkdir(parents=True)
     (legacy / "session.jsonl").write_text("{}\n", encoding="utf-8")
-    before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+    before = sorted(path.relative_to(root) for path in root.rglob("*"))
 
     with pytest.raises(LegacySyncLayoutError, match="empty the sync folder"):
-        RemoteStore(tmp_path / "sync").load_inventory()
+        RemoteStore(root).load_inventory()
 
-    assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == before
+    assert sorted(path.relative_to(root) for path in root.rglob("*")) == before
 
 
 @pytest.mark.parametrize(
-    "contents",
-    [b"{not-json\n", b"[]\n", b'{"format_version":1,"updated_at":"","threads":{}}\n'],
+    ("contents", "expected_error"),
+    [
+        (b"{not-json\n", MalformedSyncIndexError),
+        (b"[]\n", MalformedSyncIndexError),
+        (b'{"format_version":1,"updated_at":"","threads":{}}\n', LegacySyncLayoutError),
+    ],
     ids=["invalid-json", "not-object", "wrong-version"],
 )
 def test_remote_store_rejects_malformed_index_without_mutating_it(
     tmp_path: Path,
     contents: bytes,
+    expected_error: type[SyncStoreError],
 ) -> None:
     root = tmp_path / "sync"
     root.mkdir()
     index_path = root / "sync-index.json"
     index_path.write_bytes(contents)
 
-    with pytest.raises(MalformedSyncIndexError):
+    with pytest.raises(expected_error):
         RemoteStore(root).load_inventory()
 
     assert index_path.read_bytes() == contents
@@ -939,14 +988,14 @@ def test_remote_store_rejects_noncanonical_thread_id_index_without_mutating_it(
     ).encode()
     index_path.write_bytes(contents)
     store = RemoteStore(root)
-    before = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")))
+    before = tuple(sorted(path.relative_to(root) for path in root.rglob("*")))
 
     with pytest.raises(MalformedSyncIndexError, match="canonical"):
         store.load_inventory()
 
     assert index_path.read_bytes() == contents
-    assert tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))) == before
-    assert not store.lock_path.exists()
+    assert tuple(sorted(path.relative_to(root) for path in root.rglob("*"))) == before
+    assert not store._lock.is_locked
 
 
 @pytest.mark.parametrize(
@@ -980,14 +1029,14 @@ def test_remote_store_rejects_invalid_nested_thread_identity_without_mutation(
     index_path = root / "sync-index.json"
     index_path.write_bytes(contents)
     store = RemoteStore(root)
-    before = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")))
+    before = tuple(sorted(path.relative_to(root) for path in root.rglob("*")))
 
     with pytest.raises(MalformedSyncIndexError, match=message):
         store.load_inventory()
 
     assert index_path.read_bytes() == contents
-    assert tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))) == before
-    assert not store.lock_path.exists()
+    assert tuple(sorted(path.relative_to(root) for path in root.rglob("*"))) == before
+    assert not store._lock.is_locked
 
 
 @pytest.mark.parametrize(
@@ -1853,7 +1902,7 @@ def test_remote_store_retries_transient_directory_operations(
 
     RemoteStore(root).load_inventory()
 
-    assert attempts == 3
+    assert attempts == 4
 
 
 @pytest.mark.parametrize("operation", ["inspection", "enumeration"])

@@ -14,7 +14,11 @@ from codex_usage.session_cache import (
     CachedFileSummary,
     CachedSessionData,
 )
-from codex_usage.sync.errors import LegacySyncLayoutError, MalformedSyncIndexError
+from codex_usage.sync.errors import (
+    LegacySyncLayoutError,
+    MalformedSyncIndexError,
+    TransferFormatMigrationError,
+)
 from codex_usage.sync.models import (
     LocalInventory,
     RemoteIndex,
@@ -326,6 +330,8 @@ def test_inventory_to_dict_uses_the_strict_protocol_shape() -> None:
 def _snapshot_tree(root: Path) -> tuple[tuple[str, str, bytes], ...]:
     entries: list[tuple[str, str, bytes]] = []
     for path in sorted(root.rglob("*")):
+        if path.name.endswith(".codex-usage.lock"):
+            continue
         relative = path.relative_to(root).as_posix()
         if path.is_symlink():
             entries.append((relative, "symlink", os.readlink(path).encode()))
@@ -360,7 +366,7 @@ def test_load_inventory_discovers_indexed_remote_task_without_local_sessions(
 ) -> None:
     sync_dir = tmp_path / "sync"
     _write_indexed_remote_task(sync_dir, _session_jsonl("thread-1"))
-    before = _snapshot_tree(tmp_path)
+    payload = (sync_dir / "conversations" / "thread-1.jsonl").read_bytes()
 
     result = load_sync_selection_inventory(
         _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
@@ -374,7 +380,11 @@ def test_load_inventory_discovers_indexed_remote_task_without_local_sessions(
         (task.thread_id, task.title, task.availability) for task in result.projects[0].tasks
     ] == [("thread-1", "Remote task", "remote")]
     assert result.issues == ()
-    assert _snapshot_tree(tmp_path) == before
+    index = json.loads((sync_dir / "sync-index.json").read_text(encoding="utf-8"))
+    assert index["format_version"] == 3
+    assert index["threads"]["thread-1"]["file"] == "tasks/thread-1.jsonl"
+    assert (sync_dir / "tasks" / "thread-1.jsonl").read_bytes() == payload
+    assert not (sync_dir / "conversations").exists()
 
 
 def test_load_inventory_rejects_mismatched_remote_index_identity_without_mutation(
@@ -414,24 +424,12 @@ def test_load_inventory_omits_invalid_indexed_remote_task(
     local_data = _cached_local_task_data(tmp_path / "codex-home" / "sessions", "thread-1")
     before = _snapshot_tree(tmp_path)
 
-    remote_only = load_sync_selection_inventory(
+    for data in (
         _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
-        sync_dir,
-    )
-    with_local = load_sync_selection_inventory(local_data, sync_dir)
-
-    assert remote_only.projects == ()
-    assert [(project.project_key, project.project_label) for project in with_local.projects] == [
-        ("repo-a", "Repo A")
-    ]
-    assert [(task.thread_id, task.availability) for task in with_local.projects[0].tasks] == [
-        ("thread-1", "local")
-    ]
-    for result in (remote_only, with_local):
-        assert len(result.issues) == 1
-        assert result.issues[0].code == "unindexed_unreadable"
-        assert result.issues[0].thread_id == "thread-1"
-        assert issue_fragment in result.issues[0].message
+        local_data,
+    ):
+        with pytest.raises(TransferFormatMigrationError, match=issue_fragment):
+            load_sync_selection_inventory(data, sync_dir)
     assert _snapshot_tree(tmp_path) == before
 
 
@@ -457,21 +455,15 @@ def test_load_inventory_omits_indexed_remote_when_materialization_read_fails(
     )
     before = _snapshot_tree(tmp_path)
 
-    remote_only = load_sync_selection_inventory(
+    for data in (
         _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
-        sync_dir,
-    )
-    with_local = load_sync_selection_inventory(local_data, sync_dir)
-
-    assert remote_only.projects == ()
-    assert [(task.thread_id, task.availability) for task in with_local.projects[0].tasks] == [
-        ("thread-1", "local")
-    ]
-    for result in (remote_only, with_local):
-        assert len(result.issues) == 1
-        assert result.issues[0].code == "unindexed_unreadable"
-        assert result.issues[0].thread_id == "thread-1"
-        assert "has no readable session_meta identity" in result.issues[0].message
+        local_data,
+    ):
+        with pytest.raises(
+            TransferFormatMigrationError,
+            match="has no readable session_meta identity",
+        ):
+            load_sync_selection_inventory(data, sync_dir)
     assert _snapshot_tree(tmp_path) == before
 
 
@@ -485,18 +477,14 @@ def test_load_inventory_keeps_valid_indexed_task_with_preexisting_thread_issue(
     )
     before = _snapshot_tree(tmp_path)
 
-    result = load_sync_selection_inventory(
-        _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
-        sync_dir,
-    )
-
-    assert [(task.thread_id, task.availability) for task in result.projects[0].tasks] == [
-        ("thread-1", "remote")
-    ]
-    assert len(result.issues) == 1
-    assert result.issues[0].code == "unindexed_unreadable"
-    assert result.issues[0].thread_id == "thread-1"
-    assert "multiple remote files claim thread id" in result.issues[0].message
+    with pytest.raises(
+        TransferFormatMigrationError,
+        match="multiple remote files claim thread id",
+    ):
+        load_sync_selection_inventory(
+            _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+            sync_dir,
+        )
     assert _snapshot_tree(tmp_path) == before
 
 
