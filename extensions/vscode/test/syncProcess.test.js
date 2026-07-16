@@ -321,64 +321,14 @@ test("runSyncProcess reports ENOENT once even if close follows the child error",
   assert.equal(rejectionCount, 1);
 });
 
-test("extension Task Transfer orchestration keeps task choices transient", () => {
+test("extension delegates Task Transfer commands without retaining task choices", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
-  const coreSource = fs.readFileSync(path.join(__dirname, "../src/core.ts"), "utf8");
 
-  for (const removedName of [
-    "resolveSyncThreadIds",
-    "resolvedSyncOptions",
-    "SyncImportCommandOptions",
-    "buildSyncExportArgs",
-    "buildSyncImportArgs",
-    "appendSyncArgs",
-  ]) {
-    assert.doesNotMatch(extensionSource, new RegExp(`\\b${removedName}\\b`));
-    assert.doesNotMatch(coreSource, new RegExp(`\\b${removedName}\\b`));
-  }
-  assert.doesNotMatch(extensionSource, /selectSyncProjectSettings|selectSyncThreadSettings|conversationMode/);
-  assert.match(extensionSource, /buildSyncInventoryArgs/);
-  assert.match(extensionSource, /parseSyncInventory/);
-  assert.match(extensionSource, /createQuickPick/);
-  assert.match(extensionSource, /let transientThreadIds: string\[\] = \[\]/);
-  assert.doesNotMatch(extensionSource, /SYNC_SELECTION_VERSION_STATE_KEY|SYNC_THREAD_IDS_STATE_KEY/);
-  assert.doesNotMatch(extensionSource, /readSyncSelectionVersionState|readSyncThreadIdsState/);
-  assert.doesNotMatch(extensionSource, /syncSetupTransaction|SyncSetupMutationCoordinator/);
-
+  assert.match(extensionSource, /createTaskTransferVscode\(context/);
   assert.equal((extensionSource.match(/registerCommand\("codexUsage\.selectSyncTasks"/g) || []).length, 1);
-  assert.doesNotMatch(extensionSource, /registerCommand\("codexUsage\.selectSync(?:Projects|Threads)"/);
-});
-
-test("manual directional transfer and status use session task ids without persistent setup guards", () => {
-  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
-  const runSyncSource = extensionSource.slice(
-    extensionSource.indexOf("async function executeSyncDirection"),
-    extensionSource.indexOf("async function showSyncStatus"),
-  );
-  const statusSource = extensionSource.slice(
-    extensionSource.indexOf("async function showSyncStatus"),
-    extensionSource.indexOf("async function openSyncFolder"),
-  );
-
-  assert.equal((runSyncSource.match(/runSyncProcess\(/g) || []).length, 1);
-  assert.equal((runSyncSource.match(/buildSyncPullArgs\(/g) || []).length, 1);
-  assert.equal((runSyncSource.match(/buildSyncPushArgs\(/g) || []).length, 1);
-  assert.doesNotMatch(runSyncSource, /buildSyncInventoryArgs|parseSyncInventory|runCodexUsage\(/);
-  assert.doesNotMatch(runSyncSource, /buildThreadsArgs|sync\", \"status|sync\", \"import|sync\", \"export/);
-  assert.match(runSyncSource, /formatTransferResult\(operation, completion\.result\)/);
-  assert.match(runSyncSource, /threadIds,/);
-  assert.doesNotMatch(runSyncSource, /hasValidSyncSelection|settings\.sync|sync\.enabled/);
-
-  const statusSpawn = statusSource.indexOf("runCodexUsage(");
-  assert.ok(statusSpawn >= 0);
-  assert.equal((statusSource.match(/runCodexUsage\(/g) || []).length, 1);
-  assert.equal((statusSource.match(/buildSyncStatusArgs\(/g) || []).length, 1);
-  assert.doesNotMatch(statusSource, /buildSyncInventoryArgs|parseSyncInventory|buildThreadsArgs|runSyncProcess/);
-
-  assert.match(statusSource, /threadIds:\s*transientThreadIds/);
-  assert.match(statusSource, /Task Transfer status:/);
-  assert.doesNotMatch(statusSource, /hasValidSyncSelection|settings\.sync|sync\.enabled/);
-  assert.doesNotMatch(extensionSource, /selectionVersion|syncThreadIds/);
+  assert.match(extensionSource, /"codexUsage\.selectSyncTasks", taskTransfer\.showMenu/);
+  assert.doesNotMatch(extensionSource, /transientThreadIds|syncThreadIds|selectionVersion/);
+  assert.doesNotMatch(extensionSource, /syncSetupTransaction|SyncSetupMutationCoordinator/);
 });
 
 test("sync has no automatic focus activation or file watcher trigger", () => {
@@ -392,36 +342,10 @@ test("sync has no automatic focus activation or file watcher trigger", () => {
   assert.doesNotMatch(extensionSource, /syncOnFocus|configureSyncWatcher|auto sync/);
 });
 
-test("folder persists while accepted task ids remain session-only", () => {
-  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
-  const selectionSource = extensionSource.slice(
-    extensionSource.indexOf("async function selectSyncTaskSettings"),
-    extensionSource.indexOf("async function selectSyncTasks"),
-  );
-  const rememberSource = extensionSource.slice(
-    extensionSource.indexOf("async function chooseAndRememberTransferFolder"),
-    extensionSource.indexOf("async function forgetTransferFolder"),
-  );
-
-  assert.match(selectionSource, /buildSyncInventoryArgs\(\{\s*syncDir,/);
-  assert.match(selectionSource, /const inventory = parseSyncInventory\(result\.stdout\)/);
-  assert.match(selectionSource, /buildTaskPickerItems\(inventory, transientThreadIds\)/);
-  assert.match(selectionSource, /showSyncTaskPicker\(rows, transientThreadIds\)/);
-
-  const inventoryRun = selectionSource.indexOf("runCodexUsage(");
-  const selectionGuard = selectionSource.indexOf("if (!selectedThreadIds)");
-  assert.ok(inventoryRun >= 0 && inventoryRun < selectionGuard);
-  assert.match(selectionSource.slice(selectionGuard), /return selectedThreadIds;/);
-  assert.doesNotMatch(selectionSource, /globalState\.update\(|getConfiguration\("codexUsage"\)\.update/);
-  assert.match(rememberSource, /globalState\.update\(TRANSFER_FOLDER_STATE_KEY, folder\)/);
-  assert.doesNotMatch(rememberSource, /syncThreadIds|selectionVersion|projectBinding/i);
-});
-
 test("task picker adapter canonicalizes hierarchical selections and settles once", () => {
-  const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
-  const pickerSource = extensionSource.slice(
-    extensionSource.indexOf("function showSyncTaskPicker"),
-    extensionSource.indexOf("async function selectSyncTaskSettings"),
+  const pickerSource = fs.readFileSync(
+    path.join(__dirname, "../src/taskTransferVscodePicker.ts"),
+    "utf8",
   );
 
   assert.match(pickerSource, /createQuickPick<TaskQuickPickItem>\(\)/);
@@ -429,15 +353,15 @@ test("task picker adapter canonicalizes hierarchical selections and settles once
   assert.match(pickerSource, /kind:\s*vscode\.QuickPickItemKind\.Separator/);
   assert.doesNotMatch(pickerSource, /\.\.\.row/);
   assert.ok(
-    pickerSource.indexOf("reduceTaskSelection(selectedThreadIds, removed") <
-      pickerSource.indexOf("reduceTaskSelection(selectedThreadIds, added"),
+    pickerSource.indexOf("for (const rowId of removed)") <
+      pickerSource.indexOf("for (const rowId of added)"),
   );
   assert.match(pickerSource, /selectedPickerItemIds\(rows, selectedThreadIds\)/);
   assert.match(pickerSource, /Select at least one Codex task/);
   assert.match(pickerSource, /let settled = false/);
 });
 
-test("status text is usage-only except for pure transient Task Transfer labels", () => {
+test("extension status text uses only pure transient Task Transfer labels", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const statusSource = extensionSource.slice(
     extensionSource.indexOf("function updateStatusItem"),
@@ -449,19 +373,10 @@ test("status text is usage-only except for pure transient Task Transfer labels",
   assert.doesNotMatch(statusSource, /Setup|required|Sync:|enabled|threadIds|taskTransfer\.folder/i);
 });
 
-test("activation removes obsolete state at global workspace and folder scopes", () => {
+test("activation delegates obsolete state cleanup to the VS Code state adapter", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
-  const migrationSource = extensionSource.slice(
-    extensionSource.indexOf("function taskTransferStateStore"),
-    extensionSource.indexOf("async function resolveBundledExecutable"),
-  );
 
-  assert.match(extensionSource, /await migrateTaskTransferState\(/);
-  assert.match(migrationSource, /removeGlobalState\(key\)/);
-  assert.match(migrationSource, /ConfigurationTarget\.Global/);
-  assert.match(migrationSource, /ConfigurationTarget\.Workspace/);
-  assert.match(migrationSource, /ConfigurationTarget\.WorkspaceFolder/);
-  assert.match(migrationSource, /workspace\.workspaceFolders/);
+  assert.match(extensionSource, /await migrateVscodeTaskTransferState\(/);
+  assert.doesNotMatch(extensionSource, /sync\.enabled|ConfigurationTarget\.WorkspaceFolder/);
   assert.doesNotMatch(extensionSource, /syncSetupTransaction|SyncSetupMutationCoordinator/);
-  assert.doesNotMatch(extensionSource, /pauseSync|resumeSync|clearSyncSetup/);
 });

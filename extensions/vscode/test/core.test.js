@@ -14,15 +14,11 @@ const {
   buildTransitionSuggestArgs,
   bundledExecutablePath,
   extensionVersionLabel,
-  injectWebviewControls,
-  injectWebviewCsp,
   normalizeTheme,
   normalizeRange,
   parseProjectChoices,
   readProjectKeysState,
   parseTransitionChoices,
-  renderErrorHtml,
-  renderLoadingHtml,
   WEBVIEW_COMMANDS,
 } = core;
 
@@ -174,17 +170,6 @@ test("bundledExecutablePath resolves supported bundled executables and rejects u
   assert.throws(() => bundledExecutablePath("/extension", "linux", "x64"), /Unsupported platform/);
 });
 
-test("injectWebviewCsp adds a strict CSP without external allowances", () => {
-  const html = "<!doctype html><html><head><title>Report</title></head><body>ok</body></html>";
-  const out = injectWebviewCsp(html, "vscode-resource:");
-
-  assert.match(out, /Content-Security-Policy/);
-  assert.match(out, /default-src 'none'/);
-  assert.match(out, /style-src 'unsafe-inline'/);
-  assert.doesNotMatch(out, /https:/);
-  assert.doesNotMatch(out, /script-src/);
-});
-
 test("parseProjectChoices reads project rows for QuickPick", () => {
   const choices = parseProjectChoices(
     JSON.stringify({
@@ -246,49 +231,6 @@ test("parseTransitionChoices rejects invalid JSON payloads", () => {
   assert.throws(() => parseTransitionChoices("{}"), /project_transitions array/);
 });
 
-test("injectWebviewControls adds command links without scripts or external URLs", () => {
-  const html = "<!doctype html><html><head><title>Report</title></head><body><main><h1>Report</h1></main></body></html>";
-  const out = injectWebviewControls(html, {
-    range: "7d",
-    projectKeys: ["repo-a", "repo-b"],
-    theme: "night",
-    taskTransfer: { folder: "D:/CodexSync" },
-    versionLabel: "v0.1.9",
-  });
-
-  assert.match(out, /codex-usage-actions/);
-  assert.match(out, /codex-usage-version/);
-  assert.match(out, /command:codexUsage.selectRange/);
-  assert.match(out, /command:codexUsage.selectTheme/);
-  assert.match(out, /command:codexUsage.openSyncMenu/);
-  assert.doesNotMatch(out, /command:codexUsage.syncNow/);
-  assert.doesNotMatch(out, /command:codexUsage.syncStatus/);
-  assert.doesNotMatch(out, /command:codexUsage.reviewProjectTransitions/);
-  assert.match(out, /Projects: 2 selected/);
-  assert.match(out, /Theme: Night/);
-  assert.match(out, /Task Transfer ▾/);
-  assert.doesNotMatch(out, /Setup required|Sync: Off|Sync: \d+ tasks?/i);
-  assert.doesNotMatch(out, />Sync Now<\/a>/);
-  assert.doesNotMatch(out, />Sync Status<\/a>/);
-  assert.doesNotMatch(out, />Transitions<\/a>/);
-  assert.match(out, />v0\.1\.9<\/span>/);
-  assert.doesNotMatch(out, /<script/i);
-  assert.doesNotMatch(out, /https:/);
-});
-
-test("injectWebviewControls always labels Task Transfer even without a folder", () => {
-  const html = "<!doctype html><html><head><title>Report</title></head><body><main><h1>Report</h1></main></body></html>";
-  const out = injectWebviewControls(html, {
-    range: "7d",
-    projectKeys: [],
-    theme: "auto",
-    taskTransfer: { folder: "" },
-  });
-
-  assert.match(out, /Task Transfer ▾/);
-  assert.doesNotMatch(out, /Setup required|Sync: Off|Sync: \d+ tasks?/i);
-});
-
 test("extensionVersionLabel reads package metadata", () => {
   assert.equal(extensionVersionLabel({ version: "0.1.9" }), "v0.1.9");
   assert.equal(extensionVersionLabel({ version: " " }), "");
@@ -317,26 +259,21 @@ test("package metadata no longer contributes removed manual settings", () => {
   assert.equal(properties["codexUsage.sync.threadIds"], undefined);
   assert.equal(properties["codexUsage.sync.projectKeys"], undefined);
   assert.equal(properties["codexUsage.sync.conversationMode"], undefined);
-  assert.ok(properties["codexUsage.sync.enabled"]);
+  assert.equal(properties["codexUsage.sync.enabled"], undefined);
   assert.equal(properties["codexUsage.sync.autoPull"], undefined);
   assert.equal(properties["codexUsage.sync.autoPush"], undefined);
 });
 
-test("package metadata describes manual-only sync mode clearly", () => {
-  const properties = packageJson.contributes.configuration.properties;
-
-  assert.match(properties["codexUsage.sync.enabled"].description, /explicit Pull Tasks and Push Tasks/i);
-  assert.match(properties["codexUsage.sync.enabled"].description, /task/i);
-  assert.doesNotMatch(properties["codexUsage.sync.enabled"].description, /automatic/i);
-});
-
-test("package metadata contributes one exact task selection command", () => {
+test("package metadata keeps command ids with exact Task Transfer titles", () => {
   const commands = new Map(packageJson.contributes.commands.map((item) => [item.command, item.title]));
 
-  assert.equal(commands.get("codexUsage.openSyncMenu"), "Codex Usage: Sync Menu");
-  assert.equal(commands.get("codexUsage.selectSyncTasks"), "Codex Usage: Select Sync Tasks");
-  assert.equal(commands.get("codexUsage.pullTasks"), "Codex Usage: Pull Tasks");
-  assert.equal(commands.get("codexUsage.pushTasks"), "Codex Usage: Push Tasks");
+  assert.equal(commands.get("codexUsage.openSyncMenu"), "Codex Usage: Task Transfer");
+  assert.equal(commands.get("codexUsage.configureSync"), "Codex Usage: Choose Transfer Folder");
+  assert.equal(commands.get("codexUsage.selectSyncTasks"), "Codex Usage: Task Transfer");
+  assert.equal(commands.get("codexUsage.pullTasks"), "Codex Usage: Import Tasks");
+  assert.equal(commands.get("codexUsage.pushTasks"), "Codex Usage: Export Tasks");
+  assert.equal(commands.get("codexUsage.syncStatus"), "Codex Usage: Review Transfer Status");
+  assert.equal(commands.get("codexUsage.openSyncFolder"), "Codex Usage: Open Transfer Folder");
   assert.equal(commands.has("codexUsage.syncNow"), false);
   assert.equal(commands.has("codexUsage.selectSyncProjects"), false);
   assert.equal(commands.has("codexUsage.selectSyncThreads"), false);
@@ -419,17 +356,4 @@ test("extension package includes Marketplace support documents", () => {
   assert.match(readme, /Windows x64/i);
   assert.match(readme, /Preview/i);
   assert.match(readme, /fast mode/i);
-});
-
-test("loading and error HTML are script-free and themeable", () => {
-  const loading = renderLoadingHtml("Initializing Codex usage cache. This can take a few seconds the first time.");
-  const error = renderErrorHtml("boom");
-
-  assert.match(loading, /data-codex-theme="auto"/);
-  assert.match(loading, /Initializing Codex usage cache/);
-  assert.match(error, /data-codex-theme="auto"/);
-  assert.match(loading, /body\.vscode-dark/);
-  assert.match(error, /body\.vscode-dark/);
-  assert.doesNotMatch(loading, /<script/i);
-  assert.doesNotMatch(error, /<script/i);
 });

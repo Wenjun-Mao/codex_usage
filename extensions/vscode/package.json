@@ -89,31 +89,31 @@
       },
       {
         "command": "codexUsage.openSyncMenu",
-        "title": "Codex Usage: Sync Menu"
+        "title": "Codex Usage: Task Transfer"
       },
       {
         "command": "codexUsage.configureSync",
-        "title": "Codex Usage: Configure Sync"
+        "title": "Codex Usage: Choose Transfer Folder"
       },
       {
         "command": "codexUsage.selectSyncTasks",
-        "title": "Codex Usage: Select Sync Tasks"
+        "title": "Codex Usage: Task Transfer"
       },
       {
         "command": "codexUsage.pullTasks",
-        "title": "Codex Usage: Pull Tasks"
+        "title": "Codex Usage: Import Tasks"
       },
       {
         "command": "codexUsage.pushTasks",
-        "title": "Codex Usage: Push Tasks"
+        "title": "Codex Usage: Export Tasks"
       },
       {
         "command": "codexUsage.syncStatus",
-        "title": "Codex Usage: Sync Status"
+        "title": "Codex Usage: Review Transfer Status"
       },
       {
         "command": "codexUsage.openSyncFolder",
-        "title": "Codex Usage: Open Sync Folder"
+        "title": "Codex Usage: Open Transfer Folder"
       }
     ],
     "configuration": {
@@ -146,11 +146,6 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically split usage when high-confidence local repository transitions are detected."
-        },
-        "codexUsage.sync.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable experimental Codex task sync through explicit Pull Tasks and Push Tasks commands."
         }
       }
     }
@@ -158,7 +153,8 @@
   "scripts": {
     "build:python:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ..\\..\\scripts\\build-windows-exe.ps1",
     "build:python:mac": "bash ../../scripts/build-macos-arm64-exe.sh",
-    "build": "tsc -p .",
+    "clean": "node scripts/clean-output.js",
+    "build": "npm run clean && tsc -p .",
     "watch": "tsc -watch -p .",
     "test": "npm run build && node --test test/*.test.js",
     "package:vsix": "npm run package:vsix:win",
