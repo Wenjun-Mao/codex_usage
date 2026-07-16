@@ -1,6 +1,6 @@
 # Marketplace Preview Release Checklist
 
-This project is prepared for Windows x64 and macOS Apple Silicon Marketplace preview distribution. Confirm the Marketplace publisher id `wenjun-mao` exists before publishing.
+This project is prepared for Windows x64 and macOS Apple Silicon Marketplace preview distribution. Linux packaging is a follow-up and is not a supported or hidden publication target for this release. Confirm the Marketplace publisher id `wenjun-mao` exists before publishing.
 
 ## Build And Test
 
@@ -90,6 +90,7 @@ Before publishing:
 - Confirm `extensions/vscode/package.json` has `"preview": true`.
 - Confirm `extensions/vscode/package.json` does not have `"private": true`.
 - Confirm the package targets are Windows x64 and macOS Apple Silicon.
+- Confirm no Linux package or Marketplace target is included; Linux remains follow-up work.
 - Confirm the extension README clearly says Windows x64 and macOS Apple Silicon Preview.
 - Confirm `PRIVACY.md`, `LICENSE`, `CHANGELOG.md`, and `SUPPORT.md` are current.
 - Confirm pricing notes say pricing is checked-in and effective-dated, with no live fetch.
@@ -149,13 +150,36 @@ Manual smoke checklist:
 - Run `Codex Usage: Refresh Dashboard`.
 - Run `Codex Usage: Select Range`.
 - Run `Codex Usage: Select Projects`.
+- Run `Codex Usage: Task Transfer`.
+- Run `Codex Usage: Import Tasks`, `Codex Usage: Export Tasks`, and `Codex Usage: Review Transfer Status`.
 - Run `Codex Usage: Open Settings`.
 - Confirm readable behavior when no session files are found.
 - Confirm the dashboard says pricing uses rates effective at each usage event.
+- Confirm token reporting works with no transfer folder remembered.
+
+## Task Transfer Acceptance
+
+- Confirm Import, Export, and Review each open with a fresh empty selection.
+- Export selected active tasks and confirm unselected and archived tasks are not copied.
+- Confirm the filesystem provider has converged before testing on the destination computer.
+- Confirm the corresponding destination project checkout already exists; Task Transfer must not clone it.
+- Confirm a matching Git origin maps automatically and a mismatched Git origin is rejected.
+- Confirm a non-Git destination requires explicit unverified-mapping confirmation.
+- Import a task and confirm its JSONL remains in the transfer folder.
+- Confirm conflicts, opposite-direction work, and invalid mappings block the complete selected batch without partial copies.
+- Confirm a valid version-2 transfer folder migrates automatically to the version-3 `tasks/` layout.
+
+Extension-only manual gate:
+
+- Quit the Codex desktop app.
+- Open an existing matching checkout in VS Code.
+- Import a remote-only task using the packaged extension.
+- Reload VS Code.
+- Confirm the official Codex extension lists and opens the task under that workspace.
 
 ## Archive/Delete Accounting Checks
 
-Archived Codex conversations should remain in usage totals through `archived_sessions`. Deleted conversations should remain in historical totals after the local cache has parsed them once, but the real delete behavior must be observed on an expendable conversation instead of assumed.
+Archived Codex tasks should remain in usage totals through `archived_sessions`. Deleted tasks should remain in historical totals after the local cache has parsed them once, but the real delete behavior must be observed on an expendable task instead of assumed.
 
 Before any manual delete experiment, capture:
 
@@ -164,14 +188,14 @@ uv run codex-usage storage snapshot --json > output\storage-snapshot-before-dele
 uv run codex-usage summary --range all --by session --json > output\delete-experiment-before-summary.json
 ```
 
-Then delete one nonessential Codex conversation in the Codex app and capture:
+Then delete one nonessential Codex task in the Codex app and capture:
 
 ```powershell
 uv run codex-usage storage snapshot --json > output\storage-snapshot-after-delete-experiment.json
 uv run codex-usage summary --range all --by session --json > output\delete-experiment-after-summary.json
 ```
 
-Do not use a conversation needed for sync or resume testing. This beta preserves parsed historical usage but cannot restore a deleted Codex conversation.
+Do not use a task needed for Task Transfer testing. This beta preserves parsed historical usage but cannot restore a deleted Codex task.
 
 ## Codex Delete Behavior Observation
 
@@ -183,6 +207,7 @@ Observed on Windows with Codex app build current as of 2026-05-27:
 ## Preview Notes
 
 - Preview targets are Windows x64 and macOS Apple Silicon.
+- Linux packaging is follow-up work and is not supported in this release.
 - The VSIX is self-contained and does not require Python, `uv`, or this repository at runtime.
 - Intel macOS is not supported.
 - The extension reads local Codex session files and writes local reports only.

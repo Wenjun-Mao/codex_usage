@@ -1,7 +1,7 @@
 {
   "name": "codex-usage-dashboard",
   "displayName": "Codex Usage Dashboard",
-  "description": "Local dashboard for Codex token usage, project rollups, and API-equivalent cost estimates.",
+  "description": "Local Codex token usage dashboard with optional cross-computer Codex task transfer.",
   "publisher": "wenjun-mao",
   "version": "0.1.35",
   "preview": true,
@@ -20,7 +20,9 @@
     "tokens",
     "usage",
     "dashboard",
-    "cost"
+    "cost",
+    "task-transfer",
+    "cross-computer"
   ],
   "engines": {
     "vscode": "^1.90.0"
