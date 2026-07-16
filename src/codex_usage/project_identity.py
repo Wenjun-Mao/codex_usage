@@ -53,6 +53,10 @@ def normalize_project_key(value: str) -> str:
     return _normalize_path_text(raw)
 
 
+def is_git_project_key(value: str) -> bool:
+    return _looks_like_repo_value(value.strip())
+
+
 def _origin_url_from_cwd(cwd: str) -> str:
     config_path = _find_git_config(cwd)
     if config_path is None:

@@ -25,6 +25,7 @@ from codex_usage.sync.identity import require_remote_index_thread_identity
 from codex_usage.sync.io import atomic_copy, snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
+    ProjectResolutionRequest,
     RemoteInventory,
     RemoteThreadEntry,
     SyncIssue,
@@ -234,7 +235,13 @@ def _prepare_sync_plan(
     remote = store.load_inventory()
     selected = normalize_selected_thread_ids(thread_ids)
     remote = store.materialize_selected(remote, selected)
-    plan = build_sync_plan(local, remote, selected, sync_dir)
+    plan = build_sync_plan(
+        local,
+        remote,
+        selected,
+        sync_dir,
+        project_resolution=ProjectResolutionRequest(),
+    )
     return promote_matching_local_metadata(remote, local, plan), plan
 
 

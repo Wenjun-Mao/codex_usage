@@ -5,6 +5,10 @@ def test_sync_package_exports_only_v2_models_and_runner_contract() -> None:
     assert sync_module.__all__ == [
         "LocalInventory",
         "LocalSyncState",
+        "ProjectBinding",
+        "ProjectDestination",
+        "ProjectIdentityKind",
+        "ProjectResolutionRequest",
         "RemoteIndex",
         "RemoteInventory",
         "RemoteThreadEntry",
@@ -30,3 +34,5 @@ def test_sync_package_exports_only_v2_models_and_runner_contract() -> None:
     assert not hasattr(sync_module, "plan_sync")
     assert not hasattr(sync_module, "list_threads")
     assert not hasattr(sync_module, "SYNC_VERSION")
+    assert sync_module.ProjectBinding.__name__ == "ProjectBinding"
+    assert sync_module.ProjectDestination.__name__ == "ProjectDestination"

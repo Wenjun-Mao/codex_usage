@@ -7,6 +7,7 @@ from codex_usage.sync.constants import TRANSFER_TASKS_DIRNAME
 from codex_usage.sync.io import is_byte_prefix, snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
+    ProjectResolutionRequest,
     RemoteInventory,
     RemoteThreadEntry,
     SyncFileSnapshot,
@@ -75,6 +76,8 @@ def build_sync_plan(
     remote: RemoteInventory,
     selected_thread_ids: tuple[str, ...],
     sync_dir: Path,
+    *,
+    project_resolution: ProjectResolutionRequest | None,
 ) -> SyncPlan:
     selected_ids = tuple(dict.fromkeys(selected_thread_ids))
     unmaterialized = [
@@ -135,7 +138,8 @@ def build_sync_plan(
 
         local_project_root: Path | None = None
         if (
-            not item_issues
+            project_resolution is not None
+            and not item_issues
             and effective_entry is not None
             and remote_snapshot.exists
             and action in {"pull", "push", "none"}
@@ -145,6 +149,7 @@ def build_sync_plan(
                 local,
                 local_thread,
                 effective_entry,
+                project_resolution,
             )
             if project_issue is not None:
                 issues.append(project_issue)

@@ -1,6 +1,10 @@
 from codex_usage.sync.models import (
     LocalInventory,
     LocalSyncState,
+    ProjectBinding,
+    ProjectDestination,
+    ProjectIdentityKind,
+    ProjectResolutionRequest,
     RemoteIndex,
     RemoteInventory,
     RemoteThreadEntry,
@@ -25,6 +29,10 @@ from codex_usage.sync.selection_inventory import (
 __all__ = [
     "LocalInventory",
     "LocalSyncState",
+    "ProjectBinding",
+    "ProjectDestination",
+    "ProjectIdentityKind",
+    "ProjectResolutionRequest",
     "RemoteIndex",
     "RemoteInventory",
     "RemoteThreadEntry",

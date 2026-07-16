@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from codex_usage.sync.constants import (
     LEGACY_REMOTE_TRANSFER_FORMAT_VERSION,
@@ -13,7 +13,38 @@ from codex_usage.sync.identity import (
     require_canonical_thread_id,
     require_remote_index_thread_identity,
 )
+from codex_usage.sync.model_validation import (
+    REMOTE_INDEX_KEYS as _REMOTE_INDEX_KEYS,
+    REMOTE_THREAD_ENTRY_KEYS as _REMOTE_THREAD_ENTRY_KEYS,
+    require_dict as _require_dict,
+    require_int as _require_int,
+    require_object as _require_object,
+    require_string as _require_string,
+    require_string_tuple as _require_string_tuple,
+)
 from codex_usage.threads import ThreadInfo
+
+
+ProjectIdentityKind = Literal["git", "path"]
+
+
+@dataclass(frozen=True)
+class ProjectBinding:
+    project_key: str
+    path: Path
+    confirmed_unverified: bool = False
+
+
+@dataclass(frozen=True)
+class ProjectResolutionRequest:
+    candidate_roots: tuple[Path, ...] = ()
+    bindings: tuple[ProjectBinding, ...] = ()
+
+
+@dataclass(frozen=True)
+class ProjectDestination:
+    identity_kind: ProjectIdentityKind
+    candidate_roots: tuple[Path, ...]
 
 
 @dataclass(frozen=True)
@@ -450,50 +481,3 @@ class SyncRunResult:
             "pushed": list(self.pushed),
             "issues": [issue.to_dict() for issue in self.issues],
         }
-
-
-_REMOTE_THREAD_ENTRY_KEYS = frozenset(
-    {
-        "file",
-        "source_relative_path",
-        "index_entry",
-        "project_key",
-        "project_label",
-        "project_aliases",
-        "sha256",
-        "size_bytes",
-        "session_updated_at",
-        "exported_at",
-        "source_machine_id",
-    }
-)
-_REMOTE_INDEX_KEYS = frozenset({"format_version", "updated_at", "threads"})
-
-
-def _require_object(value: Any, keys: frozenset[str], label: str) -> None:
-    if not isinstance(value, dict) or set(value) != keys:
-        raise ValueError(f"{label} must contain exactly: {', '.join(sorted(keys))}")
-
-
-def _require_string(value: Any, label: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{label} must be a string")
-    return value
-
-
-def _require_int(value: Any, label: str) -> int:
-    if type(value) is not int:
-        raise ValueError(f"{label} must be an integer")
-    return value
-
-
-def _require_dict(value: Any, label: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ValueError(f"{label} must be an object")
-    return dict(value)
-
-
-def _require_string_tuple(value: Any, label: str) -> tuple[str, ...]:
-    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-        raise ValueError(f"{label} must be an array of strings")
-    return tuple(value)

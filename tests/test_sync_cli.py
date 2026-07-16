@@ -181,7 +181,7 @@ def test_cli_sync_inventory_lists_one_local_task_from_an_empty_remote_folder(
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert payload["inventory_version"] == 1
+    assert payload["inventory_version"] == 2
     assert payload["issues"] == []
     assert len(payload["projects"]) == 1
     assert payload["projects"][0]["project_key"] == "/repo/first"
