@@ -1,8 +1,22 @@
+export type ProjectBinding = {
+  projectKey: string;
+  path: string;
+  confirmedUnverified: boolean;
+};
+
 export type SyncCommandOptions = {
   syncDir: string;
   threadIds: string[];
   autoTransitions: boolean;
+  candidateProjectRoots: string[];
+  projectBindings: ProjectBinding[];
 };
+
+type SyncCommandBuilderOptions = Omit<
+  SyncCommandOptions,
+  "candidateProjectRoots" | "projectBindings"
+> &
+  Partial<Pick<SyncCommandOptions, "candidateProjectRoots" | "projectBindings">>;
 
 export type SyncProgressPhase = "scanning" | "pulling" | "pushing";
 
@@ -109,29 +123,66 @@ const THREAD_KEYS = [
 const ISSUE_KEYS = ["code", "message", "thread_id"] as const;
 const PROGRESS_PHASES = new Set<SyncProgressPhase>(["scanning", "pulling", "pushing"]);
 
-export function buildSyncPullArgs(options: SyncCommandOptions): string[] {
+export function buildSyncPullArgs(options: SyncCommandBuilderOptions): string[] {
   return buildSyncArgs("pull", options);
 }
 
-export function buildSyncPushArgs(options: SyncCommandOptions): string[] {
+export function buildSyncPushArgs(options: SyncCommandBuilderOptions): string[] {
   return buildSyncArgs("push", options);
 }
 
-export function buildSyncStatusArgs(options: SyncCommandOptions): string[] {
+export function buildSyncStatusArgs(options: SyncCommandBuilderOptions): string[] {
   return buildSyncArgs("status", options);
 }
 
-function buildSyncArgs(command: "pull" | "push" | "status", options: SyncCommandOptions): string[] {
+function buildSyncArgs(command: "pull" | "push" | "status", options: SyncCommandBuilderOptions): string[] {
   const args = ["sync", command, "--json"];
   const syncDir = options.syncDir.trim();
   if (syncDir) {
     args.push("--sync-dir", syncDir);
   }
+  appendSelectors(args, "--candidate-project-root", options.candidateProjectRoots);
   if (options.autoTransitions === false) {
     args.push("--no-auto-transitions");
   }
+  appendProjectBindings(args, options.projectBindings);
   appendSelectors(args, "--thread-id", options.threadIds);
   return args;
+}
+
+function appendProjectBindings(args: string[], values: unknown): void {
+  const bindings = normalizeProjectBindings(values);
+  for (const binding of bindings) {
+    args.push("--project-binding", binding.projectKey, binding.path);
+  }
+  for (const binding of bindings) {
+    if (binding.confirmedUnverified) {
+      args.push("--confirm-unverified-project", binding.projectKey);
+    }
+  }
+}
+
+function normalizeProjectBindings(values: unknown): ProjectBinding[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  const bindings: ProjectBinding[] = [];
+  for (const value of values) {
+    if (
+      !isRecord(value) ||
+      typeof value.projectKey !== "string" ||
+      typeof value.path !== "string" ||
+      typeof value.confirmedUnverified !== "boolean"
+    ) {
+      continue;
+    }
+    const projectKey = value.projectKey.trim();
+    const path = value.path.trim();
+    if (projectKey && path) {
+      bindings.push({ projectKey, path, confirmedUnverified: value.confirmedUnverified });
+    }
+  }
+  return bindings;
 }
 
 function appendSelectors(args: string[], flag: string, values: unknown): void {
@@ -284,7 +335,7 @@ function exactRecord(
   }
   const allowed = new Set([...requiredKeys, ...optionalKeys]);
   if (requiredKeys.some((key) => !(key in value)) || Object.keys(value).some((key) => !allowed.has(key))) {
-    invalidResult(`${label} does not match the v2 payload contract`);
+    invalidResult(`${label} does not match the task transfer payload contract`);
   }
   return value;
 }

@@ -4,7 +4,7 @@ from pathlib import Path
 import codex_usage.sync.bookkeeping as bookkeeping_module
 import codex_usage.sync.runner as runner_module
 from codex_usage.session_cache import load_cached_session_data
-from codex_usage.sync import pull_sync, push_sync
+from codex_usage.sync import ProjectResolutionRequest, pull_sync, push_sync
 from codex_usage.sync.errors import ConcurrentLocalChangeError
 from codex_usage.sync.state import LocalStateStore
 
@@ -250,6 +250,7 @@ def _pull(
         data=data,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
+        project_resolution=ProjectResolutionRequest(),
         on_progress=progress.append if progress is not None else None,
     )
 

@@ -1,4 +1,5 @@
 export type SyncTaskAvailability = "local" | "remote" | "both";
+export type SyncProjectIdentityKind = "git" | "path";
 
 export type SyncInventoryTask = {
   threadId: string;
@@ -6,11 +7,15 @@ export type SyncInventoryTask = {
   updatedAt: string;
   estimatedSyncBytes: number;
   availability: SyncTaskAvailability;
+  state: string;
+  action: string;
 };
 
 export type SyncInventoryProject = {
   projectKey: string;
   projectLabel: string;
+  identityKind: SyncProjectIdentityKind;
+  candidateRoots: string[];
   tasks: SyncInventoryTask[];
 };
 
@@ -21,7 +26,7 @@ export type SyncInventoryIssue = {
 };
 
 export type SyncInventory = {
-  inventoryVersion: 1;
+  inventoryVersion: 2;
   projects: SyncInventoryProject[];
   issues: SyncInventoryIssue[];
 };
@@ -29,13 +34,23 @@ export type SyncInventory = {
 export type SyncInventoryCommandOptions = {
   syncDir: string;
   autoTransitions: boolean;
+  candidateProjectRoots?: string[];
 };
 
 const INVENTORY_KEYS = ["inventory_version", "projects", "issues"] as const;
-const PROJECT_KEYS = ["project_key", "project_label", "tasks"] as const;
-const TASK_KEYS = ["thread_id", "title", "updated_at", "estimated_sync_bytes", "availability"] as const;
+const PROJECT_KEYS = ["project_key", "project_label", "identity_kind", "candidate_roots", "tasks"] as const;
+const TASK_KEYS = [
+  "thread_id",
+  "title",
+  "updated_at",
+  "estimated_sync_bytes",
+  "availability",
+  "state",
+  "action",
+] as const;
 const ISSUE_KEYS = ["code", "message", "thread_id"] as const;
 const TASK_AVAILABILITIES = new Set<SyncTaskAvailability>(["local", "remote", "both"]);
+const PROJECT_IDENTITY_KINDS = new Set<SyncProjectIdentityKind>(["git", "path"]);
 
 export function buildSyncInventoryArgs(options: SyncInventoryCommandOptions): string[] {
   const args = ["sync", "inventory", "--json"];
@@ -43,6 +58,7 @@ export function buildSyncInventoryArgs(options: SyncInventoryCommandOptions): st
   if (syncDir) {
     args.push("--sync-dir", syncDir);
   }
+  appendSelectors(args, "--candidate-project-root", options.candidateProjectRoots);
   if (options.autoTransitions === false) {
     args.push("--no-auto-transitions");
   }
@@ -58,14 +74,14 @@ export function parseSyncInventory(json: string): SyncInventory {
   }
 
   const inventory = exactRecord(payload, INVENTORY_KEYS, "");
-  if (inventory.inventory_version !== 1) {
-    invalidInventory("inventory_version", "must equal 1");
+  if (inventory.inventory_version !== 2) {
+    invalidInventory("inventory_version", "must equal 2");
   }
 
   const projectKeys = new Set<string>();
   const threadIds = new Set<string>();
   return {
-    inventoryVersion: 1,
+    inventoryVersion: 2,
     projects: parseArray(
       inventory.projects,
       (project, index) => parseProject(project, index, projectKeys, threadIds),
@@ -88,10 +104,16 @@ function parseProject(
     invalidInventory(`${path}.project_key`, "must be unique");
   }
   projectKeys.add(projectKey);
+  const identityKind = stringField(project.identity_kind, `${path}.identity_kind`);
+  if (!PROJECT_IDENTITY_KINDS.has(identityKind as SyncProjectIdentityKind)) {
+    invalidInventory(`${path}.identity_kind`, "must be git or path");
+  }
 
   return {
     projectKey,
     projectLabel: stringField(project.project_label, `${path}.project_label`),
+    identityKind: identityKind as SyncProjectIdentityKind,
+    candidateRoots: parseStringArray(project.candidate_roots, `${path}.candidate_roots`),
     tasks: parseArray(
       project.tasks,
       (task, taskIndex) => parseTask(task, taskIndex, `${path}.tasks`, threadIds),
@@ -120,7 +142,26 @@ function parseTask(value: unknown, index: number, parentPath: string, threadIds:
     updatedAt: stringField(task.updated_at, `${path}.updated_at`),
     estimatedSyncBytes: nonnegativeInteger(task.estimated_sync_bytes, `${path}.estimated_sync_bytes`),
     availability: availability as SyncTaskAvailability,
+    state: stringField(task.state, `${path}.state`),
+    action: stringField(task.action, `${path}.action`),
   };
+}
+
+function appendSelectors(args: string[], flag: string, values: unknown): void {
+  if (!Array.isArray(values)) {
+    return;
+  }
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const selector = value.trim();
+    if (selector && !seen.has(selector)) {
+      seen.add(selector);
+      args.push(flag, selector);
+    }
+  }
 }
 
 function parseIssue(value: unknown, index: number): SyncInventoryIssue {
@@ -142,6 +183,14 @@ function parseArray<T>(
     invalidInventory(path, "must be an array");
   }
   return value.map(parseItem);
+}
+
+function parseStringArray(value: unknown, path: string): string[] {
+  return parseArray(
+    value,
+    (item, index) => stringField(item, `${path}[${index}]`),
+    path,
+  );
 }
 
 function exactRecord(value: unknown, requiredKeys: readonly string[], path: string): Record<string, unknown> {

@@ -10,6 +10,7 @@ import pytest
 
 import codex_usage.cli as cli_module
 import codex_usage.sync_cli as sync_cli
+from codex_usage.sync import ProjectResolutionRequest
 from codex_usage.sync_cli import _sync_session_dirs
 
 
@@ -141,7 +142,9 @@ def test_sync_inventory_loads_local_data_once_and_prints_json(
         sync_cli, "_sync_session_dirs", lambda *, create: [tmp_path / "sessions"]
     )
     monkeypatch.setattr(
-        sync_cli, "load_sync_selection_inventory", lambda value, path: expected
+        sync_cli,
+        "load_sync_selection_inventory",
+        lambda value, path, *, candidate_roots: expected,
     )
 
     exit_code = sync_cli.handle_sync_inventory(_args(tmp_path), load)
@@ -210,7 +213,9 @@ def test_sync_inventory_prints_one_human_summary_line(
         sync_cli, "_sync_session_dirs", lambda *, create: [tmp_path / "sessions"]
     )
     monkeypatch.setattr(
-        sync_cli, "load_sync_selection_inventory", lambda data, path: inventory
+        sync_cli,
+        "load_sync_selection_inventory",
+        lambda data, path, *, candidate_roots: inventory,
     )
 
     exit_code = sync_cli.handle_sync_inventory(
@@ -272,6 +277,7 @@ def test_sync_push_loads_cache_once_after_scanning_and_passes_normalized_thread_
     assert calls[1][0] == "run"
     assert calls[1][1]["data"] is data
     assert calls[1][1]["thread_ids"] == ("Thread/One",)
+    assert calls[1][1]["project_resolution"] == ProjectResolutionRequest()
     assert "project_keys" not in calls[1][1]
     assert captured.err.splitlines()[0] == '{"type":"sync_progress","phase":"scanning"}'
     assert json.loads(captured.out)["outcome"] == "completed"

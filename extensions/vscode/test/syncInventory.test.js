@@ -10,6 +10,8 @@ function inventoryTask(overrides = {}) {
     updated_at: "2026-07-14T12:00:00Z",
     estimated_sync_bytes: 2048,
     availability: "remote",
+    state: "remote_only",
+    action: "pull",
     ...overrides,
   };
 }
@@ -18,6 +20,8 @@ function inventoryProject(overrides = {}) {
   return {
     project_key: "repo-a",
     project_label: "Repo A",
+    identity_kind: "git",
+    candidate_roots: ["D:/Code/repo-a"],
     tasks: [inventoryTask()],
     ...overrides,
   };
@@ -34,7 +38,7 @@ function inventoryIssue(overrides = {}) {
 
 function inventory(overrides = {}) {
   return {
-    inventory_version: 1,
+    inventory_version: 2,
     projects: [inventoryProject()],
     issues: [],
     ...overrides,
@@ -47,16 +51,28 @@ function withoutField(record, field) {
   return copy;
 }
 
-test("inventory args use one read-only command", () => {
-  assert.deepEqual(buildSyncInventoryArgs({ syncDir: " D:/Sync ", autoTransitions: false }), [
+test("inventory args use one read-only command with repeatable candidate roots", () => {
+  assert.deepEqual(buildSyncInventoryArgs({
+    syncDir: " D:/Sync ",
+    autoTransitions: false,
+    candidateProjectRoots: [" D:/Code/repo-a ", "D:/Code/repo-b"],
+  }), [
     "sync",
     "inventory",
     "--json",
     "--sync-dir",
     "D:/Sync",
+    "--candidate-project-root",
+    "D:/Code/repo-a",
+    "--candidate-project-root",
+    "D:/Code/repo-b",
     "--no-auto-transitions",
   ]);
-  assert.deepEqual(buildSyncInventoryArgs({ syncDir: "   ", autoTransitions: true }), [
+  assert.deepEqual(buildSyncInventoryArgs({
+    syncDir: "   ",
+    autoTransitions: true,
+    candidateProjectRoots: [],
+  }), [
     "sync",
     "inventory",
     "--json",
@@ -67,11 +83,13 @@ test("inventory parser preserves project tasks and availability", () => {
   const parsed = parseSyncInventory(JSON.stringify(inventory({ issues: [inventoryIssue()] })));
 
   assert.deepEqual(parsed, {
-    inventoryVersion: 1,
+    inventoryVersion: 2,
     projects: [
       {
         projectKey: "repo-a",
         projectLabel: "Repo A",
+        identityKind: "git",
+        candidateRoots: ["D:/Code/repo-a"],
         tasks: [
           {
             threadId: "thread-1",
@@ -79,6 +97,8 @@ test("inventory parser preserves project tasks and availability", () => {
             updatedAt: "2026-07-14T12:00:00Z",
             estimatedSyncBytes: 2048,
             availability: "remote",
+            state: "remote_only",
+            action: "pull",
           },
         ],
       },
@@ -147,7 +167,7 @@ test("inventory parser rejects contract violations at the failing field path", (
     },
     {
       name: "unsupported inventory version",
-      payload: inventory({ inventory_version: 2 }),
+      payload: inventory({ inventory_version: 1 }),
       path: "inventory_version",
     },
     {
@@ -159,6 +179,16 @@ test("inventory parser rejects contract violations at the failing field path", (
       name: "missing project field",
       payload: inventory({ projects: [withoutField(inventoryProject(), "project_label")] }),
       path: "projects[0].project_label",
+    },
+    {
+      name: "malformed identity kind",
+      payload: inventory({ projects: [inventoryProject({ identity_kind: "workspace" })] }),
+      path: "projects[0].identity_kind",
+    },
+    {
+      name: "malformed candidate roots",
+      payload: inventory({ projects: [inventoryProject({ candidate_roots: [7] })] }),
+      path: "projects[0].candidate_roots[0]",
     },
     {
       name: "duplicate project key",
@@ -180,6 +210,20 @@ test("inventory parser rejects contract violations at the failing field path", (
         projects: [inventoryProject({ tasks: [withoutField(inventoryTask(), "title")] })],
       }),
       path: "projects[0].tasks[0].title",
+    },
+    {
+      name: "malformed task state",
+      payload: inventory({
+        projects: [inventoryProject({ tasks: [inventoryTask({ state: null })] })],
+      }),
+      path: "projects[0].tasks[0].state",
+    },
+    {
+      name: "malformed task action",
+      payload: inventory({
+        projects: [inventoryProject({ tasks: [inventoryTask({ action: null })] })],
+      }),
+      path: "projects[0].tasks[0].action",
     },
     {
       name: "duplicate thread id across projects",

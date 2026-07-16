@@ -3,6 +3,7 @@ import codex_usage.sync as sync_module
 
 def test_sync_package_exports_only_v2_models_and_runner_contract() -> None:
     assert sync_module.__all__ == [
+        "Direction",
         "LocalInventory",
         "LocalSyncState",
         "ProjectBinding",
@@ -24,6 +25,7 @@ def test_sync_package_exports_only_v2_models_and_runner_contract() -> None:
         "SyncTaskInventoryItem",
         "SyncTimings",
         "build_sync_selection_inventory",
+        "directional_blockers",
         "load_sync_selection_inventory",
         "pull_sync",
         "push_sync",

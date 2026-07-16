@@ -6,12 +6,12 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
-from typing import Literal
 
 from codex_usage.session_cache import CachedSessionData
 from codex_usage.session_files import codex_home_from_session_dir
 from codex_usage.sync.bookkeeping import repair_matching_bookkeeping
 from codex_usage.sync.constants import TRANSFER_TASKS_DIRNAME
+from codex_usage.sync.directional_preflight import Direction, directional_blockers
 from codex_usage.sync.errors import (
     ConcurrentLocalChangeError,
     ConcurrentRemoteChangeError,
@@ -89,6 +89,7 @@ def sync_status(
     data: CachedSessionData,
     sync_dir: Path,
     thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
 ) -> SyncPlan:
     local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
@@ -98,6 +99,7 @@ def sync_status(
             store,
             sync_dir,
             thread_ids,
+            project_resolution,
         )
     except SyncStoreError as error:
         return _load_failure_plan(local, error)
@@ -109,6 +111,7 @@ def pull_sync(
     data: CachedSessionData,
     sync_dir: Path,
     thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
     discovery_ms: int = 0,
     on_progress: Callable[[SyncProgressEvent], None] | None = None,
 ) -> SyncRunResult:
@@ -117,6 +120,7 @@ def pull_sync(
         data=data,
         sync_dir=sync_dir,
         thread_ids=thread_ids,
+        project_resolution=project_resolution,
         machine_id="",
         discovery_ms=discovery_ms,
         on_progress=on_progress,
@@ -129,6 +133,7 @@ def push_sync(
     sync_dir: Path,
     thread_ids: Iterable[str],
     machine_id: str,
+    project_resolution: ProjectResolutionRequest = ProjectResolutionRequest(),
     discovery_ms: int = 0,
     on_progress: Callable[[SyncProgressEvent], None] | None = None,
 ) -> SyncRunResult:
@@ -137,6 +142,7 @@ def push_sync(
         data=data,
         sync_dir=sync_dir,
         thread_ids=thread_ids,
+        project_resolution=project_resolution,
         machine_id=machine_id,
         discovery_ms=discovery_ms,
         on_progress=on_progress,
@@ -145,10 +151,11 @@ def push_sync(
 
 def _run_direction(
     *,
-    direction: Literal["pull", "push"],
+    direction: Direction,
     data: CachedSessionData,
     sync_dir: Path,
     thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
     machine_id: str,
     discovery_ms: int,
     on_progress: Callable[[SyncProgressEvent], None] | None,
@@ -164,25 +171,35 @@ def _run_direction(
     try:
         with store.transaction():
             blocked = False
+            direction_issues: tuple[SyncIssue, ...] = ()
             with timer.measure("planning"):
                 remote, plan = _prepare_sync_plan(
                     local,
                     store,
                     sync_dir,
                     thread_ids,
+                    project_resolution,
                 )
                 if plan.blocks_execution:
                     save_conflict_candidates(plan)
                     blocked = True
                 else:
-                    validate_local_selected(plan)
-                    store.validate_selected(
-                        plan.expected_remote_entries(),
-                        plan.expected_remote_snapshots(),
-                    )
+                    direction_issues = directional_blockers(plan, direction)
+                    if not direction_issues:
+                        validate_local_selected(plan)
+                        store.validate_selected(
+                            plan.expected_remote_entries(),
+                            plan.expected_remote_snapshots(),
+                        )
 
             if blocked:
                 return SyncRunResult.blocked(plan, timings=timer.finish())
+            if direction_issues:
+                return SyncRunResult.blocked_with_issues(
+                    plan,
+                    direction_issues,
+                    timings=timer.finish(),
+                )
 
             push_execution = PushExecution((), {}, {})
             if direction == "pull":
@@ -231,6 +248,7 @@ def _prepare_sync_plan(
     store: RemoteStore,
     sync_dir: Path,
     thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
 ) -> tuple[RemoteInventory, SyncPlan]:
     remote = store.load_inventory()
     selected = normalize_selected_thread_ids(thread_ids)
@@ -240,7 +258,7 @@ def _prepare_sync_plan(
         remote,
         selected,
         sync_dir,
-        project_resolution=ProjectResolutionRequest(),
+        project_resolution=project_resolution,
     )
     return promote_matching_local_metadata(remote, local, plan), plan
 

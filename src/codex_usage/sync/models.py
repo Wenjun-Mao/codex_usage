@@ -428,6 +428,15 @@ class SyncRunResult:
         return cls._from_plan(outcome, plan, (), (), plan.issues, timings)
 
     @classmethod
+    def blocked_with_issues(
+        cls,
+        plan: SyncPlan,
+        issues: tuple[SyncIssue, ...],
+        timings: SyncTimings,
+    ) -> SyncRunResult:
+        return cls._from_plan("issue", plan, (), (), (*plan.issues, *issues), timings)
+
+    @classmethod
     def failed(
         cls,
         plan: SyncPlan,
