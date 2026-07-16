@@ -1,4 +1,5 @@
-import type { SyncInventory, SyncTaskAvailability } from "./syncInventory";
+import type { SyncInventory } from "./syncInventory";
+import { taskAvailabilityLabel, taskPickerDetail } from "./transferPresentation";
 
 export type TaskPickerItem = {
   id: string;
@@ -9,12 +10,6 @@ export type TaskPickerItem = {
   projectKey?: string;
   threadId?: string;
   childThreadIds: string[];
-};
-
-const AVAILABILITY_LABELS: Record<SyncTaskAvailability, string> = {
-  local: "This device",
-  remote: "Sync folder",
-  both: "Both",
 };
 
 export function buildTaskPickerItems(inventory: SyncInventory, storedThreadIds: unknown): TaskPickerItem[] {
@@ -39,8 +34,8 @@ export function buildTaskPickerItems(inventory: SyncInventory, storedThreadIds: 
         id: `task:${task.threadId}`,
         kind: "task",
         label: task.title,
-        description: AVAILABILITY_LABELS[task.availability],
-        detail: `Thread ID: ${task.threadId} | ${formatBytes(task.estimatedSyncBytes)} estimated sync size`,
+        description: taskAvailabilityLabel(task.availability),
+        detail: taskPickerDetail(task.threadId, formatBytes(task.estimatedSyncBytes)),
         projectKey: project.projectKey,
         threadId: task.threadId,
         childThreadIds: [],
@@ -69,7 +64,7 @@ export function buildTaskPickerItems(inventory: SyncInventory, storedThreadIds: 
       kind: "unavailable",
       label: threadId,
       description: "Unavailable",
-      detail: `Thread ID: ${threadId}`,
+      detail: taskPickerDetail(threadId),
       threadId,
       childThreadIds: [],
     });

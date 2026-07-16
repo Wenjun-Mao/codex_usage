@@ -20,6 +20,7 @@ import {
 import { showTaskTransferPicker } from "./taskTransferVscodePicker";
 import {
   formatTransferResult,
+  taskInventoryWarningMessage,
   taskTransferMenuItems,
   type TransferMenuAction,
   type TransferOperation,
@@ -141,9 +142,7 @@ export function createTaskTransferVscode(
           );
         }
         if (inventory.issues.length > 0) {
-          void vscode.window.showWarningMessage(
-            "Some remote task files could not be identified and were omitted. See Codex Usage output for details.",
-          );
+          void vscode.window.showWarningMessage(taskInventoryWarningMessage());
         }
         return buildTaskPickerItems(inventory, []);
       },

@@ -115,17 +115,25 @@ test("rows preserve snapshot hierarchy and sort unavailable ids", () => {
   );
 });
 
-test("task rows expose availability, technical id, and formatted estimated size", () => {
+test("task rows use Task Transfer availability, task id, and estimated size vocabulary", () => {
   const taskItems = buildTaskPickerItems(inventory(), []).filter((item) => item.kind === "task");
 
   assert.deepEqual(
     taskItems.map((item) => item.description),
-    ["This device", "Both", "Sync folder"],
+    ["On this computer", "On both", "In transfer folder"],
   );
-  assert.match(taskItems[0].detail, /thread-1/);
-  assert.match(taskItems[0].detail, /1\.5 KB/);
-  assert.match(taskItems[2].detail, /512 B/);
+  assert.equal(taskItems[0].detail, "Task ID: thread-1 | Estimated task transfer size: 1.5 KB");
+  assert.equal(taskItems[2].detail, "Task ID: thread-3 | Estimated task transfer size: 512 B");
+  assert.doesNotMatch(JSON.stringify(taskItems), /This device|Sync folder|Thread ID|estimated sync size/i);
   assert.equal(taskItems[0].childThreadIds.length, 0);
+});
+
+test("unavailable task rows display a Task ID without a Thread ID label", () => {
+  const unavailable = buildTaskPickerItems(inventory(), ["missing-thread"])
+    .find((item) => item.kind === "unavailable");
+
+  assert.equal(unavailable.detail, "Task ID: missing-thread");
+  assert.doesNotMatch(unavailable.detail, /^Thread ID:/i);
 });
 
 test("project rows report exact task counts", () => {

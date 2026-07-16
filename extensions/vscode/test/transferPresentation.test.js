@@ -4,6 +4,8 @@ const test = require("node:test");
 const {
   formatTransferResult,
   taskAvailabilityLabel,
+  taskInventoryWarningMessage,
+  taskPickerDetail,
   taskStateLabel,
   taskTransferControlLabel,
   taskTransferMenuItems,
@@ -82,6 +84,24 @@ test("availability and planner states use task transfer language", () => {
   assert.equal(taskStateLabel("none", "synced"), "Up to date");
   assert.equal(taskStateLabel("conflict", "conflict"), "Conflict");
   assert.equal(taskStateLabel("issue", "missing"), "Missing");
+});
+
+test("picker details and inventory warnings use Task Transfer vocabulary", () => {
+  assert.equal(
+    taskPickerDetail("thread-1", "1.5 KB"),
+    "Task ID: thread-1 | Estimated task transfer size: 1.5 KB",
+  );
+  assert.equal(taskPickerDetail("missing-thread"), "Task ID: missing-thread");
+  assert.equal(
+    taskInventoryWarningMessage(),
+    "Some tasks in the transfer folder could not be identified and were omitted. See Codex Usage output for details.",
+  );
+
+  const copy = JSON.stringify({
+    detail: taskPickerDetail("thread-1", "1.5 KB"),
+    warning: taskInventoryWarningMessage(),
+  });
+  assert.doesNotMatch(copy, /This device|Sync folder|Thread ID|estimated sync size|remote task files/i);
 });
 
 test("transient states use usage-status Task Transfer wording", () => {

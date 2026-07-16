@@ -100,6 +100,17 @@ export function taskAvailabilityLabel(value: SyncTaskAvailability): string {
   return "On both";
 }
 
+export function taskPickerDetail(taskId: string, estimatedTransferSize?: string): string {
+  const id = `Task ID: ${taskId}`;
+  return estimatedTransferSize
+    ? `${id} | Estimated task transfer size: ${estimatedTransferSize}`
+    : id;
+}
+
+export function taskInventoryWarningMessage(): string {
+  return "Some tasks in the transfer folder could not be identified and were omitted. See Codex Usage output for details.";
+}
+
 export function taskStateLabel(action: string, state: string): string {
   if (action === "pull") {
     return "Ready to import";
