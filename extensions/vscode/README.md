@@ -18,7 +18,7 @@ Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local 
 
 ## Preview Status
 
-This Marketplace preview supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Intel macOS is not supported. Linux packaging is a follow-up and is not a supported target in this release. Release status: macOS Apple Silicon packaged Task Transfer is verified locally; Windows x64 packaging is CI-only and remains a release gate.
+This Marketplace preview supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Both native packaged version-3 Task Transfer smoke gates remain pending and must pass before publication: Windows x64 and macOS Apple Silicon. Intel macOS is not supported. Linux packaging is a follow-up and is not a supported target in this release.
 
 ## Commands
 
@@ -60,7 +60,7 @@ Codex's built-in handoff can fail on a very large task. Task Transfer preserves 
 
 The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen checkout with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer does not clone repositories, so the destination checkout must already exist.
 
-Every **Import Tasks**, **Export Tasks**, and **Review Transfer Status** operation starts with a fresh, empty selection. Review inspects task state without copying files. Project rows select only the tasks visible for that operation. Imported tasks remain in the transfer folder, and changing or forgetting the remembered folder does not delete any task files.
+Every **Import Tasks**, **Export Tasks**, and **Review Transfer Status** operation starts with a fresh, empty selection. Review inspects task state without copying files. Project rows select only the tasks visible for that operation, and neither task selections nor project mappings are saved. Imported tasks remain in the transfer folder, and changing or forgetting the remembered folder does not delete any task files.
 
 The extension checks the complete selected batch before copying anything. Conflicts, malformed folder structures, changed source files, unsafe mappings, and tasks that need the opposite direction block the whole operation. Existing local tasks keep their current checkout path. Task Transfer does not copy Codex auth, settings, caches, logs, archived tasks, or SQLite databases, and it never writes Codex private application state.
 
@@ -138,7 +138,7 @@ Codex fast mode is counted through the token usage that Codex records. At the mo
 
 ## Development
 
-Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, packages the VSIX, and exercises Task Transfer through the packaged executable.
+Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, and packages the VSIX. Its native version-3 packaged Task Transfer smoke remains a publication gate.
 
 macOS Apple Silicon on macOS/bash from `extensions/vscode`:
 

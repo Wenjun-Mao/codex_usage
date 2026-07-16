@@ -63,7 +63,8 @@ is a follow-up rather than a supported target in this release.
 
 ## Supersession
 
-This decision supersedes ADR 0013's user presentation, persistent selection, and
-desktop-root discovery portions. ADR 0013's explicit manual triggers, directional
-mutation boundaries, conflict preflight, atomic replacement, backup, and
-observable-boundary validation rules remain in force.
+This decision supersedes ADR 0012's exact persisted selection and setup portions.
+It also supersedes ADR 0013's user presentation and desktop-root discovery
+portions. ADR 0013's manual-directional data-safety rules remain in force: manual
+triggers, directional mutation boundaries, conflict preflight, atomic replacement,
+backup, and observable-boundary validation.
