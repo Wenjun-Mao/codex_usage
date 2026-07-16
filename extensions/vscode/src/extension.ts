@@ -13,28 +13,15 @@ import {
   extensionVersionLabel,
   injectWebviewControls,
   injectWebviewCsp,
-  hasValidSyncSelection,
   normalizeProjectKeys,
   normalizeRange,
-  normalizeSyncSettings,
   normalizeTheme,
   PROJECT_KEYS_STATE_KEY,
-  SYNC_DIR_STATE_KEY,
-  SYNC_SELECTION_VERSION_STATE_KEY,
-  SYNC_THREAD_IDS_STATE_KEY,
   parseProjectChoices,
   readProjectKeysState,
-  readSyncDirState,
-  readSyncSelectionVersionState,
-  readSyncThreadIdsState,
   parseTransitionChoices,
   renderErrorHtml,
   renderLoadingHtml,
-  shouldRefreshAfterSyncSetupStep,
-  SyncMenuAction,
-  SyncStatusKind,
-  syncMenuQuickPickItems,
-  syncStatusKindLabel,
   RANGE_VALUES,
   THEME_VALUES,
   WEBVIEW_COMMANDS,
@@ -48,44 +35,41 @@ import {
 } from "./syncProtocol";
 import { runSyncProcess } from "./syncProcess";
 import {
-  SyncSetupMutationCoordinator,
-  type AsyncSyncSetupStore,
-} from "./syncSetupTransaction";
+  migrateTaskTransferState,
+  TRANSFER_FOLDER_STATE_KEY,
+  type TaskTransferStateStore,
+} from "./taskTransferState";
 import {
   buildTaskPickerItems,
   reduceTaskSelection,
   selectedPickerItemIds,
   type TaskPickerItem,
 } from "./syncTaskPicker";
+import {
+  formatTransferResult,
+  taskTransferMenuItems,
+  transientStatusLabel,
+  type TransferMenuAction,
+  type TransferTransientStatus,
+} from "./transferPresentation";
 
 let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
-const syncSetupMutations = new SyncSetupMutationCoordinator();
+let transientThreadIds: string[] = [];
+let transferInFlight = false;
+let transferStatus: TransferTransientStatus | undefined;
 
 type SyncDirection = "pull" | "push";
-
-type SyncRuntimeState = {
-  inFlight: boolean;
-  status: SyncStatusKind;
-  lastSyncAt: number;
-  lastError: string;
-};
-
-const syncRuntime: SyncRuntimeState = {
-  inFlight: false,
-  status: "off",
-  lastSyncAt: 0,
-  lastError: "",
-};
-
-const SYNC_SETUP_REQUIRED_MESSAGE = "Sync setup is required. Select a folder and at least one Codex task.";
 
 export async function activate(context: vscode.ExtensionContext) {
   output = vscode.window.createOutputChannel("Codex Usage");
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.command = "codexUsage.openDashboard";
-  await migrateDeprecatedSyncSettings(context);
+  await migrateTaskTransferState(
+    taskTransferStateStore(context),
+    (message) => output.appendLine(`[task transfer migration] ${message}`),
+  );
   updateStatusItem(readSettings(context));
   statusItem.show();
 
@@ -114,7 +98,7 @@ export async function activate(context: vscode.ExtensionContext) {
     await showSyncMenu(context);
   });
   const configureSyncCommand = vscode.commands.registerCommand("codexUsage.configureSync", async () => {
-    await configureSync(context);
+    await changeTransferFolder(context);
   });
   const selectSyncTasksCommand = vscode.commands.registerCommand("codexUsage.selectSyncTasks", async () => {
     await selectSyncTasks(context);
@@ -135,11 +119,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (!event.affectsConfiguration("codexUsage")) {
       return;
     }
-    if (syncSetupMutations.isMutating) {
-      return;
-    }
     updateStatusItem(readSettings(context));
-    resetSyncRuntimeWhenDisabled(context);
     if (panel) {
       void refreshDashboard(context, panel);
     }
@@ -381,7 +361,7 @@ function showSyncTaskPicker(
   let applyingCanonicalSelection = false;
   let settled = false;
 
-  quickPick.title = "Select Codex tasks to sync";
+  quickPick.title = "Select tasks for Task Transfer";
   quickPick.placeholder = "Select tasks or toggle a project to select all of its tasks";
   quickPick.canSelectMany = true;
   quickPick.matchOnDescription = true;
@@ -436,7 +416,7 @@ function showSyncTaskPicker(
           .filter((item): item is TaskQuickPickItem => item !== undefined);
         applyingCanonicalSelection = false;
         if (selectedThreadIds.length > 0) {
-          quickPick.title = "Select Codex tasks to sync";
+          quickPick.title = "Select tasks for Task Transfer";
         }
       }),
       quickPick.onDidAccept(() => {
@@ -455,10 +435,9 @@ function showSyncTaskPicker(
 async function selectSyncTaskSettings(
   context: vscode.ExtensionContext,
   syncDir: string,
-  options: { enableAfterAccept?: boolean; refreshDashboard?: boolean } = {},
-): Promise<boolean> {
+): Promise<string[] | undefined> {
   const settings = readSettings(context);
-  setUsageStatus(context, "Codex Usage: Loading Sync Tasks");
+  setTransferStatus(context, "checking");
   try {
     const executablePath = await resolveBundledExecutable(context);
     const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
@@ -481,79 +460,43 @@ async function selectSyncTaskSettings(
         "Some remote task files could not be identified and were omitted from selection. See Codex Usage output for details.",
       );
     }
-    const rows = buildTaskPickerItems(inventory, settings.sync.threadIds);
-    const selectedThreadIds = await showSyncTaskPicker(rows, settings.sync.threadIds);
+    const rows = buildTaskPickerItems(inventory, transientThreadIds);
+    const selectedThreadIds = await showSyncTaskPicker(rows, transientThreadIds);
     if (!selectedThreadIds) {
-      return false;
+      return undefined;
     }
 
-    await syncSetupMutations.commit(syncSetupStore(context), {
-      folder: syncDir,
-      threadIds: selectedThreadIds,
-      enabled: options.enableAfterAccept ? true : undefined,
-    });
-    await syncSetupMutations.whenIdle();
     output.appendLine(
-      `[sync] Sync configured for ${selectedThreadIds.length} task${selectedThreadIds.length === 1 ? "" : "s"}: ${syncDir}`,
+      `[task transfer] Chose ${selectedThreadIds.length} task${selectedThreadIds.length === 1 ? "" : "s"} for this session.`,
     );
-    await refreshSyncUi(context, shouldRefreshAfterSyncSetupStep(options));
-    return true;
+    return selectedThreadIds;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
-    void vscode.window.showErrorMessage(`Codex Usage failed to configure sync tasks: ${message}`);
-    await syncSetupMutations.whenIdle();
-    await refreshSyncUi(context, shouldRefreshAfterSyncSetupStep(options));
-    return false;
+    void vscode.window.showErrorMessage(
+      "Task Transfer could not load tasks. See the Codex Usage output for details.",
+    );
+    return undefined;
   } finally {
-    updateStatusItem(readSettings(context));
+    clearTransferStatus(context);
   }
 }
 
 async function selectSyncTasks(context: vscode.ExtensionContext): Promise<void> {
-  const syncDir = readSettings(context).sync.dir;
+  const syncDir = await ensureTransferFolder(context);
   if (!syncDir) {
-    await configureSync(context);
     return;
   }
-  await selectSyncTaskSettings(context, syncDir);
-}
-
-async function configureSync(context: vscode.ExtensionContext): Promise<void> {
-  const settings = readSettings(context);
-  let candidate = settings.sync.dir;
-  if (candidate) {
-    const choice = await vscode.window.showQuickPick(
-      [
-        { label: "Keep Current Folder", description: candidate, action: "keep" },
-        { label: "Choose Another Folder", description: "Pick a different sync folder", action: "choose" },
-      ],
-      { placeHolder: "Configure Codex sync folder" },
-    );
-    if (!choice) {
-      return;
-    }
-    if (choice.action === "choose") {
-      const selectedDir = await pickSyncFolder();
-      if (!selectedDir) {
-        return;
-      }
-      candidate = selectedDir;
-    }
-  } else {
-    const selectedDir = await pickSyncFolder();
-    if (!selectedDir) {
-      return;
-    }
-    candidate = selectedDir;
+  const selected = await selectSyncTaskSettings(context, syncDir);
+  if (selected) {
+    transientThreadIds = selected;
   }
-  await selectSyncTaskSettings(context, candidate, { enableAfterAccept: true });
 }
 
 async function showSyncMenu(context: vscode.ExtensionContext): Promise<void> {
   const settings = readSettings(context);
-  const selected = await vscode.window.showQuickPick(syncMenuQuickPickItems(settings.sync), {
-    placeHolder: "Choose a Codex sync action",
+  const selected = await vscode.window.showQuickPick(taskTransferMenuItems(settings.taskTransfer.folder), {
+    placeHolder: "Choose a Task Transfer action",
   });
   if (!selected) {
     return;
@@ -562,121 +505,28 @@ async function showSyncMenu(context: vscode.ExtensionContext): Promise<void> {
   await handleSyncMenuAction(context, selected.action);
 }
 
-async function handleSyncMenuAction(context: vscode.ExtensionContext, action: SyncMenuAction): Promise<void> {
-  if (action === "pullTasks") {
+async function handleSyncMenuAction(context: vscode.ExtensionContext, action: TransferMenuAction): Promise<void> {
+  if (action === "importTasks") {
     await runManualSync(context, "pull");
     return;
   }
-  if (action === "pushTasks") {
+  if (action === "exportTasks") {
     await runManualSync(context, "push");
     return;
   }
-  if (action === "syncStatus") {
+  if (action === "reviewStatus") {
     await showSyncStatus(context);
     return;
   }
-  if (action === "pauseSync") {
-    await pauseSync(context);
+  if (action === "chooseFolder" || action === "changeFolder") {
+    await changeTransferFolder(context);
     return;
   }
-  if (action === "resumeSync") {
-    await resumeSync(context);
+  if (action === "openFolder") {
+    await openSyncFolder(context);
     return;
   }
-  if (action === "changeFolder") {
-    await changeSyncFolder(context);
-    return;
-  }
-  if (action === "changeTasks") {
-    await selectSyncTasks(context);
-    return;
-  }
-  if (action === "clearSync") {
-    await clearSyncSetup(context);
-    return;
-  }
-  await openSyncFolder(context);
-}
-
-async function pauseSync(context: vscode.ExtensionContext): Promise<void> {
-  try {
-    await syncSetupMutations.setEnabled(syncSetupStore(context), false);
-  } catch (error) {
-    await reportSyncSetupMutationFailure(context, "pause sync", error);
-    return;
-  }
-  await syncSetupMutations.whenIdle();
-  output.appendLine("[sync] Sync paused from dashboard menu.");
-  await refreshSyncUi(context);
-}
-
-async function resumeSync(context: vscode.ExtensionContext): Promise<void> {
-  let resumed: boolean;
-  try {
-    resumed = await syncSetupMutations.setEnabled(syncSetupStore(context), true);
-  } catch (error) {
-    await reportSyncSetupMutationFailure(context, "resume sync", error);
-    return;
-  }
-  await syncSetupMutations.whenIdle();
-  if (!resumed) {
-    await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
-    return;
-  }
-  output.appendLine("[sync] Sync resumed from dashboard menu.");
-  await refreshSyncUi(context);
-}
-
-async function changeSyncFolder(context: vscode.ExtensionContext): Promise<void> {
-  const selectedDir = await pickSyncFolder();
-  if (!selectedDir) {
-    return;
-  }
-  await selectSyncTaskSettings(context, selectedDir);
-}
-
-async function clearSyncSetup(context: vscode.ExtensionContext): Promise<void> {
-  const choice = await vscode.window.showWarningMessage(
-    "Clear Codex sync setup? This disables sync and forgets the selected folder and tasks. It does not delete any files.",
-    { modal: true },
-    "Clear Sync Setup",
-  );
-  if (choice !== "Clear Sync Setup") {
-    return;
-  }
-
-  try {
-    await syncSetupMutations.clear(syncSetupStore(context));
-  } catch (error) {
-    await reportSyncSetupMutationFailure(context, "clear sync setup", error);
-    return;
-  }
-  await syncSetupMutations.whenIdle();
-  output.appendLine("[sync] Sync setup cleared from dashboard menu.");
-  await refreshSyncUi(context);
-}
-
-async function reportSyncSetupMutationFailure(
-  context: vscode.ExtensionContext,
-  action: string,
-  error: unknown,
-): Promise<void> {
-  const message = error instanceof Error ? error.message : String(error);
-  output.appendLine(`[error] ${message}`);
-  void vscode.window.showErrorMessage(`Codex Usage failed to ${action}: ${message}`);
-  await syncSetupMutations.whenIdle();
-  await refreshSyncUi(context);
-}
-
-async function refreshSyncUi(
-  context: vscode.ExtensionContext,
-  refreshDashboardPanel = true,
-): Promise<void> {
-  updateStatusItem(readSettings(context));
-  resetSyncRuntimeWhenDisabled(context);
-  if (panel && refreshDashboardPanel) {
-    await refreshDashboard(context, panel);
-  }
+  await forgetTransferFolder(context);
 }
 
 async function pickSyncFolder(): Promise<string | undefined> {
@@ -684,14 +534,50 @@ async function pickSyncFolder(): Promise<string | undefined> {
     canSelectFiles: false,
     canSelectFolders: true,
     canSelectMany: false,
-    openLabel: "Use Sync Folder",
-    title: "Select Codex Sync Folder",
+    openLabel: "Use Transfer Folder",
+    title: "Choose Transfer Folder",
   });
   const folder = selected?.[0]?.fsPath?.trim();
   if (!folder) {
     return undefined;
   }
   return folder;
+}
+
+async function ensureTransferFolder(context: vscode.ExtensionContext): Promise<string | undefined> {
+  const remembered = readSettings(context).taskTransfer.folder;
+  if (remembered) {
+    return remembered;
+  }
+  return chooseAndRememberTransferFolder(context);
+}
+
+async function changeTransferFolder(context: vscode.ExtensionContext): Promise<void> {
+  await chooseAndRememberTransferFolder(context);
+}
+
+async function chooseAndRememberTransferFolder(context: vscode.ExtensionContext): Promise<string | undefined> {
+  const folder = await pickSyncFolder();
+  if (!folder) {
+    return undefined;
+  }
+  await context.globalState.update(TRANSFER_FOLDER_STATE_KEY, folder);
+  transientThreadIds = [];
+  await refreshTaskTransferUi(context);
+  return folder;
+}
+
+async function forgetTransferFolder(context: vscode.ExtensionContext): Promise<void> {
+  await context.globalState.update(TRANSFER_FOLDER_STATE_KEY, undefined);
+  transientThreadIds = [];
+  await refreshTaskTransferUi(context);
+}
+
+async function refreshTaskTransferUi(context: vscode.ExtensionContext): Promise<void> {
+  updateStatusItem(readSettings(context));
+  if (panel) {
+    await refreshDashboard(context, panel);
+  }
 }
 
 async function reviewProjectTransitions(context: vscode.ExtensionContext): Promise<void> {
@@ -741,55 +627,53 @@ async function reviewProjectTransitions(context: vscode.ExtensionContext): Promi
 }
 
 async function runManualSync(context: vscode.ExtensionContext, direction: SyncDirection): Promise<void> {
-  let settings = readSettings(context);
-
-  if (!hasValidSyncSelection(settings.sync)) {
-    await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
+  const folder = await ensureTransferFolder(context);
+  if (!folder) {
     return;
   }
-  if (!settings.sync.enabled) {
-    await resumeSync(context);
-    settings = readSettings(context);
-    if (!settings.sync.enabled) {
+  if (transientThreadIds.length === 0) {
+    const selected = await selectSyncTaskSettings(context, folder);
+    if (!selected) {
       return;
     }
+    transientThreadIds = selected;
   }
-
-  if (syncRuntime.inFlight) {
+  if (transferInFlight) {
     void vscode.window.showInformationMessage(
-      "A Codex task transfer is already running. Try again when it finishes.",
+      "A Task Transfer operation is already running. Try again when it finishes.",
     );
     return;
   }
 
-  await runDirectionalSync(context, direction);
+  await runDirectionalSync(context, direction, folder, transientThreadIds);
 }
 
-async function runDirectionalSync(context: vscode.ExtensionContext, direction: SyncDirection): Promise<void> {
-  syncRuntime.inFlight = true;
+async function runDirectionalSync(
+  context: vscode.ExtensionContext,
+  direction: SyncDirection,
+  folder: string,
+  threadIds: string[],
+): Promise<void> {
+  transferInFlight = true;
   try {
-    const ok = await executeSyncDirection(context, direction);
-    if (ok) {
-      syncRuntime.lastError = "";
-      syncRuntime.lastSyncAt = Date.now();
-      setSyncStatus(context, readSettings(context).sync.enabled ? "idle" : "off");
-    }
+    await executeSyncDirection(context, direction, folder, threadIds);
   } finally {
-    syncRuntime.inFlight = false;
+    transferInFlight = false;
+    clearTransferStatus(context);
   }
 }
 
-async function executeSyncDirection(context: vscode.ExtensionContext, direction: SyncDirection): Promise<boolean> {
+async function executeSyncDirection(
+  context: vscode.ExtensionContext,
+  direction: SyncDirection,
+  folder: string,
+  threadIds: string[],
+): Promise<void> {
   const settings = readSettings(context);
-  if (!hasValidSyncSelection(settings.sync)) {
-    await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
-    return false;
-  }
-  let outcomeStatus: "conflict" | "issue" | undefined;
   try {
     const options = {
-      syncDir: settings.sync.dir,
-      threadIds: settings.sync.threadIds,
+      syncDir: folder,
+      threadIds,
       autoTransitions: settings.projectTransitions.autoDetect,
     };
     const executablePath = await resolveBundledExecutable(context);
@@ -797,154 +681,154 @@ async function executeSyncDirection(context: vscode.ExtensionContext, direction:
     const completion = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Window,
-        title: direction === "pull" ? "Pulling Codex tasks" : "Pushing Codex tasks",
+        title: direction === "pull" ? "Importing Codex tasks" : "Exporting Codex tasks",
       },
       async () => {
         const args = direction === "pull" ? buildSyncPullArgs(options) : buildSyncPushArgs(options);
         output.appendLine(`> ${executablePath} ${args.join(" ")}`);
-        setSyncStatus(context, "scanning");
+        setTransferStatus(context, "checking");
         return runSyncProcess({
           executablePath,
           args,
           env,
-          onProgress: (event) => setSyncStatus(context, event.phase),
+          onProgress: () => setTransferStatus(context, direction === "pull" ? "importing" : "exporting"),
           onOutput: (text) => output.append(text),
         });
       },
     );
+    for (const issue of completion.result.issues) {
+      output.appendLine(`[task transfer:${issue.code}] ${issue.message} (${issue.thread_id})`);
+    }
+    const operation = direction === "pull" ? "import" : "export";
+    const formatted = formatTransferResult(operation, completion.result);
     if (completion.result.outcome === "conflict") {
-      outcomeStatus = "conflict";
-      const count = completion.result.counts.conflicts;
-      const detail = count > 0 ? `${count} conflict${count === 1 ? "" : "s"}` : "conflicts";
-      const message = `Codex sync has ${detail}. Run Codex Usage: Sync Status.`;
-      setSyncStatus(context, "conflict", message);
-      throw new Error(message);
+      setTransferStatus(context, "conflict");
+    } else if (completion.result.outcome === "issue") {
+      setTransferStatus(context, "issue");
     }
-    if (completion.result.outcome === "issue") {
-      outcomeStatus = "issue";
-      const firstIssue = completion.result.issues.find((issue) => issue.message.trim())?.message.trim();
-      const count = completion.result.counts.issues;
-      const message = firstIssue || `Codex sync reported ${count} issue${count === 1 ? "" : "s"}.`;
-      setSyncStatus(context, "issue", message);
-      throw new Error(message);
-    }
-    const transferred = direction === "pull" ? completion.result.counts.pulled : completion.result.counts.pushed;
-    const oppositeAction = direction === "pull" ? "push" : "pull";
-    const pending = completion.result.threads.filter((thread) => thread.action === oppositeAction).length;
-    const verb = direction === "pull" ? "Pulled" : "Pushed";
-    const pendingText = pending
-      ? ` ${pending} selected task${pending === 1 ? "" : "s"} still need${pending === 1 ? "s" : ""} to ${oppositeAction}.`
-      : "";
-    void vscode.window.showInformationMessage(
-      `${verb} ${transferred} task${transferred === 1 ? "" : "s"}.${pendingText}`,
-    );
-    return true;
+    showTransferMessage(formatted.kind, formatted.message);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
-    const failureStatus = outcomeStatus ?? (message.toLowerCase().includes("conflict") ? "conflict" : "issue");
-    setSyncStatus(context, failureStatus, message);
-    void vscode.window.showWarningMessage(`Codex ${direction} failed: ${message}`);
-    return false;
+    setTransferStatus(context, "issue");
+    const operation = direction === "pull" ? "Import" : "Export";
+    void vscode.window.showErrorMessage(
+      `${operation} could not be completed. No tasks were copied. See the Codex Usage output for details.`,
+    );
   }
 }
 
 async function showSyncStatus(context: vscode.ExtensionContext): Promise<void> {
-  const settings = readSettings(context);
-  if (!hasValidSyncSelection(settings.sync)) {
-    await offerConfigureSync(context, SYNC_SETUP_REQUIRED_MESSAGE);
+  const folder = await ensureTransferFolder(context);
+  if (!folder) {
     return;
   }
+  if (transientThreadIds.length === 0) {
+    const selected = await selectSyncTaskSettings(context, folder);
+    if (!selected) {
+      return;
+    }
+    transientThreadIds = selected;
+  }
+  const settings = readSettings(context);
   try {
+    setTransferStatus(context, "checking");
     const options = {
-      syncDir: settings.sync.dir,
-      threadIds: settings.sync.threadIds,
+      syncDir: folder,
+      threadIds: transientThreadIds,
       autoTransitions: settings.projectTransitions.autoDetect,
     };
     const executablePath = await resolveBundledExecutable(context);
     const env = buildCodexUsageEnv(context.globalStorageUri.fsPath);
     const result = await runCodexUsage(executablePath, buildSyncStatusArgs(options), env);
     const summary = parseSyncStatusSummary(result.stdout);
-    output.appendLine(`[sync] ${summary.message}`);
-    void vscode.window.showInformationMessage(`Codex sync status: ${summary.message}`);
+    output.appendLine(`[task transfer] ${summary.message}`);
+    void vscode.window.showInformationMessage(`Task Transfer status: ${summary.message}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`[error] ${message}`);
-    void vscode.window.showErrorMessage(`Codex sync status failed: ${message}`);
+    void vscode.window.showErrorMessage(
+      "Task Transfer status could not be reviewed. See the Codex Usage output for details.",
+    );
+  } finally {
+    clearTransferStatus(context);
   }
 }
 
 async function openSyncFolder(context: vscode.ExtensionContext): Promise<void> {
-  let settings = readSettings(context);
-  if (!settings.sync.dir) {
-    await configureSync(context);
-    settings = readSettings(context);
-  }
-  if (!settings.sync.dir) {
+  const folder = await ensureTransferFolder(context);
+  if (!folder) {
     return;
   }
-  await fs.mkdir(settings.sync.dir, { recursive: true });
-  await vscode.env.openExternal(vscode.Uri.file(settings.sync.dir));
+  await vscode.env.openExternal(vscode.Uri.file(folder));
 }
 
-async function offerConfigureSync(context: vscode.ExtensionContext, message: string): Promise<void> {
-  const choice = await vscode.window.showInformationMessage(message, "Configure Sync");
-  if (choice === "Configure Sync") {
-    await configureSync(context);
-  }
-}
-
-async function migrateDeprecatedSyncSettings(context: vscode.ExtensionContext): Promise<void> {
-  const config = vscode.workspace.getConfiguration("codexUsage");
-  const existingDir = readSyncDirState(context.globalState);
-  const legacyDir = config.get<string>("sync.dir", "");
-  if (!existingDir && typeof legacyDir === "string" && legacyDir.trim()) {
-    await context.globalState.update(SYNC_DIR_STATE_KEY, legacyDir.trim());
-  }
+function readTransferFolder(context: vscode.ExtensionContext | undefined): string {
+  const value = context?.globalState.get<unknown>(TRANSFER_FOLDER_STATE_KEY, "");
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function readSettings(context: vscode.ExtensionContext | undefined): ExtensionSettings {
   const config = vscode.workspace.getConfiguration("codexUsage");
-  const sync = normalizeSyncSettings({
-    enabled: config.get<boolean>("sync.enabled", false),
-    dir: readSyncDirState(context?.globalState),
-    selectionVersion: readSyncSelectionVersionState(context?.globalState),
-    threadIds: readSyncThreadIdsState(context?.globalState),
-  });
   return {
     range: normalizeRange(config.get<string>("range", "30d")),
     projectKeys: context ? readProjectKeysState(context.globalState) : [],
     theme: normalizeTheme(config.get<string>("theme", "auto")),
-    sync,
+    taskTransfer: { folder: readTransferFolder(context) },
     projectTransitions: {
       autoDetect: config.get<boolean>("projectTransitions.autoDetect", true),
     },
   };
 }
 
-function syncSetupStore(context: vscode.ExtensionContext): AsyncSyncSetupStore {
-  const config = vscode.workspace.getConfiguration("codexUsage");
+function taskTransferStateStore(context: vscode.ExtensionContext): TaskTransferStateStore {
+  const baseConfig = vscode.workspace.getConfiguration("codexUsage");
+  const folders = vscode.workspace.workspaceFolders ?? [];
   return {
-    async read() {
-      const threadIds = context.globalState.get<string[] | undefined>(SYNC_THREAD_IDS_STATE_KEY);
-      return {
-        folder: context.globalState.get<string | undefined>(SYNC_DIR_STATE_KEY),
-        threadIds: threadIds === undefined ? undefined : [...threadIds],
-        enabled: config.get<boolean>("sync.enabled", false),
-        version: context.globalState.get<number>(SYNC_SELECTION_VERSION_STATE_KEY, 0),
-      };
-    },
-    async writeVersion(value) {
-      await context.globalState.update(SYNC_SELECTION_VERSION_STATE_KEY, value);
-    },
+    readFolder: () => readTransferFolder(context),
+    readLegacyFolder: () => baseConfig.get<string>("sync.dir", ""),
     async writeFolder(value) {
-      await context.globalState.update(SYNC_DIR_STATE_KEY, value);
+      await context.globalState.update(TRANSFER_FOLDER_STATE_KEY, value);
     },
-    async writeThreadIds(value) {
-      await context.globalState.update(SYNC_THREAD_IDS_STATE_KEY, value);
+    async removeGlobalState(key) {
+      await context.globalState.update(key, undefined);
     },
-    async writeEnabled(value) {
-      await config.update("sync.enabled", value, vscode.ConfigurationTarget.Global);
+    obsoleteConfigurationScopes() {
+      const scopes: string[] = [];
+      const base = baseConfig.inspect<boolean>("sync.enabled");
+      if (base?.globalValue !== undefined) {
+        scopes.push("global");
+      }
+      if (base?.workspaceValue !== undefined) {
+        scopes.push("workspace");
+      }
+      for (const folder of folders) {
+        const inspected = vscode.workspace
+          .getConfiguration("codexUsage", folder.uri)
+          .inspect<boolean>("sync.enabled");
+        if (inspected?.workspaceFolderValue !== undefined) {
+          scopes.push(`folder:${folder.uri.fsPath}`);
+        }
+      }
+      return scopes;
+    },
+    async removeEnabledConfiguration(scope) {
+      if (scope === "global") {
+        await baseConfig.update("sync.enabled", undefined, vscode.ConfigurationTarget.Global);
+        return;
+      }
+      if (scope === "workspace") {
+        await baseConfig.update("sync.enabled", undefined, vscode.ConfigurationTarget.Workspace);
+        return;
+      }
+      const folderPath = scope.slice("folder:".length);
+      const folder = folders.find((item) => item.uri.fsPath === folderPath);
+      if (!folder) {
+        throw new Error(`Workspace folder is no longer available: ${folderPath}`);
+      }
+      await vscode.workspace
+        .getConfiguration("codexUsage", folder.uri)
+        .update("sync.enabled", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
     },
   };
 }
@@ -1043,12 +927,7 @@ function renderWebviewHtml(
     range: settings.range,
     projectKeys: settings.projectKeys,
     theme: settings.theme,
-    sync: {
-      enabled: settings.sync.enabled,
-      dir: settings.sync.dir,
-      selectionVersion: settings.sync.selectionVersion,
-      threadIds: settings.sync.threadIds,
-    },
+    taskTransfer: settings.taskTransfer,
     versionLabel,
   });
   return injectWebviewCsp(withControls, webview.cspSource);
@@ -1061,15 +940,13 @@ function updateStatusItem(settings: ExtensionSettings): void {
     projectCount > 0
       ? `Codex Usage: ${settings.range} (${projectCount})`
       : `Codex Usage: ${settings.range}`;
-  const syncStatus = syncStatusBadge(settings, syncRuntime.status);
-  if (syncStatus) {
-    statusItem.text += ` ${syncStatus}`;
+  if (transferStatus) {
+    statusItem.text += ` | ${transientStatusLabel(transferStatus)}`;
   }
-  const syncText = syncStatusTooltip(settings);
   statusItem.tooltip =
     projectCount > 0
-      ? `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: ${projectCount} selected. Theme: ${theme}. ${syncText}`
-      : `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: All Projects. Theme: ${theme}. ${syncText}`;
+      ? `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: ${projectCount} selected. Theme: ${theme}.`
+      : `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: All Projects. Theme: ${theme}.`;
 }
 
 function themeLabel(theme: ExtensionSettings["theme"]): string {
@@ -1082,44 +959,24 @@ function themeLabel(theme: ExtensionSettings["theme"]): string {
   return "Auto";
 }
 
-function setSyncStatus(context: vscode.ExtensionContext, status: SyncStatusKind, lastError = ""): void {
-  syncRuntime.status = status;
-  if (lastError) {
-    syncRuntime.lastError = lastError;
-  }
+function setTransferStatus(context: vscode.ExtensionContext, status: TransferTransientStatus): void {
+  transferStatus = status;
   updateStatusItem(readSettings(context));
 }
 
-function syncStatusBadge(settings: ExtensionSettings, status: SyncStatusKind): string {
-  if (!hasValidSyncSelection(settings.sync)) {
-    return "Sync: Setup required";
-  }
-  if (!settings.sync.enabled) {
-    return "Sync:Off";
-  }
-  return `Sync:${syncStatusKindLabel(status === "off" ? "idle" : status)}`;
+function clearTransferStatus(context: vscode.ExtensionContext): void {
+  transferStatus = undefined;
+  updateStatusItem(readSettings(context));
 }
 
-function syncStatusTooltip(settings: ExtensionSettings): string {
-  if (!hasValidSyncSelection(settings.sync)) {
-    return "Sync: Setup required. Select a folder and at least one Codex task.";
-  }
-  if (!settings.sync.enabled) {
-    return "Sync: disabled.";
-  }
-  const folder = settings.sync.dir ? "folder selected" : "folder not selected";
-  const tasks = `${settings.sync.threadIds.length} task${settings.sync.threadIds.length === 1 ? "" : "s"} selected`;
-  const state = `state ${syncStatusKindLabel(syncRuntime.status === "off" ? "idle" : syncRuntime.status)}`;
-  const lastSync = syncRuntime.lastSyncAt ? `last transfer ${new Date(syncRuntime.lastSyncAt).toLocaleString()}` : "no completed transfer yet";
-  const lastError = syncRuntime.lastError ? `last error: ${syncRuntime.lastError}` : "";
-  return ["Sync: manual", folder, tasks, state, lastSync, lastError].filter(Boolean).join(". ") + ".";
-}
-
-function resetSyncRuntimeWhenDisabled(context: vscode.ExtensionContext): void {
-  const settings = readSettings(context);
-  if (settings.sync.enabled) {
+function showTransferMessage(kind: "info" | "warning" | "error", message: string): void {
+  if (kind === "info") {
+    void vscode.window.showInformationMessage(message);
     return;
   }
-  syncRuntime.lastError = "";
-  setSyncStatus(context, "off");
+  if (kind === "warning") {
+    void vscode.window.showWarningMessage(message);
+    return;
+  }
+  void vscode.window.showErrorMessage(message);
 }

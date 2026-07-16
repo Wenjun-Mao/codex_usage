@@ -321,7 +321,7 @@ test("runSyncProcess reports ENOENT once even if close follows the child error",
   assert.equal(rejectionCount, 1);
 });
 
-test("extension sync orchestration uses one inventory-backed task picker contract", () => {
+test("extension Task Transfer orchestration keeps task choices transient", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const coreSource = fs.readFileSync(path.join(__dirname, "../src/core.ts"), "utf8");
 
@@ -340,15 +340,16 @@ test("extension sync orchestration uses one inventory-backed task picker contrac
   assert.match(extensionSource, /buildSyncInventoryArgs/);
   assert.match(extensionSource, /parseSyncInventory/);
   assert.match(extensionSource, /createQuickPick/);
-  assert.match(extensionSource, /SYNC_SELECTION_VERSION_STATE_KEY/);
-  assert.match(extensionSource, /selectionVersion:\s*readSyncSelectionVersionState/);
-  assert.doesNotMatch(extensionSource, /projectKeys:\s*settings\.sync/);
+  assert.match(extensionSource, /let transientThreadIds: string\[\] = \[\]/);
+  assert.doesNotMatch(extensionSource, /SYNC_SELECTION_VERSION_STATE_KEY|SYNC_THREAD_IDS_STATE_KEY/);
+  assert.doesNotMatch(extensionSource, /readSyncSelectionVersionState|readSyncThreadIdsState/);
+  assert.doesNotMatch(extensionSource, /syncSetupTransaction|SyncSetupMutationCoordinator/);
 
   assert.equal((extensionSource.match(/registerCommand\("codexUsage\.selectSyncTasks"/g) || []).length, 1);
   assert.doesNotMatch(extensionSource, /registerCommand\("codexUsage\.selectSync(?:Projects|Threads)"/);
 });
 
-test("manual directional sync and status validate schema-v2 task selection before spawning", () => {
+test("manual directional transfer and status use session task ids without persistent setup guards", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const runSyncSource = extensionSource.slice(
     extensionSource.indexOf("async function executeSyncDirection"),
@@ -359,33 +360,25 @@ test("manual directional sync and status validate schema-v2 task selection befor
     extensionSource.indexOf("async function openSyncFolder"),
   );
 
-  const runGuard = runSyncSource.indexOf("if (!hasValidSyncSelection(settings.sync))");
-  const runSpawn = runSyncSource.indexOf("runSyncProcess(");
-  assert.ok(runGuard >= 0 && runGuard < runSpawn);
-  assert.match(runSyncSource.slice(runGuard, runSpawn), /return false;/);
   assert.equal((runSyncSource.match(/runSyncProcess\(/g) || []).length, 1);
   assert.equal((runSyncSource.match(/buildSyncPullArgs\(/g) || []).length, 1);
   assert.equal((runSyncSource.match(/buildSyncPushArgs\(/g) || []).length, 1);
   assert.doesNotMatch(runSyncSource, /buildSyncInventoryArgs|parseSyncInventory|runCodexUsage\(/);
   assert.doesNotMatch(runSyncSource, /buildThreadsArgs|sync\", \"status|sync\", \"import|sync\", \"export/);
-  assert.match(
-    runSyncSource,
-    /outcomeStatus \?\? \(message\.toLowerCase\(\)\.includes\("conflict"\) \? "conflict" : "issue"\)/,
-  );
+  assert.match(runSyncSource, /formatTransferResult\(operation, completion\.result\)/);
+  assert.match(runSyncSource, /threadIds,/);
+  assert.doesNotMatch(runSyncSource, /hasValidSyncSelection|settings\.sync|sync\.enabled/);
 
-  const statusGuard = statusSource.indexOf("if (!hasValidSyncSelection(settings.sync))");
   const statusSpawn = statusSource.indexOf("runCodexUsage(");
-  assert.ok(statusGuard >= 0 && statusGuard < statusSpawn);
-  assert.match(statusSource.slice(statusGuard, statusSpawn), /return;/);
+  assert.ok(statusSpawn >= 0);
   assert.equal((statusSource.match(/runCodexUsage\(/g) || []).length, 1);
   assert.equal((statusSource.match(/buildSyncStatusArgs\(/g) || []).length, 1);
   assert.doesNotMatch(statusSource, /buildSyncInventoryArgs|parseSyncInventory|buildThreadsArgs|runSyncProcess/);
 
-  for (const commandSource of [runSyncSource, statusSource]) {
-    assert.match(commandSource, /threadIds:\s*settings\.sync\.threadIds/);
-    assert.doesNotMatch(commandSource, /projectKeys|conversationMode/);
-    assert.match(commandSource, /autoTransitions: settings\.projectTransitions\.autoDetect/);
-  }
+  assert.match(statusSource, /threadIds:\s*transientThreadIds/);
+  assert.match(statusSource, /Task Transfer status:/);
+  assert.doesNotMatch(statusSource, /hasValidSyncSelection|settings\.sync|sync\.enabled/);
+  assert.doesNotMatch(extensionSource, /selectionVersion|syncThreadIds/);
 });
 
 test("sync has no automatic focus activation or file watcher trigger", () => {
@@ -399,43 +392,29 @@ test("sync has no automatic focus activation or file watcher trigger", () => {
   assert.doesNotMatch(extensionSource, /syncOnFocus|configureSyncWatcher|auto sync/);
 });
 
-test("folder and exact task setup commits through the serialized transaction after picker acceptance", () => {
+test("folder persists while accepted task ids remain session-only", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
   const selectionSource = extensionSource.slice(
     extensionSource.indexOf("async function selectSyncTaskSettings"),
-    extensionSource.indexOf("async function configureSync"),
+    extensionSource.indexOf("async function selectSyncTasks"),
   );
-  const configureSource = extensionSource.slice(
-    extensionSource.indexOf("async function configureSync"),
-    extensionSource.indexOf("async function showSyncMenu"),
-  );
-  const changeFolderSource = extensionSource.slice(
-    extensionSource.indexOf("async function changeSyncFolder"),
-    extensionSource.indexOf("async function clearSyncSetup"),
+  const rememberSource = extensionSource.slice(
+    extensionSource.indexOf("async function chooseAndRememberTransferFolder"),
+    extensionSource.indexOf("async function forgetTransferFolder"),
   );
 
   assert.match(selectionSource, /buildSyncInventoryArgs\(\{\s*syncDir,/);
   assert.match(selectionSource, /const inventory = parseSyncInventory\(result\.stdout\)/);
-  assert.match(selectionSource, /buildTaskPickerItems\(inventory, settings\.sync\.threadIds\)/);
-  assert.match(selectionSource, /showSyncTaskPicker\(rows, settings\.sync\.threadIds\)/);
+  assert.match(selectionSource, /buildTaskPickerItems\(inventory, transientThreadIds\)/);
+  assert.match(selectionSource, /showSyncTaskPicker\(rows, transientThreadIds\)/);
 
   const inventoryRun = selectionSource.indexOf("runCodexUsage(");
   const selectionGuard = selectionSource.indexOf("if (!selectedThreadIds)");
-  const transactionCommit = selectionSource.indexOf("syncSetupMutations.commit(");
-  const queueIdle = selectionSource.indexOf("syncSetupMutations.whenIdle()");
-  const refreshAfterCommit = selectionSource.indexOf("refreshSyncUi(");
   assert.ok(inventoryRun >= 0 && inventoryRun < selectionGuard);
-  assert.ok(transactionCommit > selectionGuard);
-  assert.ok(transactionCommit < queueIdle && queueIdle < refreshAfterCommit);
-  assert.match(selectionSource.slice(selectionGuard, transactionCommit), /return false;/);
-  assert.match(
-    selectionSource,
-    /syncSetupMutations\.commit\(syncSetupStore\(context\),\s*\{\s*folder: syncDir,\s*threadIds: selectedThreadIds,\s*enabled:/,
-  );
+  assert.match(selectionSource.slice(selectionGuard), /return selectedThreadIds;/);
   assert.doesNotMatch(selectionSource, /globalState\.update\(|getConfiguration\("codexUsage"\)\.update/);
-
-  assert.ok(configureSource.indexOf("pickSyncFolder(") < configureSource.indexOf("selectSyncTaskSettings("));
-  assert.ok(changeFolderSource.indexOf("pickSyncFolder(") < changeFolderSource.indexOf("selectSyncTaskSettings("));
+  assert.match(rememberSource, /globalState\.update\(TRANSFER_FOLDER_STATE_KEY, folder\)/);
+  assert.doesNotMatch(rememberSource, /syncThreadIds|selectionVersion|projectBinding/i);
 });
 
 test("task picker adapter canonicalizes hierarchical selections and settles once", () => {
@@ -458,58 +437,31 @@ test("task picker adapter canonicalizes hierarchical selections and settles once
   assert.match(pickerSource, /let settled = false/);
 });
 
-test("status badge and tooltip prefer setup required for disabled invalid selection", () => {
+test("status text is usage-only except for pure transient Task Transfer labels", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
-  const badgeSource = extensionSource.slice(
-    extensionSource.indexOf("function syncStatusBadge"),
-    extensionSource.indexOf("function syncStatusTooltip"),
-  );
-  const tooltipSource = extensionSource.slice(
-    extensionSource.indexOf("function syncStatusTooltip"),
-    extensionSource.indexOf("function resetSyncRuntimeWhenDisabled"),
+  const statusSource = extensionSource.slice(
+    extensionSource.indexOf("function updateStatusItem"),
+    extensionSource.indexOf("function themeLabel"),
   );
 
-  for (const statusSource of [badgeSource, tooltipSource]) {
-    const validityGuard = statusSource.indexOf("if (!hasValidSyncSelection(settings.sync))");
-    const enabledGuard = statusSource.indexOf("if (!settings.sync.enabled)");
-    assert.ok(validityGuard >= 0 && validityGuard < enabledGuard);
-  }
-  assert.match(badgeSource, /return "Sync: Setup required";/);
-  assert.match(tooltipSource, /return "Sync: Setup required\. Select a folder and at least one Codex task\.";/);
+  assert.match(statusSource, /`Codex Usage: \$\{settings\.range\}`/);
+  assert.match(statusSource, /transientStatusLabel\(transferStatus\)/);
+  assert.doesNotMatch(statusSource, /Setup|required|Sync:|enabled|threadIds|taskTransfer\.folder/i);
 });
 
-test("all user setup mutations share the transaction queue while migration stays folder-only", () => {
+test("activation removes obsolete state at global workspace and folder scopes", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
-  const clearSource = extensionSource.slice(
-    extensionSource.indexOf("async function clearSyncSetup"),
-    extensionSource.indexOf("async function refreshSyncUi"),
-  );
   const migrationSource = extensionSource.slice(
-    extensionSource.indexOf("async function migrateDeprecatedSyncSettings"),
-    extensionSource.indexOf("function readSettings"),
+    extensionSource.indexOf("function taskTransferStateStore"),
+    extensionSource.indexOf("async function resolveBundledExecutable"),
   );
 
-  const pauseSource = extensionSource.slice(
-    extensionSource.indexOf("async function pauseSync"),
-    extensionSource.indexOf("async function changeSyncFolder"),
-  );
-
-  assert.match(extensionSource, /new SyncSetupMutationCoordinator\(\)/);
-  assert.match(extensionSource, /function syncSetupStore\(/);
-  assert.match(extensionSource, /if \(syncSetupMutations\.isMutating\) \{\s*return;/);
-  assert.match(clearSource, /await syncSetupMutations\.clear\(syncSetupStore\(context\)\)/);
-  assert.match(clearSource, /await syncSetupMutations\.whenIdle\(\)[\s\S]*await refreshSyncUi\(context\)/);
-  assert.doesNotMatch(clearSource, /globalState\.update\(|getConfiguration\("codexUsage"\)\.update/);
-  assert.match(pauseSource, /syncSetupMutations\.setEnabled\(syncSetupStore\(context\), false\)/);
-  assert.match(pauseSource, /syncSetupMutations\.setEnabled\(syncSetupStore\(context\), true\)/);
-  assert.equal((pauseSource.match(/await syncSetupMutations\.whenIdle\(\)/g) || []).length, 2);
-  assert.doesNotMatch(pauseSource, /getConfiguration\("codexUsage"\)\.update/);
-  assert.doesNotMatch(clearSource, /SYNC_PROJECT_KEYS_STATE_KEY|SYNC_CONVERSATION_MODE_STATE_KEY/);
-
-  assert.match(migrationSource, /config\.get<string>\("sync\.dir", ""\)/);
-  assert.equal(
-    (migrationSource.match(/globalState\.update\(SYNC_DIR_STATE_KEY, legacyDir\.trim\(\)\)/g) || []).length,
-    1,
-  );
-  assert.doesNotMatch(migrationSource, /sync\.threadIds|sync\.projectKeys|sync\.conversationMode/);
+  assert.match(extensionSource, /await migrateTaskTransferState\(/);
+  assert.match(migrationSource, /removeGlobalState\(key\)/);
+  assert.match(migrationSource, /ConfigurationTarget\.Global/);
+  assert.match(migrationSource, /ConfigurationTarget\.Workspace/);
+  assert.match(migrationSource, /ConfigurationTarget\.WorkspaceFolder/);
+  assert.match(migrationSource, /workspace\.workspaceFolders/);
+  assert.doesNotMatch(extensionSource, /syncSetupTransaction|SyncSetupMutationCoordinator/);
+  assert.doesNotMatch(extensionSource, /pauseSync|resumeSync|clearSyncSetup/);
 });

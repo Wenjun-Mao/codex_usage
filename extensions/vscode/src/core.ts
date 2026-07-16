@@ -1,5 +1,5 @@
 import * as path from "path";
-import { VALID_SYNC_SELECTION_VERSION } from "./syncSetupTransaction";
+import { taskTransferControlLabel } from "./transferPresentation";
 
 export { parseSyncStatusSummary } from "./syncProtocol";
 export type { SyncStatusSummary } from "./syncProtocol";
@@ -16,9 +16,6 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.refreshDashboard",
   "codexUsage.openSettings",
 ] as const;
-
-export const SYNC_STATUS_KIND_VALUES = ["off", "idle", "scanning", "pulling", "pushing", "conflict", "issue"] as const;
-export type SyncStatusKind = (typeof SYNC_STATUS_KIND_VALUES)[number];
 
 export type ProjectTransitionsSettings = {
   autoDetect: boolean;
@@ -44,18 +41,15 @@ export type ThreadsCommandOptions = {
   projectTransitions?: ProjectTransitionsSettings;
 };
 
-export type SyncSettings = {
-  enabled: boolean;
-  dir: string;
-  selectionVersion: number;
-  threadIds: string[];
+export type TaskTransferSettings = {
+  folder: string;
 };
 
 export type ExtensionSettings = {
   range: ReportRange;
   projectKeys: string[];
   theme: ReportTheme;
-  sync: SyncSettings;
+  taskTransfer: TaskTransferSettings;
   projectTransitions: ProjectTransitionsSettings;
 };
 
@@ -66,24 +60,6 @@ export type ProjectChoice = {
   detail: string;
   totalTokens: number;
   picked: boolean;
-};
-
-export type SyncMenuAction =
-  | "pullTasks"
-  | "pushTasks"
-  | "syncStatus"
-  | "pauseSync"
-  | "resumeSync"
-  | "changeFolder"
-  | "changeTasks"
-  | "clearSync"
-  | "openSyncFolder";
-
-export type SyncMenuQuickPickItem = {
-  label: string;
-  description: string;
-  detail: string;
-  action: SyncMenuAction;
 };
 
 export type TransitionChoice = {
@@ -107,15 +83,11 @@ export type WebviewControlState = {
   range: ReportRange;
   projectKeys: string[];
   theme: ReportTheme;
-  sync?: Pick<SyncSettings, "enabled" | "dir" | "selectionVersion" | "threadIds">;
+  taskTransfer: TaskTransferSettings;
   versionLabel?: string;
 };
 
 export const PROJECT_KEYS_STATE_KEY = "projectKeys";
-export const SYNC_DIR_STATE_KEY = "syncDir";
-export const SYNC_THREAD_IDS_STATE_KEY = "syncThreadIds";
-export const SYNC_SELECTION_VERSION = VALID_SYNC_SELECTION_VERSION;
-export const SYNC_SELECTION_VERSION_STATE_KEY = "syncSelectionVersion";
 
 export type GlobalStateReader = {
   get<T>(key: string, defaultValue: T): T;
@@ -153,69 +125,8 @@ export function normalizeProjectKeys(values: unknown): string[] {
   return selected;
 }
 
-export function normalizeThreadIds(values: unknown): string[] {
-  return normalizeProjectKeys(values);
-}
-
 export function readProjectKeysState(state: GlobalStateReader): string[] {
   return normalizeProjectKeys(state.get(PROJECT_KEYS_STATE_KEY, []));
-}
-
-export function readSyncDirState(state?: GlobalStateReader): string {
-  const value = state?.get(SYNC_DIR_STATE_KEY, "");
-  return typeof value === "string" ? value.trim() : "";
-}
-
-export function readSyncThreadIdsState(state?: GlobalStateReader): string[] {
-  return normalizeThreadIds(state?.get(SYNC_THREAD_IDS_STATE_KEY, []));
-}
-
-export function readSyncSelectionVersionState(state?: GlobalStateReader): number {
-  return state?.get<number>(SYNC_SELECTION_VERSION_STATE_KEY, 0) === SYNC_SELECTION_VERSION
-    ? SYNC_SELECTION_VERSION
-    : 0;
-}
-
-export function normalizeSyncSettings(value: unknown): SyncSettings {
-  const input = isRecord(value) ? value : {};
-  const selectionVersion = input.selectionVersion === SYNC_SELECTION_VERSION ? SYNC_SELECTION_VERSION : 0;
-  return {
-    enabled: input.enabled === true,
-    dir: typeof input.dir === "string" ? input.dir.trim() : "",
-    selectionVersion,
-    threadIds: selectionVersion === SYNC_SELECTION_VERSION ? normalizeThreadIds(input.threadIds) : [],
-  };
-}
-
-export function hasValidSyncSelection(settings: SyncSettings): boolean {
-  const normalized = normalizeSyncSettings(settings);
-  return Boolean(
-    normalized.dir &&
-    normalized.selectionVersion === SYNC_SELECTION_VERSION &&
-    normalized.threadIds.length > 0
-  );
-}
-
-export function syncStatusKindLabel(kind: SyncStatusKind): string {
-  if (kind === "off") {
-    return "Off";
-  }
-  if (kind === "idle") {
-    return "Idle";
-  }
-  if (kind === "scanning") {
-    return "Scanning";
-  }
-  if (kind === "pulling") {
-    return "Pulling";
-  }
-  if (kind === "pushing") {
-    return "Pushing";
-  }
-  if (kind === "conflict") {
-    return "Conflict";
-  }
-  return "Issue";
 }
 
 export function cacheDirPath(globalStoragePath: string): string {
@@ -234,14 +145,6 @@ export function buildCodexUsageEnv(
     ...baseEnv,
     CODEX_USAGE_CACHE_DIR: cacheDirPath(globalStoragePath),
   };
-}
-
-export type SyncSetupStepOptions = {
-  refreshDashboard?: boolean;
-};
-
-export function shouldRefreshAfterSyncSetupStep(options: SyncSetupStepOptions | undefined): boolean {
-  return options?.refreshDashboard !== false;
 }
 
 export function extensionVersionLabel(packageJson: unknown): string {
@@ -544,102 +447,12 @@ function renderWebviewControls(state: WebviewControlState): string {
     `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` +
     `<a href="command:codexUsage.selectProjects">Projects: ${escapeHtml(projectFilterLabel(state.projectKeys))}</a>` +
     `<a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(themeLabel(state.theme))}</a>` +
-    `<a href="command:codexUsage.openSyncMenu">${escapeHtml(syncControlLabel(state.sync))}</a>` +
+    `<a href="command:codexUsage.openSyncMenu">${escapeHtml(taskTransferControlLabel())}</a>` +
     '<a href="command:codexUsage.refreshDashboard">Refresh</a>' +
     '<a href="command:codexUsage.openSettings">Settings</a>' +
     version +
     "</nav>"
   );
-}
-
-export function syncControlLabel(sync: WebviewControlState["sync"]): string {
-  const normalized = normalizeSyncSettings(sync ?? {});
-  if (!hasValidSyncSelection(normalized)) {
-    return "Sync: Setup required ▾";
-  }
-  if (!normalized.enabled) {
-    return "Sync: Off ▾";
-  }
-  if (normalized.threadIds.length === 1) {
-    return "Sync: 1 task ▾";
-  }
-  return `Sync: ${normalized.threadIds.length} tasks ▾`;
-}
-
-export function syncMenuQuickPickItems(sync: SyncSettings): SyncMenuQuickPickItem[] {
-  const settings = normalizeSyncSettings(sync);
-  const taskCount = settings.threadIds.length;
-  const taskDescription = taskCount === 1 ? "1 selected" : `${taskCount} selected`;
-
-  const items: SyncMenuQuickPickItem[] = settings.enabled
-    ? [
-        {
-          label: "$(cloud-download) Pull Tasks",
-          description: "Import remote changes",
-          detail: "Pull selected tasks and bind imported tasks to matching local projects.",
-          action: "pullTasks",
-        },
-        {
-          label: "$(cloud-upload) Push Tasks",
-          description: "Publish local changes",
-          detail: "Push selected local task changes after checking for remote updates.",
-          action: "pushTasks",
-        },
-      ]
-    : [
-        {
-        label: "$(play) Resume Sync",
-        description: hasValidSyncSelection(settings) ? "Paused" : "Setup needed",
-        detail: "Enable the manual pull and push commands without changing selections.",
-        action: "resumeSync",
-        },
-      ];
-
-  items.push(
-    {
-      label: "$(info) Sync Status",
-      description: "Inspect selected tasks",
-      detail: "Show local/remote state, conflicts, missing files, and memory warnings.",
-      action: "syncStatus",
-    },
-  );
-
-  if (settings.enabled) {
-    items.push({
-      label: "$(debug-pause) Pause Sync",
-      description: "Disable manual sync commands",
-      detail: "Keeps the selected folder and tasks so sync can be resumed later.",
-      action: "pauseSync",
-    });
-  }
-
-  items.push(
-    {
-      label: "$(folder-opened) Change Folder",
-      description: settings.dir || "No folder selected",
-      detail: "Choose a different bring-your-own sync folder.",
-      action: "changeFolder",
-    },
-    {
-      label: "$(checklist) Change Tasks",
-      description: taskDescription,
-      detail: "Choose the exact Codex tasks to sync.",
-      action: "changeTasks",
-    },
-    {
-      label: "$(trash) Clear Sync Setup",
-      description: "Disable sync and forget selections",
-      detail: "Does not delete local Codex files or anything inside the sync folder.",
-      action: "clearSync",
-    },
-    {
-      label: "$(folder) Open Sync Folder",
-      description: settings.dir || "No folder selected",
-      detail: "Open the configured bring-your-own sync folder.",
-      action: "openSyncFolder",
-    },
-  );
-  return items;
 }
 
 function themeLabel(theme: ReportTheme): string {

@@ -16,24 +16,13 @@ const {
   extensionVersionLabel,
   injectWebviewControls,
   injectWebviewCsp,
-  hasValidSyncSelection,
-  normalizeSyncSettings,
   normalizeTheme,
   normalizeRange,
   parseProjectChoices,
   readProjectKeysState,
-  readSyncDirState,
-  readSyncSelectionVersionState,
-  readSyncThreadIdsState,
   parseTransitionChoices,
   renderErrorHtml,
   renderLoadingHtml,
-  shouldRefreshAfterSyncSetupStep,
-  syncControlLabel,
-  syncMenuQuickPickItems,
-  syncStatusKindLabel,
-  SYNC_SELECTION_VERSION,
-  SYNC_SELECTION_VERSION_STATE_KEY,
   WEBVIEW_COMMANDS,
 } = core;
 
@@ -147,31 +136,6 @@ test("normalizeTheme falls back to auto for unknown settings", () => {
   assert.equal(normalizeTheme(undefined), "auto");
 });
 
-test("normalizeSyncSettings accepts exact thread ids only for selection schema version 2", () => {
-  assert.deepEqual(
-    normalizeSyncSettings({
-      enabled: true,
-      dir: " D:/Sync ",
-      selectionVersion: 2,
-      threadIds: [" t1 ", "", "t1", "t2"],
-    }),
-    {
-      enabled: true,
-      dir: "D:/Sync",
-      selectionVersion: 2,
-      threadIds: ["t1", "t2"],
-    },
-  );
-  assert.deepEqual(normalizeSyncSettings({}), {
-    enabled: false,
-    dir: "",
-    selectionVersion: 0,
-    threadIds: [],
-  });
-  assert.deepEqual(normalizeSyncSettings({ threadIds: ["legacy"] }).threadIds, []);
-  assert.deepEqual(normalizeSyncSettings({ selectionVersion: 1, threadIds: ["legacy"] }).threadIds, []);
-});
-
 test("project keys are normalized from extension global state", () => {
   const state = {
     get(key, fallback) {
@@ -180,133 +144,6 @@ test("project keys are normalized from extension global state", () => {
   };
 
   assert.deepEqual(readProjectKeysState(state), ["repo-a", "repo-b"]);
-});
-
-test("sync folder, selection version, and thread ids are normalized from extension global state", () => {
-  const state = {
-    get(key, fallback) {
-      if (key === "syncDir") {
-        return " D:/CodexSync ";
-      }
-      if (key === "syncThreadIds") {
-        return [" t1 ", "", "t1", "t2"];
-      }
-      if (key === "syncSelectionVersion") {
-        return 2;
-      }
-      return fallback;
-    },
-  };
-
-  assert.equal(readSyncDirState(state), "D:/CodexSync");
-  assert.equal(readSyncSelectionVersionState(state), 2);
-  assert.deepEqual(readSyncThreadIdsState(state), ["t1", "t2"]);
-  assert.equal(SYNC_SELECTION_VERSION, 2);
-  assert.equal(SYNC_SELECTION_VERSION_STATE_KEY, "syncSelectionVersion");
-});
-
-test("sync selection version rejects legacy and unknown global state", () => {
-  const state = {
-    get(key, fallback) {
-      return key === "syncSelectionVersion" ? 1 : fallback;
-    },
-  };
-
-  assert.equal(readSyncSelectionVersionState(state), 0);
-  assert.equal(readSyncSelectionVersionState(undefined), 0);
-});
-
-test("sync selection validity requires a folder, schema version 2, and at least one exact task", () => {
-  assert.equal(
-    hasValidSyncSelection(
-      normalizeSyncSettings({
-        enabled: true,
-        dir: "D:/Sync",
-        selectionVersion: 2,
-        threadIds: ["t1"],
-      }),
-    ),
-    true,
-  );
-  assert.equal(
-    hasValidSyncSelection(
-      normalizeSyncSettings({
-        enabled: true,
-        dir: "D:/Sync",
-        selectionVersion: 1,
-        threadIds: ["legacy"],
-      }),
-    ),
-    false,
-  );
-  assert.equal(
-    hasValidSyncSelection(
-      normalizeSyncSettings({ enabled: true, dir: "D:/Sync", selectionVersion: 2, threadIds: [] }),
-    ),
-    false,
-  );
-});
-
-test("sync menu exposes pause resume change and clear actions", () => {
-  const enabledItems = syncMenuQuickPickItems({
-    enabled: true,
-    dir: "D:/CodexSync",
-    selectionVersion: 2,
-    threadIds: ["t1"],
-  });
-
-  assert.deepEqual(
-    enabledItems.map((item) => item.action),
-    [
-      "pullTasks",
-      "pushTasks",
-      "syncStatus",
-      "pauseSync",
-      "changeFolder",
-      "changeTasks",
-      "clearSync",
-      "openSyncFolder",
-    ],
-  );
-  assert.match(enabledItems[0].label, /Pull Tasks/);
-  assert.match(enabledItems[1].label, /Push Tasks/);
-  assert.match(enabledItems[3].label, /Pause Sync/);
-  assert.match(enabledItems[5].description, /1 selected/);
-  assert.equal(enabledItems[5].label, "$(checklist) Change Tasks");
-  assert.match(enabledItems[6].detail, /does not delete/i);
-
-  const pausedItems = syncMenuQuickPickItems({
-    enabled: false,
-    dir: "D:/CodexSync",
-    selectionVersion: 2,
-    threadIds: ["t1"],
-  });
-
-  assert.equal(pausedItems[0].action, "resumeSync");
-  assert.match(pausedItems[0].label, /Resume Sync/);
-  assert.match(pausedItems[0].description, /Paused/);
-});
-
-test("syncStatusKindLabel maps manual transfer states to concise status bar labels", () => {
-  assert.equal(syncStatusKindLabel("off"), "Off");
-  assert.equal(syncStatusKindLabel("idle"), "Idle");
-  assert.equal(syncStatusKindLabel("scanning"), "Scanning");
-  assert.equal(syncStatusKindLabel("pulling"), "Pulling");
-  assert.equal(syncStatusKindLabel("pushing"), "Pushing");
-  assert.equal(syncStatusKindLabel("conflict"), "Conflict");
-  assert.equal(syncStatusKindLabel("issue"), "Issue");
-});
-
-test("empty sync global state uses safe defaults", () => {
-  const state = {
-    get(_key, fallback) {
-      return fallback;
-    },
-  };
-
-  assert.equal(readSyncDirState(state), "");
-  assert.equal(readSyncSelectionVersionState(state), 0);
-  assert.deepEqual(readSyncThreadIdsState(state), []);
 });
 
 test("buildCodexUsageEnv passes internal cache directory without removing process env", () => {
@@ -319,12 +156,6 @@ test("buildCodexUsageEnv passes internal cache directory without removing proces
 
 test("cacheDbPath points at the Python cache database under extension storage", () => {
   assert.equal(cacheDbPath("C:/global-storage"), path.join("C:/global-storage", "cache", "usage-cache.sqlite3"));
-});
-
-test("sync setup step refresh policy defaults to refresh and can be suppressed", () => {
-  assert.equal(shouldRefreshAfterSyncSetupStep(undefined), true);
-  assert.equal(shouldRefreshAfterSyncSetupStep({}), true);
-  assert.equal(shouldRefreshAfterSyncSetupStep({ refreshDashboard: false }), false);
 });
 
 test("bundledExecutablePath resolves supported bundled executables and rejects unsupported platforms", () => {
@@ -421,12 +252,7 @@ test("injectWebviewControls adds command links without scripts or external URLs"
     range: "7d",
     projectKeys: ["repo-a", "repo-b"],
     theme: "night",
-    sync: {
-      enabled: true,
-      dir: "D:/CodexSync",
-      selectionVersion: 2,
-      threadIds: ["t1", "t2"],
-    },
+    taskTransfer: { folder: "D:/CodexSync" },
     versionLabel: "v0.1.9",
   });
 
@@ -440,7 +266,8 @@ test("injectWebviewControls adds command links without scripts or external URLs"
   assert.doesNotMatch(out, /command:codexUsage.reviewProjectTransitions/);
   assert.match(out, /Projects: 2 selected/);
   assert.match(out, /Theme: Night/);
-  assert.match(out, /Sync: 2 tasks/);
+  assert.match(out, /Task Transfer ▾/);
+  assert.doesNotMatch(out, /Setup required|Sync: Off|Sync: \d+ tasks?/i);
   assert.doesNotMatch(out, />Sync Now<\/a>/);
   assert.doesNotMatch(out, />Sync Status<\/a>/);
   assert.doesNotMatch(out, />Transitions<\/a>/);
@@ -449,74 +276,17 @@ test("injectWebviewControls adds command links without scripts or external URLs"
   assert.doesNotMatch(out, /https:/);
 });
 
-test("sync control labels read as menu controls", () => {
-  assert.equal(
-    syncControlLabel({ enabled: false, dir: "", selectionVersion: 0, threadIds: [] }),
-    "Sync: Setup required ▾",
-  );
-  assert.equal(
-    syncControlLabel({
-      enabled: true,
-      dir: "D:/CodexSync",
-      selectionVersion: 2,
-      threadIds: ["t1"],
-    }),
-    "Sync: 1 task ▾",
-  );
-  assert.equal(
-    syncControlLabel({
-      enabled: false,
-      dir: "D:/CodexSync",
-      selectionVersion: 2,
-      threadIds: ["t1", "t2"],
-    }),
-    "Sync: Off ▾",
-  );
-  assert.equal(
-    syncControlLabel({ enabled: true, dir: "D:/CodexSync", selectionVersion: 1, threadIds: ["legacy"] }),
-    "Sync: Setup required ▾",
-  );
-});
-
-test("injectWebviewControls labels unconfigured sync states", () => {
+test("injectWebviewControls always labels Task Transfer even without a folder", () => {
   const html = "<!doctype html><html><head><title>Report</title></head><body><main><h1>Report</h1></main></body></html>";
+  const out = injectWebviewControls(html, {
+    range: "7d",
+    projectKeys: [],
+    theme: "auto",
+    taskTransfer: { folder: "" },
+  });
 
-  assert.match(
-    injectWebviewControls(html, {
-      range: "7d",
-      projectKeys: [],
-      theme: "auto",
-      sync: { enabled: false, dir: "", selectionVersion: 0, threadIds: [] },
-    }),
-    /Sync: Setup required/,
-  );
-  assert.match(
-    injectWebviewControls(html, {
-      range: "7d",
-      projectKeys: [],
-      theme: "auto",
-      sync: { enabled: true, dir: "", selectionVersion: 2, threadIds: ["t1"] },
-    }),
-    /Sync: Setup required/,
-  );
-  assert.match(
-    injectWebviewControls(html, {
-      range: "7d",
-      projectKeys: [],
-      theme: "auto",
-      sync: { enabled: true, dir: "D:\/CodexSync", selectionVersion: 1, threadIds: ["legacy"] },
-    }),
-    /Sync: Setup required/,
-  );
-  assert.match(
-    injectWebviewControls(html, {
-      range: "7d",
-      projectKeys: [],
-      theme: "auto",
-      sync: { enabled: true, dir: "D:\/CodexSync", selectionVersion: 2, threadIds: ["t1", "t2"] },
-    }),
-    /Sync: 2 tasks/,
-  );
+  assert.match(out, /Task Transfer ▾/);
+  assert.doesNotMatch(out, /Setup required|Sync: Off|Sync: \d+ tasks?/i);
 });
 
 test("extensionVersionLabel reads package metadata", () => {
@@ -590,6 +360,19 @@ test("core no longer exports legacy sync project or conversation selection contr
     "parseThreadChoices",
     "syncProjectQuickPickItems",
     "syncConversationQuickPickItems",
+    "SYNC_STATUS_KIND_VALUES",
+    "SyncStatusKind",
+    "SYNC_DIR_STATE_KEY",
+    "SYNC_THREAD_IDS_STATE_KEY",
+    "SYNC_SELECTION_VERSION_STATE_KEY",
+    "readSyncDirState",
+    "readSyncThreadIdsState",
+    "readSyncSelectionVersionState",
+    "normalizeSyncSettings",
+    "hasValidSyncSelection",
+    "syncStatusKindLabel",
+    "syncControlLabel",
+    "syncMenuQuickPickItems",
   ]) {
     assert.equal(core[name], undefined, `${name} should not be exported`);
   }
