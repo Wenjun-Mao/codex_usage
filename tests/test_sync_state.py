@@ -392,6 +392,18 @@ def test_local_state_store_record_success_persists_fields_and_selects_base(
     assert state.synced_at
 
 
+def test_local_state_store_requires_a_task_snapshot(tmp_path: Path) -> None:
+    missing = SyncFileSnapshot(path=tmp_path / "missing.jsonl", exists=False)
+    item = replace(_plan_item(tmp_path), local=missing, remote=missing)
+    store = LocalStateStore(tmp_path / "codex" / "sessions", tmp_path / "sync")
+
+    with pytest.raises(
+        ValueError,
+        match="Successful sync state requires a local or remote task snapshot",
+    ):
+        store.record_success(item, missing, missing)
+
+
 def test_local_state_store_ignores_malformed_base_record(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     store = LocalStateStore(sessions, tmp_path / "sync")

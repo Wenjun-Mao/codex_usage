@@ -171,6 +171,38 @@ def test_noop_bookkeeping_repair_revalidates_matching_local_bytes(
     assert state_store.read("thread-1") is None
 
 
+def test_noop_bookkeeping_remote_change_uses_task_diagnostic(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "codex"
+    sessions = home / "sessions"
+    sync_dir = tmp_path / "sync"
+    _write_session(sessions, "thread-1", tmp_path / "repo")
+    _write_index(home, "Remote title")
+    _push(sessions, sync_dir, tmp_path / "cache", "source")
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
+    original_pushes = runner_module.execute_pushes
+
+    def change_remote_after_preflight(*args, **kwargs):
+        execution = original_pushes(*args, **kwargs)
+        remote_path.write_bytes(remote_path.read_bytes() + b"\n")
+        return execution
+
+    monkeypatch.setattr(
+        runner_module,
+        "execute_pushes",
+        change_remote_after_preflight,
+    )
+
+    result = _push(sessions, sync_dir, tmp_path / "cache", "source")
+
+    assert result.outcome == "issue"
+    assert result.issues[-1].message == (
+        "Remote task changed before bookkeeping repair for thread 'thread-1'"
+    )
+
+
 def _seed_remote(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     source_home = tmp_path / "source"
     source_sessions = source_home / "sessions"

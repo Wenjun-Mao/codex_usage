@@ -224,7 +224,7 @@ def _validate_expected_source(
         observed_source != expected_source or snapshot_file(source) != expected_source
     ):
         raise ConcurrentRemoteChangeError(
-            "Remote conversation changed during cwd materialization"
+            "Remote task changed during cwd materialization"
         )
 
 

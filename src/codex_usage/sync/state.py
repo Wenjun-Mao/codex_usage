@@ -104,7 +104,7 @@ def local_state_from_success(
 ) -> LocalSyncState:
     base = local if local.exists else remote
     if not base.exists:
-        raise ValueError("Successful sync state requires a local or remote conversation snapshot.")
+        raise ValueError("Successful sync state requires a local or remote task snapshot.")
     return LocalSyncState(
         thread_id=item.thread_id,
         sync_dir_fingerprint=sync_dir_fingerprint(sync_dir),
