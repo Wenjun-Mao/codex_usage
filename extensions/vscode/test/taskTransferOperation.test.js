@@ -1,7 +1,10 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { selectTaskTransferOperation } = require("../out/taskTransferOperation");
+const {
+  chooseFreshTaskTransferSelection,
+  selectTaskTransferOperation,
+} = require("../out/taskTransferOperation");
 
 function selectionPort(selections) {
   const calls = [];
@@ -38,4 +41,15 @@ test("review cannot reuse a previous import or export selection", async () => {
   assert.equal(await selectTaskTransferOperation("review", "/transfer", port), undefined);
 
   assert.deepEqual(port.calls.at(-1), ["choose", "review", ["task:/transfer"], []]);
+});
+
+test("controller-ready rows still cross the shared empty-selection boundary", async () => {
+  const port = selectionPort([["task-1"]]);
+  const rows = [{ id: "task:task-1", kind: "task" }];
+
+  assert.deepEqual(
+    await chooseFreshTaskTransferSelection("import", rows, port),
+    ["task-1"],
+  );
+  assert.deepEqual(port.calls, [["choose", "import", ["task:task-1"], []]]);
 });

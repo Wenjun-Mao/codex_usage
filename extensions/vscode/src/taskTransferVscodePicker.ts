@@ -4,10 +4,12 @@ import {
   selectedPickerItemIds,
   type TaskPickerItem,
 } from "./syncTaskPicker";
+import type { TransferOperation } from "./transferPresentation";
 
 type TaskQuickPickItem = vscode.QuickPickItem & { task?: TaskPickerItem };
 
 export function showTaskTransferPicker(
+  operation: TransferOperation,
   rows: TaskPickerItem[],
   initialThreadIds: readonly string[],
 ): Promise<string[] | undefined> {
@@ -32,7 +34,8 @@ export function showTaskTransferPicker(
   let applyingCanonicalSelection = false;
   let settled = false;
 
-  quickPick.title = "Select tasks for Task Transfer";
+  const title = pickerTitle(operation);
+  quickPick.title = title;
   quickPick.placeholder = "Select tasks or toggle a project to select all of its tasks";
   quickPick.canSelectMany = true;
   quickPick.matchOnDescription = true;
@@ -81,7 +84,7 @@ export function showTaskTransferPicker(
         quickPick.selectedItems = pickerItemsForIds(previousSelectedRowIds, pickerItemsById);
         applyingCanonicalSelection = false;
         if (selectedThreadIds.length > 0) {
-          quickPick.title = "Select tasks for Task Transfer";
+          quickPick.title = title;
         }
       }),
       quickPick.onDidAccept(() => {
@@ -95,6 +98,16 @@ export function showTaskTransferPicker(
     );
     quickPick.show();
   });
+}
+
+function pickerTitle(operation: TransferOperation): string {
+  if (operation === "import") {
+    return "Select tasks to import";
+  }
+  if (operation === "export") {
+    return "Select tasks to export";
+  }
+  return "Select tasks to review";
 }
 
 function pickerItemsForIds(

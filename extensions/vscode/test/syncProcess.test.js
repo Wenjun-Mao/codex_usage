@@ -324,9 +324,10 @@ test("runSyncProcess reports ENOENT once even if close follows the child error",
 test("extension delegates Task Transfer commands without retaining task choices", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
 
-  assert.match(extensionSource, /createTaskTransferVscode\(context/);
+  assert.match(extensionSource, /new TaskTransferController\(/);
+  assert.match(extensionSource, /createTaskTransferVscodePort\(context/);
   assert.equal((extensionSource.match(/registerCommand\("codexUsage\.selectSyncTasks"/g) || []).length, 1);
-  assert.match(extensionSource, /"codexUsage\.selectSyncTasks", taskTransfer\.showMenu/);
+  assert.match(extensionSource, /"codexUsage\.selectSyncTasks", \(\) => taskTransfer\.showMenu\(\)/);
   assert.doesNotMatch(extensionSource, /transientThreadIds|syncThreadIds|selectionVersion/);
   assert.doesNotMatch(extensionSource, /syncSetupTransaction|SyncSetupMutationCoordinator/);
 });
@@ -369,7 +370,9 @@ test("extension status text uses only pure transient Task Transfer labels", () =
   );
 
   assert.match(statusSource, /`Codex Usage: \$\{settings\.range\}`/);
-  assert.match(statusSource, /transientStatusLabel\(transferStatus\)/);
+  assert.match(statusSource, /const usageText = projectCount > 0/);
+  assert.match(statusSource, /transientStatusLabel\(transientStatus\)/);
+  assert.match(statusSource, /statusItem\.text = transientStatus/);
   assert.doesNotMatch(statusSource, /Setup|required|Sync:|enabled|threadIds|taskTransfer\.folder/i);
 });
 

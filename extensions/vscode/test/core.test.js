@@ -264,6 +264,32 @@ test("package metadata no longer contributes removed manual settings", () => {
   assert.equal(properties["codexUsage.sync.autoPush"], undefined);
 });
 
+test("current Task Transfer product source rejects setup-era and background workflows", () => {
+  const sourceRoot = path.join(__dirname, "../src");
+  const currentProductSource = [
+    ...fs.readdirSync(sourceRoot)
+      .filter((name) => name.endsWith(".ts"))
+      .map((name) => fs.readFileSync(path.join(sourceRoot, name), "utf8")),
+    JSON.stringify(packageJson),
+  ].join("\n");
+
+  for (const forbidden of [
+    "Setup required",
+    "Pause Sync",
+    "Resume Sync",
+    "Pull Tasks",
+    "Push Tasks",
+    "Change Tasks",
+    "Clear Sync Setup",
+  ]) {
+    assert.doesNotMatch(currentProductSource, new RegExp(forbidden, "i"));
+  }
+  assert.doesNotMatch(
+    currentProductSource,
+    /onDidChangeWindowState|onDidChangeActiveTextEditor|createFileSystemWatcher|setInterval/,
+  );
+});
+
 test("package metadata keeps command ids with exact Task Transfer titles", () => {
   const commands = new Map(packageJson.contributes.commands.map((item) => [item.command, item.title]));
 

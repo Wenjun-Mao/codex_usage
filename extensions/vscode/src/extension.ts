@@ -29,9 +29,10 @@ import {
   renderLoadingHtml,
 } from "./dashboardWebview";
 import {
-  createTaskTransferVscode,
+  createTaskTransferVscodePort,
   migrateVscodeTaskTransferState,
 } from "./taskTransferVscode";
+import { TaskTransferController } from "./taskTransfer";
 import { readTaskTransferFolder } from "./taskTransferVscodeState";
 import {
   transientStatusLabel,
@@ -41,7 +42,7 @@ import {
 let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
-let transferStatus: TransferTransientStatus | undefined;
+let transientStatus: TransferTransientStatus | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   output = vscode.window.createOutputChannel("Codex Usage");
@@ -54,9 +55,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateStatusItem(readSettings(context));
   statusItem.show();
 
-  const taskTransfer = createTaskTransferVscode(context, {
+  const taskTransferPort = createTaskTransferVscodePort(context, {
     output,
-    readAutoTransitions: () => readSettings(context).projectTransitions.autoDetect,
     resolveExecutable: () => resolveBundledExecutable(context),
     processEnv: () => buildCodexUsageEnv(context.globalStorageUri.fsPath),
     runCommand: async (args) => runCodexUsage(
@@ -71,10 +71,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     },
     setTransientStatus: (status) => {
-      transferStatus = status;
+      transientStatus = status;
       updateStatusItem(readSettings(context));
     },
   });
+  const taskTransfer = new TaskTransferController(
+    taskTransferPort,
+    () => readSettings(context).projectTransitions.autoDetect,
+  );
 
   const commands = [
     vscode.commands.registerCommand("codexUsage.openDashboard", () => openOrRefreshDashboard(context)),
@@ -86,13 +90,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.selectTheme", () => selectThemeSetting(context)),
     vscode.commands.registerCommand("codexUsage.reviewProjectTransitions", () =>
       reviewProjectTransitions(context)),
-    vscode.commands.registerCommand("codexUsage.openSyncMenu", taskTransfer.showMenu),
-    vscode.commands.registerCommand("codexUsage.configureSync", taskTransfer.chooseFolder),
-    vscode.commands.registerCommand("codexUsage.selectSyncTasks", taskTransfer.showMenu),
-    vscode.commands.registerCommand("codexUsage.pullTasks", taskTransfer.importTasks),
-    vscode.commands.registerCommand("codexUsage.pushTasks", taskTransfer.exportTasks),
-    vscode.commands.registerCommand("codexUsage.syncStatus", taskTransfer.reviewStatus),
-    vscode.commands.registerCommand("codexUsage.openSyncFolder", taskTransfer.openFolder),
+    vscode.commands.registerCommand("codexUsage.openSyncMenu", () => taskTransfer.showMenu()),
+    vscode.commands.registerCommand("codexUsage.configureSync", () => taskTransfer.chooseFolder()),
+    vscode.commands.registerCommand("codexUsage.selectSyncTasks", () => taskTransfer.showMenu()),
+    vscode.commands.registerCommand("codexUsage.pullTasks", () => taskTransfer.importTasks()),
+    vscode.commands.registerCommand("codexUsage.pushTasks", () => taskTransfer.exportTasks()),
+    vscode.commands.registerCommand("codexUsage.syncStatus", () => taskTransfer.reviewStatus()),
+    vscode.commands.registerCommand("codexUsage.openSyncFolder", () => taskTransfer.openFolder()),
   ];
   const settingsWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
     if (!event.affectsConfiguration("codexUsage")) {
@@ -422,12 +426,12 @@ function renderWebviewHtml(
 function updateStatusItem(settings: ExtensionSettings): void {
   const projectCount = settings.projectKeys.length;
   const theme = themeLabel(settings.theme);
-  statusItem.text = projectCount > 0
+  const usageText = projectCount > 0
     ? `Codex Usage: ${settings.range} (${projectCount})`
     : `Codex Usage: ${settings.range}`;
-  if (transferStatus) {
-    statusItem.text += ` | ${transientStatusLabel(transferStatus)}`;
-  }
+  statusItem.text = transientStatus
+    ? `${usageText} | ${transientStatusLabel(transientStatus)}`
+    : usageText;
   statusItem.tooltip = projectCount > 0
     ? `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: ${projectCount} selected. Theme: ${theme}.`
     : `Open Codex Usage Dashboard. Range: ${settings.range}. Projects: All Projects. Theme: ${theme}.`;

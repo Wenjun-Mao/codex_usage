@@ -16,5 +16,13 @@ export async function selectTaskTransferOperation(
   port: TaskTransferSelectionPort,
 ): Promise<string[] | undefined> {
   const rows = await port.loadRows(folder);
+  return chooseFreshTaskTransferSelection(operation, rows, port);
+}
+
+export function chooseFreshTaskTransferSelection(
+  operation: TransferOperation,
+  rows: TaskPickerItem[],
+  port: Pick<TaskTransferSelectionPort, "chooseTasks">,
+): Promise<string[] | undefined> {
   return port.chooseTasks(operation, rows, []);
 }
