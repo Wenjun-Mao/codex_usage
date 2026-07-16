@@ -53,6 +53,18 @@ def normalize_project_key(value: str) -> str:
     return _normalize_path_text(raw)
 
 
+def normalize_declared_project_key(value: str) -> str:
+    """Normalize serialized project metadata without inspecting the filesystem."""
+    raw = value.strip()
+    if not raw:
+        return ""
+    if _looks_like_github_shorthand(raw):
+        return _clean_repo_key(f"https://github.com/{raw}")
+    if _looks_like_repo_value(raw):
+        return _normalize_repo_url(raw)
+    return _normalize_path_text(raw)
+
+
 def is_git_project_key(value: str) -> bool:
     return _looks_like_repo_value(value.strip())
 

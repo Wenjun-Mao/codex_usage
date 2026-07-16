@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from codex_usage.project_identity import is_git_project_key, normalize_project_key
+from codex_usage.project_identity import (
+    is_git_project_key,
+    normalize_declared_project_key,
+    normalize_project_key,
+)
 from codex_usage.session_files import codex_home_from_session_dir
 from codex_usage.sync.io import read_json_object
 from codex_usage.sync.models import (
@@ -52,8 +56,7 @@ def resolve_local_project_root(
     remote_entry: RemoteThreadEntry,
     request: ProjectResolutionRequest,
 ) -> tuple[Path | None, SyncIssue | None]:
-    remote_identities = _normalized_remote_identities(remote_entry)
-    if local_thread is not None and _same_project(local_thread, remote_identities):
+    if local_thread is not None:
         current = _native_absolute_path(local_thread.cwd)
         if current is not None:
             return current, None
@@ -118,11 +121,11 @@ def _binding_for_project(
     remote_entry: RemoteThreadEntry,
     bindings: tuple[ProjectBinding, ...],
 ) -> tuple[ProjectBinding | None, SyncIssue | None]:
-    remote_identities = _normalized_remote_identities(remote_entry)
+    remote_identities = _destination_identities(remote_entry)
     matches = [
         binding
         for binding in bindings
-        if normalize_project_key(binding.project_key) in remote_identities
+        if normalize_declared_project_key(binding.project_key) in remote_identities
     ]
     if len(matches) > 1:
         return None, SyncIssue(
@@ -202,40 +205,35 @@ def _deduplicate_targets(paths: list[Path]) -> tuple[Path, ...]:
     return tuple(roots)
 
 
-def _normalized_remote_identities(remote_entry: RemoteThreadEntry) -> set[str]:
+def _declared_path_identities(remote_entry: RemoteThreadEntry) -> set[str]:
     return {
         normalized
         for value in (remote_entry.project_key, *remote_entry.project_aliases)
-        if (normalized := normalize_project_key(value))
+        if (normalized := normalize_declared_project_key(value))
+        and not is_git_project_key(normalized)
     }
 
 
 def _destination_identities(remote_entry: RemoteThreadEntry) -> set[str]:
-    identities = _normalized_remote_identities(remote_entry)
     if not is_git_project_key(remote_entry.project_key):
-        return identities
-    return {identity for identity in identities if is_git_project_key(identity)}
-
-
-def _same_project(thread: ThreadInfo, remote_identities: set[str]) -> bool:
-    local_identities = {
-        normalized
-        for value in (thread.project_key, *thread.project_aliases)
-        if (normalized := normalize_project_key(value))
-    }
-    return bool(local_identities.intersection(remote_identities))
+        return _declared_path_identities(remote_entry)
+    primary = normalize_declared_project_key(remote_entry.project_key)
+    return {primary} if primary else set()
 
 
 def cwd_matches_root(cwd: str, root: Path) -> bool:
     current = _native_absolute_path(cwd)
-    return current is not None and current == root.resolve(strict=False)
+    return (
+        current is not None
+        and current.resolve(strict=False) == root.resolve(strict=False)
+    )
 
 
 def _native_absolute_path(value: str) -> Path | None:
     if not value:
         return None
-    path = Path(value).expanduser()
-    return path.resolve(strict=False) if path.is_absolute() else None
+    path = Path(value)
+    return path if path.is_absolute() else None
 
 
 def _saved_roots(state_path: Path) -> tuple[Path, ...]:
