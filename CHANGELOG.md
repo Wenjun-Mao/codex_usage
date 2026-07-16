@@ -2,10 +2,15 @@
 
 ## Unreleased
 
+## 0.1.36 - 2026-07-16 - Task Transfer UX And Storage V3
+
 - Repositioned the former selected-task feature as deliberate Task Transfer with explicit Import Tasks, Export Tasks, and Review Transfer Status operations.
-- Removed persistent task selection and desktop-app prerequisites; imports now resolve existing destination checkouts from active VS Code workspaces and validated local folders.
+- Added a fresh, empty task selection for every operation, persisted only the transfer-folder path, and removed saved task selections and project mappings.
+- Kept the persistent status bar usage-only while showing transfer progress and failures only during an active operation.
+- Removed the desktop-app prerequisite; extension-only imports now resolve existing destination projects from active VS Code workspaces and validated local folders without writing private Codex state.
 - Added automatic migration to the version-3 `tasks/` transfer layout while keeping local paired-baseline state at version 2.
-- Added all-or-nothing directional preflight, retained transfer-folder source files, and current Windows x64 and macOS Apple Silicon platform guidance.
+- Added all-or-nothing directional preflight for Import and Export while retaining source files in the transfer folder.
+- Aligned extension UI, README, Marketplace, and troubleshooting wording with Task Transfer, and documented Windows x64 and macOS Apple Silicon as the current package targets.
 
 ## 0.1.35 - 2026-07-14 - Manual Cross-Platform Task Transfer
 

@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import importlib.util
 import json
 import re
@@ -69,13 +70,22 @@ def inventory_payload(
     *,
     thread_id: str = "thread-1",
     estimated_sync_bytes: int = 498,
+    candidate_roots: list[str] | None = None,
 ) -> dict[str, object]:
+    states = {
+        "local": ("local_only", "push"),
+        "remote": ("remote_only", "pull"),
+        "both": ("synced", "none"),
+    }
+    state, action = states[availability]
     return {
-        "inventory_version": 1,
+        "inventory_version": 2,
         "projects": [
             {
                 "project_key": "https://github.com/example/packaged-sync-smoke",
                 "project_label": "packaged-sync-smoke",
+                "identity_kind": "git",
+                "candidate_roots": candidate_roots or [],
                 "tasks": [
                     {
                         "thread_id": thread_id,
@@ -83,12 +93,18 @@ def inventory_payload(
                         "updated_at": "2026-04-29T10:00:02Z",
                         "estimated_sync_bytes": estimated_sync_bytes,
                         "availability": availability,
+                        "state": state,
+                        "action": action,
                     }
                 ],
             }
         ],
         "issues": [],
     }
+
+
+def sha256_bytes(contents: bytes) -> str:
+    return hashlib.sha256(contents).hexdigest()
 
 
 def sync_result(direction: str) -> dict[str, object]:
@@ -156,6 +172,25 @@ def test_native_build_scripts_run_packaged_sync_smoke(build_script: Path):
     assert "smoke-test-packaged-sync.py" in text
 
 
+def test_packaged_transfer_smoke_uses_v3_without_desktop_project_state() -> None:
+    source = PACKAGED_SYNC_SMOKE.read_text(encoding="utf-8")
+
+    assert "INVENTORY_VERSION = 2" in source
+    assert "SYNC_FORMAT_VERSION = 3" in source
+    assert 'TASKS_DIRNAME = "tasks"' in source
+    assert '"--candidate-project-root"' in source
+    assert ".codex-global-state.json" not in source
+    assert 'sync_dir / "conversations"' not in source
+
+
+def test_release_workflow_keeps_only_supported_platform_targets() -> None:
+    workflow = read_workflow()
+
+    assert "win32-x64" in workflow
+    assert "darwin-arm64" in workflow
+    assert "linux-x64" not in workflow
+
+
 def test_packaged_sync_smoke_orchestrates_isolated_exact_task_round_trip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -165,6 +200,39 @@ def test_packaged_sync_smoke_orchestrates_isolated_exact_task_round_trip(
     executable = tmp_path / "codex-usage-double"
     executable.write_text("controlled executable double\n", encoding="utf-8")
     calls: list[tuple[Path, tuple[str, ...], dict[str, str]]] = []
+
+    def write_baseline(
+        codex_home: Path,
+        local_bytes: bytes,
+        remote_bytes: bytes,
+    ) -> None:
+        baseline = (
+            codex_home
+            / ".codex-sync-state"
+            / "fingerprint"
+            / "threads"
+            / f"{smoke.THREAD_ID}.json"
+        )
+        baseline.parent.mkdir(parents=True, exist_ok=True)
+        baseline.write_text(
+            json.dumps(
+                {
+                    "sync_version": 2,
+                    "thread_id": smoke.THREAD_ID,
+                    "sync_dir_fingerprint": "fingerprint",
+                    "base_sha256": sha256_bytes(local_bytes),
+                    "base_size_bytes": len(local_bytes),
+                    "base_updated_at": smoke.TASK_UPDATED_AT,
+                    "last_remote_sha256": sha256_bytes(remote_bytes),
+                    "last_local_sha256": sha256_bytes(local_bytes),
+                    "source_relative_path": smoke.SESSION_RELATIVE_PATH.as_posix(),
+                    "project_key": smoke.PROJECT_KEY,
+                    "project_label": smoke.PROJECT_LABEL,
+                    "synced_at": "2026-07-16T12:00:00Z",
+                }
+            ),
+            encoding="utf-8",
+        )
 
     def run_double(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         environment = kwargs["env"]
@@ -182,35 +250,91 @@ def test_packaged_sync_smoke_orchestrates_isolated_exact_task_round_trip(
                 estimated_sync_bytes=source_jsonl.stat().st_size + 4096,
             )
         elif len(calls) == 2:
-            remote_jsonl = sync_dir / "conversations" / f"{smoke.THREAD_ID}.jsonl"
+            source_bytes = source_jsonl.read_bytes()
+            remote_jsonl = sync_dir / "tasks" / f"{smoke.THREAD_ID}.jsonl"
             remote_jsonl.parent.mkdir(parents=True, exist_ok=True)
-            remote_jsonl.write_bytes(source_jsonl.read_bytes())
+            remote_jsonl.write_bytes(source_bytes)
             (sync_dir / "sync-index.json").write_text(
                 json.dumps(
                     {
-                        "format_version": 2,
+                        "format_version": 3,
+                        "updated_at": "2026-07-16T12:00:00Z",
                         "threads": {
                             smoke.THREAD_ID: {
-                                "file": f"conversations/{smoke.THREAD_ID}.jsonl"
+                                "file": f"tasks/{smoke.THREAD_ID}.jsonl",
+                                "source_relative_path": smoke.SESSION_RELATIVE_PATH.as_posix(),
+                                "index_entry": {
+                                    "id": smoke.THREAD_ID,
+                                    "thread_name": smoke.TASK_TITLE,
+                                    "updated_at": smoke.TASK_UPDATED_AT,
+                                },
+                                "project_key": smoke.PROJECT_KEY,
+                                "project_label": smoke.PROJECT_LABEL,
+                                "project_aliases": [],
+                                "sha256": sha256_bytes(source_bytes),
+                                "size_bytes": len(source_bytes),
+                                "session_updated_at": smoke.TASK_UPDATED_AT,
+                                "exported_at": "2026-07-16T12:00:00Z",
+                                "source_machine_id": "packaged-smoke",
                             }
                         },
                     }
                 ),
                 encoding="utf-8",
             )
+            write_baseline(source_home, source_bytes, source_bytes)
             payload = sync_result("push")
         elif len(calls) == 3:
+            candidate_index = command_args.index("--candidate-project-root")
+            candidate_root = command_args[candidate_index + 1]
             payload = inventory_payload(
                 "remote",
                 estimated_sync_bytes=source_jsonl.stat().st_size,
+                candidate_roots=[candidate_root],
             )
         elif len(calls) == 4:
+            candidate_index = command_args.index("--candidate-project-root")
+            candidate_root = command_args[candidate_index + 1]
+            remote_jsonl = sync_dir / "tasks" / f"{smoke.THREAD_ID}.jsonl"
             imported_jsonl = codex_home / "sessions" / smoke.SESSION_RELATIVE_PATH
-            imported_jsonl.parent.mkdir(parents=True, exist_ok=True)
-            imported_jsonl.write_bytes(
-                (sync_dir / "conversations" / f"{smoke.THREAD_ID}.jsonl").read_bytes()
-            )
+            rows = [
+                json.loads(line)
+                for line in remote_jsonl.read_text(encoding="utf-8").splitlines()
+            ]
+            rows[0]["payload"]["cwd"] = candidate_root
+            smoke._write_jsonl(imported_jsonl, rows)
+            write_baseline(codex_home, imported_jsonl.read_bytes(), remote_jsonl.read_bytes())
             payload = sync_result("pull")
+        elif len(calls) == 5:
+            candidate_index = command_args.index("--candidate-project-root")
+            candidate_root = command_args[candidate_index + 1]
+            imported_jsonl = codex_home / "sessions" / smoke.SESSION_RELATIVE_PATH
+            remote_jsonl = sync_dir / "tasks" / f"{smoke.THREAD_ID}.jsonl"
+            imported_meta = json.loads(
+                imported_jsonl.read_text(encoding="utf-8").splitlines()[0]
+            )
+            payload = {
+                "threads": [
+                    {
+                        "thread_id": smoke.THREAD_ID,
+                        "state": "synced",
+                        "action": "none",
+                        "reason": "local and remote match their last synchronized versions",
+                        "local_path": str(imported_jsonl),
+                        "remote_path": str(remote_jsonl),
+                        "local_sha256": sha256_bytes(imported_jsonl.read_bytes()),
+                        "remote_sha256": sha256_bytes(remote_jsonl.read_bytes()),
+                        "base_sha256": sha256_bytes(imported_jsonl.read_bytes()),
+                        "updated_at": smoke.TASK_UPDATED_AT,
+                        "source_relative_path": smoke.SESSION_RELATIVE_PATH.as_posix(),
+                        "project_key": smoke.PROJECT_KEY,
+                        "project_label": smoke.PROJECT_LABEL,
+                        "memory_database_rows": 0,
+                    }
+                ],
+                "issues": [],
+            }
+            assert candidate_root == imported_meta["payload"]["cwd"]
         else:
             raise AssertionError(f"Unexpected packaged command: {command!r}")
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
@@ -227,12 +351,14 @@ def test_packaged_sync_smoke_orchestrates_isolated_exact_task_round_trip(
     source_home = calls[0][0]
     target_home = calls[2][0]
     sync_dir = calls[0][1][3]
+    candidate_root = calls[2][1][-1]
     assert source_home.name == "source-home"
     assert target_home.name == "target-home"
     assert source_home != target_home
     assert [call[0] for call in calls] == [
         source_home,
         source_home,
+        target_home,
         target_home,
         target_home,
     ]
@@ -247,7 +373,15 @@ def test_packaged_sync_smoke_orchestrates_isolated_exact_task_round_trip(
             smoke.THREAD_ID,
             "--json",
         ),
-        ("sync", "inventory", "--sync-dir", sync_dir, "--json"),
+        (
+            "sync",
+            "inventory",
+            "--sync-dir",
+            sync_dir,
+            "--json",
+            "--candidate-project-root",
+            candidate_root,
+        ),
         (
             "sync",
             "pull",
@@ -256,18 +390,34 @@ def test_packaged_sync_smoke_orchestrates_isolated_exact_task_round_trip(
             "--thread-id",
             smoke.THREAD_ID,
             "--json",
+            "--candidate-project-root",
+            candidate_root,
+        ),
+        (
+            "sync",
+            "status",
+            "--sync-dir",
+            sync_dir,
+            "--thread-id",
+            smoke.THREAD_ID,
+            "--json",
+            "--candidate-project-root",
+            candidate_root,
         ),
     ]
+    assert not (target_home / ".codex-global-state.json").exists()
+    assert sum(call[1][1] == "push" for call in calls) == 1
+    assert sum(call[1][1] == "pull" for call in calls) == 1
     assert capsys.readouterr().out.strip() == (
         "Packaged sync smoke passed: "
-        "inventory=local,remote pushed=1 pulled=1 format_version=2"
+        "inventory=local,remote pushed=1 pulled=1 status=up-to-date format_version=3"
     )
 
 
 @pytest.mark.parametrize(
     ("payload", "availability", "message"),
     (
-        ({**inventory_payload("local"), "inventory_version": 2}, "local", "inventory_version"),
+        ({**inventory_payload("local"), "inventory_version": 1}, "local", "inventory_version"),
         ({**inventory_payload("local"), "issues": [{"code": "issue"}]}, "local", "issues"),
         (inventory_payload("local", thread_id="wrong-thread"), "local", "thread id"),
         (inventory_payload("both"), "local", "availability"),
@@ -340,7 +490,7 @@ def test_packaged_sync_smoke_has_no_optimization_sensitive_asserts():
     assert not [node for node in ast.walk(tree) if isinstance(node, ast.Assert)]
 
 
-def test_release_metadata_versions_are_0_1_35():
+def test_release_metadata_versions_are_0_1_36():
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension_package = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -349,48 +499,42 @@ def test_release_metadata_versions_are_0_1_35():
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "0.1.35"
-    assert codex_usage_lock["version"] == "0.1.35"
-    assert extension_package["version"] == "0.1.35"
-    assert extension_lock["version"] == "0.1.35"
-    assert extension_lock["packages"][""]["version"] == "0.1.35"
+    assert pyproject["project"]["version"] == "0.1.36"
+    assert codex_usage_lock["version"] == "0.1.36"
+    assert extension_package["version"] == "0.1.36"
+    assert extension_lock["version"] == "0.1.36"
+    assert extension_lock["packages"][""]["version"] == "0.1.36"
 
 
 @pytest.mark.parametrize(
-    ("readme", "sync_heading"),
+    "readme",
     (
-        (ROOT / "README.md", "## Experimental Task Sync"),
-        (EXTENSION_ROOT / "README.md", "## Experimental Sync"),
+        ROOT / "README.md",
+        EXTENSION_ROOT / "README.md",
     ),
     ids=("repository", "extension"),
 )
-def test_sync_documentation_describes_complete_breaking_release_contract(
-    readme: Path,
-    sync_heading: str,
-):
-    text = readme.read_text(encoding="utf-8")
-    sync = markdown_section(readme, sync_heading).casefold()
+def test_task_transfer_documentation_describes_current_release_contract(readme: Path):
+    transfer = markdown_section(readme, "## Task Transfer").casefold()
 
-    assert "one project-grouped `select tasks` picker" in sync
-    assert "current-task shortcuts" in sync
-    assert "remote-only tasks" in sync
-    assert "future tasks" in sync and "explicitly selected" in sync
-    assert "selection schema" in sync and "exact task" in sync
-    assert "does not migrate" in sync and "project/conversation" in sync
-    assert "**setup required**" in sync
-    assert "version-2 remote layout" in sync
-    assert "no remote cleanup or republish required" in sync
-    assert "version-1" in sync and "clean resync" in sync
-    assert "technical thread id" in sync
-    assert "built-in codex handoff can fail" in sync and "full jsonl" in sync
-    assert "macos apple silicon packaged inventory/push/pull verified locally" in text.casefold()
-    assert "windows x64 packaging is ci-only" in text.casefold()
-    assert "release gate" in text.casefold()
+    assert "import tasks" in transfer and "export tasks" in transfer
+    assert "fresh, empty selection" in transfer
+    assert "desktop app is not required" in transfer
+    assert "open vs code workspace folders" in transfer
+    assert "validated local folder" in transfer
+    assert "tasks/" in transfer and ("version 3" in transfer or "version-3" in transfer)
+    assert "selected batch" in transfer
+    assert "complete operation" in transfer or "whole operation" in transfer
+    assert "task selections" in transfer and "project mappings" in transfer
+    assert "not saved" in transfer or "neither" in transfer
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
 def test_0_1_34_changelog_describes_complete_release_contract(changelog: Path):
-    section = markdown_section(changelog, "## 0.1.34 - Exact Task Sync Selection").casefold()
+    section = markdown_section(
+        changelog,
+        "## 0.1.34 - 2026-07-14 - Exact Task Sync Selection",
+    ).casefold()
 
     assert "project-grouped task picker" in section and "exact selected task thread ids" in section
     assert "tasks currently shown" in section

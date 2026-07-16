@@ -10,6 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 ADR_0014 = ROOT / "docs/adr/0014-manual-task-transfer.md"
 
 ROOT_RELEASE_DATES = {
+    "0.1.36": "2026-07-16",
     "0.1.35": "2026-07-14",
     "0.1.34": "2026-07-14",
     "0.1.33": "2026-07-14",
@@ -45,6 +46,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "0.1.36",
     "0.1.35",
     "0.1.34",
     "0.1.33",
@@ -143,7 +145,7 @@ def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:
         assert re.search(r"only (?:that|the) folder path is remembered", section)
 
 
-def test_current_docs_keep_native_v3_packaged_smoke_pending() -> None:
+def test_current_docs_require_both_native_v3_packaged_workflow_gates() -> None:
     status_sections = (
         markdown_section(CURRENT_DOCS[0], "## VS Code Preview Packages"),
         markdown_section(CURRENT_DOCS[1], "## Preview Status"),
@@ -156,14 +158,14 @@ def test_current_docs_keep_native_v3_packaged_smoke_pending() -> None:
         assert "native" in status and "packaged" in status
         assert "version-3" in status or "v3" in status
         assert "task transfer smoke gates" in status
-        assert "remain pending" in status
-        assert "must pass before publication" in status
+        assert "release workflow runs" in status
+        assert "requires them to pass before publication" in status
         assert "linux packaging is a follow-up" in status
         assert "not a supported target in this release" in status
 
         text = path.read_text(encoding="utf-8").casefold()
-        assert "packaged task transfer is verified locally" not in text
-        assert "exercises task transfer through the packaged executable" not in text
+        assert "remain pending" not in text
+        assert "windows x64 packaged task transfer passed locally" not in text
 
 
 def test_current_docs_do_not_claim_ongoing_sync_or_persisted_selection() -> None:
@@ -194,6 +196,19 @@ def test_every_changelog_has_unreleased_and_dated_release_headings() -> None:
         release_lines = [line for line in text.splitlines() if line.startswith("## 0.")]
         assert release_lines
         assert all(heading.fullmatch(line) for line in release_lines)
+
+
+def test_changelogs_release_task_transfer_v3_on_actual_date() -> None:
+    release_heading = "## 0.1.36 - 2026-07-16 - Task Transfer UX And Storage V3"
+    for path in CHANGELOGS:
+        assert not markdown_section(path, "## Unreleased").strip()
+        release = normalized_prose(markdown_section(path, release_heading))
+        assert "task transfer" in release
+        assert "fresh" in release and "selection" in release
+        assert "extension" in release and "project" in release
+        assert "version-3" in release and "tasks/" in release
+        assert "all-or-nothing" in release
+        assert "windows x64" in release and "macos apple silicon" in release
 
 
 def test_changelogs_use_exact_historical_release_dates() -> None:

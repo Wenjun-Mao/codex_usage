@@ -18,7 +18,7 @@ Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local 
 
 ## Preview Status
 
-This Marketplace preview supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Both native packaged version-3 Task Transfer smoke gates remain pending and must pass before publication: Windows x64 and macOS Apple Silicon. Intel macOS is not supported. Linux packaging is a follow-up and is not a supported target in this release.
+This Marketplace preview supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS is not supported. Linux packaging is a follow-up and is not a supported target in this release.
 
 ## Commands
 
@@ -138,7 +138,7 @@ Codex fast mode is counted through the token usage that Codex records. At the mo
 
 ## Development
 
-Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, and packages the VSIX. Its native version-3 packaged Task Transfer smoke remains a publication gate.
+Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, executes the native version-3 packaged Task Transfer smoke, and requires it to pass before publication.
 
 macOS Apple Silicon on macOS/bash from `extensions/vscode`:
 

@@ -12,7 +12,7 @@ This repository contains:
 
 ## VS Code Preview Packages
 
-The current preview packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. Both native packaged version-3 Task Transfer smoke gates remain pending and must pass before publication: Windows x64 and macOS Apple Silicon. Linux packaging is a follow-up and is not a supported target in this release.
+The current preview packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Linux packaging is a follow-up and is not a supported target in this release.
 
 Build and install the local macOS Apple Silicon VSIX:
 
