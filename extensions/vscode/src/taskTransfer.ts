@@ -15,7 +15,6 @@ import type {
 import { chooseFreshTaskTransferSelection } from "./taskTransferOperation";
 import {
   formatTransferResult,
-  taskInventoryWarningMessage,
   taskTransferMenuItems,
   type TransferMenuAction,
   type TransferMenuQuickPickItem,
@@ -70,12 +69,17 @@ export class TransferFolderUnavailableError extends Error {
 }
 
 export class TaskTransferController {
+  private operationInFlight = false;
+
   constructor(
     private readonly port: TaskTransferPort,
     private readonly autoTransitions: () => boolean,
   ) {}
 
   async showMenu(): Promise<void> {
+    if (this.rejectWhileOperationInFlight()) {
+      return;
+    }
     const action = await this.port.chooseMenu(taskTransferMenuItems(this.port.readFolder()));
     if (!action) {
       return;
@@ -84,14 +88,86 @@ export class TaskTransferController {
   }
 
   async importTasks(): Promise<void> {
-    await this.runTransfer("import");
+    await this.runSingleFlight(() => this.runTransfer("import"));
   }
 
   async exportTasks(): Promise<void> {
-    await this.runTransfer("export");
+    await this.runSingleFlight(() => this.runTransfer("export"));
   }
 
   async reviewStatus(): Promise<void> {
+    await this.runSingleFlight(() => this.runReviewStatus());
+  }
+
+  async chooseFolder(): Promise<void> {
+    if (!this.rejectWhileOperationInFlight()) {
+      await this.chooseAndRememberFolder();
+    }
+  }
+
+  async changeFolder(): Promise<void> {
+    if (!this.rejectWhileOperationInFlight()) {
+      await this.chooseAndRememberFolder();
+    }
+  }
+
+  async openFolder(): Promise<void> {
+    if (this.rejectWhileOperationInFlight()) {
+      return;
+    }
+    const folder = await this.ensureFolder();
+    if (!folder) {
+      return;
+    }
+    try {
+      await this.port.openFolder(folder);
+    } catch (error) {
+      if (error instanceof TransferFolderUnavailableError) {
+        this.notifyUnavailableFolder(error.folder);
+        return;
+      }
+      const detail = error instanceof Error ? error.message : String(error);
+      this.port.log(`[error] ${detail}`);
+      this.port.notify(
+        "error",
+        "The transfer folder could not be opened. See the Codex Usage output for details.",
+      );
+    }
+  }
+
+  async forgetFolder(): Promise<void> {
+    if (this.rejectWhileOperationInFlight()) {
+      return;
+    }
+    if (this.port.readFolder().trim()) {
+      await this.port.writeFolder(undefined);
+    }
+  }
+
+  private async runSingleFlight(operation: () => Promise<void>): Promise<void> {
+    if (this.rejectWhileOperationInFlight()) {
+      return;
+    }
+    this.operationInFlight = true;
+    try {
+      await operation();
+    } finally {
+      this.operationInFlight = false;
+    }
+  }
+
+  private rejectWhileOperationInFlight(): boolean {
+    if (!this.operationInFlight) {
+      return false;
+    }
+    this.port.notify(
+      "info",
+      "A Task Transfer operation is already running. Try again when it finishes.",
+    );
+    return true;
+  }
+
+  private async runReviewStatus(): Promise<void> {
     const folder = await this.ensureFolder();
     if (!folder) {
       return;
@@ -128,40 +204,6 @@ export class TaskTransferController {
       this.reportFailure(error, stage === "review" ? "review" : "selection");
     } finally {
       this.port.setTransientStatus(undefined);
-    }
-  }
-
-  async chooseFolder(): Promise<void> {
-    await this.chooseAndRememberFolder();
-  }
-
-  async changeFolder(): Promise<void> {
-    await this.chooseAndRememberFolder();
-  }
-
-  async openFolder(): Promise<void> {
-    const folder = await this.ensureFolder();
-    if (folder) {
-      try {
-        await this.port.openFolder(folder);
-      } catch (error) {
-        if (error instanceof TransferFolderUnavailableError) {
-          this.notifyUnavailableFolder(error.folder);
-          return;
-        }
-        const detail = error instanceof Error ? error.message : String(error);
-        this.port.log(`[error] ${detail}`);
-        this.port.notify(
-          "error",
-          "The transfer folder could not be opened. See the Codex Usage output for details.",
-        );
-      }
-    }
-  }
-
-  async forgetFolder(): Promise<void> {
-    if (this.port.readFolder().trim()) {
-      await this.port.writeFolder(undefined);
     }
   }
 
@@ -230,9 +272,6 @@ export class TaskTransferController {
     const inventory = await this.port.loadInventory(request);
     for (const issue of inventory.issues) {
       this.port.log(formatIssue("sync inventory", issue));
-    }
-    if (inventory.issues.length > 0) {
-      this.port.notify("warning", taskInventoryWarningMessage());
     }
     return inventory;
   }

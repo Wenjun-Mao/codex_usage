@@ -64,7 +64,7 @@ test("empty import and export sources get state-specific messages", async () => 
   assert.deepEqual(exportPort.statuses, ["checking", undefined]);
 });
 
-test("inventory issues are logged and summarized without exposing technical detail", async () => {
+test("inventory issues are logged while task cancellation stays silent", async () => {
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory(
@@ -79,10 +79,7 @@ test("inventory issues are logged and summarized without exposing technical deta
   assert.deepEqual(port.logs, [
     "[sync inventory:unidentified_remote_task] technical path detail",
   ]);
-  assert.deepEqual(port.notifications, [[
-    "warning",
-    "Some tasks in the transfer folder could not be identified and were omitted. See Codex Usage output for details.",
-  ]]);
+  assert.deepEqual(port.notifications, []);
 });
 
 test("each operation opens an empty fresh selection and never writes task ids", async () => {
