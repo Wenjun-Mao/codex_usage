@@ -4,25 +4,34 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 
-
-THREAD_ID = "thread-1"
-SESSION_RELATIVE_PATH = Path("2026") / "04" / "29" / f"{THREAD_ID}.jsonl"
-TASK_TITLE = "Packaged sync smoke"
-TASK_UPDATED_AT = "2026-04-29T10:00:02Z"
-PROJECT_KEY = "https://github.com/example/packaged-sync-smoke"
-PROJECT_LABEL = "packaged-sync-smoke"
-INVENTORY_VERSION = 2
-SYNC_FORMAT_VERSION = 3
-LOCAL_BASELINE_VERSION = 2
-TASKS_DIRNAME = "tasks"
-LOCAL_METADATA_ESTIMATE_BYTES = 4096
+from packaged_sync_smoke_validation import (
+    INVENTORY_VERSION as INVENTORY_VERSION,
+    LOCAL_METADATA_ESTIMATE_BYTES,
+    PROJECT_KEY,
+    PROJECT_LABEL as PROJECT_LABEL,
+    SESSION_RELATIVE_PATH,
+    SYNC_FORMAT_VERSION as SYNC_FORMAT_VERSION,
+    TASKS_DIRNAME,
+    TASK_TITLE,
+    TASK_UPDATED_AT,
+    THREAD_ID,
+    UNRELATED_PROJECT_KEY,
+    _read_required_bytes,
+    _require_equal,
+    _validate_baseline,
+    _validate_destination_home,
+    _validate_imported_task,
+    _validate_inventory,
+    _validate_remote_layout,
+    _validate_status,
+    _validate_sync_result,
+)
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
@@ -52,20 +61,46 @@ def _write_source_home(source_home: Path, project_root: Path) -> Path:
                     "id": THREAD_ID,
                     "timestamp": "2026-04-29T10:00:00Z",
                     "cwd": str(project_root),
+                    "git": {"repository_url": f"{PROJECT_KEY}.git"},
                 },
             },
             {
-                "timestamp": "2026-04-29T10:00:01Z",
+                "timestamp": "2026-04-29T10:00:00.500Z",
                 "type": "turn_context",
                 "payload": {"turn_id": "turn-thread-1", "model": "gpt-5.5"},
             },
             {
-                "timestamp": "2026-04-29T10:00:02Z",
+                "timestamp": "2026-04-29T10:00:01Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": THREAD_ID,
+                    "timestamp": "2026-04-29T10:00:01Z",
+                    "cwd": str(project_root),
+                    "git": {"repository_url": PROJECT_KEY},
+                },
+            },
+            {
+                "timestamp": TASK_UPDATED_AT,
                 "type": "event_msg",
                 "payload": {
                     "type": "token_count",
                     "info": {"total_token_usage": usage},
                 },
+            },
+            {
+                "timestamp": "2026-04-29T10:00:03Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": "unrelated-project-metadata",
+                    "timestamp": "2026-04-29T10:00:03Z",
+                    "cwd": "/unrelated/source/spelling",
+                    "git": {"repository_url": f"{UNRELATED_PROJECT_KEY}.git"},
+                },
+            },
+            {
+                "timestamp": "2026-04-29T10:00:04Z",
+                "type": "event_msg",
+                "payload": {"type": "task_started"},
             },
         ],
     )
@@ -89,6 +124,9 @@ def _run_json(
 ) -> dict[str, object]:
     environment = os.environ.copy()
     environment["CODEX_HOME"] = str(codex_home)
+    environment["CODEX_USAGE_CACHE_DIR"] = str(
+        codex_home.parent / "tool-cache" / codex_home.name
+    )
     environment["PYTHONNOUSERSITE"] = "1"
     environment.pop("PYTHONPATH", None)
     completed = subprocess.run(
@@ -106,7 +144,6 @@ def _run_json(
             f"stdout:\n{completed.stdout}\n"
             f"stderr:\n{completed.stderr}"
         )
-
     try:
         result = json.loads(completed.stdout)
     except json.JSONDecodeError as error:
@@ -142,271 +179,13 @@ def _run_sync(
     return _run_json(executable, codex_home, args)
 
 
-def _require_equal(actual: object, expected: object, label: str) -> None:
-    if actual != expected:
-        raise RuntimeError(
-            f"Packaged sync validation failed for {label}: "
-            f"expected {expected!r}, got {actual!r}"
-        )
-
-
-def _require_object(value: object, label: str) -> dict[str, object]:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
-        raise RuntimeError(
-            f"Packaged sync validation failed for {label}: expected an object, got {value!r}"
-        )
-    return value
-
-
-def _require_list(value: object, label: str) -> list[object]:
-    if not isinstance(value, list):
-        raise RuntimeError(
-            f"Packaged sync validation failed for {label}: expected a list, got {value!r}"
-        )
-    return value
-
-
-def _require_values(value: dict[str, object], expected: dict[str, object], label: str) -> None:
-    field_labels = {"thread_id": "thread id", "pulled": "pulled thread ids", "pushed": "pushed thread ids"}
-    for field, expected_value in expected.items():
-        _require_equal(value.get(field), expected_value, f"{label} {field_labels.get(field, field)}")
-
-
-def _validate_inventory(
-    result: dict[str, object],
-    availability: str,
-    estimated_sync_bytes: int,
-    *,
-    candidate_project_root: Path | None = None,
-) -> None:
-    _require_equal(
-        set(result),
-        {"inventory_version", "projects", "issues"},
-        f"{availability} inventory fields",
+def _create_git_checkout(path: Path) -> None:
+    git_dir = path / ".git"
+    git_dir.mkdir(parents=True)
+    (git_dir / "config").write_text(
+        f'[remote "origin"]\n\turl = {PROJECT_KEY}.git\n',
+        encoding="utf-8",
     )
-    _require_equal(result.get("inventory_version"), INVENTORY_VERSION, f"{availability} inventory_version")
-    _require_equal(result.get("issues"), [], f"{availability} inventory issues")
-
-    projects = _require_list(result.get("projects"), f"{availability} inventory projects")
-    _require_equal(len(projects), 1, f"{availability} inventory project count")
-    project = _require_object(projects[0], f"{availability} inventory project")
-    project_fields = {
-        "project_key", "project_label", "identity_kind", "candidate_roots", "tasks"
-    }
-    _require_equal(set(project), project_fields, f"{availability} inventory project fields")
-    expected_roots = (
-        [str(candidate_project_root)] if candidate_project_root is not None else []
-    )
-    _require_values(
-        project,
-        {
-            "project_key": PROJECT_KEY,
-            "project_label": PROJECT_LABEL,
-            "identity_kind": "git",
-            "candidate_roots": expected_roots,
-        },
-        f"{availability} inventory project",
-    )
-
-    tasks = _require_list(project.get("tasks"), f"{availability} inventory tasks")
-    _require_equal(len(tasks), 1, f"{availability} inventory task count")
-    task = _require_object(tasks[0], f"{availability} inventory task")
-    task_fields = {
-        "thread_id", "title", "updated_at", "estimated_sync_bytes",
-        "availability", "state", "action",
-    }
-    _require_equal(set(task), task_fields, f"{availability} inventory task fields")
-    expected_state, expected_action = {
-        "local": ("local_only", "push"),
-        "remote": ("remote_only", "pull"),
-    }[availability]
-    _require_values(
-        task,
-        {
-            "thread_id": THREAD_ID,
-            "title": TASK_TITLE,
-            "updated_at": TASK_UPDATED_AT,
-            "estimated_sync_bytes": estimated_sync_bytes,
-            "availability": availability,
-            "state": expected_state,
-            "action": expected_action,
-        },
-        f"{availability} inventory task",
-    )
-
-
-def _validate_sync_result(result: dict[str, object], direction: str) -> None:
-    if direction not in {"push", "pull"}:
-        raise ValueError(f"Unsupported packaged sync direction: {direction!r}")
-    pushing = direction == "push"
-    expected_counts = {
-        "discovered": 1 if pushing else 0,
-        "selected": 1,
-        "remote": 0 if pushing else 1,
-        "pulled": 0 if pushing else 1,
-        "pushed": 1 if pushing else 0,
-        "unchanged": 0,
-        "conflicts": 0,
-        "issues": 0,
-    }
-    _require_equal(result.get("outcome"), "completed", f"{direction} outcome")
-    _require_equal(result.get("counts"), expected_counts, f"{direction} counts")
-    _require_values(
-        result,
-        {
-            "pulled": [] if pushing else [THREAD_ID],
-            "pushed": [THREAD_ID] if pushing else [],
-            "issues": [],
-        },
-        direction,
-    )
-
-
-def _read_required_bytes(path: Path, label: str) -> bytes:
-    try:
-        return path.read_bytes()
-    except OSError as error:
-        raise RuntimeError(
-            f"Packaged sync validation could not read {label} at {path}: {error}"
-        ) from error
-
-
-def _read_json_object(path: Path, label: str) -> dict[str, object]:
-    contents = _read_required_bytes(path, label)
-    try:
-        value = json.loads(contents)
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        raise RuntimeError(
-            f"Packaged sync validation found invalid JSON in {label} at {path}"
-        ) from error
-    return _require_object(value, label)
-
-
-def _sha256(contents: bytes) -> str:
-    return hashlib.sha256(contents).hexdigest()
-
-
-def _validate_remote_layout(sync_dir: Path, source_bytes: bytes) -> None:
-    tasks_dir = sync_dir / TASKS_DIRNAME
-    try:
-        task_files = sorted(path.name for path in tasks_dir.iterdir())
-    except OSError as error:
-        raise RuntimeError(
-            "Packaged sync validation could not inspect the version-3 tasks "
-            f"directory at {tasks_dir}: {error}"
-        ) from error
-    _require_equal(task_files, [f"{THREAD_ID}.jsonl"], "version-3 task files")
-    remote_jsonl = tasks_dir / f"{THREAD_ID}.jsonl"
-    remote_bytes = _read_required_bytes(remote_jsonl, "remote task JSONL")
-    _require_equal(remote_bytes, source_bytes, "pushed task JSONL bytes")
-
-    sync_index = _read_json_object(sync_dir / "sync-index.json", "sync index")
-    _require_equal(sync_index.get("format_version"), SYNC_FORMAT_VERSION, "sync index format_version")
-    indexed_threads = _require_object(sync_index.get("threads"), "sync index threads")
-    _require_equal(set(indexed_threads), {THREAD_ID}, "sync index thread ids")
-    index_entry = _require_object(indexed_threads[THREAD_ID], "sync index task entry")
-    _require_values(
-        index_entry,
-        {
-            "file": f"{TASKS_DIRNAME}/{THREAD_ID}.jsonl",
-            "sha256": _sha256(source_bytes),
-            "size_bytes": len(source_bytes),
-            "source_relative_path": SESSION_RELATIVE_PATH.as_posix(),
-            "project_key": PROJECT_KEY,
-        },
-        "sync index task",
-    )
-    if sync_dir.joinpath("conversations").exists():
-        raise RuntimeError(
-            "Packaged sync validation found the obsolete version-2 conversations directory"
-        )
-    if (sync_dir / "threads").exists():
-        raise RuntimeError(
-            "Packaged sync validation found the obsolete version-1 threads directory"
-        )
-
-
-def _validate_baseline(
-    codex_home: Path,
-    local_bytes: bytes,
-    remote_bytes: bytes,
-) -> None:
-    baseline_files = sorted(
-        (codex_home / ".codex-sync-state").glob("*/threads/*.json")
-    )
-    _require_equal(len(baseline_files), 1, f"{codex_home.name} baseline file count")
-    baseline = _read_json_object(baseline_files[0], f"{codex_home.name} baseline")
-    expected = {
-        "sync_version": LOCAL_BASELINE_VERSION,
-        "thread_id": THREAD_ID,
-        "base_sha256": _sha256(local_bytes),
-        "base_size_bytes": len(local_bytes),
-        "last_remote_sha256": _sha256(remote_bytes),
-        "last_local_sha256": _sha256(local_bytes),
-        "source_relative_path": SESSION_RELATIVE_PATH.as_posix(),
-        "project_key": PROJECT_KEY,
-        "project_label": PROJECT_LABEL,
-    }
-    for field, value in expected.items():
-        _require_equal(
-            baseline.get(field),
-            value,
-            f"{codex_home.name} baseline {field}",
-        )
-    if not baseline.get("sync_dir_fingerprint") or not baseline.get("synced_at"):
-        raise RuntimeError(
-            f"Packaged sync validation found incomplete baseline metadata in {baseline_files[0]}"
-        )
-
-
-def _validate_imported_task(
-    imported_jsonl: Path,
-    source_bytes: bytes,
-    project_root: Path,
-) -> bytes:
-    imported_bytes = _read_required_bytes(imported_jsonl, "imported task JSONL")
-    try:
-        source_rows = [json.loads(line) for line in source_bytes.splitlines()]
-        imported_rows = [json.loads(line) for line in imported_bytes.splitlines()]
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        raise RuntimeError("Packaged sync validation found invalid task JSONL") from error
-    expected_rows = json.loads(json.dumps(source_rows))
-    matched = 0
-    for row in expected_rows:
-        if row.get("type") != "session_meta":
-            continue
-        payload = _require_object(row.get("payload"), "imported session metadata")
-        payload["cwd"] = str(project_root)
-        matched += 1
-    _require_equal(matched, 1, "imported session metadata count")
-    _require_equal(imported_rows, expected_rows, "imported task exact workspace cwd")
-    return imported_bytes
-
-
-def _validate_status(
-    result: dict[str, object],
-    imported_jsonl: Path,
-    remote_jsonl: Path,
-    imported_bytes: bytes,
-    remote_bytes: bytes,
-) -> None:
-    _require_equal(set(result), {"threads", "issues"}, "status fields")
-    _require_equal(result.get("issues"), [], "status issues")
-    threads = _require_list(result.get("threads"), "status threads")
-    _require_equal(len(threads), 1, "status thread count")
-    task = _require_object(threads[0], "status task")
-    expected = {
-        "thread_id": THREAD_ID,
-        "state": "synced",
-        "action": "none",
-        "local_path": str(imported_jsonl),
-        "remote_path": str(remote_jsonl),
-        "local_sha256": _sha256(imported_bytes),
-        "remote_sha256": _sha256(remote_bytes),
-        "base_sha256": _sha256(imported_bytes),
-    }
-    for field, value in expected.items():
-        _require_equal(task.get(field), value, f"status {field}")
 
 
 def main() -> int:
@@ -423,17 +202,14 @@ def main() -> int:
         target_home = root / "target-home"
         sync_dir = root / "sync"
         source_project_root = root / "source-project"
-        project_root = root / "destination-project"
-        for checkout in (source_project_root, project_root):
-            git_dir = checkout / ".git"
-            git_dir.mkdir(parents=True)
-            (git_dir / "config").write_text(
-                f'[remote "origin"]\n\turl = {PROJECT_KEY}.git\n',
-                encoding="utf-8",
-            )
+        destination_project_root = root / "Destination Project Spelling"
+        _create_git_checkout(source_project_root)
+        _create_git_checkout(destination_project_root)
         target_home.mkdir(parents=True)
+
         source_jsonl = _write_source_home(source_home, source_project_root)
         source_bytes = _read_required_bytes(source_jsonl, "source task JSONL")
+        remote_jsonl = sync_dir / TASKS_DIRNAME / f"{THREAD_ID}.jsonl"
 
         local_inventory = _run_json(
             executable,
@@ -441,11 +217,19 @@ def main() -> int:
             ["sync", "inventory", "--sync-dir", str(sync_dir), "--json"],
         )
         _validate_inventory(
-            local_inventory, "local", len(source_bytes) + LOCAL_METADATA_ESTIMATE_BYTES
+            local_inventory,
+            "local",
+            len(source_bytes) + LOCAL_METADATA_ESTIMATE_BYTES,
         )
 
         pushed = _run_sync(executable, source_home, sync_dir, "push")
-        _validate_sync_result(pushed, "push")
+        _validate_sync_result(
+            pushed,
+            "push",
+            local_jsonl=source_jsonl,
+            remote_jsonl=remote_jsonl,
+            source_bytes=source_bytes,
+        )
         _validate_remote_layout(sync_dir, source_bytes)
         _validate_baseline(source_home, source_bytes, source_bytes)
 
@@ -459,22 +243,42 @@ def main() -> int:
                 str(sync_dir),
                 "--json",
                 "--candidate-project-root",
-                str(project_root),
+                str(destination_project_root),
             ],
         )
+        _validate_destination_home(target_home, "inventory")
         _validate_inventory(
             remote_inventory,
             "remote",
             len(source_bytes),
-            candidate_project_root=project_root,
+            candidate_project_root=destination_project_root,
         )
 
         pulled = _run_sync(
-            executable, target_home, sync_dir, "pull", candidate_project_root=project_root
+            executable,
+            target_home,
+            sync_dir,
+            "pull",
+            candidate_project_root=destination_project_root,
         )
         imported_jsonl = target_home / "sessions" / SESSION_RELATIVE_PATH
-        _validate_sync_result(pulled, "pull")
-        imported_bytes = _validate_imported_task(imported_jsonl, source_bytes, project_root)
+        _validate_destination_home(
+            target_home,
+            "pull",
+            imported_jsonl=imported_jsonl,
+        )
+        _validate_sync_result(
+            pulled,
+            "pull",
+            local_jsonl=imported_jsonl,
+            remote_jsonl=remote_jsonl,
+            source_bytes=source_bytes,
+        )
+        imported_bytes = _validate_imported_task(
+            imported_jsonl,
+            source_bytes,
+            destination_project_root,
+        )
         _validate_remote_layout(sync_dir, source_bytes)
         _validate_baseline(target_home, imported_bytes, source_bytes)
         _require_equal(
@@ -484,13 +288,29 @@ def main() -> int:
         )
 
         status = _run_sync(
-            executable, target_home, sync_dir, "status", candidate_project_root=project_root
+            executable,
+            target_home,
+            sync_dir,
+            "status",
+            candidate_project_root=destination_project_root,
         )
-        remote_jsonl = sync_dir / TASKS_DIRNAME / f"{THREAD_ID}.jsonl"
-        _validate_status(status, imported_jsonl, remote_jsonl, imported_bytes, source_bytes)
+        _validate_destination_home(
+            target_home,
+            "status",
+            imported_jsonl=imported_jsonl,
+        )
+        _validate_status(
+            status,
+            imported_jsonl,
+            remote_jsonl,
+            imported_bytes,
+            source_bytes,
+        )
 
-    print("Packaged sync smoke passed: inventory=local,remote pushed=1 pulled=1 "
-          "status=up-to-date format_version=3")
+    print(
+        "Packaged sync smoke passed: inventory=local,remote pushed=1 pulled=1 "
+        "status=up-to-date format_version=3"
+    )
     return 0
 
 
