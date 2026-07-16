@@ -36,6 +36,7 @@ def reconcile_remote_discovery(
     *,
     directory_name: str,
     format_version: int,
+    propagate_io_errors: bool = False,
 ) -> RemoteInventory:
     """Reconcile cheap indexed discovery with one-pass unindexed reconstruction."""
     effective_threads = dict(persisted_index.threads)
@@ -64,7 +65,11 @@ def reconcile_remote_discovery(
                 )
             )
             continue
-        snapshot, metadata = materialize_remote_task(path, path_guard)
+        snapshot, metadata = materialize_remote_task(
+            path,
+            path_guard,
+            propagate_io_errors=propagate_io_errors,
+        )
         if metadata is None:
             issues.append(_unreadable_issue(relative_path))
             continue
@@ -125,6 +130,8 @@ def materialize_selected_remote(
     inventory: RemoteInventory,
     selected_thread_ids: Iterable[str],
     path_guard: PathGuard,
+    *,
+    propagate_io_errors: bool = False,
 ) -> RemoteInventory:
     """Read and validate selected indexed files without rereading reconstructed files."""
     effective_threads = dict(inventory.index.threads)
@@ -136,7 +143,11 @@ def materialize_selected_remote(
         entry = effective_threads.get(thread_id)
         if entry is None or thread_id in files:
             continue
-        snapshot, metadata = materialize_remote_task(root / entry.file, path_guard)
+        snapshot, metadata = materialize_remote_task(
+            root / entry.file,
+            path_guard,
+            propagate_io_errors=propagate_io_errors,
+        )
         files[thread_id] = snapshot
         if not snapshot.exists:
             if not _has_issue(issues, "missing_remote_file", thread_id):
@@ -226,11 +237,15 @@ def promote_matching_local_metadata(
 def materialize_remote_task(
     path: Path,
     path_guard: PathGuard,
+    *,
+    propagate_io_errors: bool = False,
 ) -> tuple[SyncFileSnapshot, SessionMetadata | None]:
     path_guard(path)
     try:
         contents, snapshot = read_bytes_with_snapshot(path)
     except OSError:
+        if propagate_io_errors:
+            raise
         return SyncFileSnapshot(path=path, exists=True), None
     if contents is None:
         return snapshot, None

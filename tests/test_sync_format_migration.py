@@ -141,7 +141,9 @@ def test_legacy_directory_change_before_commit_keeps_v2_authoritative(
         return staged
 
     monkeypatch.setattr(format_migration, "_stage_tasks", stage_then_add_legacy)
-    with pytest.raises(ConcurrentRemoteChangeError, match="changed before migration commit"):
+    with pytest.raises(
+        ConcurrentRemoteChangeError, match="changed before migration commit"
+    ):
         migrate_remote_layout_v2_to_v3(tmp_path)
 
     assert _read_index(tmp_path)["format_version"] == 2
@@ -194,7 +196,9 @@ def test_post_commit_cleanup_failure_resumes_from_v3(
     assert not legacy.parent.exists()
 
 
-def test_matching_staged_task_is_reused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_matching_staged_task_is_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     payload = _write_v2_folder(tmp_path)
     staged = tmp_path / "tasks" / "task-1.jsonl"
     staged.parent.mkdir()
@@ -221,7 +225,9 @@ def test_v3_cleanup_conflict_preserves_both_directories(
     legacy = tmp_path / "conversations"
     legacy.mkdir()
     if conflict == "different":
-        (legacy / "task-1.jsonl").write_bytes(_session_payload("task-1") + b"different\n")
+        (legacy / "task-1.jsonl").write_bytes(
+            _session_payload("task-1") + b"different\n"
+        )
     else:
         (legacy / "task-2.jsonl").write_bytes(_session_payload("task-2"))
     index_before = (tmp_path / "sync-index.json").read_bytes()
@@ -287,16 +293,16 @@ def test_junction_like_directory_is_rejected_without_mutation(
 ) -> None:
     root = tmp_path / "sync"
     _write_v2_folder(root)
-    from codex_usage.sync import format_migration
+    from codex_usage.sync import format_migration_layout
 
-    real_path_kind = format_migration.path_kind
+    real_path_kind = format_migration_layout.path_kind
 
     def junction_conversations(path: Path) -> str:
         if path == root / "conversations":
             return "junction"
         return real_path_kind(path)
 
-    monkeypatch.setattr(format_migration, "path_kind", junction_conversations)
+    monkeypatch.setattr(format_migration_layout, "path_kind", junction_conversations)
     with pytest.raises(MalformedSyncIndexError, match="junction"):
         migrate_remote_layout_v2_to_v3(root)
 
@@ -359,7 +365,9 @@ def test_wrong_indexed_task_identity_blocks_without_mutation(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize("field", ["sha256", "size_bytes"])
-def test_bad_indexed_fingerprint_blocks_without_mutation(tmp_path: Path, field: str) -> None:
+def test_bad_indexed_fingerprint_blocks_without_mutation(
+    tmp_path: Path, field: str
+) -> None:
     _write_v2_folder(tmp_path)
     index = _read_index(tmp_path)
     entry = index["threads"]["task-1"]  # type: ignore[index]
@@ -396,7 +404,9 @@ def test_malformed_index_json_is_rejected_without_mutation(tmp_path: Path) -> No
     assert not (tmp_path / "tasks").exists()
 
 
-def test_unindexed_readable_v2_jsonl_is_reconstructed_and_migrated(tmp_path: Path) -> None:
+def test_unindexed_readable_v2_jsonl_is_reconstructed_and_migrated(
+    tmp_path: Path,
+) -> None:
     _write_v2_index(tmp_path, {})
     source = tmp_path / "conversations" / "legacy-name.jsonl"
     source.parent.mkdir()
@@ -431,7 +441,7 @@ def test_unreadable_unindexed_v2_jsonl_blocks_without_mutation(
         return real_read(path)
 
     monkeypatch.setattr(remote_reconciliation, "read_bytes_with_snapshot", deny_source)
-    with pytest.raises(TransferFormatMigrationError, match="readable session_meta"):
+    with pytest.raises(PermissionError, match="Cannot read"):
         migrate_remote_layout_v2_to_v3(tmp_path)
 
     assert _read_index(tmp_path)["format_version"] == 2

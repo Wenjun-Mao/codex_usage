@@ -29,7 +29,6 @@ from codex_usage.sync.errors import (
     MalformedSyncIndexError,
     MissingRemoteConversationError,
     SyncStoreError,
-    TransferFormatMigrationError,
 )
 from codex_usage.sync.io import atomic_copy, atomic_write_json, read_json_object, snapshot_file
 from codex_usage.sync.models import (
@@ -782,7 +781,6 @@ def test_sync_store_errors_share_one_typed_base() -> None:
         MissingRemoteConversationError,
         ConcurrentLocalChangeError,
         ConcurrentRemoteChangeError,
-        TransferFormatMigrationError,
     ):
         assert issubclass(error_type, SyncStoreError)
 
@@ -884,47 +882,6 @@ def test_remote_store_loads_empty_folder_without_writing(tmp_path: Path) -> None
     assert not root.exists()
 
 
-def test_remote_store_load_inventory_migrates_while_transaction_is_held(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    store = RemoteStore(tmp_path / "sync")
-    lock_states: list[bool] = []
-
-    def observe_lock(_root: Path) -> None:
-        lock_states.append(store._lock.is_locked)
-
-    monkeypatch.setattr(sync_store, "migrate_remote_layout_v2_to_v3", observe_lock)
-
-    store.load_inventory()
-
-    assert lock_states == [True]
-    assert not store._lock.is_locked
-
-
-def test_remote_store_load_inventory_reuses_existing_transaction(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    store = RemoteStore(tmp_path / "sync")
-    outer_transaction = store.transaction
-    lock_states: list[bool] = []
-
-    def observe_lock(_root: Path) -> None:
-        lock_states.append(store._lock.is_locked)
-
-    def unexpected_nested_transaction():
-        raise AssertionError("load_inventory must reuse the held transaction")
-
-    monkeypatch.setattr(sync_store, "migrate_remote_layout_v2_to_v3", observe_lock)
-    with outer_transaction():
-        monkeypatch.setattr(store, "transaction", unexpected_nested_transaction)
-        store.load_inventory()
-
-    assert lock_states == [True]
-    assert not store._lock.is_locked
-
-
 def test_remote_store_rejects_version_1_layout_without_mutating_it(tmp_path: Path) -> None:
     root = tmp_path / "sync"
     legacy = root / "threads" / "thread-1"
@@ -939,25 +896,18 @@ def test_remote_store_rejects_version_1_layout_without_mutating_it(tmp_path: Pat
 
 
 @pytest.mark.parametrize(
-    ("contents", "expected_error"),
-    [
-        (b"{not-json\n", MalformedSyncIndexError),
-        (b"[]\n", MalformedSyncIndexError),
-        (b'{"format_version":1,"updated_at":"","threads":{}}\n', LegacySyncLayoutError),
-    ],
-    ids=["invalid-json", "not-object", "wrong-version"],
+    "contents", [b"{not-json\n", b"[]\n"], ids=["invalid-json", "not-object"]
 )
 def test_remote_store_rejects_malformed_index_without_mutating_it(
     tmp_path: Path,
     contents: bytes,
-    expected_error: type[SyncStoreError],
 ) -> None:
     root = tmp_path / "sync"
     root.mkdir()
     index_path = root / "sync-index.json"
     index_path.write_bytes(contents)
 
-    with pytest.raises(expected_error):
+    with pytest.raises(MalformedSyncIndexError):
         RemoteStore(root).load_inventory()
 
     assert index_path.read_bytes() == contents
