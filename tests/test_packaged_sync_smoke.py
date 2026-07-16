@@ -53,7 +53,8 @@ def test_packaged_smoke_is_v3_and_static_guard_rejects_private_state_writes() ->
     combined = source + validation
 
     assert "INVENTORY_VERSION = 2" in combined
-    assert "SYNC_FORMAT_VERSION = 3" in combined
+    assert "REMOTE_TRANSFER_FORMAT_VERSION = 3" in combined
+    assert "SYNC_FORMAT_VERSION" not in combined
     assert 'TASKS_DIRNAME = "tasks"' in combined
     assert '"--candidate-project-root"' in source
     assert all(filename in combined for filename in PRIVATE_STATE_FILENAMES)

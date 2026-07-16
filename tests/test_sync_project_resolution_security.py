@@ -232,3 +232,48 @@ def test_existing_counterpart_preserves_exact_symlink_cwd_spelling(
     assert root == linked_root
     assert str(root) == str(linked_root)
     assert issue is None
+
+
+def test_existing_local_counterpart_with_missing_cwd_is_rejected(
+    tmp_path: Path,
+) -> None:
+    missing_root = tmp_path / "missing-project"
+    local_thread = _local_thread(
+        missing_root,
+        "https://github.com/example/project",
+    )
+
+    root, issue = resolve_local_project_root(
+        _local_inventory(local_thread),
+        local_thread,
+        _remote_entry("https://github.com/example/project"),
+        ProjectResolutionRequest(),
+    )
+
+    assert root is None
+    assert issue is not None
+    assert issue.code == "existing_project_path_missing"
+    assert str(missing_root) in issue.message
+
+
+def test_existing_local_counterpart_with_file_cwd_is_rejected(
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "project.txt"
+    file_path.write_text("not a directory", encoding="utf-8")
+    local_thread = _local_thread(
+        file_path,
+        "https://github.com/example/project",
+    )
+
+    root, issue = resolve_local_project_root(
+        _local_inventory(local_thread),
+        local_thread,
+        _remote_entry("https://github.com/example/project"),
+        ProjectResolutionRequest(),
+    )
+
+    assert root is None
+    assert issue is not None
+    assert issue.code == "existing_project_path_not_directory"
+    assert str(file_path) in issue.message

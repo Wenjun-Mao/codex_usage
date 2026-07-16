@@ -59,6 +59,18 @@ def resolve_local_project_root(
     if local_thread is not None:
         current = _native_absolute_path(local_thread.cwd)
         if current is not None:
+            if not current.exists():
+                return None, SyncIssue(
+                    "existing_project_path_missing",
+                    f"Existing task project path does not exist: {current}",
+                    remote_entry.thread_id,
+                )
+            if not current.is_dir():
+                return None, SyncIssue(
+                    "existing_project_path_not_directory",
+                    f"Existing task project path is not a directory: {current}",
+                    remote_entry.thread_id,
+                )
             return current, None
 
     binding, binding_issue = _binding_for_project(remote_entry, request.bindings)

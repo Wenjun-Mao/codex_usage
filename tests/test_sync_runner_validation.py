@@ -1,11 +1,12 @@
 import inspect
 import json
+import shutil
 from pathlib import Path
 
 import codex_usage.sync.runner as runner_module
 import pytest
 from codex_usage.session_cache import load_cached_session_data
-from codex_usage.sync import ProjectResolutionRequest, pull_sync, push_sync
+from codex_usage.sync import ProjectBinding, ProjectResolutionRequest, pull_sync, push_sync
 from codex_usage.sync.runner import sync_status as transaction_status
 from codex_usage.sync.store import RemoteStore
 
@@ -234,6 +235,121 @@ def test_pull_preflights_all_remote_identities_before_batch_writes(
     assert not (target_sessions.parent / ".codex-sync-backups").exists()
 
 
+def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_home = tmp_path / "source-codex"
+    target_home = tmp_path / "target-codex"
+    sync_dir = tmp_path / "sync"
+    source_projects = {
+        "stale-task": tmp_path / "source-stale-project",
+        "valid-task": tmp_path / "source-valid-project",
+    }
+    target_projects = {
+        "stale-task": tmp_path / "target-stale-project",
+        "valid-task": tmp_path / "target-valid-project",
+    }
+    project_keys = {
+        "stale-task": "https://github.com/example/stale-project",
+        "valid-task": "https://github.com/example/valid-project",
+    }
+    source_paths: dict[str, Path] = {}
+    for thread_id, source_project in source_projects.items():
+        _write_git_origin(source_project, f"{project_keys[thread_id]}.git")
+        _write_git_origin(target_projects[thread_id], f"{project_keys[thread_id]}.git")
+        source_paths[thread_id] = _write_session(
+            source_home / "sessions",
+            thread_id,
+            source_project,
+            total=120,
+        )
+
+    selected = list(source_paths)
+    first_push = push_sync(
+        data=load_cached_session_data(
+            [source_home / "sessions"],
+            cache_dir=tmp_path / "source-cache",
+        ),
+        sync_dir=sync_dir,
+        thread_ids=selected,
+        machine_id="source",
+    )
+    assert set(first_push.pushed) == set(selected)
+
+    initial_pull = pull_sync(
+        data=load_cached_session_data(
+            [target_home / "sessions"],
+            cache_dir=tmp_path / "target-cache",
+        ),
+        sync_dir=sync_dir,
+        thread_ids=selected,
+        project_resolution=ProjectResolutionRequest(
+            bindings=tuple(
+                ProjectBinding(project_keys[thread_id], target_projects[thread_id])
+                for thread_id in selected
+            ),
+        ),
+    )
+    assert set(initial_pull.pulled) == set(selected)
+
+    for index, source_path in enumerate(source_paths.values(), start=1):
+        _append_token_event(
+            source_path,
+            f"2026-07-13T12:0{index}:00Z",
+            240,
+        )
+    second_push = push_sync(
+        data=load_cached_session_data(
+            [source_home / "sessions"],
+            cache_dir=tmp_path / "source-cache",
+        ),
+        sync_dir=sync_dir,
+        thread_ids=selected,
+        machine_id="source",
+    )
+    assert set(second_push.pushed) == set(selected)
+
+    shutil.rmtree(target_projects["stale-task"])
+    target_paths = {
+        thread_id: target_home
+        / "sessions"
+        / source_path.relative_to(source_home / "sessions")
+        for thread_id, source_path in source_paths.items()
+    }
+    target_before = {
+        thread_id: target_path.read_bytes()
+        for thread_id, target_path in target_paths.items()
+    }
+    execution_calls: list[str] = []
+    monkeypatch.setattr(
+        runner_module,
+        "execute_pulls",
+        lambda *args: execution_calls.append("pull"),
+    )
+
+    result = pull_sync(
+        data=load_cached_session_data(
+            [target_home / "sessions"],
+            cache_dir=tmp_path / "target-cache",
+        ),
+        sync_dir=sync_dir,
+        thread_ids=selected,
+        project_resolution=ProjectResolutionRequest(),
+    )
+
+    assert result.outcome == "issue"
+    assert result.pulled == ()
+    assert execution_calls == []
+    assert {issue.code for issue in result.issues} == {
+        "existing_project_path_missing"
+    }
+    assert {
+        thread_id: target_path.read_bytes()
+        for thread_id, target_path in target_paths.items()
+    } == target_before
+
+
 def test_run_sync_returns_typed_issue_when_local_changes_after_planning(
     tmp_path: Path,
     monkeypatch,
@@ -302,6 +418,7 @@ def test_run_sync_returns_typed_issue_for_visible_remote_change(
 
 
 def _write_session(sessions_dir: Path, thread_id: str, cwd: Path, total: int) -> Path:
+    cwd.mkdir(parents=True, exist_ok=True)
     day_dir = sessions_dir / "2026" / "04" / "29"
     day_dir.mkdir(parents=True, exist_ok=True)
     path = day_dir / f"rollout-2026-04-29T10-00-00-{thread_id}.jsonl"

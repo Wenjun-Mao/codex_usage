@@ -193,7 +193,6 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
     target_sessions = tmp_path / "target" / "sessions"
     target_sessions.mkdir(parents=True)
     selected_project = tmp_path / "thread-1"
-    selected_project.mkdir()
     _write_saved_projects(target_sessions.parent, [selected_project])
     target_data = load_cached_session_data(
         [target_sessions], cache_dir=tmp_path / "target-cache"
@@ -366,6 +365,7 @@ def test_unselected_remote_diagnostic_does_not_block_selected_push(
 
 
 def _write_session(sessions_dir: Path, thread_id: str, cwd: Path, total: int) -> Path:
+    cwd.mkdir(parents=True, exist_ok=True)
     day_dir = sessions_dir / "2026" / "04" / "29"
     day_dir.mkdir(parents=True, exist_ok=True)
     path = day_dir / f"rollout-2026-04-29T10-00-00-{thread_id}.jsonl"

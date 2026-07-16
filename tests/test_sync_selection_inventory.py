@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from codex_usage.sync.constants import REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.models import (
     LocalInventory,
     RemoteIndex,
@@ -34,7 +35,7 @@ def _remote_inventory(
     missing_thread_ids: tuple[str, ...] = (),
 ) -> RemoteInventory:
     index = RemoteIndex(
-        format_version=2,
+        format_version=REMOTE_TRANSFER_FORMAT_VERSION,
         updated_at="",
         threads={entry.thread_id: entry for entry in entries},
     )
@@ -84,7 +85,7 @@ def _remote_task(
 ) -> RemoteThreadEntry:
     return RemoteThreadEntry(
         thread_id=thread_id,
-        file=f"conversations/{thread_id}.jsonl",
+        file=f"tasks/{thread_id}.jsonl",
         source_relative_path=f"2026/07/14/{thread_id}.jsonl",
         index_entry={"id": thread_id, "thread_name": title, "updated_at": updated_at},
         project_key=project_key,
@@ -96,6 +97,20 @@ def _remote_task(
         exported_at=updated_at,
         source_machine_id="machine-a",
     )
+
+
+def test_remote_fixture_uses_current_v3_task_layout() -> None:
+    entry = _remote_task(
+        "task-1",
+        "Task one",
+        "repo",
+        "Repo",
+        "2026-07-14T12:00:00Z",
+    )
+    remote = _remote_inventory(entry)
+
+    assert remote.index.format_version == REMOTE_TRANSFER_FORMAT_VERSION
+    assert entry.file == "tasks/task-1.jsonl"
 
 
 def test_build_inventory_merges_by_thread_id_and_groups_projects() -> None:

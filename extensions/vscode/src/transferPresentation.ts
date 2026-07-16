@@ -148,6 +148,29 @@ export function formatTransferResult(
   const operationLabel = operation === "import" ? "Import" : "Export";
   const oppositeCode = operation === "import" ? "pull_requires_push" : "push_requires_pull";
   const oppositeCount = result.issues.filter((issue) => issue.code === oppositeCode).length;
+  const completedIds = operation === "import" ? result.pulled : result.pushed;
+  const transferred = operation === "import" ? result.counts.pulled : result.counts.pushed;
+  const hasIssue = result.outcome === "issue" || result.issues.length > 0;
+
+  if (hasIssue && completedIds.length > 0) {
+    if (operation === "import") {
+      const pronoun = transferred === 1 ? "it" : "them";
+      return {
+        kind: "error",
+        message:
+          `Import could not be completed. Imported ${transferred} ${taskWord(transferred)} ` +
+          `before the issue occurred. Reload VS Code or restart the Codex app to see ${pronoun}. ` +
+          "See the Codex Usage output for details.",
+      };
+    }
+    return {
+      kind: "error",
+      message:
+        `Export could not be completed. Exported ${transferred} ${taskWord(transferred)} ` +
+        "to the transfer folder before the issue occurred. " +
+        "See the Codex Usage output for details.",
+    };
+  }
 
   if (oppositeCount > 0) {
     const source = operation === "import" ? "on this computer" : "in the transfer folder";
@@ -171,14 +194,13 @@ export function formatTransferResult(
     };
   }
 
-  if (result.outcome === "issue" || result.issues.length > 0) {
+  if (hasIssue) {
     return {
       kind: "error",
       message: `${operationLabel} could not be completed. No tasks were copied. See the Codex Usage output for details.`,
     };
   }
 
-  const transferred = operation === "import" ? result.counts.pulled : result.counts.pushed;
   if (transferred > 0) {
     if (operation === "import") {
       const pronoun = transferred === 1 ? "it" : "them";

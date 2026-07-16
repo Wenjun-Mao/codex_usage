@@ -19,7 +19,7 @@ function syncThread(overrides = {}) {
     action: "push",
     reason: "local conversation changed",
     local_path: "/codex/thread-1.jsonl",
-    remote_path: "/sync/conversations/thread-1.jsonl",
+    remote_path: "/sync/tasks/thread-1.jsonl",
     local_sha256: "local-hash",
     remote_sha256: "remote-hash",
     base_sha256: "base-hash",
@@ -309,9 +309,10 @@ test("parseSyncStatusSummary counts states and memory warnings", () => {
   const summary = parseSyncStatusSummary(
     JSON.stringify({
       threads: [
-        { thread_id: "t1", state: "synced", memory_database_rows: 0 },
-        { thread_id: "t2", state: "conflict", memory_database_rows: 2 },
+        syncThread({ thread_id: "t1", state: "synced", action: "none" }),
+        syncThread({ thread_id: "t2", state: "conflict", action: "conflict", memory_database_rows: 2 }),
       ],
+      issues: [],
     }),
   );
 
@@ -332,12 +333,13 @@ test("parseSyncStatusSummary describes planned pull push and fast-forward states
   const summary = parseSyncStatusSummary(
     JSON.stringify({
       threads: [
-        { thread_id: "a", state: "local_ahead" },
-        { thread_id: "b", state: "remote_ahead" },
-        { thread_id: "c", state: "fast_forward_push" },
-        { thread_id: "d", state: "fast_forward_pull" },
-        { thread_id: "e", state: "synced" },
+        syncThread({ thread_id: "a", state: "local_ahead", action: "push" }),
+        syncThread({ thread_id: "b", state: "remote_ahead", action: "pull" }),
+        syncThread({ thread_id: "c", state: "fast_forward_push", action: "push" }),
+        syncThread({ thread_id: "d", state: "fast_forward_pull", action: "pull" }),
+        syncThread({ thread_id: "e", state: "synced", action: "none" }),
       ],
+      issues: [],
     }),
   );
 
@@ -351,11 +353,10 @@ test("parseSyncStatusSummary describes planned pull push and fast-forward states
 test("parseSyncStatusSummary counts valid plan issues and retains the first actionable message", () => {
   const summary = parseSyncStatusSummary(
     JSON.stringify({
-      threads: [{ thread_id: "t1", state: "issue" }, null, "malformed row"],
+      threads: [syncThread({ thread_id: "t1", state: "issue", action: "issue" })],
       issues: [
         { code: "empty_message", message: "", thread_id: "t1" },
-        null,
-        { code: "missing_remote_file", message: " Remote conversation file is missing. ", thread_id: "t1" },
+        { code: "missing_remote_file", message: " Remote task file is missing. ", thread_id: "t1" },
         { code: "later", message: "Later issue", thread_id: "t2" },
       ],
     }),
@@ -363,11 +364,68 @@ test("parseSyncStatusSummary counts valid plan issues and retains the first acti
 
   assert.equal(summary.issues, 3);
   assert.match(summary.message, /3 issues/);
-  assert.match(summary.message, /Remote conversation file is missing\./);
+  assert.match(summary.message, /Remote task file is missing\./);
   assert.doesNotMatch(summary.message, /Later issue/);
 });
 
-test("parseSyncStatusSummary rejects malformed top-level JSON but tolerates malformed collections", () => {
+test("parseSyncStatusSummary requires exact top-level status collections", () => {
   assert.throws(() => parseSyncStatusSummary("{"), /Could not parse Codex sync status JSON/);
-  assert.doesNotThrow(() => parseSyncStatusSummary(JSON.stringify({ threads: null, issues: [7, {}] })));
+  for (const payload of [
+    null,
+    [],
+    {},
+    { threads: [] },
+    { issues: [] },
+    { threads: null, issues: [] },
+    { threads: [], issues: null },
+    { threads: [], issues: [], unexpected: true },
+  ]) {
+    assert.throws(
+      () => parseSyncStatusSummary(JSON.stringify(payload)),
+      /Invalid Codex sync status/,
+    );
+  }
+});
+
+test("parseSyncStatusSummary rejects malformed task and issue records", () => {
+  const missingTaskField = syncThread();
+  delete missingTaskField.reason;
+  const extraTaskField = { ...syncThread(), unexpected: true };
+  const missingIssueField = syncIssue();
+  delete missingIssueField.thread_id;
+  const extraIssueField = { ...syncIssue(), unexpected: true };
+
+  for (const payload of [
+    { threads: [7], issues: [] },
+    { threads: [missingTaskField], issues: [] },
+    { threads: [extraTaskField], issues: [] },
+    { threads: [syncThread({ state: 7 })], issues: [] },
+    { threads: [syncThread({ memory_note: 7 })], issues: [] },
+    { threads: [], issues: [7] },
+    { threads: [], issues: [missingIssueField] },
+    { threads: [], issues: [extraIssueField] },
+    { threads: [], issues: [syncIssue({ message: null })] },
+  ]) {
+    assert.throws(
+      () => parseSyncStatusSummary(JSON.stringify(payload)),
+      /Invalid Codex sync status/,
+    );
+  }
+});
+
+test("parseSyncStatusSummary requires safe memory database row integers", () => {
+  const valid = syncThread({ memory_database_rows: Number.MAX_SAFE_INTEGER });
+  assert.equal(
+    parseSyncStatusSummary(JSON.stringify({ threads: [valid], issues: [] })).memoryWarnings,
+    1,
+  );
+
+  const unsafe = JSON.stringify({ threads: [syncThread()], issues: [] }).replace(
+    '"memory_database_rows":0',
+    '"memory_database_rows":9007199254740993',
+  );
+  assert.throws(
+    () => parseSyncStatusSummary(unsafe),
+    /threads\[0\]\.memory_database_rows/,
+  );
 });

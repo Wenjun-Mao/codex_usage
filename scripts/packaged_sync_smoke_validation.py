@@ -14,7 +14,7 @@ PROJECT_KEY = "https://github.com/example/packaged-sync-smoke"
 PROJECT_LABEL = "packaged-sync-smoke"
 UNRELATED_PROJECT_KEY = "https://github.com/example/packaged-sync-unrelated"
 INVENTORY_VERSION = 2
-SYNC_FORMAT_VERSION = 3
+REMOTE_TRANSFER_FORMAT_VERSION = 3
 LOCAL_BASELINE_VERSION = 2
 TASKS_DIRNAME = "tasks"
 LOCAL_METADATA_ESTIMATE_BYTES = 4096
@@ -323,7 +323,11 @@ def _validate_remote_layout(sync_dir: Path, source_bytes: bytes) -> None:
         "pushed task JSONL bytes",
     )
     sync_index = _read_json_object(sync_dir / "sync-index.json", "sync index")
-    _require_equal(sync_index.get("format_version"), SYNC_FORMAT_VERSION, "index format")
+    _require_equal(
+        sync_index.get("format_version"),
+        REMOTE_TRANSFER_FORMAT_VERSION,
+        "index format",
+    )
     indexed_threads = _require_object(sync_index.get("threads"), "sync index threads")
     _require_equal(set(indexed_threads), {THREAD_ID}, "sync index thread ids")
     entry = _require_object(indexed_threads[THREAD_ID], "sync index task entry")

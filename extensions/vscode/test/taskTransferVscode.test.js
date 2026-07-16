@@ -234,6 +234,26 @@ test("port maps export to push and review to status exactly once", async () => {
   assert.equal(deps.commands.length, 1);
 });
 
+test("review adapter rejects malformed native status output", async () => {
+  resetCalls();
+  const deps = dependencies({
+    async runCommand(args) {
+      deps.commands.push(args);
+      return {
+        stdout: JSON.stringify({ threads: null, issues: [7, {}] }),
+        stderr: "",
+      };
+    },
+  });
+  const port = createTaskTransferVscodePort(context(), deps);
+
+  await assert.rejects(
+    () => port.review(executionRequest()),
+    /Invalid Codex sync status/,
+  );
+  assert.equal(deps.commands.length, 1);
+});
+
 test("missing remembered folder is actionable and never rewrites state", async () => {
   resetCalls();
   const ctx = context("/offline");

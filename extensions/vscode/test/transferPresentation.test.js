@@ -162,3 +162,42 @@ test("result copy pluralizes import export no-op and blocked direction exactly",
     "Import was blocked because 2 selected tasks are newer on this computer. Export them first.",
   );
 });
+
+test("runtime import failure reports the task imported before the issue", () => {
+  const formatted = formatTransferResult(
+    "import",
+    result({
+      selected: 2,
+      pulled: 1,
+      issues: [issue("local_write_failed")],
+    }),
+  );
+
+  assert.equal(formatted.kind, "error");
+  assert.equal(
+    formatted.message,
+    "Import could not be completed. Imported 1 task before the issue occurred. " +
+      "Reload VS Code or restart the Codex app to see it. " +
+      "See the Codex Usage output for details.",
+  );
+  assert.doesNotMatch(formatted.message, /no tasks were copied/i);
+});
+
+test("runtime export failure reports the task exported before the issue", () => {
+  const formatted = formatTransferResult(
+    "export",
+    result({
+      selected: 2,
+      pushed: 1,
+      issues: [issue("remote_write_failed")],
+    }),
+  );
+
+  assert.equal(formatted.kind, "error");
+  assert.equal(
+    formatted.message,
+    "Export could not be completed. Exported 1 task to the transfer folder before the issue occurred. " +
+      "See the Codex Usage output for details.",
+  );
+  assert.doesNotMatch(formatted.message, /no tasks were copied/i);
+});

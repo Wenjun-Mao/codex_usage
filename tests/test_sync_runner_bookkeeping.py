@@ -256,6 +256,7 @@ def _pull(
 
 
 def _write_session(sessions: Path, thread_id: str, cwd: Path) -> Path:
+    cwd.mkdir(parents=True, exist_ok=True)
     day = sessions / "2026" / "07" / "14"
     day.mkdir(parents=True, exist_ok=True)
     path = day / f"rollout-2026-07-14T10-00-00-{thread_id}.jsonl"

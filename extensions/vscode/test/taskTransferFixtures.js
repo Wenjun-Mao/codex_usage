@@ -156,6 +156,9 @@ function fakePort(options = {}) {
     },
     async review(request) {
       this.reviews.push(request);
+      if (options.reviewError) {
+        throw options.reviewError;
+      }
       return reviewResults.shift() ?? statusSummary({ total: request.threadIds.length });
     },
     notify(kind, message) {

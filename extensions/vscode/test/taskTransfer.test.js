@@ -279,6 +279,26 @@ test("local counterparts and Review never prompt for destination bindings", asyn
   assert.doesNotMatch(reviewPort.notifications[0][1], /sync|local|remote/i);
 });
 
+test("malformed native Review output becomes an actionable controller failure", async () => {
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project()]),
+    selectedThreadIds: ["remote-task"],
+    reviewError: new Error("Invalid Codex sync status: threads must be an array"),
+  });
+
+  await new TaskTransferController(port, () => true).reviewStatus();
+
+  assert.deepEqual(port.logs, [
+    "[error] Invalid Codex sync status: threads must be an array",
+  ]);
+  assert.deepEqual(port.notifications, [[
+    "error",
+    "Task Transfer status could not be reviewed. See the Codex Usage output for details.",
+  ]]);
+  assert.deepEqual(port.statuses, ["checking", "issue", undefined]);
+});
+
 test("task and destination picker cancellations stay silent", async () => {
   const taskPort = fakePort({
     folder: "/transfer",

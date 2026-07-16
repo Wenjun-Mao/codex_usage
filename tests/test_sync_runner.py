@@ -398,6 +398,7 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
 
 
 def _write_session(sessions_dir: Path, thread_id: str, cwd: Path, total: int) -> Path:
+    cwd.mkdir(parents=True, exist_ok=True)
     day_dir = sessions_dir / "2026" / "04" / "29"
     day_dir.mkdir(parents=True, exist_ok=True)
     path = day_dir / f"rollout-2026-04-29T10-00-00-{thread_id}.jsonl"
