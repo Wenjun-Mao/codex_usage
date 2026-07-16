@@ -18,11 +18,13 @@ The primary workflow is:
 
 1. Export selected active tasks on the source computer.
 2. Allow the user's filesystem provider to copy the transfer folder.
-3. Import selected tasks on the destination computer.
-4. Restart Codex so it discovers the imported task files.
+3. Make the corresponding project folders available on the destination computer.
+4. Import selected tasks and bind them to those local project folders.
+5. Refresh the Codex client so it discovers the imported task files.
 
 This supports same-OS and cross-OS transfer, including large tasks that Codex's
-built-in handoff cannot complete.
+built-in handoff cannot complete. A desktop Codex app is not required; the flow
+must also work for users who use only the Codex IDE extension.
 
 ## Root Cause Note
 
@@ -40,6 +42,11 @@ relationship even though transfers only run after an explicit command.
 
 The portable folder compounds the terminology mismatch by storing Codex tasks
 under `conversations/`.
+
+Destination project discovery also depends primarily on the private
+`electron-saved-workspace-roots` registry. The extension cannot assume that state
+exists in an extension-only environment, especially on a platform without the
+desktop app, even when a valid project is open in VS Code.
 
 ### Why It Failed
 
@@ -66,14 +73,17 @@ automatic-sync design:
 - ADR 0013 already prohibits activation, focus, timer, and file-watcher
   transfers, so Pause and Resume do not control a background process.
 - the remote index stores paths such as `conversations/<task-id>.jsonl`.
+- `discover_project_roots` reads desktop saved roots but receives no active VS Code
+  workspace roots from the extension.
 
 ### Correct Fix Layer
 
 This is a product-model and storage-contract mismatch, not only a wording defect.
 The durable fix is to model the feature as three explicit Task Transfer operations,
-persist only the transfer folder, and update the user-visible portable layout.
-Relabeling the existing setup and pause controls would preserve the invalid state
-model.
+persist only the transfer folder, update the user-visible portable layout, and
+resolve destination projects from surface-neutral local candidates. Relabeling
+the existing setup and pause controls or requiring desktop-app state would
+preserve invalid assumptions.
 
 ## Product Contract
 
@@ -91,6 +101,8 @@ Task Transfer is optional, directional, manual, and non-destructive:
 - importing a task does not remove it from the transfer folder.
 - forgetting the transfer folder does not delete anything from that folder or
   from Codex.
+- Import works with the Codex IDE extension alone and never requires the desktop
+  app or mutation of private Codex application state.
 
 The extension remembers only the transfer-folder path. Each operation starts with
 a fresh selection and stores no selected project or task ids.
@@ -107,9 +119,12 @@ The documented workflow is:
 2. Choose the active projects and tasks to transfer.
 3. Wait for OneDrive, Dropbox, iCloud Drive, Syncthing, a network drive, or another
    filesystem provider to finish copying the transfer folder.
-4. On the destination computer, choose **Import Tasks**.
-5. Choose the tasks to import.
-6. Restart Codex to make imported tasks visible.
+4. Clone or copy the corresponding project folders to the destination computer if
+   they are not already present.
+5. In VS Code on the destination computer, choose **Import Tasks**.
+6. Choose the tasks to import. The extension automatically uses matching workspace
+   folders and asks for a local project folder only when needed.
+7. Reload VS Code or restart the Codex app to make imported tasks visible.
 
 The usage scenario explicitly calls out large Codex tasks for which built-in
 handoff is unavailable or fails because of task size. Token reporting remains the
@@ -167,6 +182,54 @@ Each task row uses user-facing state and availability wording:
 Technical thread ids may appear as **Task ID** when disambiguation is needed. The
 picker never labels a Codex sidebar item as a conversation or thread.
 
+## Destination Project Resolution
+
+Every imported task must have an existing destination project folder. For a Git
+project, the repository must already be cloned or copied to the destination
+computer. Task Transfer does not clone repositories.
+
+Import resolves one local destination per selected project, not once per task. It
+builds candidates from these surface-neutral sources:
+
+1. a matching native `cwd` from an existing local Codex task;
+2. active VS Code workspace folders supplied by the extension;
+3. desktop-app saved workspace roots when that optional state exists;
+4. folders explicitly chosen during the current Import operation.
+
+Resolve filesystem targets for existence checks and duplicate detection while
+preserving the exact spelling supplied by Codex or VS Code for the materialized
+`cwd`.
+
+For a Git-backed project:
+
+- normalize candidate identity from its Git origin;
+- bind automatically when exactly one candidate matches the transferred project;
+- ask the user to choose among matching candidates when more than one exists;
+- when no candidate matches, open **Choose Local Project Folder**;
+- reject a chosen folder whose normalized Git origin does not match.
+
+For a project without a portable Git identity, an explicit folder choice is
+required when the source path does not match natively. Show the source identity,
+chosen destination, and a confirmation that the binding cannot be verified from
+Git before proceeding.
+
+An explicit mapping applies to every selected task in that project for the current
+Import command only. Do not persist project mappings. Once imported, the task's
+native local `cwd` can participate in future automatic discovery.
+
+When a selected task already has a native local counterpart, preserve that task's
+existing local `cwd`. The per-project destination mapping applies to remote-only
+tasks and must not move an existing task between local checkouts.
+
+Cancelling a required destination choice cancels the complete Import operation
+silently. An unresolved, invalid, missing, or ambiguous destination blocks every
+selected task before copying starts.
+
+The extension and Python process exchange active candidate roots and explicit
+project-key/path bindings through the private CLI invocation contract. They do not
+write `.codex-global-state.json`, Codex SQLite, or any other private project
+registry.
+
 ## Directional Safety Contract
 
 Import and Export preflight every selected task before copying anything. A command
@@ -208,8 +271,8 @@ No changes were needed. All 2 selected tasks are up to date.
 ### Successful Transfer
 
 ```text
-Imported 1 task. Restart Codex to see it.
-Imported 2 tasks. Restart Codex to see them.
+Imported 1 task. Reload VS Code or restart the Codex app to see it.
+Imported 2 tasks. Reload VS Code or restart the Codex app to see them.
 Exported 1 task to the transfer folder.
 Exported 2 tasks to the transfer folder.
 ```
@@ -376,7 +439,7 @@ rather than preserving rollback machinery for state that no longer exists.
 Python remains authoritative for:
 
 - local and transfer-folder inventory;
-- task identity and project resolution;
+- task identity, candidate validation, and destination project resolution;
 - status planning and all-or-nothing preflight;
 - conflict and opposite-direction detection;
 - atomic file copying and optimistic concurrency checks;
@@ -384,7 +447,9 @@ Python remains authoritative for:
 
 Add a focused migration module instead of adding another responsibility to the
 storage module. Keep the planner's technical local/remote model and existing CLI
-commands as implementation details.
+commands as implementation details. Extend their private invocation contract with
+candidate project roots and explicit per-operation project bindings without
+adding persistent settings.
 
 ### Extension Orchestration
 
@@ -393,6 +458,8 @@ Add a focused Task Transfer orchestration module that owns:
 - lazy folder selection and persistence;
 - operation-specific inventory requests;
 - fresh combined project/task selection;
+- collecting active VS Code workspace roots;
+- prompting only for unresolved or ambiguous destination projects;
 - invoking the bundled CLI with selected technical thread ids;
 - progress and completion notifications.
 
@@ -418,8 +485,11 @@ The root README and extension README must:
 
 - state that token-usage reporting works without Task Transfer;
 - lead Task Transfer documentation with the source-to-destination usage scenario;
-- include the Export, provider-convergence, Import, and Codex-restart sequence;
+- include the Export, provider-convergence, local-project, Import, and
+  client-refresh sequence;
 - call out large tasks that cannot be moved with Codex's built-in handoff;
+- state that Import works without the desktop app;
+- explain automatic VS Code workspace matching and validated folder fallback;
 - state that imported files remain in the transfer folder;
 - state that every operation uses a fresh task selection;
 - avoid claiming ongoing, automatic, or bidirectional synchronization;
@@ -457,13 +527,18 @@ changes into a version heading with the actual release date.
 - Cancelling a folder or task picker is not an error.
 - An empty import or export source gets a state-specific no-tasks message.
 - A blocked preflight copies none of the selected tasks.
+- A missing destination project asks for a folder instead of requiring the desktop
+  app. Cancelling that choice cancels Import without copying.
+- A selected Git folder with the wrong origin is rejected with expected and actual
+  repository identities.
+- A non-Git cross-machine binding requires explicit confirmation.
 - A zero-transfer result is not called a failure and is not called up to date when
   an opposite-direction blocker exists.
 - Migration validates before mutation and commits the version-3 index last.
 - Symlink, path traversal, identity mismatch, malformed index, and concurrent
   change protections remain mandatory.
-- Task Transfer never patches Codex SQLite. Restart guidance is presentation, not
-  a private-database mutation.
+- Task Transfer never patches Codex SQLite or desktop global state. Client-refresh
+  guidance is presentation, not a private-state mutation.
 
 ## Testing And Guardrails
 
@@ -481,6 +556,10 @@ Add tests for:
 - refusal to overwrite conflicting staged files;
 - malformed layouts, symlinks, path traversal, and concurrent changes;
 - v3 direct-child `tasks/` validation;
+- destination discovery without desktop-app global state;
+- matching Git identity across different native checkout paths;
+- rejection of an explicit folder with the wrong Git origin;
+- confirmed explicit binding for a non-Git project;
 - all-or-nothing Import and Export preflight;
 - opposite-direction, conflict, missing, and up-to-date selected sets.
 
@@ -492,9 +571,13 @@ Add pure and integration tests for:
 - fresh unselected task pickers for every operation;
 - project select-all and individual task adjustment;
 - Import, Export, and Review inventory filtering;
+- active VS Code workspace roots passed into Import discovery;
+- automatic unique project binding, ambiguous-match choice, and missing-match
+  folder fallback;
+- per-project bindings reused within one Import but never persisted;
 - all user-facing availability and transfer-state labels;
 - empty, up-to-date, successful, opposite-direction, conflict, and issue messages;
-- restart guidance only after at least one imported task;
+- surface-neutral client-refresh guidance only after at least one imported task;
 - usage-only persistent status with no transfer folder configured;
 - removal of enabled, paused, selected-id, and selection-version state;
 - preservation of the existing folder and command ids.
@@ -508,6 +591,8 @@ Add or update checks requiring:
   persistent selected-task copy;
 - no current user-facing conversation or thread terminology for Codex tasks;
 - `tasks/` in packaged smoke fixtures and current documentation;
+- at least one packaged Import smoke with no desktop global-state file and an
+  explicit destination workspace root;
 - `Unreleased` in both changelogs;
 - ISO dates on every released changelog heading;
 - identical dates for versions present in both changelogs.
@@ -515,6 +600,11 @@ Add or update checks requiring:
 Run the full Python and extension suites, changed-scope linting, extension build,
 the local macOS Apple Silicon package smoke, and GitHub Actions Windows x64 and
 macOS arm64 package smoke before publishing.
+
+Manually verify one extension-only Import with the desktop app closed: open the
+matching checkout in VS Code, import a remote-only task, reload VS Code, and
+confirm that the official Codex IDE extension can open the task under that
+workspace.
 
 ## Durable Decision Record
 
@@ -524,13 +614,17 @@ Add a concise ADR recording that:
 - only the transfer folder is persisted;
 - task selection is fresh for every operation;
 - Import and Export use all-or-nothing preflight;
+- destination projects resolve from existing task paths, VS Code workspaces,
+  optional desktop roots, and validated per-operation choices;
+- the desktop app is not an Import prerequisite and private Codex project state is
+  never modified;
 - the user-visible portable directory is `tasks/` in format version 3;
 - technical CLI and thread identifiers remain unchanged;
 - local baseline-state versioning is independent from remote transfer format.
 
-The ADR supersedes the presentation and persistent-selection portions of ADR 0013
-without weakening its manual-only triggers, conflict checks, or data-safety
-requirements.
+The ADR supersedes the presentation, persistent-selection, and desktop-saved-root
+discovery portions of ADR 0013 without weakening its manual-only triggers,
+identity validation, conflict checks, or data-safety requirements.
 
 ## Non-Goals
 
@@ -541,4 +635,6 @@ requirements.
 - Rename technical thread ids, CLI commands, or `sync-index.json` fields.
 - Add cloud-provider APIs or wait for provider convergence programmatically.
 - Include archived tasks in transfer discovery.
+- Package or publish a Linux VSIX. Linux x64 packaging, native executable builds,
+  CI validation, and Marketplace publication are a separate follow-up.
 - Guess missing changelog dates.
