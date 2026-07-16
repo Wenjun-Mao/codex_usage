@@ -308,7 +308,7 @@ def main() -> int:
         )
 
     print(
-        "Packaged sync smoke passed: inventory=local,remote pushed=1 pulled=1 "
+        "Packaged Task Transfer smoke passed: inventory=local,remote pushed=1 pulled=1 "
         "status=up-to-date format_version=3"
     )
     return 0

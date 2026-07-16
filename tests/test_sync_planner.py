@@ -259,12 +259,15 @@ def test_planner_rejects_discovered_local_path_outside_session_directory(tmp_pat
 
 def test_planner_prefers_discovered_local_path_over_remote_source_path(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
+    local_project_root = tmp_path / "local-project-root"
+    local_project_root.mkdir()
     actual_path = sessions / "2026" / "07" / "13" / "actual.jsonl"
     actual_path.parent.mkdir(parents=True)
     actual_path.write_bytes(b"base+local")
     thread = replace(
         _thread("thread-1", project_key="local-project"),
         session_path=actual_path,
+        cwd=str(local_project_root),
         project_label="Local Label",
         updated_at="2026-07-13T13:00:00Z",
     )
@@ -317,12 +320,15 @@ def test_planner_uses_coherent_local_metadata_for_none_and_conflict(
     expected_state: str,
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
+    local_project_root = tmp_path / "local-project-root"
+    local_project_root.mkdir()
     local_path = sessions / "actual.jsonl"
     local_path.parent.mkdir(parents=True)
     local_path.write_bytes(local_bytes)
     local_thread = replace(
         _thread("thread-1", project_key="local-project"),
         session_path=local_path,
+        cwd=str(local_project_root),
         project_label="Local Label",
         updated_at="2026-07-13T13:00:00Z",
     )

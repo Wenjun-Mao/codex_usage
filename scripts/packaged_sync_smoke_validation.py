@@ -8,7 +8,7 @@ from pathlib import Path
 
 THREAD_ID = "thread-1"
 SESSION_RELATIVE_PATH = Path("2026") / "04" / "29" / f"{THREAD_ID}.jsonl"
-TASK_TITLE = "Packaged sync smoke"
+TASK_TITLE = "Packaged Task Transfer smoke"
 TASK_UPDATED_AT = "2026-04-29T10:00:02Z"
 PROJECT_KEY = "https://github.com/example/packaged-sync-smoke"
 PROJECT_LABEL = "packaged-sync-smoke"
@@ -276,7 +276,7 @@ def _validate_sync_result(
         "state": "local_only" if pushing else "remote_only",
         "action": direction,
         "reason": (
-            "local conversation is not in the sync folder"
+            "local task is not in the transfer folder"
             if pushing
             else "sync folder task is not local"
         ),

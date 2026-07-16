@@ -8,6 +8,15 @@ ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DOCS = (ROOT / "README.md", ROOT / "extensions/vscode/README.md")
 CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 ADR_0014 = ROOT / "docs/adr/0014-manual-task-transfer.md"
+CURRENT_TASK_TRANSFER_FIXTURES = (
+    ROOT / "scripts/build-windows-exe.ps1",
+    ROOT / "scripts/packaged_sync_smoke_validation.py",
+    ROOT / "scripts/smoke-test-packaged-sync.py",
+    ROOT / "src/codex_usage/sync/planner.py",
+    ROOT / "extensions/vscode/test/syncProtocol.test.js",
+    ROOT / "tests/packaged_sync_smoke_support.py",
+    ROOT / "tests/test_sync_runner_bookkeeping.py",
+)
 
 ROOT_RELEASE_DATES = {
     "0.1.36": "2026-07-16",
@@ -185,6 +194,20 @@ def test_current_docs_do_not_claim_ongoing_sync_or_persisted_selection() -> None
             assert phrase.casefold() not in text.casefold(), (path, phrase)
 
 
+def test_current_task_transfer_fixtures_use_task_language() -> None:
+    forbidden = (
+        "Packaged sync smoke",
+        "local conversation",
+        "Local conversation",
+        "_fail_conversation_copy",
+        "matching conversation bytes",
+    )
+    for path in CURRENT_TASK_TRANSFER_FIXTURES:
+        text = path.read_text(encoding="utf-8")
+        for phrase in forbidden:
+            assert phrase not in text, (path, phrase)
+
+
 def test_every_changelog_has_unreleased_and_dated_release_headings() -> None:
     heading = re.compile(
         r"^## (\d+\.\d+\.\d+) - (\d{4}-\d{2}-\d{2})(?: - .+)?$",
@@ -219,6 +242,14 @@ def test_changelogs_use_exact_historical_release_dates() -> None:
 
 
 def test_adr_0014_supersedes_the_correct_selection_and_transfer_contracts() -> None:
+    guardrails = normalized_prose(markdown_section(ADR_0014, "## Guardrails"))
+    assert "canonical, nonempty, unique task ids" in guardrails
+    assert "exact planner state/action pairs" in guardrails
+    assert "sole authoritative destination" in guardrails
+    assert "native absolute path to an existing directory" in guardrails
+    assert "structured partial-completion result" in guardrails
+    assert "completion as unknown" in guardrails
+
     supersession = normalized_prose(markdown_section(ADR_0014, "## Supersession"))
     assert re.search(
         r"supersedes adr 0012[^.]*exact persisted selection[^.]*setup",

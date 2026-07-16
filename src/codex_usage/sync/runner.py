@@ -16,6 +16,7 @@ from codex_usage.sync.errors import (
     ConcurrentLocalChangeError,
     ConcurrentRemoteChangeError,
     SyncStoreError,
+    TransferFilesystemError,
 )
 from codex_usage.sync.inventory import (
     build_local_inventory,
@@ -221,7 +222,13 @@ def _run_direction(
                 )
                 if direction == "push":
                     commit_remote_index_once(plan, remote, store, push_execution)
-    except SyncStoreError as error:
+    except (OSError, SyncStoreError) as error:
+        if isinstance(error, OSError):
+            error = TransferFilesystemError(
+                error,
+                pulled_thread_ids=pulled,
+                pushed_thread_ids=pushed,
+            )
         if plan is None:
             failure_plan = _load_failure_plan(local, error)
             return SyncRunResult.blocked(failure_plan, timings=timer.finish())
@@ -327,7 +334,7 @@ def execute_pulls(
                         item.remote.path,
                         item.local.path,
                         expected_target=item.local,
-                        target_label="local conversation",
+                        target_label="local task",
                     )
                 else:
                     copied = materialize_session_cwd(
@@ -346,7 +353,7 @@ def execute_pulls(
             except ConcurrentRemoteChangeError as error:
                 if snapshot_file(item.local.path) != item.local:
                     raise ConcurrentLocalChangeError(
-                        f"Local conversation changed before replacement for thread {item.thread_id!r}"
+                        f"Local task changed before replacement for thread {item.thread_id!r}"
                     ) from error
                 raise
             if item.local_project_root is None and not same_contents(
@@ -364,6 +371,11 @@ def execute_pulls(
                 item, copied, item.remote
             )
         _merge_pulled_indexes(index_entries, backup_dirs)
+    except OSError as error:
+        raise TransferFilesystemError(
+            error,
+            pulled_thread_ids=tuple(completed),
+        ) from error
     except SyncStoreError as error:
         error.pulled_thread_ids = tuple(completed)
         raise
@@ -444,6 +456,8 @@ def _merge_pulled_indexes(
 
 
 def _issue_from_error(error: SyncStoreError) -> SyncIssue:
+    if isinstance(error, TransferFilesystemError):
+        return SyncIssue("transfer_filesystem_failure", str(error))
     name = re.sub(r"(?<!^)(?=[A-Z])", "_", type(error).__name__).casefold()
     return SyncIssue(name.removesuffix("_error"), str(error))
 

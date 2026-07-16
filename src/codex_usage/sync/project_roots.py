@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from codex_usage.project_identity import (
     is_git_project_key,
@@ -58,20 +58,24 @@ def resolve_local_project_root(
 ) -> tuple[Path | None, SyncIssue | None]:
     if local_thread is not None:
         current = _native_absolute_path(local_thread.cwd)
-        if current is not None:
-            if not current.exists():
-                return None, SyncIssue(
-                    "existing_project_path_missing",
-                    f"Existing task project path does not exist: {current}",
-                    remote_entry.thread_id,
-                )
-            if not current.is_dir():
-                return None, SyncIssue(
-                    "existing_project_path_not_directory",
-                    f"Existing task project path is not a directory: {current}",
-                    remote_entry.thread_id,
-                )
-            return current, None
+        if current is None:
+            return None, _invalid_existing_project_path(
+                local_thread.cwd,
+                remote_entry.thread_id,
+            )
+        if not current.exists():
+            return None, SyncIssue(
+                "existing_project_path_missing",
+                f"Existing task project path does not exist: {current}",
+                remote_entry.thread_id,
+            )
+        if not current.is_dir():
+            return None, SyncIssue(
+                "existing_project_path_not_directory",
+                f"Existing task project path is not a directory: {current}",
+                remote_entry.thread_id,
+            )
+        return current, None
 
     binding, binding_issue = _binding_for_project(remote_entry, request.bindings)
     if binding_issue is not None:
@@ -246,6 +250,26 @@ def _native_absolute_path(value: str) -> Path | None:
         return None
     path = Path(value)
     return path if path.is_absolute() else None
+
+
+def _invalid_existing_project_path(value: str, thread_id: str) -> SyncIssue:
+    if not value.strip():
+        return SyncIssue(
+            "existing_project_path_blank",
+            "Existing task project path is blank.",
+            thread_id,
+        )
+    if PureWindowsPath(value).is_absolute() or PurePosixPath(value).is_absolute():
+        return SyncIssue(
+            "existing_project_path_not_native",
+            f"Existing task project path is not native on this computer: {value}",
+            thread_id,
+        )
+    return SyncIssue(
+        "existing_project_path_not_absolute",
+        f"Existing task project path is not absolute: {value}",
+        thread_id,
+    )
 
 
 def _saved_roots(state_path: Path) -> tuple[Path, ...]:

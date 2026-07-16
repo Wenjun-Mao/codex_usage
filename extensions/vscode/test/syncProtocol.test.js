@@ -17,7 +17,7 @@ function syncThread(overrides = {}) {
     thread_id: "thread-1",
     state: "local_ahead",
     action: "push",
-    reason: "local conversation changed",
+    reason: "local task changed",
     local_path: "/codex/thread-1.jsonl",
     remote_path: "/sync/tasks/thread-1.jsonl",
     local_sha256: "local-hash",
@@ -35,7 +35,7 @@ function syncThread(overrides = {}) {
 function syncIssue(overrides = {}) {
   return {
     code: "concurrent_local_change",
-    message: "Local conversation changed during sync.",
+    message: "Local task changed during transfer.",
     thread_id: "thread-1",
     ...overrides,
   };

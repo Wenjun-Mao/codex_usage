@@ -55,9 +55,16 @@ is a follow-up rather than a supported target in this release.
 - Transfer only after an explicit Import, Export, or Review command.
 - Validate the complete selected batch, project identity, and path safety before
   copying any task.
-- Preserve an existing local task's cwd and never persist a transient binding.
+- Accept process task rows only with canonical, nonempty, unique task ids and
+  exact planner state/action pairs.
+- Treat an existing local task's cwd as its sole authoritative destination. It
+  must be a native absolute path to an existing directory; never replace it with
+  a transient binding or discovered candidate.
 - Block conflicts, malformed structures, changed sources, and opposite-direction
   actions without partial copies.
+- Return a structured partial-completion result when a filesystem failure follows
+  a certified replacement. When completion cannot be certified, report task
+  completion as unknown rather than claiming that zero tasks were copied.
 - Keep Codex private databases and registries read-only.
 - Do not add a Linux package in this release.
 

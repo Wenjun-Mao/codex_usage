@@ -39,7 +39,7 @@ try {
 
     uv run python $smokeScript --executable $exePath
     if ($LASTEXITCODE -ne 0) {
-        throw "Packaged sync smoke test exited with code $LASTEXITCODE"
+        throw "Packaged Task Transfer smoke test exited with code $LASTEXITCODE"
     }
 }
 finally {

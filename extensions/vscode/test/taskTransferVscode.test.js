@@ -89,6 +89,26 @@ function inventoryJson() {
   return JSON.stringify({ inventory_version: 2, projects: [], issues: [] });
 }
 
+function statusThread(overrides = {}) {
+  return {
+    thread_id: "task-1",
+    state: "synced",
+    action: "none",
+    reason: "matching task bytes",
+    local_path: "/codex/task-1.jsonl",
+    remote_path: "/transfer/tasks/task-1.jsonl",
+    local_sha256: "same",
+    remote_sha256: "same",
+    base_sha256: "same",
+    updated_at: "2026-07-16T12:00:00Z",
+    source_relative_path: "2026/07/16/task-1.jsonl",
+    project_key: "repo",
+    project_label: "Repo",
+    memory_database_rows: 0,
+    ...overrides,
+  };
+}
+
 function context(folder = "/transfer") {
   const writes = [];
   return {
@@ -252,6 +272,52 @@ test("review adapter rejects malformed native status output", async () => {
     /Invalid Codex sync status/,
   );
   assert.equal(deps.commands.length, 1);
+});
+
+test("review adapter rejects semantically invalid native status rows", async () => {
+  resetCalls();
+  const deps = dependencies({
+    async runCommand(args) {
+      deps.commands.push(args);
+      return {
+        stdout: JSON.stringify({
+          threads: [statusThread({ state: "synced", action: "pull" })],
+          issues: [],
+        }),
+        stderr: "",
+      };
+    },
+  });
+  const port = createTaskTransferVscodePort(context(), deps);
+
+  await assert.rejects(
+    () => port.review(executionRequest()),
+    /Invalid Codex sync status/,
+  );
+  assert.equal(deps.commands.length, 1);
+});
+
+test("execution adapter preserves structured partial completion", async () => {
+  resetCalls();
+  const partial = {
+    outcome: "issue",
+    counts: {
+      discovered: 2, selected: 2, remote: 2, pulled: 1, pushed: 0,
+      unchanged: 0, conflicts: 0, issues: 1,
+    },
+    timings_ms: { discovery: 1, planning: 1, pull: 1, push: 0, index: 1, total: 4 },
+    threads: [],
+    pulled: ["task-1"],
+    pushed: [],
+    issues: [{ code: "transfer_filesystem_failure", message: "state write failed", thread_id: "" }],
+  };
+  const deps = dependencies({ processResult: partial });
+  const port = createTaskTransferVscodePort(context(), deps);
+
+  const result = await port.execute("import", executionRequest());
+
+  assert.deepEqual(result, partial);
+  assert.deepEqual(result.pulled, ["task-1"]);
 });
 
 test("missing remembered folder is actionable and never rewrites state", async () => {

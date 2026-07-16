@@ -10,6 +10,7 @@ from codex_usage.sync.errors import (
     ConcurrentLocalChangeError,
     ConcurrentRemoteChangeError,
     SyncStoreError,
+    TransferFilesystemError,
 )
 from codex_usage.sync.io import snapshot_file
 from codex_usage.sync.models import (
@@ -76,6 +77,11 @@ def execute_pushes(
             LocalStateStore(local_session_dir, store.root).record_success(
                 item, item.local, written
             )
+    except OSError as error:
+        raise TransferFilesystemError(
+            error,
+            pushed_thread_ids=tuple(completed),
+        ) from error
     except SyncStoreError as error:
         error.pushed_thread_ids = tuple(completed)
         raise
@@ -85,7 +91,7 @@ def execute_pushes(
 def validate_local_snapshot(item: SyncPlanItem) -> None:
     if snapshot_file(item.local.path) != item.local:
         raise ConcurrentLocalChangeError(
-            f"Local conversation changed after planning for thread {item.thread_id!r}"
+            f"Local task changed after planning for thread {item.thread_id!r}"
         )
 
 

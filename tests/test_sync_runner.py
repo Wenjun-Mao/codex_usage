@@ -309,7 +309,7 @@ def test_remote_task_pull_rejects_ambiguous_matching_saved_projects(
     ).exists()
 
 
-def test_push_blocks_locally_changed_task_still_bound_to_foreign_project(
+def test_push_rejects_non_native_existing_project_path_without_rebinding(
     tmp_path: Path,
 ) -> None:
     repository_url = "https://github.com/example/repo.git"
@@ -355,7 +355,7 @@ def test_push_blocks_locally_changed_task_still_bound_to_foreign_project(
     )
 
     assert result.outcome == "issue"
-    assert result.issues[-1].code == "local_project_rebind_conflict"
+    assert result.issues[-1].code == "existing_project_path_not_native"
     assert result.pushed == ()
 
 

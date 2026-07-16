@@ -36,7 +36,7 @@ def classify_snapshots(
     if local.exists and remote.exists and local.sha256 == remote.sha256:
         return "synced", "none", "local and remote match"
     if local.exists and not remote.exists:
-        return "local_only", "push", "local conversation is not in the sync folder"
+        return "local_only", "push", "local task is not in the transfer folder"
     if remote.exists and not local.exists:
         return "remote_only", "pull", "sync folder task is not local"
     if not local.exists and not remote.exists:
@@ -143,7 +143,7 @@ def build_sync_plan(
             and effective_entry is not None
             and remote_snapshot.exists
             and action in {"pull", "push", "none"}
-            and (action == "pull" or (local_thread is not None and local_thread.cwd))
+            and (action == "pull" or local_thread is not None)
         ):
             local_project_root, project_issue = resolve_local_project_root(
                 local,
@@ -256,7 +256,7 @@ def _local_path(
                 return local_thread.session_path, None
         return None, SyncIssue(
             "unsafe_local_path",
-            f"Discovered local conversation for thread {thread_id!r} is outside the session directory",
+            f"Discovered local task for thread {thread_id!r} is outside the session directory",
             thread_id,
         )
     if session_dir is None:
@@ -275,7 +275,7 @@ def _local_path(
     if target is None:
         return None, SyncIssue(
             "unsafe_local_path",
-            f"Local conversation path {relative_path!r} escapes the session directory",
+            f"Local task path {relative_path!r} escapes the session directory",
             thread_id,
         )
     return target, None

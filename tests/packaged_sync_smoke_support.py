@@ -54,7 +54,7 @@ def inventory_payload(
                 "tasks": [
                     {
                         "thread_id": thread_id,
-                        "title": "Packaged sync smoke",
+                        "title": "Packaged Task Transfer smoke",
                         "updated_at": "2026-04-29T10:00:02Z",
                         "estimated_sync_bytes": estimated_sync_bytes,
                         "availability": availability,
@@ -105,7 +105,7 @@ def sync_result(
                 "state": "local_only" if pushing else "remote_only",
                 "action": direction,
                 "reason": (
-                    "local conversation is not in the sync folder"
+                    "local task is not in the transfer folder"
                     if pushing
                     else "sync folder task is not local"
                 ),

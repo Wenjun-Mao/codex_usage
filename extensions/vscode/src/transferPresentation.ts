@@ -151,6 +151,9 @@ export function formatTransferResult(
   const completedIds = operation === "import" ? result.pulled : result.pushed;
   const transferred = operation === "import" ? result.counts.pulled : result.counts.pushed;
   const hasIssue = result.outcome === "issue" || result.issues.length > 0;
+  const hasFilesystemFailure = result.issues.some(
+    (issue) => issue.code === "transfer_filesystem_failure",
+  );
 
   if (hasIssue && completedIds.length > 0) {
     if (operation === "import") {
@@ -168,6 +171,15 @@ export function formatTransferResult(
       message:
         `Export could not be completed. Exported ${transferred} ${taskWord(transferred)} ` +
         "to the transfer folder before the issue occurred. " +
+        "See the Codex Usage output for details.",
+    };
+  }
+
+  if (hasFilesystemFailure) {
+    return {
+      kind: "error",
+      message:
+        `${operationLabel} could not be completed. Task completion could not be determined. ` +
         "See the Codex Usage output for details.",
     };
   }

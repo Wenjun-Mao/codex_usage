@@ -359,7 +359,7 @@ export class TaskTransferController {
     const operationLabel = operation === "export" ? "Export" : "Import";
     this.port.notify(
       "error",
-      `${operationLabel} could not be completed. No tasks were copied. ` +
+      `${operationLabel} could not be completed. Task completion could not be determined. ` +
         "See the Codex Usage output for details.",
     );
   }

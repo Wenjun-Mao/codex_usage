@@ -1,3 +1,5 @@
+import { requireValidPlannerRows } from "./syncPlanContract";
+
 export type ProjectBinding = {
   projectKey: string;
   path: string;
@@ -247,7 +249,10 @@ export function parseSyncRunResult(resultJson: string): SyncRunResult {
     outcome: result.outcome,
     counts: parseCounts(result.counts),
     timings_ms: parseTimings(result.timings_ms),
-    threads: parseArray(result.threads, (item, index) => parseThread(item, index), "threads"),
+    threads: requireValidPlannerRows(
+      parseArray(result.threads, (item, index) => parseThread(item, index), "threads"),
+      invalidResult,
+    ),
     pulled: parseStringArray(result.pulled, "pulled"),
     pushed: parseStringArray(result.pushed, "pushed"),
     issues: parseArray(result.issues, (item, index) => parseIssue(item, index), "issues"),
@@ -402,10 +407,13 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
     throw new Error(`Could not parse Codex sync status JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
   const status = exactRecord(payload, STATUS_KEYS, [], "status", invalidStatus);
-  const rows = parseArray(
-    status.threads,
-    (row, index) => parseThread(row, index, invalidStatus),
-    "threads",
+  const rows = requireValidPlannerRows(
+    parseArray(
+      status.threads,
+      (row, index) => parseThread(row, index, invalidStatus),
+      "threads",
+      invalidStatus,
+    ),
     invalidStatus,
   );
   const issueRows = parseArray(

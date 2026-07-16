@@ -1,12 +1,15 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import codex_usage.sync.bookkeeping as bookkeeping_module
 import codex_usage.sync.runner as runner_module
+import codex_usage.sync_cli as sync_cli
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.sync import ProjectResolutionRequest, pull_sync, push_sync
 from codex_usage.sync.errors import ConcurrentLocalChangeError
 from codex_usage.sync.state import LocalStateStore
+from codex_usage.sync.store import RemoteStore
 
 
 def test_verified_pull_state_failure_is_reported_and_repaired_without_recopy(
@@ -31,7 +34,7 @@ def test_verified_pull_state_failure_is_reported_and_repaired_without_recopy(
     assert not (target_sessions.parent / "session_index.jsonl").exists()
 
     monkeypatch.setattr(LocalStateStore, "record_success", original_record)
-    monkeypatch.setattr(runner_module, "atomic_copy", _fail_conversation_copy)
+    monkeypatch.setattr(runner_module, "atomic_copy", _fail_task_copy)
     progress = []
     repaired = _pull(
         target_sessions,
@@ -74,7 +77,7 @@ def test_verified_pull_index_failure_reports_pull_and_rerun_repairs_bookkeeping(
     assert not (target_sessions.parent / "session_index.jsonl").exists()
 
     monkeypatch.setattr(runner_module, "merge_session_index", original_merge)
-    monkeypatch.setattr(runner_module, "atomic_copy", _fail_conversation_copy)
+    monkeypatch.setattr(runner_module, "atomic_copy", _fail_task_copy)
     repaired = _pull(target_sessions, sync_dir, tmp_path / "target-cache")
 
     assert repaired.outcome == "completed"
@@ -109,7 +112,7 @@ def test_verified_push_state_failure_is_reported_and_rerun_repairs_index_and_sta
     assert LocalStateStore(sessions, sync_dir).read("thread-1") is None
 
     monkeypatch.setattr(LocalStateStore, "record_success", original_record)
-    monkeypatch.setattr(runner_module, "atomic_copy", _fail_conversation_copy)
+    monkeypatch.setattr(runner_module, "atomic_copy", _fail_task_copy)
     repaired = _push(sessions, sync_dir, tmp_path / "cache", "source")
 
     assert repaired.outcome == "completed"
@@ -119,6 +122,103 @@ def test_verified_push_state_failure_is_reported_and_rerun_repairs_index_and_sta
         (sync_dir / "sync-index.json").read_text(encoding="utf-8")
     )
     assert remote_index["threads"]["thread-1"]["sha256"]
+
+
+def test_raw_pull_state_oserror_returns_partial_result_through_cli(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    source_sessions, target_sessions, sync_dir, source_path = _seed_remote(tmp_path)
+
+    def fail_state(*args, **kwargs) -> None:
+        raise OSError("local state filesystem failure")
+
+    monkeypatch.setattr(LocalStateStore, "record_success", fail_state)
+    failed = _pull(target_sessions, sync_dir, tmp_path / "target-cache")
+
+    target_path = target_sessions / source_path.relative_to(source_sessions)
+    assert failed.outcome == "issue"
+    assert failed.pulled == ("thread-1",)
+    assert failed.issues[-1].code == "transfer_filesystem_failure"
+    assert "local state filesystem failure" in failed.issues[-1].message
+    assert target_path.read_bytes() == source_path.read_bytes()
+
+    exit_code = sync_cli._finish_sync_execution(SimpleNamespace(json=True), failed)
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["counts"]["pulled"] == 1
+    assert payload["pulled"] == ["thread-1"]
+    assert payload["issues"][-1]["code"] == "transfer_filesystem_failure"
+
+
+def test_raw_pull_index_oserror_preserves_completed_import(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_sessions, target_sessions, sync_dir, source_path = _seed_remote(tmp_path)
+
+    def fail_index(*args, **kwargs) -> None:
+        raise OSError("local index filesystem failure")
+
+    monkeypatch.setattr(runner_module, "merge_session_index", fail_index)
+    failed = _pull(target_sessions, sync_dir, tmp_path / "target-cache")
+
+    target_path = target_sessions / source_path.relative_to(source_sessions)
+    assert failed.outcome == "issue"
+    assert failed.pulled == ("thread-1",)
+    assert failed.issues[-1].code == "transfer_filesystem_failure"
+    assert "local index filesystem failure" in failed.issues[-1].message
+    assert target_path.read_bytes() == source_path.read_bytes()
+
+
+def test_raw_push_state_oserror_preserves_completed_export(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "codex"
+    sessions = home / "sessions"
+    sync_dir = tmp_path / "sync"
+    source = _write_session(sessions, "thread-1", tmp_path / "repo")
+    _write_index(home, "Local title")
+
+    def fail_state(*args, **kwargs) -> None:
+        raise OSError("export state filesystem failure")
+
+    monkeypatch.setattr(LocalStateStore, "record_success", fail_state)
+    failed = _push(sessions, sync_dir, tmp_path / "cache", "source")
+
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
+    assert failed.outcome == "issue"
+    assert failed.pushed == ("thread-1",)
+    assert failed.issues[-1].code == "transfer_filesystem_failure"
+    assert "export state filesystem failure" in failed.issues[-1].message
+    assert remote_path.read_bytes() == source.read_bytes()
+
+
+def test_raw_remote_index_oserror_preserves_completed_export(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "codex"
+    sessions = home / "sessions"
+    sync_dir = tmp_path / "sync"
+    source = _write_session(sessions, "thread-1", tmp_path / "repo")
+    _write_index(home, "Local title")
+
+    def fail_index(*args, **kwargs) -> None:
+        raise OSError("remote index filesystem failure")
+
+    monkeypatch.setattr(RemoteStore, "commit_index", fail_index)
+    failed = _push(sessions, sync_dir, tmp_path / "cache", "source")
+
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
+    assert failed.outcome == "issue"
+    assert failed.pushed == ("thread-1",)
+    assert failed.issues[-1].code == "transfer_filesystem_failure"
+    assert "remote index filesystem failure" in failed.issues[-1].message
+    assert remote_path.read_bytes() == source.read_bytes()
+    assert not (sync_dir / "sync-index.json").exists()
 
 
 def test_current_noop_run_does_not_rewrite_local_bookkeeping(
@@ -299,8 +399,8 @@ def _index_entry(home: Path) -> dict[str, object]:
     return json.loads((home / "session_index.jsonl").read_text(encoding="utf-8"))
 
 
-def _fail_conversation_copy(*args, **kwargs):
-    raise AssertionError("matching conversation bytes must not be copied again")
+def _fail_task_copy(*args, **kwargs):
+    raise AssertionError("matching task bytes must not be copied again")
 
 
 def _fail_bookkeeping_write(*args, **kwargs) -> None:

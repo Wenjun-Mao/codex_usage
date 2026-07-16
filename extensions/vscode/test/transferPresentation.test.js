@@ -169,7 +169,7 @@ test("runtime import failure reports the task imported before the issue", () => 
     result({
       selected: 2,
       pulled: 1,
-      issues: [issue("local_write_failed")],
+      issues: [issue("transfer_filesystem_failure")],
     }),
   );
 
@@ -189,7 +189,7 @@ test("runtime export failure reports the task exported before the issue", () => 
     result({
       selected: 2,
       pushed: 1,
-      issues: [issue("remote_write_failed")],
+      issues: [issue("transfer_filesystem_failure")],
     }),
   );
 
@@ -200,4 +200,19 @@ test("runtime export failure reports the task exported before the issue", () => 
       "See the Codex Usage output for details.",
   );
   assert.doesNotMatch(formatted.message, /no tasks were copied/i);
+});
+
+test("filesystem failure without certified ids reports unknown completion", () => {
+  for (const operation of ["import", "export"]) {
+    const formatted = formatTransferResult(
+      operation,
+      result({
+        selected: 1,
+        issues: [issue("transfer_filesystem_failure")],
+      }),
+    );
+
+    assert.match(formatted.message, /Task completion could not be determined/);
+    assert.doesNotMatch(formatted.message, /No tasks were copied/i);
+  }
 });

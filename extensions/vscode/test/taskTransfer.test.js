@@ -6,6 +6,7 @@ const {
   TransferFolderUnavailableError,
 } = require("../out/taskTransfer");
 const {
+  completed,
   fakePort,
   inventory,
   issueResult,
@@ -299,6 +300,47 @@ test("malformed native Review output becomes an actionable controller failure", 
   assert.deepEqual(port.statuses, ["checking", "issue", undefined]);
 });
 
+test("semantically malformed native Review rows reach the actionable failure", async () => {
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project()]),
+    selectedThreadIds: ["remote-task"],
+    reviewError: new Error(
+      "Invalid Codex sync status: threads[0] has invalid state/action pair unknown_state/unknown_action",
+    ),
+  });
+
+  await new TaskTransferController(port, () => true).reviewStatus();
+
+  assert.match(port.logs[0], /invalid state\/action pair/);
+  assert.deepEqual(port.notifications, [[
+    "error",
+    "Task Transfer status could not be reviewed. See the Codex Usage output for details.",
+  ]]);
+});
+
+test("structured partial execution results never claim that zero tasks were copied", async () => {
+  const partial = completed("import", ["remote-task"]);
+  partial.outcome = "issue";
+  partial.counts.issues = 1;
+  partial.issues = [{
+    code: "transfer_filesystem_failure",
+    message: "state write failed",
+    thread_id: "",
+  }];
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project({ candidateRoots: ["/repo"] })]),
+    selectedThreadIds: ["remote-task"],
+    executionResult: partial,
+  });
+
+  await new TaskTransferController(port, () => true).importTasks();
+
+  assert.match(port.notifications[0][1], /Imported 1 task before the issue occurred/);
+  assert.doesNotMatch(port.notifications[0][1], /No tasks were copied/i);
+});
+
 test("task and destination picker cancellations stay silent", async () => {
   const taskPort = fakePort({
     folder: "/transfer",
@@ -369,8 +411,10 @@ test("unexpected failures are logged and always clear transient transfer status"
   assert.deepEqual(port.statuses, ["checking", "issue", undefined]);
   assert.deepEqual(port.notifications, [[
     "error",
-    "Import could not be completed. No tasks were copied. See the Codex Usage output for details.",
+    "Import could not be completed. Task completion could not be determined. " +
+      "See the Codex Usage output for details.",
   ]]);
+  assert.doesNotMatch(port.notifications[0][1], /No tasks were copied/i);
 });
 
 test("export execution failures keep export-specific notification copy", async () => {
@@ -385,8 +429,10 @@ test("export execution failures keep export-specific notification copy", async (
 
   assert.deepEqual(port.notifications, [[
     "error",
-    "Export could not be completed. No tasks were copied. See the Codex Usage output for details.",
+    "Export could not be completed. Task completion could not be determined. " +
+      "See the Codex Usage output for details.",
   ]]);
+  assert.doesNotMatch(port.notifications[0][1], /No tasks were copied/i);
   assert.deepEqual(port.statuses, ["checking", "issue", undefined]);
 });
 
