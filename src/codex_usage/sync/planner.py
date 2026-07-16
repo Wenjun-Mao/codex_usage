@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from codex_usage.session_files import codex_home_from_session_dir, owning_session_dir
-from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME
+from codex_usage.sync.constants import TRANSFER_TASKS_DIRNAME
 from codex_usage.sync.io import is_byte_prefix, snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
@@ -37,9 +37,9 @@ def classify_snapshots(
     if local.exists and not remote.exists:
         return "local_only", "push", "local conversation is not in the sync folder"
     if remote.exists and not local.exists:
-        return "remote_only", "pull", "sync folder conversation is not local"
+        return "remote_only", "pull", "sync folder task is not local"
     if not local.exists and not remote.exists:
-        return "missing", "skip", "conversation is missing locally and remotely"
+        return "missing", "skip", "task is missing locally and remotely"
 
     if last_local_sha256 and last_remote_sha256:
         local_changed = local.sha256 != last_local_sha256
@@ -288,7 +288,7 @@ def _remote_snapshot(
     if remote_entry is not None:
         return SyncFileSnapshot(path=sync_dir / remote_entry.file, exists=False)
     return SyncFileSnapshot(
-        path=sync_dir / SYNC_CONVERSATIONS_DIRNAME / portable_thread_filename(thread_id),
+        path=sync_dir / TRANSFER_TASKS_DIRNAME / portable_thread_filename(thread_id),
         exists=False,
     )
 

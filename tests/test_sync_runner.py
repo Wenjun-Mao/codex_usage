@@ -26,7 +26,7 @@ def test_run_sync_pushes_flat_bytes_and_one_index(tmp_path: Path) -> None:
     assert result.outcome == "completed"
     assert result.pushed == ("thread-1",)
     assert (
-        tmp_path / "sync" / "conversations" / "thread-1.jsonl"
+        tmp_path / "sync" / "tasks" / "thread-1.jsonl"
     ).read_bytes() == source.read_bytes()
     assert (tmp_path / "sync" / "sync-index.json").is_file()
     assert not (tmp_path / "sync" / "threads").exists()
@@ -58,7 +58,7 @@ def test_new_task_in_same_project_remains_excluded_after_initial_selection(
 
     assert set(first.pushed) == {"selected-a", "selected-b"}
     assert second.pushed == ()
-    assert not (tmp_path / "sync" / "conversations" / "future.jsonl").exists()
+    assert not (tmp_path / "sync" / "tasks" / "future.jsonl").exists()
 
 
 def test_directional_sync_executes_only_the_requested_transfer_direction(
@@ -101,7 +101,7 @@ def test_directional_sync_executes_only_the_requested_transfer_direction(
     assert pulled.pulled == ("remote-thread",)
     assert pulled.pushed == ()
     assert imported.exists()
-    assert not (sync_dir / "conversations" / "local-thread.jsonl").exists()
+    assert not (sync_dir / "tasks" / "local-thread.jsonl").exists()
 
     refreshed = load_cached_session_data(
         [target_home / "sessions"], cache_dir=tmp_path / "target-cache"
@@ -116,7 +116,7 @@ def test_directional_sync_executes_only_the_requested_transfer_direction(
     assert pushed.pulled == ()
     assert pushed.pushed == ("local-thread",)
     assert (
-        sync_dir / "conversations" / "local-thread.jsonl"
+        sync_dir / "tasks" / "local-thread.jsonl"
     ).read_bytes() == local_path.read_bytes()
 
 
@@ -161,7 +161,7 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
     target_rows = [json.loads(line) for line in target_path.read_text(encoding="utf-8").splitlines()]
     remote_rows = [
         json.loads(line)
-        for line in (sync_dir / "conversations" / "thread-1.jsonl")
+        for line in (sync_dir / "tasks" / "thread-1.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -326,7 +326,7 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
         thread_ids=["thread-1"],
         machine_id="a",
     )
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     _append_token_event(local_path, "2026-07-13T12:01:00Z", 180)
     _append_token_event(remote_path, "2026-07-13T12:02:00Z", 240)
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
@@ -367,7 +367,7 @@ def test_conflict_result_includes_completed_planning_timing(
     )
     _append_token_event(local_path, "2026-07-13T12:01:00Z", 180)
     _append_token_event(
-        sync_dir / "conversations" / "thread-1.jsonl", "2026-07-13T12:02:00Z", 240
+        sync_dir / "tasks" / "thread-1.jsonl", "2026-07-13T12:02:00Z", 240
     )
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
     clock = iter((1_000_000, 3_000_000, 4_000_000, 9_000_000))
@@ -411,7 +411,7 @@ def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> 
         thread_ids=["thread-1"],
         machine_id="a",
     )
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     _append_token_event(remote_path, "2026-07-13T12:02:00Z", 240)
     before_pull = local_path.read_bytes()
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
@@ -587,7 +587,7 @@ def test_run_sync_returns_typed_issue_when_local_changes_after_planning(
     assert result.outcome == "issue"
     assert result.pushed == ()
     assert result.issues[-1].code == "concurrent_local_change"
-    assert not (tmp_path / "sync" / "conversations" / "thread-1.jsonl").exists()
+    assert not (tmp_path / "sync" / "tasks" / "thread-1.jsonl").exists()
 
 
 def test_run_sync_returns_typed_issue_for_visible_remote_change(
@@ -606,7 +606,7 @@ def test_run_sync_returns_typed_issue_for_visible_remote_change(
     )
     _append_token_event(local_path, "2026-07-13T12:03:00Z", 180)
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     original_validate = runner_module.validate_local_selected
 
     def change_remote_after_planning(plan) -> None:
@@ -651,7 +651,7 @@ def test_interrupted_unindexed_jsonl_is_repaired_on_next_run(
     )
     monkeypatch.setattr(RemoteStore, "commit_index", original_commit)
 
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     assert interrupted.outcome == "issue"
     assert interrupted.pushed == ("thread-1",)
     assert remote_path.read_bytes() == local_path.read_bytes()
@@ -797,10 +797,10 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
     unindexed_source = _write_session(
         tmp_path / "orphan" / "sessions", "thread-3", tmp_path / "thread-3", total=120
     )
-    unindexed_path = sync_dir / "conversations" / "unindexed.jsonl"
+    unindexed_path = sync_dir / "tasks" / "unindexed.jsonl"
     unindexed_path.write_bytes(unindexed_source.read_bytes())
-    selected_path = sync_dir / "conversations" / "thread-1.jsonl"
-    unrelated_path = sync_dir / "conversations" / "thread-2.jsonl"
+    selected_path = sync_dir / "tasks" / "thread-1.jsonl"
+    unrelated_path = sync_dir / "tasks" / "thread-2.jsonl"
     read_counts = {selected_path: 0, unrelated_path: 0, unindexed_path: 0}
     original_read_bytes = Path.read_bytes
 
@@ -853,7 +853,7 @@ def test_push_validates_unpulled_remote_file_before_committing_local_task(
     target_data = load_cached_session_data(
         [target_sessions], cache_dir=tmp_path / "target-cache"
     )
-    remote_path = sync_dir / "conversations" / "remote-thread.jsonl"
+    remote_path = sync_dir / "tasks" / "remote-thread.jsonl"
     original_repair = runner_module.repair_matching_bookkeeping
 
     def change_pulled_remote_before_commit(*args, **kwargs) -> None:
@@ -958,9 +958,9 @@ def test_unselected_remote_diagnostic_does_not_block_selected_push(
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
     sync_dir = tmp_path / "sync"
-    conversations = sync_dir / "conversations"
-    conversations.mkdir(parents=True)
-    (conversations / "unreadable.jsonl").write_text(
+    tasks = sync_dir / "tasks"
+    tasks.mkdir(parents=True)
+    (tasks / "unreadable.jsonl").write_text(
         "not session metadata\n", encoding="utf-8"
     )
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")

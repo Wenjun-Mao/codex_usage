@@ -10,7 +10,6 @@ from codex_usage.models import SessionMetadata
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_files import timestamp_key
-from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME, SYNC_FORMAT_VERSION
 from codex_usage.sync.identity import is_canonical_thread_id
 from codex_usage.sync.io import read_bytes_with_snapshot
 from codex_usage.sync.models import (
@@ -22,7 +21,7 @@ from codex_usage.sync.models import (
     SyncIssue,
     SyncPlan,
 )
-from codex_usage.sync.paths import is_direct_conversation_path, portable_thread_filename
+from codex_usage.sync.paths import is_direct_task_path, portable_thread_filename
 
 
 PathGuard = Callable[[Path], None]
@@ -34,6 +33,9 @@ def reconcile_remote_discovery(
     index_snapshot: SyncFileSnapshot,
     discovered_files: dict[str, Path],
     path_guard: PathGuard,
+    *,
+    directory_name: str,
+    format_version: int,
 ) -> RemoteInventory:
     """Reconcile cheap indexed discovery with one-pass unindexed reconstruction."""
     effective_threads = dict(persisted_index.threads)
@@ -53,16 +55,16 @@ def reconcile_remote_discovery(
     ] = {}
     for relative_path in sorted(discovered_files.keys() - claimed_paths):
         path = discovered_files[relative_path]
-        if not is_direct_conversation_path(relative_path, SYNC_CONVERSATIONS_DIRNAME):
+        if not is_direct_task_path(relative_path, directory_name):
             issues.append(
                 SyncIssue(
                     "unindexed_unreadable",
-                    f"Remote conversation {relative_path} is not a portable direct JSONL path and was "
+                    f"Remote task {relative_path} is not a portable direct JSONL path and was "
                     "left untouched",
                 )
             )
             continue
-        snapshot, metadata = _materialize_conversation(path, path_guard)
+        snapshot, metadata = _materialize_task(path, path_guard)
         if metadata is None:
             issues.append(_unreadable_issue(relative_path))
             continue
@@ -88,7 +90,7 @@ def reconcile_remote_discovery(
                 issues.append(
                     SyncIssue(
                         "unindexed_unreadable",
-                        f"Remote conversation {relative_path} cannot be indexed because multiple remote "
+                        f"Remote task {relative_path} cannot be indexed because multiple remote "
                         f"files claim thread id {thread_id!r}",
                         thread_id if thread_id in effective_threads else "",
                     )
@@ -107,7 +109,7 @@ def reconcile_remote_discovery(
     return RemoteInventory(
         persisted_index=persisted_index,
         index=RemoteIndex(
-            format_version=SYNC_FORMAT_VERSION,
+            format_version=format_version,
             updated_at=persisted_index.updated_at,
             threads=effective_threads,
         ),
@@ -134,7 +136,7 @@ def materialize_selected_remote(
         entry = effective_threads.get(thread_id)
         if entry is None or thread_id in files:
             continue
-        snapshot, metadata = _materialize_conversation(root / entry.file, path_guard)
+        snapshot, metadata = _materialize_task(root / entry.file, path_guard)
         files[thread_id] = snapshot
         if not snapshot.exists:
             if not _has_issue(issues, "missing_remote_file", thread_id):
@@ -144,7 +146,7 @@ def materialize_selected_remote(
             issues.append(
                 SyncIssue(
                     "unindexed_unreadable",
-                    f"Remote conversation {entry.file} has no readable session_meta identity",
+                    f"Remote task {entry.file} has no readable session_meta identity",
                     thread_id,
                 )
             )
@@ -153,7 +155,7 @@ def materialize_selected_remote(
             issues.append(
                 SyncIssue(
                     "unindexed_unreadable",
-                    f"Remote conversation {entry.file} contains thread id {metadata.session_id!r}, "
+                    f"Remote task {entry.file} contains thread id {metadata.session_id!r}, "
                     f"not indexed id {thread_id!r}",
                     thread_id,
                 )
@@ -221,7 +223,7 @@ def promote_matching_local_metadata(
     )
 
 
-def _materialize_conversation(
+def _materialize_task(
     path: Path,
     path_guard: PathGuard,
 ) -> tuple[SyncFileSnapshot, SessionMetadata | None]:
@@ -326,7 +328,7 @@ def _index_entry_is_newer(local: dict[str, object], remote: dict[str, object]) -
 def _missing_file_issue(entry: RemoteThreadEntry) -> SyncIssue:
     return SyncIssue(
         "missing_remote_file",
-        f"Remote conversation {entry.file} is missing",
+        f"Remote task {entry.file} is missing",
         entry.thread_id,
     )
 
@@ -334,7 +336,7 @@ def _missing_file_issue(entry: RemoteThreadEntry) -> SyncIssue:
 def _unreadable_issue(relative_path: str) -> SyncIssue:
     return SyncIssue(
         "unindexed_unreadable",
-        f"Remote conversation {relative_path} has no readable session_meta identity and was left untouched",
+        f"Remote task {relative_path} has no readable session_meta identity and was left untouched",
     )
 
 

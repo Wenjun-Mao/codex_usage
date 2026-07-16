@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import codex_usage.sync.planner as sync_planner
+from codex_usage.sync.constants import REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.io import snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
@@ -38,7 +39,7 @@ def _thread(thread_id: str, project_key: str = "repo", aliases: tuple[str, ...] 
 def _remote_entry(thread_id: str, project_key: str = "repo") -> RemoteThreadEntry:
     return RemoteThreadEntry(
         thread_id=thread_id,
-        file=f"conversations/{thread_id}.jsonl",
+        file=f"tasks/{thread_id}.jsonl",
         source_relative_path=f"synced/{thread_id}.jsonl",
         index_entry={"id": thread_id},
         project_key=project_key,
@@ -62,7 +63,11 @@ def _local_inventory(*threads: ThreadInfo) -> LocalInventory:
 
 
 def _remote_inventory(*entries: RemoteThreadEntry) -> RemoteInventory:
-    index = RemoteIndex(format_version=2, updated_at="", threads={item.thread_id: item for item in entries})
+    index = RemoteIndex(
+        format_version=REMOTE_TRANSFER_FORMAT_VERSION,
+        updated_at="",
+        threads={item.thread_id: item for item in entries},
+    )
     return RemoteInventory(
         persisted_index=index,
         index=index,
@@ -83,8 +88,16 @@ def _one_thread_remote(
 ) -> RemoteInventory:
     persisted = persisted_entry or effective_entry
     return RemoteInventory(
-        persisted_index=RemoteIndex(2, "", {persisted.thread_id: persisted}),
-        index=RemoteIndex(2, "", {effective_entry.thread_id: effective_entry}),
+        persisted_index=RemoteIndex(
+            REMOTE_TRANSFER_FORMAT_VERSION,
+            "",
+            {persisted.thread_id: persisted},
+        ),
+        index=RemoteIndex(
+            REMOTE_TRANSFER_FORMAT_VERSION,
+            "",
+            {effective_entry.thread_id: effective_entry},
+        ),
         index_snapshot=SyncFileSnapshot(path=None, exists=False),
         files={effective_entry.thread_id: snapshot},
         repaired_thread_ids=(effective_entry.thread_id,) if repaired else (),
@@ -227,7 +240,7 @@ def test_planner_rejects_remote_path_traversal_without_mutating_local_files(tmp_
     sessions = tmp_path / "codex" / "sessions"
     sessions.mkdir(parents=True)
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(b"remote")
     entry = replace(_remote_entry("thread-1"), source_relative_path="../outside.jsonl")
@@ -294,7 +307,7 @@ def test_planner_prefers_discovered_local_path_over_remote_source_path(tmp_path:
         updated_at="2026-07-13T13:00:00Z",
     )
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(b"base")
     entry = replace(
@@ -351,7 +364,7 @@ def test_planner_uses_coherent_local_metadata_for_none_and_conflict(
         updated_at="2026-07-13T13:00:00Z",
     )
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(remote_bytes)
     remote_entry = replace(
@@ -391,7 +404,7 @@ def test_planner_uses_coherent_effective_remote_metadata_for_pull(tmp_path: Path
         cwd=str(tmp_path / "remote-project"),
     )
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(b"base+remote")
     remote_entry = replace(
@@ -434,7 +447,7 @@ def test_selected_missing_remote_file_becomes_issue_item(tmp_path: Path) -> None
     sessions.mkdir(parents=True)
     sync_dir = tmp_path / "sync"
     entry = _remote_entry("thread-1")
-    issue = SyncIssue("missing_remote_file", "Remote conversation is missing", "thread-1")
+    issue = SyncIssue("missing_remote_file", "Remote task is missing", "thread-1")
     remote = _one_thread_remote(
         entry,
         SyncFileSnapshot(path=sync_dir / entry.file, exists=False),
@@ -461,7 +474,7 @@ def test_unselected_remote_issue_remains_visible_without_blocking_selected_work(
     local_path.parent.mkdir(parents=True)
     local_path.write_bytes(b"local")
     selected = replace(_thread("selected"), session_path=local_path)
-    issue = SyncIssue("missing_remote_file", "Remote conversation is missing", "other")
+    issue = SyncIssue("missing_remote_file", "Remote task is missing", "other")
     remote = _remote_inventory()
     remote = replace(remote, issues=(issue,))
 
@@ -481,7 +494,7 @@ def test_planner_uses_effective_metadata_and_persisted_expected_entry(tmp_path: 
     sessions = tmp_path / "codex" / "sessions"
     sessions.mkdir(parents=True)
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(b"remote bytes")
     persisted = _remote_entry("thread-1", project_key="old")

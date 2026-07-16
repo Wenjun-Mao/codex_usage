@@ -10,11 +10,11 @@ class LegacySyncLayoutError(SyncStoreError):
 
 
 class MalformedSyncIndexError(SyncStoreError):
-    """The remote sync index does not satisfy the version-2 contract."""
+    """The remote sync index does not satisfy the current transfer contract."""
 
 
 class MissingRemoteConversationError(SyncStoreError):
-    """An indexed remote conversation is missing."""
+    """An indexed remote task is missing."""
 
 
 class ConcurrentLocalChangeError(SyncStoreError):
@@ -22,4 +22,4 @@ class ConcurrentLocalChangeError(SyncStoreError):
 
 
 class ConcurrentRemoteChangeError(SyncStoreError):
-    """A remote conversation or index entry changed after planning."""
+    """A remote task or index entry changed after planning."""

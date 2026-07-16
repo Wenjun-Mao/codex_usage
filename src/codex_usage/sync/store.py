@@ -9,9 +9,9 @@ from pathlib import Path
 from filelock import FileLock, Timeout
 
 from codex_usage.sync.constants import (
-    SYNC_CONVERSATIONS_DIRNAME,
-    SYNC_FORMAT_VERSION,
+    REMOTE_TRANSFER_FORMAT_VERSION,
     SYNC_INDEX_FILENAME,
+    TRANSFER_TASKS_DIRNAME,
 )
 from codex_usage.sync.errors import (
     ConcurrentRemoteChangeError,
@@ -33,8 +33,8 @@ from codex_usage.sync.models import (
     SyncFileSnapshot,
 )
 from codex_usage.sync.paths import (
-    is_direct_conversation_path,
     is_direct_jsonl_filename,
+    is_direct_task_path,
     portable_thread_filename,
 )
 from codex_usage.sync.remote_reconciliation import (
@@ -49,7 +49,7 @@ class RemoteStore:
     def __init__(self, root: Path, *, lock_timeout: float = 10.0) -> None:
         self.root = root
         self.index_path = root / SYNC_INDEX_FILENAME
-        self.conversations_path = root / SYNC_CONVERSATIONS_DIRNAME
+        self.tasks_path = root / TRANSFER_TASKS_DIRNAME
         self.lock_path = root.parent / f".{root.name}.codex-usage.lock"
         self._lock_timeout = lock_timeout
         self._lock = FileLock(self.lock_path)
@@ -68,13 +68,15 @@ class RemoteStore:
     def load_inventory(self) -> RemoteInventory:
         self._reject_legacy_layout()
         persisted_index, index_snapshot = self._read_index()
-        discovered_files = self._list_conversation_files()
+        discovered_files = self._list_task_files()
         return reconcile_remote_discovery(
             self.root,
             persisted_index,
             index_snapshot,
             discovered_files,
-            self._guard_conversation_target,
+            self._guard_task_target,
+            directory_name=TRANSFER_TASKS_DIRNAME,
+            format_version=REMOTE_TRANSFER_FORMAT_VERSION,
         )
 
     def materialize_selected(
@@ -86,7 +88,7 @@ class RemoteStore:
             self.root,
             inventory,
             selected_thread_ids,
-            self._guard_conversation_target,
+            self._guard_task_target,
         )
 
     def validate_selected(
@@ -101,14 +103,14 @@ class RemoteStore:
         self._validate_selected_entries(expected_entries, latest)
         for thread_id, expected in expected_files.items():
             path = self._selected_file_path(thread_id, expected_entries[thread_id], expected)
-            self._guard_conversation_target(path)
+            self._guard_task_target(path)
             actual = snapshot_file(path)
             if actual != expected:
                 raise ConcurrentRemoteChangeError(
-                    f"Remote conversation file changed after planning for thread {thread_id!r}"
+                    f"Remote task file changed after planning for thread {thread_id!r}"
                 )
 
-    def write_conversation(
+    def write_task(
         self,
         source: Path,
         filename: str,
@@ -116,17 +118,17 @@ class RemoteStore:
     ) -> SyncFileSnapshot:
         self._require_transaction()
         if not is_direct_jsonl_filename(filename):
-            raise ValueError("remote conversation target must be a direct JSONL filename")
-        target = self.conversations_path / filename
+            raise ValueError("remote task target must be a direct JSONL filename")
+        target = self.tasks_path / filename
         if expected_target.path != target:
-            raise ValueError("expected remote conversation snapshot path must match target")
-        self._guard_conversation_target(target)
+            raise ValueError("expected remote task snapshot path must match target")
+        self._guard_task_target(target)
         return atomic_copy(
             source,
             target,
             expected_target=expected_target,
-            target_label="conversation",
-            path_guard=lambda: self._guard_conversation_target(target),
+            target_label="task",
+            path_guard=lambda: self._guard_task_target(target),
         )
 
     def commit_index(
@@ -177,7 +179,7 @@ class RemoteStore:
                 validated_files[thread_id] = expected
         self._validate_commit_files(validated_files, written, merged)
         committed = RemoteIndex(
-            format_version=SYNC_FORMAT_VERSION,
+            format_version=REMOTE_TRANSFER_FORMAT_VERSION,
             updated_at=_now_iso(),
             threads=merged,
         )
@@ -217,13 +219,20 @@ class RemoteStore:
                 raise ConcurrentRemoteChangeError("Remote index changed while it was being read")
             if contents is None:
                 return (
-                    RemoteIndex(format_version=SYNC_FORMAT_VERSION, updated_at="", threads={}),
+                    RemoteIndex(
+                        format_version=REMOTE_TRANSFER_FORMAT_VERSION,
+                        updated_at="",
+                        threads={},
+                    ),
                     index_snapshot,
                 )
             value = json.loads(contents)
             if not isinstance(value, dict):
                 raise ValueError(f"Expected a JSON object in {self.index_path}")
-            index = RemoteIndex.from_dict(value)
+            index = RemoteIndex.from_dict(
+                value,
+                expected_format_version=REMOTE_TRANSFER_FORMAT_VERSION,
+            )
             self._validate_file_claims(index.threads)
             return index, index_snapshot
         except ConcurrentRemoteChangeError:
@@ -242,46 +251,46 @@ class RemoteStore:
     def _guard_index_target(self) -> None:
         self._index_path_kind()
 
-    def _list_conversation_files(self) -> dict[str, Path]:
-        conversations_kind = self._conversations_directory_kind()
-        if conversations_kind == "missing":
+    def _list_task_files(self) -> dict[str, Path]:
+        tasks_kind = self._tasks_directory_kind()
+        if tasks_kind == "missing":
             return {}
 
         discovered: dict[str, Path] = {}
         paths = sorted(
-            (path for path in list_directory(self.conversations_path) if path.suffix == ".jsonl"),
+            (path for path in list_directory(self.tasks_path) if path.suffix == ".jsonl"),
             key=lambda item: item.name,
         )
         for path in paths:
-            if self._conversation_path_kind(path) != "file":
-                raise MalformedSyncIndexError(f"Remote conversation {path.name} must be a regular file")
-            relative_path = f"{SYNC_CONVERSATIONS_DIRNAME}/{path.name}"
+            if self._task_path_kind(path) != "file":
+                raise MalformedSyncIndexError(f"Remote task {path.name} must be a regular file")
+            relative_path = f"{TRANSFER_TASKS_DIRNAME}/{path.name}"
             discovered[relative_path] = path
         return discovered
 
-    def _conversations_directory_kind(self) -> str:
-        kind = path_kind(self.conversations_path)
+    def _tasks_directory_kind(self) -> str:
+        kind = path_kind(self.tasks_path)
         if kind in {"symlink", "junction"}:
-            raise MalformedSyncIndexError(f"conversations directory must not be a {kind}")
+            raise MalformedSyncIndexError(f"tasks directory must not be a {kind}")
         if kind not in {"missing", "directory"}:
-            raise MalformedSyncIndexError(f"{SYNC_CONVERSATIONS_DIRNAME} must be a directory")
+            raise MalformedSyncIndexError(f"{TRANSFER_TASKS_DIRNAME} must be a directory")
         return kind
 
-    def _conversation_path_kind(self, path: Path) -> str:
+    def _task_path_kind(self, path: Path) -> str:
         kind = path_kind(path)
         if kind in {"symlink", "junction"}:
             raise MalformedSyncIndexError(
-                f"Remote conversation {path.name} must not be a {kind}"
+                f"Remote task {path.name} must not be a {kind}"
             )
         return kind
 
-    def _guard_conversation_target(self, path: Path) -> None:
-        if path.parent != self.conversations_path:
-            raise ValueError("remote conversation target must be inside conversations/")
-        self._conversations_directory_kind()
-        if self._conversation_path_kind(path) not in {"missing", "file"}:
+    def _guard_task_target(self, path: Path) -> None:
+        if path.parent != self.tasks_path:
+            raise ValueError("remote task target must be inside tasks/")
+        self._tasks_directory_kind()
+        if self._task_path_kind(path) not in {"missing", "file"}:
             raise MalformedSyncIndexError(
-                f"Remote conversation {path.name} must be a regular file"
+                f"Remote task {path.name} must be a regular file"
             )
 
     def _require_transaction(self) -> None:
@@ -298,10 +307,10 @@ class RemoteStore:
                     f"Threads {owner!r} and {thread_id!r} claim the same remote file {entry.file!r}"
                 )
         for thread_id, entry in threads.items():
-            if not is_direct_conversation_path(entry.file, SYNC_CONVERSATIONS_DIRNAME):
+            if not is_direct_task_path(entry.file, TRANSFER_TASKS_DIRNAME):
                 raise MalformedSyncIndexError(
                     f"Thread {thread_id!r} file must be a relative direct child of "
-                    f"{SYNC_CONVERSATIONS_DIRNAME}/"
+                    f"{TRANSFER_TASKS_DIRNAME}/"
                 )
 
     def _validate_selected_entries(
@@ -326,11 +335,11 @@ class RemoteStore:
         elif expected_entry is not None:
             path = self.root / expected_entry.file
         else:
-            path = self.conversations_path / portable_thread_filename(thread_id)
+            path = self.tasks_path / portable_thread_filename(thread_id)
         if expected_entry is not None and path != self.root / expected_entry.file:
             raise ValueError(f"selected remote snapshot path does not match index entry for {thread_id!r}")
-        if path.parent != self.conversations_path or path.suffix != ".jsonl":
-            raise ValueError(f"selected remote file for thread {thread_id!r} is outside conversations/")
+        if path.parent != self.tasks_path or path.suffix != ".jsonl":
+            raise ValueError(f"selected remote file for thread {thread_id!r} is outside tasks/")
         return path
 
     def _validate_commit_inputs(
@@ -351,14 +360,14 @@ class RemoteStore:
         if invalid_entries:
             raise ValueError("changed remote index keys must match entry.thread_id")
         if not written.keys() <= changed.keys():
-            raise ValueError("every written conversation must have a changed remote index entry")
+            raise ValueError("every written task must have a changed remote index entry")
         for thread_id, snapshot in written.items():
             entry = changed[thread_id]
             expected_path = self.root / entry.file
             if snapshot.path != expected_path:
-                raise ValueError(f"written conversation path does not match index entry for {thread_id!r}")
+                raise ValueError(f"written task path does not match index entry for {thread_id!r}")
             if (entry.sha256, entry.size_bytes) != (snapshot.sha256, snapshot.size_bytes):
-                raise ValueError(f"written conversation fingerprint does not match index entry for {thread_id!r}")
+                raise ValueError(f"written task fingerprint does not match index entry for {thread_id!r}")
 
     def _validate_commit_files(
         self,
@@ -373,10 +382,10 @@ class RemoteStore:
                 committed_entries.get(thread_id),
                 expected,
             )
-            self._guard_conversation_target(path)
+            self._guard_task_target(path)
             actual = snapshot_file(path)
             if actual != expected:
-                label = "written conversation file" if thread_id in written else "conversation file"
+                label = "written task file" if thread_id in written else "task file"
                 raise ConcurrentRemoteChangeError(
                     f"Remote {label} changed after planning for thread {thread_id!r}"
                 )

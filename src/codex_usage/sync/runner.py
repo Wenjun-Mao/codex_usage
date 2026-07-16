@@ -12,7 +12,7 @@ from typing import Literal
 from codex_usage.session_cache import CachedSessionData
 from codex_usage.session_files import codex_home_from_session_dir, owning_session_dir
 from codex_usage.sync.bookkeeping import repair_matching_bookkeeping
-from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME
+from codex_usage.sync.constants import TRANSFER_TASKS_DIRNAME
 from codex_usage.sync.errors import (
     ConcurrentLocalChangeError,
     ConcurrentRemoteChangeError,
@@ -258,7 +258,7 @@ def save_conflict_candidates(plan: SyncPlan) -> None:
         )
         if not _same_contents(snapshot_file(candidate_path), item.remote):
             raise ConcurrentRemoteChangeError(
-                f"Remote conversation changed while saving conflict candidate for thread {item.thread_id!r}"
+                f"Remote task changed while saving conflict candidate for thread {item.thread_id!r}"
             )
 
 
@@ -333,7 +333,7 @@ def execute_pulls(
                 copied, item.remote
             ):
                 raise ConcurrentRemoteChangeError(
-                    f"Remote conversation changed while pulling thread {item.thread_id!r}"
+                    f"Remote task changed while pulling thread {item.thread_id!r}"
                 )
             _validate_remote_snapshot(item)
             index_entries.setdefault(session_dir, []).append(
@@ -370,13 +370,13 @@ def execute_pushes(
             if item.local.path is None:
                 raise ValueError("push action requires a local path")
             filename = portable_thread_filename(item.thread_id)
-            written = store.write_conversation(item.local.path, filename, item.remote)
+            written = store.write_task(item.local.path, filename, item.remote)
             _validate_local_snapshot(item)
             if snapshot_file(written.path) != written or not _same_contents(
                 written, item.local
             ):
                 raise ConcurrentRemoteChangeError(
-                    f"Remote conversation changed while pushing thread {item.thread_id!r}"
+                    f"Remote task changed while pushing thread {item.thread_id!r}"
                 )
             entry = _remote_entry(item, local, filename, written, machine_id)
             session_dir = _session_dir(item, local)
@@ -426,7 +426,7 @@ def _remote_entry(
     )
     return RemoteThreadEntry(
         thread_id=item.thread_id,
-        file=f"{SYNC_CONVERSATIONS_DIRNAME}/{filename}",
+        file=f"{TRANSFER_TASKS_DIRNAME}/{filename}",
         source_relative_path=item.source_relative_path,
         index_entry=index_entry,
         project_key=item.project_key,
@@ -450,7 +450,7 @@ def _validate_local_snapshot(item: SyncPlanItem) -> None:
 def _validate_remote_snapshot(item: SyncPlanItem) -> None:
     if snapshot_file(item.remote.path) != item.remote:
         raise ConcurrentRemoteChangeError(
-            f"Remote conversation changed after planning for thread {item.thread_id!r}"
+            f"Remote task changed after planning for thread {item.thread_id!r}"
         )
 
 
@@ -474,7 +474,7 @@ def _session_dir(item: SyncPlanItem, local: LocalInventory) -> Path:
 def _sync_dir(item: SyncPlanItem) -> Path:
     if (
         item.remote.path is None
-        or item.remote.path.parent.name != SYNC_CONVERSATIONS_DIRNAME
+        or item.remote.path.parent.name != TRANSFER_TASKS_DIRNAME
     ):
         raise ValueError(f"No remote sync directory for thread {item.thread_id!r}")
     return item.remote.path.parent.parent

@@ -12,6 +12,11 @@ import pytest
 
 import codex_usage.sync.planner as sync_planner
 import codex_usage.sync.state as sync_state
+from codex_usage.sync.constants import (
+    LOCAL_BASELINE_STATE_VERSION,
+    REMOTE_TRANSFER_FORMAT_VERSION,
+    TRANSFER_TASKS_DIRNAME,
+)
 from codex_usage.sync.io import snapshot_file
 from codex_usage.sync.errors import ConcurrentLocalChangeError
 from codex_usage.sync.models import (
@@ -114,6 +119,28 @@ def _local_state(sync_dir: Path, thread_id: str = "thread-1") -> LocalSyncState:
     )
 
 
+def test_remote_format_v3_does_not_invalidate_local_v2_baseline() -> None:
+    state = LocalSyncState(
+        thread_id="task-1",
+        sync_dir_fingerprint="folder",
+        base_sha256="base",
+        base_size_bytes=10,
+        base_updated_at="2026-07-15T00:00:00Z",
+        last_remote_sha256="remote",
+        last_local_sha256="local",
+        source_relative_path="2026/07/15/task-1.jsonl",
+        project_key="repo",
+        project_label="Repo",
+        synced_at="2026-07-15T00:00:00Z",
+    )
+
+    assert REMOTE_TRANSFER_FORMAT_VERSION == 3
+    assert LOCAL_BASELINE_STATE_VERSION == 2
+    assert TRANSFER_TASKS_DIRNAME == "tasks"
+    assert state.to_dict()["sync_version"] == 2
+    assert LocalSyncState.from_dict(state.to_dict()) == state
+
+
 def _thread(thread_id: str, session_path: Path) -> ThreadInfo:
     return ThreadInfo(
         thread_id=thread_id,
@@ -130,7 +157,7 @@ def _thread(thread_id: str, session_path: Path) -> ThreadInfo:
 
 
 def _remote_inventory() -> RemoteInventory:
-    index = RemoteIndex(format_version=2, updated_at="", threads={})
+    index = RemoteIndex(format_version=REMOTE_TRANSFER_FORMAT_VERSION, updated_at="", threads={})
     return RemoteInventory(
         persisted_index=index,
         index=index,
@@ -386,7 +413,7 @@ def test_local_state_store_ignores_malformed_base_record(tmp_path: Path) -> None
 
 def test_local_backup_and_conflict_candidate_preserve_original_bytes(tmp_path: Path) -> None:
     local_path = tmp_path / "sessions" / "local.jsonl"
-    remote_path = tmp_path / "sync" / "conversations" / "remote.jsonl"
+    remote_path = tmp_path / "sync" / "tasks" / "remote.jsonl"
     local_path.parent.mkdir(parents=True)
     remote_path.parent.mkdir(parents=True)
     local_path.write_bytes(b"local before replace")

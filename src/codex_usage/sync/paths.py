@@ -69,7 +69,7 @@ def is_portable_session_relative_path(value: str) -> bool:
     return leaf.endswith(".jsonl") and len(leaf) > len(".jsonl")
 
 
-def is_direct_conversation_path(value: str, directory: str) -> bool:
+def is_direct_task_path(value: str, directory: str) -> bool:
     posix_path = PurePosixPath(value)
     return (
         value == value.strip()

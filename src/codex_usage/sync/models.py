@@ -4,7 +4,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from codex_usage.sync.constants import SYNC_FORMAT_VERSION
+from codex_usage.sync.constants import (
+    LEGACY_REMOTE_TRANSFER_FORMAT_VERSION,
+    LOCAL_BASELINE_STATE_VERSION,
+    REMOTE_TRANSFER_FORMAT_VERSION,
+)
 from codex_usage.sync.identity import (
     require_canonical_thread_id,
     require_remote_index_thread_identity,
@@ -79,8 +83,16 @@ class RemoteIndex:
         self._validate_contract()
 
     @classmethod
-    def from_dict(cls, value: dict[str, Any]) -> RemoteIndex:
+    def from_dict(
+        cls,
+        value: dict[str, Any],
+        *,
+        expected_format_version: int = REMOTE_TRANSFER_FORMAT_VERSION,
+    ) -> RemoteIndex:
         _require_object(value, _REMOTE_INDEX_KEYS, "remote index")
+        format_version = _require_int(value["format_version"], "format_version")
+        if format_version != expected_format_version:
+            raise ValueError(f"format_version must be {expected_format_version}")
         raw_threads = _require_dict(value["threads"], "threads")
         threads: dict[str, RemoteThreadEntry] = {}
         for thread_id, raw_entry in raw_threads.items():
@@ -91,7 +103,7 @@ class RemoteIndex:
                 _require_dict(raw_entry, f"thread {thread_id!r}"),
             )
         return cls(
-            format_version=_require_int(value["format_version"], "format_version"),
+            format_version=format_version,
             updated_at=_require_string(value["updated_at"], "updated_at"),
             threads=threads,
         )
@@ -105,8 +117,13 @@ class RemoteIndex:
         }
 
     def _validate_contract(self) -> None:
-        if self.format_version != SYNC_FORMAT_VERSION:
-            raise ValueError(f"format_version must be {SYNC_FORMAT_VERSION}")
+        supported_versions = {
+            LEGACY_REMOTE_TRANSFER_FORMAT_VERSION,
+            REMOTE_TRANSFER_FORMAT_VERSION,
+        }
+        if self.format_version not in supported_versions:
+            versions = ", ".join(str(version) for version in sorted(supported_versions))
+            raise ValueError(f"format_version must be one of: {versions}")
         for thread_id, entry in self.threads.items():
             if not isinstance(entry, RemoteThreadEntry):
                 raise ValueError(
@@ -170,7 +187,7 @@ class LocalSyncState:
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> LocalSyncState | None:
         sync_version = value.get("sync_version")
-        if type(sync_version) is not int or sync_version != SYNC_FORMAT_VERSION:
+        if type(sync_version) is not int or sync_version != LOCAL_BASELINE_STATE_VERSION:
             return None
         thread_id = str(value.get("thread_id") or "").strip()
         fingerprint = str(value.get("sync_dir_fingerprint") or "").strip()
@@ -193,7 +210,7 @@ class LocalSyncState:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "sync_version": SYNC_FORMAT_VERSION,
+            "sync_version": LOCAL_BASELINE_STATE_VERSION,
             "thread_id": self.thread_id,
             "sync_dir_fingerprint": self.sync_dir_fingerprint,
             "base_sha256": self.base_sha256,
