@@ -24,6 +24,68 @@ function deferred() {
   return { promise, resolve };
 }
 
+const pendingCommandCases = [
+  { label: "Show menu", command: "showMenu", portMethod: "chooseMenu" },
+  { label: "Choose folder", command: "chooseFolder", portMethod: "chooseTransferFolder" },
+  { label: "Change folder", command: "changeFolder", portMethod: "chooseTransferFolder" },
+  { label: "Open folder", command: "openFolder", portMethod: "openFolder" },
+  { label: "Forget folder", command: "forgetFolder", portMethod: "writeFolder" },
+];
+
+const competingOperationCases = [
+  { label: "Import", run: (controller) => controller.importTasks() },
+  { label: "Export", run: (controller) => controller.exportTasks() },
+  { label: "Review", run: (controller) => controller.reviewStatus() },
+];
+
+function holdPortCall(port, methodName, entered, release) {
+  const original = port[methodName].bind(port);
+  port[methodName] = async (...args) => {
+    entered.resolve();
+    await release.promise;
+    return original(...args);
+  };
+}
+
+for (const pendingCommand of pendingCommandCases) {
+  for (const operation of competingOperationCases) {
+    test(`${pendingCommand.label} owns the lease before ${operation.label}`, async () => {
+      const port = fakePort({
+        folder: "/transfer",
+        inventory: inventory([project({
+          candidateRoots: ["/repo"],
+          tasks: [task("remote-task"), task("local-task", "local")],
+        })]),
+        selectedThreadIds: ["remote-task", "local-task"],
+      });
+      const commandEntered = deferred();
+      const commandRelease = deferred();
+      holdPortCall(port, pendingCommand.portMethod, commandEntered, commandRelease);
+      const controller = new TaskTransferController(port, () => true);
+
+      const activeCommand = controller[pendingCommand.command]();
+      await commandEntered.promise;
+
+      try {
+        await operation.run(controller);
+
+        assert.deepEqual(port.inventoryRequests, []);
+        assert.deepEqual(port.selectionCalls, []);
+        assert.deepEqual(port.executions, []);
+        assert.deepEqual(port.reviews, []);
+        assert.deepEqual(port.folderWrites, []);
+        assert.deepEqual(port.statuses, []);
+        assert.deepEqual(port.notifications, [busyNotification]);
+      } finally {
+        commandRelease.resolve();
+        await activeCommand;
+      }
+
+      assert.deepEqual(port.notifications, [busyNotification]);
+    });
+  }
+}
+
 test("an active transfer owns orchestration and transient status across every command path", async () => {
   const remoteInventory = inventory([project({ candidateRoots: ["/repo"] })]);
   const localInventory = inventory([project({

@@ -77,14 +77,7 @@ export class TaskTransferController {
   ) {}
 
   async showMenu(): Promise<void> {
-    if (this.rejectWhileOperationInFlight()) {
-      return;
-    }
-    const action = await this.port.chooseMenu(taskTransferMenuItems(this.port.readFolder()));
-    if (!action) {
-      return;
-    }
-    await this.runMenuAction(action);
+    await this.runSingleFlight(() => this.showMenuAction());
   }
 
   async importTasks(): Promise<void> {
@@ -100,21 +93,29 @@ export class TaskTransferController {
   }
 
   async chooseFolder(): Promise<void> {
-    if (!this.rejectWhileOperationInFlight()) {
-      await this.chooseAndRememberFolder();
-    }
+    await this.runSingleFlight(() => this.chooseAndRememberFolder());
   }
 
   async changeFolder(): Promise<void> {
-    if (!this.rejectWhileOperationInFlight()) {
-      await this.chooseAndRememberFolder();
-    }
+    await this.runSingleFlight(() => this.chooseAndRememberFolder());
   }
 
   async openFolder(): Promise<void> {
-    if (this.rejectWhileOperationInFlight()) {
-      return;
+    await this.runSingleFlight(() => this.openFolderAction());
+  }
+
+  async forgetFolder(): Promise<void> {
+    await this.runSingleFlight(() => this.forgetFolderAction());
+  }
+
+  private async showMenuAction(): Promise<void> {
+    const action = await this.port.chooseMenu(taskTransferMenuItems(this.port.readFolder()));
+    if (action) {
+      await this.runMenuAction(action);
     }
+  }
+
+  private async openFolderAction(): Promise<void> {
     const folder = await this.ensureFolder();
     if (!folder) {
       return;
@@ -135,22 +136,19 @@ export class TaskTransferController {
     }
   }
 
-  async forgetFolder(): Promise<void> {
-    if (this.rejectWhileOperationInFlight()) {
-      return;
-    }
+  private async forgetFolderAction(): Promise<void> {
     if (this.port.readFolder().trim()) {
       await this.port.writeFolder(undefined);
     }
   }
 
-  private async runSingleFlight(operation: () => Promise<void>): Promise<void> {
+  private async runSingleFlight(command: () => Promise<unknown>): Promise<void> {
     if (this.rejectWhileOperationInFlight()) {
       return;
     }
     this.operationInFlight = true;
     try {
-      await operation();
+      await command();
     } finally {
       this.operationInFlight = false;
     }
@@ -389,14 +387,14 @@ export class TaskTransferController {
   }
 
   private async runMenuAction(action: TransferMenuAction): Promise<void> {
-    const actions: Record<TransferMenuAction, () => Promise<void>> = {
-      importTasks: () => this.importTasks(),
-      exportTasks: () => this.exportTasks(),
-      reviewStatus: () => this.reviewStatus(),
-      chooseFolder: () => this.chooseFolder(),
-      changeFolder: () => this.changeFolder(),
-      openFolder: () => this.openFolder(),
-      forgetFolder: () => this.forgetFolder(),
+    const actions: Record<TransferMenuAction, () => Promise<unknown>> = {
+      importTasks: () => this.runTransfer("import"),
+      exportTasks: () => this.runTransfer("export"),
+      reviewStatus: () => this.runReviewStatus(),
+      chooseFolder: () => this.chooseAndRememberFolder(),
+      changeFolder: () => this.chooseAndRememberFolder(),
+      openFolder: () => this.openFolderAction(),
+      forgetFolder: () => this.forgetFolderAction(),
     };
     await actions[action]();
   }
