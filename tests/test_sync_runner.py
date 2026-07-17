@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -342,7 +343,8 @@ def test_push_rejects_non_native_existing_project_path_without_rebinding(
         project_resolution=ProjectResolutionRequest(),
     )
     target_path = target_sessions / source_path.relative_to(source_home / "sessions")
-    _replace_session_cwd(target_path, r"D:\Projects\repo")
+    foreign_cwd = "/foreign/project" if os.name == "nt" else r"D:\Projects\repo"
+    _replace_session_cwd(target_path, foreign_cwd)
     _append_token_event(target_path, "2026-07-13T12:03:00Z", 240)
 
     result = push_sync(
