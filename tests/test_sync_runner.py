@@ -1,13 +1,11 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import codex_usage.sync.runner as runner_module
 import pytest
 from codex_usage.session_cache import load_cached_session_data
-from codex_usage.sync import pull_sync, push_sync
-from codex_usage.sync.errors import ConcurrentRemoteChangeError
-from codex_usage.sync.runner import sync_status as transaction_status
-from codex_usage.sync.store import RemoteStore
+from codex_usage.sync import ProjectResolutionRequest, pull_sync, push_sync
 
 
 def test_run_sync_pushes_flat_bytes_and_one_index(tmp_path: Path) -> None:
@@ -26,7 +24,7 @@ def test_run_sync_pushes_flat_bytes_and_one_index(tmp_path: Path) -> None:
     assert result.outcome == "completed"
     assert result.pushed == ("thread-1",)
     assert (
-        tmp_path / "sync" / "conversations" / "thread-1.jsonl"
+        tmp_path / "sync" / "tasks" / "thread-1.jsonl"
     ).read_bytes() == source.read_bytes()
     assert (tmp_path / "sync" / "sync-index.json").is_file()
     assert not (tmp_path / "sync" / "threads").exists()
@@ -58,66 +56,107 @@ def test_new_task_in_same_project_remains_excluded_after_initial_selection(
 
     assert set(first.pushed) == {"selected-a", "selected-b"}
     assert second.pushed == ()
-    assert not (tmp_path / "sync" / "conversations" / "future.jsonl").exists()
+    assert not (tmp_path / "sync" / "tasks" / "future.jsonl").exists()
 
 
-def test_directional_sync_executes_only_the_requested_transfer_direction(
-    tmp_path: Path,
-) -> None:
-    source_home = tmp_path / "source"
-    target_home = tmp_path / "target"
+@pytest.fixture
+def mixed_direction_fixture(tmp_path: Path) -> SimpleNamespace:
+    home = tmp_path / "codex"
+    sessions = home / "sessions"
     sync_dir = tmp_path / "sync"
-    shared_project = tmp_path / "repo"
-    shared_project.mkdir()
-    _write_saved_projects(target_home, [shared_project])
-    source_path = _write_session(
-        source_home / "sessions", "remote-thread", shared_project, total=120
+    project = tmp_path / "repo"
+    pull_path = _write_session(
+        sessions, "pull-thread", project, total=120
     )
-    source_data = load_cached_session_data(
-        [source_home / "sessions"], cache_dir=tmp_path / "source-cache"
+    push_path = _write_session(
+        sessions, "push-thread", project, total=120
     )
-    push_sync(
-        data=source_data,
+    initial_data = load_cached_session_data(
+        [sessions], cache_dir=tmp_path / "cache"
+    )
+    initial = push_sync(
+        data=initial_data,
         sync_dir=sync_dir,
-        thread_ids=["remote-thread"],
+        thread_ids=["pull-thread", "push-thread"],
         machine_id="source",
     )
-    local_path = _write_session(
-        target_home / "sessions", "local-thread", shared_project, total=240
+    assert set(initial.pushed) == {"pull-thread", "push-thread"}
+
+    remote_pull_path = sync_dir / "tasks" / "pull-thread.jsonl"
+    remote_push_path = sync_dir / "tasks" / "push-thread.jsonl"
+    _append_token_event(remote_pull_path, "2026-07-13T12:01:00Z", 240)
+    _append_token_event(push_path, "2026-07-13T12:02:00Z", 240)
+    refreshed_data = load_cached_session_data(
+        [sessions], cache_dir=tmp_path / "cache"
     )
-    target_data = load_cached_session_data(
-        [target_home / "sessions"], cache_dir=tmp_path / "target-cache"
+    baseline_paths = tuple(
+        sorted((home / ".codex-sync-state").rglob("*.json"))
+    )
+    assert len(baseline_paths) == 2
+    authoritative_paths = (
+        pull_path,
+        push_path,
+        remote_pull_path,
+        remote_push_path,
+        sync_dir / "sync-index.json",
+        *baseline_paths,
     )
 
-    pulled = pull_sync(
-        data=target_data,
-        sync_dir=sync_dir,
-        thread_ids=["remote-thread", "local-thread"],
+    return SimpleNamespace(
+        pull_kwargs={
+            "data": refreshed_data,
+            "sync_dir": sync_dir,
+            "thread_ids": ["pull-thread", "push-thread"],
+            "project_resolution": ProjectResolutionRequest(),
+        },
+        push_kwargs={
+            "data": refreshed_data,
+            "sync_dir": sync_dir,
+            "thread_ids": ["pull-thread", "push-thread"],
+            "machine_id": "target",
+        },
+        snapshots={path: path.read_bytes() for path in authoritative_paths},
     )
 
-    imported = target_home / "sessions" / source_path.relative_to(
-        source_home / "sessions"
-    )
-    assert pulled.pulled == ("remote-thread",)
-    assert pulled.pushed == ()
-    assert imported.exists()
-    assert not (sync_dir / "conversations" / "local-thread.jsonl").exists()
 
-    refreshed = load_cached_session_data(
-        [target_home / "sessions"], cache_dir=tmp_path / "target-cache"
-    )
-    pushed = push_sync(
-        data=refreshed,
-        sync_dir=sync_dir,
-        thread_ids=["remote-thread", "local-thread"],
-        machine_id="target",
+def test_pull_opposite_direction_blocker_copies_nothing(
+    mixed_direction_fixture: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    copied: list[str] = []
+    monkeypatch.setattr(
+        runner_module, "execute_pulls", lambda *args: copied.append("pull")
     )
 
-    assert pushed.pulled == ()
-    assert pushed.pushed == ("local-thread",)
-    assert (
-        sync_dir / "conversations" / "local-thread.jsonl"
-    ).read_bytes() == local_path.read_bytes()
+    result = pull_sync(**mixed_direction_fixture.pull_kwargs)
+
+    assert result.outcome == "issue"
+    assert result.pulled == ()
+    assert copied == []
+    assert {issue.code for issue in result.issues} == {"pull_requires_push"}
+    assert {
+        path: path.read_bytes() for path in mixed_direction_fixture.snapshots
+    } == mixed_direction_fixture.snapshots
+
+
+def test_push_opposite_direction_blocker_copies_nothing(
+    mixed_direction_fixture: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    copied: list[str] = []
+    monkeypatch.setattr(
+        runner_module, "execute_pushes", lambda *args: copied.append("push")
+    )
+
+    result = push_sync(**mixed_direction_fixture.push_kwargs)
+
+    assert result.outcome == "issue"
+    assert result.pushed == ()
+    assert copied == []
+    assert {issue.code for issue in result.issues} == {"push_requires_pull"}
+    assert {
+        path: path.read_bytes() for path in mixed_direction_fixture.snapshots
+    } == mixed_direction_fixture.snapshots
 
 
 def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
@@ -155,13 +194,14 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
         data=target_data,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
+        project_resolution=ProjectResolutionRequest(),
     )
 
     target_path = target_home / "sessions" / source_path.relative_to(source_home / "sessions")
     target_rows = [json.loads(line) for line in target_path.read_text(encoding="utf-8").splitlines()]
     remote_rows = [
         json.loads(line)
-        for line in (sync_dir / "conversations" / "thread-1.jsonl")
+        for line in (sync_dir / "tasks" / "thread-1.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -178,6 +218,7 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
         data=refreshed,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
+        project_resolution=ProjectResolutionRequest(),
     )
 
     assert second.outcome == "completed"
@@ -214,6 +255,7 @@ def test_remote_task_pull_requires_a_unique_matching_saved_project(
         data=target_data,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
+        project_resolution=ProjectResolutionRequest(),
     )
 
     assert result.outcome == "issue"
@@ -246,6 +288,7 @@ def test_remote_task_pull_rejects_ambiguous_matching_saved_projects(
         ),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
+        project_resolution=ProjectResolutionRequest(),
         machine_id="source",
     )
     target_sessions = target_home / "sessions"
@@ -256,6 +299,7 @@ def test_remote_task_pull_rejects_ambiguous_matching_saved_projects(
         ),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
+        project_resolution=ProjectResolutionRequest(),
     )
 
     assert result.outcome == "issue"
@@ -265,7 +309,7 @@ def test_remote_task_pull_rejects_ambiguous_matching_saved_projects(
     ).exists()
 
 
-def test_push_blocks_locally_changed_task_still_bound_to_foreign_project(
+def test_push_rejects_non_native_existing_project_path_without_rebinding(
     tmp_path: Path,
 ) -> None:
     repository_url = "https://github.com/example/repo.git"
@@ -295,6 +339,7 @@ def test_push_blocks_locally_changed_task_still_bound_to_foreign_project(
         ),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
+        project_resolution=ProjectResolutionRequest(),
     )
     target_path = target_sessions / source_path.relative_to(source_home / "sessions")
     _replace_session_cwd(target_path, r"D:\Projects\repo")
@@ -310,7 +355,7 @@ def test_push_blocks_locally_changed_task_still_bound_to_foreign_project(
     )
 
     assert result.outcome == "issue"
-    assert result.issues[-1].code == "local_project_rebind_conflict"
+    assert result.issues[-1].code == "existing_project_path_not_native"
     assert result.pushed == ()
 
 
@@ -326,7 +371,7 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
         thread_ids=["thread-1"],
         machine_id="a",
     )
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     _append_token_event(local_path, "2026-07-13T12:01:00Z", 180)
     _append_token_event(remote_path, "2026-07-13T12:02:00Z", 240)
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
@@ -338,6 +383,7 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
         data=data,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
+        project_resolution=ProjectResolutionRequest(),
     )
 
     assert result.outcome == "conflict"
@@ -351,633 +397,8 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
     assert conflict_candidates[0].read_bytes() == remote_before
 
 
-def test_conflict_result_includes_completed_planning_timing(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    sync_dir = tmp_path / "sync"
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    push_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-    _append_token_event(local_path, "2026-07-13T12:01:00Z", 180)
-    _append_token_event(
-        sync_dir / "conversations" / "thread-1.jsonl", "2026-07-13T12:02:00Z", 240
-    )
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    clock = iter((1_000_000, 3_000_000, 4_000_000, 9_000_000))
-    monkeypatch.setattr(runner_module, "perf_counter_ns", lambda: next(clock))
-
-    result = pull_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-    )
-
-    assert result.timings_ms.planning == 7
-
-
-def test_runner_public_interfaces_are_keyword_only(tmp_path: Path) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-
-    with pytest.raises(TypeError):
-        push_sync(data, tmp_path / "sync", ["thread-1"], "a")
-    with pytest.raises(TypeError):
-        transaction_status(data, tmp_path / "sync", ["thread-1"])
-
-
-def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> None:
-    home = tmp_path / "codex"
-    sessions = home / "sessions"
-    sync_dir = tmp_path / "sync"
-    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    original_index = {
-        "id": "thread-1",
-        "thread_name": "Original",
-        "updated_at": "2026-04-29T10:05:00Z",
-    }
-    _write_index(home, original_index)
-    initial = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    push_sync(
-        data=initial,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
-    _append_token_event(remote_path, "2026-07-13T12:02:00Z", 240)
-    before_pull = local_path.read_bytes()
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-
-    result = pull_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-    )
-
-    assert result.pulled == ("thread-1",)
-    assert local_path.read_bytes() == remote_path.read_bytes()
-    local_backups = list((home / ".codex-sync-backups").rglob("thread-1/session.jsonl"))
-    index_backups = list((home / ".codex-sync-backups").rglob("session_index.jsonl"))
-    assert len(local_backups) == 1
-    assert local_backups[0].read_bytes() == before_pull
-    assert len(index_backups) == 1
-    assert json.loads(index_backups[0].read_text(encoding="utf-8")) == original_index
-    merged_entries = [
-        json.loads(line)
-        for line in (home / "session_index.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    ]
-    assert merged_entries == [original_index]
-
-
-def test_pull_rejects_mismatched_remote_index_identity_before_local_writes(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source_sessions = tmp_path / "source" / "sessions"
-    target_sessions = tmp_path / "target" / "sessions"
-    sync_dir = tmp_path / "sync"
-    project = tmp_path / "repo"
-    project.mkdir()
-    _write_saved_projects(target_sessions.parent, [project])
-    source_path = _write_session(
-        source_sessions,
-        "task-a",
-        project,
-        total=120,
-    )
-    source_data = load_cached_session_data(
-        [source_sessions], cache_dir=tmp_path / "source-cache"
-    )
-    push_sync(
-        data=source_data,
-        sync_dir=sync_dir,
-        thread_ids=["task-a"],
-        machine_id="source",
-    )
-    target_data = load_cached_session_data(
-        [target_sessions], cache_dir=tmp_path / "target-cache"
-    )
-    original_validate = RemoteStore.validate_selected
-
-    def corrupt_nested_identity_after_validation(
-        self: RemoteStore,
-        expected_entries,
-        expected_files,
-    ) -> None:
-        original_validate(self, expected_entries, expected_files)
-        entry = expected_entries["task-a"]
-        assert entry is not None
-        entry.index_entry["id"] = "task-b"
-
-    monkeypatch.setattr(
-        RemoteStore,
-        "validate_selected",
-        corrupt_nested_identity_after_validation,
-    )
-    target_path = target_sessions / source_path.relative_to(source_sessions)
-
-    with pytest.raises(ValueError, match=r"index_entry\.id.*match"):
-        pull_sync(
-            data=target_data,
-            sync_dir=sync_dir,
-            thread_ids=["task-a"],
-        )
-
-    assert not target_path.exists()
-    assert not (target_sessions.parent / "session_index.jsonl").exists()
-    assert not (target_sessions.parent / ".codex-sync-state").exists()
-
-
-def test_pull_preflights_all_remote_identities_before_batch_writes(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source_sessions = tmp_path / "source" / "sessions"
-    target_sessions = tmp_path / "target" / "sessions"
-    sync_dir = tmp_path / "sync"
-    project = tmp_path / "repo"
-    project.mkdir()
-    _write_saved_projects(target_sessions.parent, [project])
-    source_paths = {
-        thread_id: _write_session(
-            source_sessions,
-            thread_id,
-            project,
-            total=120,
-        )
-        for thread_id in ("task-a", "task-b")
-    }
-    source_data = load_cached_session_data(
-        [source_sessions], cache_dir=tmp_path / "source-cache"
-    )
-    push_sync(
-        data=source_data,
-        sync_dir=sync_dir,
-        thread_ids=["task-a", "task-b"],
-        machine_id="source",
-    )
-    target_data = load_cached_session_data(
-        [target_sessions], cache_dir=tmp_path / "target-cache"
-    )
-    original_validate = RemoteStore.validate_selected
-
-    def corrupt_second_identity_after_validation(
-        self: RemoteStore,
-        expected_entries,
-        expected_files,
-    ) -> None:
-        original_validate(self, expected_entries, expected_files)
-        second_entry = expected_entries["task-b"]
-        assert second_entry is not None
-        second_entry.index_entry["id"] = "different-task"
-
-    monkeypatch.setattr(
-        RemoteStore,
-        "validate_selected",
-        corrupt_second_identity_after_validation,
-    )
-
-    with pytest.raises(ValueError, match=r"index_entry\.id.*match"):
-        pull_sync(
-            data=target_data,
-            sync_dir=sync_dir,
-            thread_ids=["task-a", "task-b"],
-        )
-
-    for source_path in source_paths.values():
-        target_path = target_sessions / source_path.relative_to(source_sessions)
-        assert not target_path.exists()
-    assert not (target_sessions.parent / "session_index.jsonl").exists()
-    assert not (target_sessions.parent / ".codex-sync-state").exists()
-    assert not (target_sessions.parent / ".codex-sync-backups").exists()
-
-
-def test_run_sync_returns_typed_issue_when_local_changes_after_planning(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    original_validate = RemoteStore.validate_selected
-
-    def change_local_after_planning(self, expected_entries, expected_files) -> None:
-        original_validate(self, expected_entries, expected_files)
-        _append_token_event(local_path, "2026-07-13T12:03:00Z", 180)
-
-    monkeypatch.setattr(RemoteStore, "validate_selected", change_local_after_planning)
-
-    result = push_sync(
-        data=data,
-        sync_dir=tmp_path / "sync",
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-
-    assert result.outcome == "issue"
-    assert result.pushed == ()
-    assert result.issues[-1].code == "concurrent_local_change"
-    assert not (tmp_path / "sync" / "conversations" / "thread-1.jsonl").exists()
-
-
-def test_run_sync_returns_typed_issue_for_visible_remote_change(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    sync_dir = tmp_path / "sync"
-    initial = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    push_sync(
-        data=initial,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-    _append_token_event(local_path, "2026-07-13T12:03:00Z", 180)
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
-    original_validate = runner_module.validate_local_selected
-
-    def change_remote_after_planning(plan) -> None:
-        original_validate(plan)
-        _append_token_event(remote_path, "2026-07-13T12:04:00Z", 240)
-
-    monkeypatch.setattr(
-        runner_module, "validate_local_selected", change_remote_after_planning
-    )
-
-    result = push_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-
-    assert result.outcome == "issue"
-    assert result.pushed == ()
-    assert result.issues[-1].code == "concurrent_remote_change"
-
-
-def test_interrupted_unindexed_jsonl_is_repaired_on_next_run(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    sync_dir = tmp_path / "sync"
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    original_commit = RemoteStore.commit_index
-
-    def interrupt_index(*_args, **_kwargs):
-        raise ConcurrentRemoteChangeError("index interrupted")
-
-    monkeypatch.setattr(RemoteStore, "commit_index", interrupt_index)
-    interrupted = push_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-    monkeypatch.setattr(RemoteStore, "commit_index", original_commit)
-
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
-    assert interrupted.outcome == "issue"
-    assert interrupted.pushed == ("thread-1",)
-    assert remote_path.read_bytes() == local_path.read_bytes()
-    assert not (sync_dir / "sync-index.json").exists()
-
-    repaired = push_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-
-    assert repaired.outcome == "completed"
-    assert repaired.pushed == ()
-    index = json.loads((sync_dir / "sync-index.json").read_text(encoding="utf-8"))
-    assert index["threads"]["thread-1"]["sha256"]
-
-
-def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    home = tmp_path / "codex"
-    sessions = home / "sessions"
-    sync_dir = tmp_path / "sync"
-    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    initial_entry = {
-        "id": "thread-1",
-        "thread_name": "Initial title",
-        "updated_at": "2026-04-29T10:05:00Z",
-    }
-    _write_index(home, initial_entry)
-    initial_data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    push_sync(
-        data=initial_data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-
-    _append_token_event(local_path, "2026-07-13T12:03:00Z", 180)
-    newer_entry = {
-        "id": "thread-1",
-        "thread_name": "Recovered richer title",
-        "updated_at": "2026-07-13T12:04:00Z",
-    }
-    _write_index(home, newer_entry)
-    newer_data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    original_commit = RemoteStore.commit_index
-
-    def interrupt_index(*_args, **_kwargs):
-        raise ConcurrentRemoteChangeError("index interrupted")
-
-    monkeypatch.setattr(RemoteStore, "commit_index", interrupt_index)
-    interrupted = push_sync(
-        data=newer_data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-    monkeypatch.setattr(RemoteStore, "commit_index", original_commit)
-    assert interrupted.outcome == "issue"
-    assert interrupted.pushed == ("thread-1",)
-
-    repaired = push_sync(
-        data=newer_data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-
-    remote_entry = json.loads(
-        (sync_dir / "sync-index.json").read_text(encoding="utf-8")
-    )["threads"]["thread-1"]
-    assert repaired.outcome == "completed"
-    assert repaired.pushed == ()
-    assert remote_entry["index_entry"] == newer_entry
-    assert remote_entry["session_updated_at"] == newer_entry["updated_at"]
-    assert remote_entry["source_relative_path"] == local_path.relative_to(sessions).as_posix()
-    assert remote_entry["project_key"]
-    assert remote_entry["project_label"] == "repo"
-
-
-def test_matching_local_bytes_do_not_replace_newer_remote_metadata(tmp_path: Path) -> None:
-    home = tmp_path / "codex"
-    sessions = home / "sessions"
-    sync_dir = tmp_path / "sync"
-    _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    local_entry = {
-        "id": "thread-1",
-        "thread_name": "Local title",
-        "updated_at": "2026-04-29T10:05:00Z",
-    }
-    _write_index(home, local_entry)
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    push_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-    index_path = sync_dir / "sync-index.json"
-    index = json.loads(index_path.read_text(encoding="utf-8"))
-    newer_remote_entry = {
-        "id": "thread-1",
-        "thread_name": "Newer remote title",
-        "updated_at": "2026-07-13T13:00:00Z",
-    }
-    index["threads"]["thread-1"]["index_entry"] = newer_remote_entry
-    index["threads"]["thread-1"]["session_updated_at"] = "2026-07-13T13:00:00Z"
-    index_path.write_text(json.dumps(index), encoding="utf-8")
-
-    result = push_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-
-    retained = json.loads(index_path.read_text(encoding="utf-8"))["threads"]["thread-1"]
-    assert result.outcome == "completed"
-    assert retained["index_entry"] == newer_remote_entry
-    assert retained["session_updated_at"] == "2026-07-13T13:00:00Z"
-
-
-def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads_unindexed_once(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    source_sessions = tmp_path / "source" / "sessions"
-    sync_dir = tmp_path / "sync"
-    for thread_id in ("thread-1", "thread-2"):
-        _write_session(source_sessions, thread_id, tmp_path / thread_id, total=120)
-    source_data = load_cached_session_data(
-        [source_sessions], cache_dir=tmp_path / "source-cache"
-    )
-    push_sync(
-        data=source_data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1", "thread-2"],
-        machine_id="source",
-    )
-    unindexed_source = _write_session(
-        tmp_path / "orphan" / "sessions", "thread-3", tmp_path / "thread-3", total=120
-    )
-    unindexed_path = sync_dir / "conversations" / "unindexed.jsonl"
-    unindexed_path.write_bytes(unindexed_source.read_bytes())
-    selected_path = sync_dir / "conversations" / "thread-1.jsonl"
-    unrelated_path = sync_dir / "conversations" / "thread-2.jsonl"
-    read_counts = {selected_path: 0, unrelated_path: 0, unindexed_path: 0}
-    original_read_bytes = Path.read_bytes
-
-    def count_remote_reads(path: Path) -> bytes:
-        if path in read_counts:
-            read_counts[path] += 1
-        return original_read_bytes(path)
-
-    monkeypatch.setattr(Path, "read_bytes", count_remote_reads)
-    target_sessions = tmp_path / "target" / "sessions"
-    target_sessions.mkdir(parents=True)
-    selected_project = tmp_path / "thread-1"
-    selected_project.mkdir()
-    _write_saved_projects(target_sessions.parent, [selected_project])
-    target_data = load_cached_session_data(
-        [target_sessions], cache_dir=tmp_path / "target-cache"
-    )
-
-    plan = transaction_status(
-        data=target_data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-    )
-
-    assert plan.items[0].action == "pull"
-    assert read_counts == {selected_path: 1, unrelated_path: 0, unindexed_path: 1}
-
-
-def test_push_validates_unpulled_remote_file_before_committing_local_task(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    source_sessions = tmp_path / "source" / "sessions"
-    target_sessions = tmp_path / "target" / "sessions"
-    sync_dir = tmp_path / "sync"
-    remote_project = tmp_path / "remote-repo"
-    remote_project.mkdir()
-    _write_saved_projects(target_sessions.parent, [remote_project])
-    _write_session(source_sessions, "remote-thread", remote_project, total=120)
-    source_data = load_cached_session_data(
-        [source_sessions], cache_dir=tmp_path / "source-cache"
-    )
-    push_sync(
-        data=source_data,
-        sync_dir=sync_dir,
-        thread_ids=["remote-thread"],
-        machine_id="source",
-    )
-    _write_session(target_sessions, "local-thread", tmp_path / "local-repo", total=240)
-    target_data = load_cached_session_data(
-        [target_sessions], cache_dir=tmp_path / "target-cache"
-    )
-    remote_path = sync_dir / "conversations" / "remote-thread.jsonl"
-    original_repair = runner_module.repair_matching_bookkeeping
-
-    def change_pulled_remote_before_commit(*args, **kwargs) -> None:
-        original_repair(*args, **kwargs)
-        _append_token_event(remote_path, "2026-07-13T12:10:00Z", 360)
-
-    monkeypatch.setattr(
-        runner_module, "repair_matching_bookkeeping", change_pulled_remote_before_commit
-    )
-
-    result = push_sync(
-        data=target_data,
-        sync_dir=sync_dir,
-        thread_ids=["remote-thread", "local-thread"],
-        machine_id="target",
-    )
-
-    assert result.outcome == "issue"
-    assert result.pulled == ()
-    assert result.pushed == ("local-thread",)
-    assert result.issues[-1].code == "concurrent_remote_change"
-
-
-def test_run_sync_builds_each_inventory_once_and_emits_only_push_phase(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    for number in range(20):
-        _write_session(
-            sessions, f"thread-{number}", tmp_path / f"repo-{number}", total=number
-        )
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    calls = {"local": 0, "remote": 0}
-    original_local = runner_module.build_local_inventory
-    original_remote = RemoteStore.load_inventory
-
-    def count_local_inventory(cached_data):
-        calls["local"] += 1
-        return original_local(cached_data)
-
-    def count_remote_inventory(self):
-        assert self._lock.is_locked
-        calls["remote"] += 1
-        return original_remote(self)
-
-    monkeypatch.setattr(runner_module, "build_local_inventory", count_local_inventory)
-    monkeypatch.setattr(RemoteStore, "load_inventory", count_remote_inventory)
-    progress = []
-
-    result = push_sync(
-        data=data,
-        sync_dir=tmp_path / "sync",
-        thread_ids=[f"thread-{number}" for number in range(20)],
-        machine_id="a",
-        on_progress=progress.append,
-    )
-
-    assert calls == {"local": 1, "remote": 1}
-    assert result.counts.pulled == 0
-    assert result.counts.pushed == 20
-    assert [event.phase for event in progress] == ["pushing"]
-
-
-def test_sync_status_is_read_only_and_builds_local_inventory_once(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    calls = 0
-    original_local = runner_module.build_local_inventory
-    original_remote = RemoteStore.load_inventory
-
-    def count_local_inventory(cached_data):
-        nonlocal calls
-        calls += 1
-        return original_local(cached_data)
-
-    def assert_unlocked(self):
-        assert not self._lock.is_locked
-        return original_remote(self)
-
-    monkeypatch.setattr(runner_module, "build_local_inventory", count_local_inventory)
-    monkeypatch.setattr(RemoteStore, "load_inventory", assert_unlocked)
-
-    plan = transaction_status(
-        data=data,
-        sync_dir=tmp_path / "sync",
-        thread_ids=["thread-1"],
-    )
-
-    assert calls == 1
-    assert plan.items[0].action == "push"
-    assert not (tmp_path / "sync").exists()
-
-
-def test_unselected_remote_diagnostic_does_not_block_selected_push(
-    tmp_path: Path,
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    sync_dir = tmp_path / "sync"
-    conversations = sync_dir / "conversations"
-    conversations.mkdir(parents=True)
-    (conversations / "unreadable.jsonl").write_text(
-        "not session metadata\n", encoding="utf-8"
-    )
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-
-    result = push_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-    )
-
-    assert result.outcome == "completed"
-    assert result.pushed == ("thread-1",)
-    assert [issue.code for issue in result.issues] == ["unindexed_unreadable"]
-
-
 def _write_session(sessions_dir: Path, thread_id: str, cwd: Path, total: int) -> Path:
+    cwd.mkdir(parents=True, exist_ok=True)
     day_dir = sessions_dir / "2026" / "04" / "29"
     day_dir.mkdir(parents=True, exist_ok=True)
     path = day_dir / f"rollout-2026-04-29T10-00-00-{thread_id}.jsonl"

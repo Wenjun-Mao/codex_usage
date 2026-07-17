@@ -115,7 +115,7 @@ def _materialize_session_cwd(
             size_bytes=prepared.written.size_bytes,
         ):
             raise ConcurrentLocalChangeError(
-                "Local conversation changed after cwd materialization"
+                "Local task changed after cwd materialization"
             )
         return actual
     finally:
@@ -224,12 +224,12 @@ def _validate_expected_source(
         observed_source != expected_source or snapshot_file(source) != expected_source
     ):
         raise ConcurrentRemoteChangeError(
-            "Remote conversation changed during cwd materialization"
+            "Remote task changed during cwd materialization"
         )
 
 
 def _validate_expected_target(target: Path, expected: SyncFileSnapshot) -> None:
     if snapshot_file(target) != expected:
         raise ConcurrentLocalChangeError(
-            "Local conversation changed before cwd materialization"
+            "Local task changed before cwd materialization"
         )

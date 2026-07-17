@@ -12,13 +12,13 @@ Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local 
 - Supports multi-project filtering from detected project keys.
 - Supports auto/day/night dashboard theme switching.
 - Detects high-confidence project transitions and can split dashboard usage after verified local repository changes.
-- Adds experimental exact-task sync through a user-provided local sync folder.
+- Adds optional cross-computer Codex Task Transfer through a user-provided folder.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, daily/hourly views, project breakdown, and model mix.
 - Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
 
 ## Preview Status
 
-This Marketplace preview supports Windows x64 and macOS Apple Silicon. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. Intel macOS is not supported. Release status: macOS Apple Silicon packaged inventory/push/pull verified locally; Windows x64 packaging is CI-only and remains a release gate. The GitHub Actions packaged smoke test must pass before publication.
+This Marketplace preview supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS is not supported. Linux packaging is a follow-up and is not a supported target in this release.
 
 ## Commands
 
@@ -28,13 +28,12 @@ This Marketplace preview supports Windows x64 and macOS Apple Silicon. The insta
 - `Codex Usage: Select Projects`
 - `Codex Usage: Select Theme`
 - `Codex Usage: Review Project Transitions`
-- `Codex Usage: Sync Menu`
-- `Codex Usage: Configure Sync`
-- `Codex Usage: Select Sync Tasks`
-- `Codex Usage: Pull Tasks`
-- `Codex Usage: Push Tasks`
-- `Codex Usage: Sync Status`
-- `Codex Usage: Open Sync Folder`
+- `Codex Usage: Task Transfer`
+- `Codex Usage: Choose Transfer Folder`
+- `Codex Usage: Import Tasks`
+- `Codex Usage: Export Tasks`
+- `Codex Usage: Review Transfer Status`
+- `Codex Usage: Open Transfer Folder`
 - `Codex Usage: Open Settings`
 
 ## Settings
@@ -42,57 +41,49 @@ This Marketplace preview supports Windows x64 and macOS Apple Silicon. The insta
 - `codexUsage.range`: dashboard range, default `30d`.
 - `codexUsage.theme`: `auto`, `day`, or `night`. Auto follows your active VS Code theme.
 - `codexUsage.projectTransitions.autoDetect`: automatically split usage after high-confidence local repository transitions.
-- `codexUsage.sync.enabled`: enable experimental selected-task sync.
 
 Project filtering is managed with `Codex Usage: Select Projects` and is stored as extension UI state, not as a user setting.
-The sync folder and exact task selections are managed with `Codex Usage: Configure Sync` and stored as extension UI state, not as user settings.
+Task Transfer remembers only the transfer-folder path as extension UI state. Task selections and project mappings are never saved.
 
-## Experimental Sync
+## Task Transfer
 
-Sync uses a local folder that you synchronize with your own tool, such as OneDrive, Dropbox, Syncthing, or a network drive. The extension only copies selected active Codex task JSONLs and stores matching session-index metadata in a central catalog. It does not upload data itself and does not sync Codex auth, settings, caches, logs, archived tasks, or SQLite databases.
+Task Transfer deliberately moves selected active Codex tasks between computers through a folder managed by OneDrive, Dropbox, iCloud Drive, Syncthing, a network drive, or another filesystem provider. It is optional: token reporting works without Task Transfer, and the extension never transfers tasks in the background.
 
-A built-in Codex handoff can fail on a very large task. Task sync is designed for that usage scenario: it preserves the task as a full JSONL without summarizing or repackaging its context, so the same long-running task can continue on another computer.
+Codex's built-in handoff can fail on a very large task. Task Transfer preserves the task as a full JSONL without summarizing or repackaging its context, so the same long-running task can continue on another computer.
 
-Setup uses one project-grouped `Select Tasks` picker after the sync folder is chosen. Project rows are current-task shortcuts: each row selects or deselects only the tasks currently shown beneath it. Remote-only tasks are discovered from the sync folder, including on a device where they have not been pulled. Future tasks under an already represented project remain excluded until explicitly selected. Deselecting a task never deletes its remote JSONL or catalog entry.
+1. On the source computer, run **Export Tasks** and select the active tasks to transfer.
+2. Wait for the filesystem provider to finish copying the transfer folder.
+3. Clone or copy the corresponding project checkout to the destination computer if it is not already there.
+4. When using only the Codex IDE extension, open that checkout in VS Code.
+5. Run **Import Tasks**, select the tasks, and accept an automatic project match or choose a validated local folder.
+6. Reload VS Code or restart the Codex app so the imported tasks appear.
 
-In user-facing UI and documentation, each selectable Codex sidebar item is a **task**. The CLI and storage contracts use its technical thread id through fields such as `thread_id` and the `--thread-id` option.
+The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen checkout with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer does not clone repositories, so the destination checkout must already exist.
 
-Version 2 writes this sync-folder layout:
+Every **Import Tasks**, **Export Tasks**, and **Review Transfer Status** operation starts with a fresh, empty selection. Review inspects task state without copying files. Project rows select only the tasks visible for that operation, and neither task selections nor project mappings are saved. Imported tasks remain in the transfer folder, and changing or forgetting the remembered folder does not delete any task files.
+
+The extension checks the complete selected batch before copying anything. Conflicts, malformed folder structures, changed source files, unsafe mappings, and tasks that need the opposite direction block the whole operation. Existing local tasks keep their current checkout path. Task Transfer does not copy Codex auth, settings, caches, logs, archived tasks, or SQLite databases, and it never writes Codex private application state.
+
+The current transfer-folder layout is:
 
 ```text
-<sync-folder>/
-  conversations/
-    <portable-thread-filename>.jsonl
+<transfer-folder>/
   sync-index.json
+  tasks/
+    <portable-task-filename>.jsonl
 ```
 
-Version `0.1.34` changes the selection schema to exact task thread ids. It intentionally invalidates the previous project/conversation selection state and does not migrate those selectors. After upgrading, sync shows **Setup required** once so you can choose exact tasks. The version-2 remote layout is unchanged, with no remote cleanup or republish required; existing remote task JSONLs remain available to the picker. The older version-1 layout still requires its previously documented clean resync before it can be used as version 2.
-
-Version `0.1.35` replaces bidirectional Sync Now and all automatic triggers with explicit `Pull Tasks` and `Push Tasks` commands. Both directions share conflict preflight and snapshot validation, but each mutates only its named side. The result reports selected tasks that still need the opposite direction.
-
-For a cross-platform pull, open or save the destination checkout in Codex first. Sync requires one canonical Git identity match, leaves the remote JSONL unchanged, and rewrites `session_meta.payload.cwd` in every local metadata record for that project. Unrelated metadata and every non-metadata record remain byte-identical. Missing, ambiguous, or locally modified foreign-path tasks block safely.
-
-If a task was already imported under another computer's path before this rebind, quit and reopen Codex after Pull so its local task index is rebuilt from the corrected JSONL. The extension never patches Codex's SQLite database.
-
-Click the dashboard `Sync: ... ▾` control or run `Codex Usage: Sync Menu` to manage sync. The menu supports pull, push, status, pause/resume, changing the sync folder or selected tasks, clearing the setup, and opening the sync folder. Clearing setup only forgets extension selections; it does not delete Codex logs or sync-folder files.
-
-The status bar shows explicit transfer states including `Sync:Scanning`, `Sync:Pulling`, and `Sync:Pushing`. Sync never runs on extension activation, window focus, a timer, or a Codex session file change. Transfer details go to the Codex Usage output channel, with visible completion and action-needed messages.
-
-Leave `codexUsage.sync.enabled` on and run `Codex Usage: Pull Tasks` or `Codex Usage: Push Tasks` when you want to transfer. Use `Codex Usage: Sync Status` to inspect selected tasks without transferring files.
-
-Task sync is prefix-aware. Normal append-only progress on one computer is transferred by the matching manual direction; true divergent edits on two computers are reported as conflicts and neither side is overwritten.
-
-Sync copies only selected active task JSONLs and preserves matching session-index metadata in its repairable catalog. Archived tasks can appear in usage totals but are not sync candidates.
+Valid version-2 folders migrate automatically to this version-3 layout before Import, Export, or Review. The **Task Transfer** menu lets you choose, change, open, or forget the folder. Only that folder path is remembered.
 
 ### Archive/Delete Accounting
 
-Archived Codex conversations are included in usage totals. Deleted or otherwise missing conversations are retained in historical totals after the local cache has parsed them once. The dashboard header shows archived and retained missing file counts when applicable.
+Archived Codex tasks are included in usage totals. Deleted or otherwise missing tasks are retained in historical totals after the local cache has parsed them once. The dashboard header shows archived and retained missing file counts when applicable.
 
 ## Project Transitions
 
-Automatic project transition detection uses read-only evidence from local Codex session JSONL files and, when present, the local Codex `state_5.sqlite` `threads` field `cwd` plus thread timestamps. The extension does not upload this data, make network calls for transition detection, mutate SQLite, or sync SQLite databases.
+Automatic project transition detection uses read-only evidence from local Codex session JSONL files and, when present, project paths and timestamps from the local Codex database. The extension does not upload this data, make network calls for transition detection, mutate SQLite, or include SQLite databases in Task Transfer.
 
-The dashboard transition table shows source, target, effective timestamp, and confidence. Use `Codex Usage: Review Project Transitions` for detailed evidence and thread ids.
+The dashboard transition table shows source, target, effective timestamp, and confidence. Use `Codex Usage: Review Project Transitions` for detailed evidence and Task IDs.
 
 ## Preview Install
 
@@ -116,7 +107,7 @@ On first open, the dashboard may show "Initializing Codex usage cache. This can 
 
 ## Privacy
 
-The extension reads local Codex session JSONL files and writes local HTML reports under VS Code extension storage. Automatic project transition detection can also read local `state_5.sqlite` thread `cwd` and timestamps as read-only evidence. It does not upload session logs, does not include telemetry, does not fetch live pricing, and does not sync or mutate SQLite databases.
+The extension reads local Codex session JSONL files and writes local HTML reports under VS Code extension storage. Automatic project transition detection can also read local Codex project paths and timestamps as read-only evidence. It does not upload session logs, does not include telemetry, does not fetch live pricing, and does not include or mutate SQLite databases in Task Transfer.
 
 Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. See the repository `PRIVACY.md` for details.
 
@@ -147,7 +138,7 @@ Codex fast mode is counted through the token usage that Codex records. At the mo
 
 ## Development
 
-Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, packages the VSIX, and exercises inventory plus exact-task push/pull through the packaged executable.
+Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, executes the native version-3 packaged Task Transfer smoke, and requires it to pass before publication.
 
 macOS Apple Silicon on macOS/bash from `extensions/vscode`:
 

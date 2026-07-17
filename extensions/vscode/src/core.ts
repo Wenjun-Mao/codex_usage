@@ -1,5 +1,4 @@
 import * as path from "path";
-import { VALID_SYNC_SELECTION_VERSION } from "./syncSetupTransaction";
 
 export { parseSyncStatusSummary } from "./syncProtocol";
 export type { SyncStatusSummary } from "./syncProtocol";
@@ -16,9 +15,6 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.refreshDashboard",
   "codexUsage.openSettings",
 ] as const;
-
-export const SYNC_STATUS_KIND_VALUES = ["off", "idle", "scanning", "pulling", "pushing", "conflict", "issue"] as const;
-export type SyncStatusKind = (typeof SYNC_STATUS_KIND_VALUES)[number];
 
 export type ProjectTransitionsSettings = {
   autoDetect: boolean;
@@ -44,18 +40,15 @@ export type ThreadsCommandOptions = {
   projectTransitions?: ProjectTransitionsSettings;
 };
 
-export type SyncSettings = {
-  enabled: boolean;
-  dir: string;
-  selectionVersion: number;
-  threadIds: string[];
+export type TaskTransferSettings = {
+  folder: string;
 };
 
 export type ExtensionSettings = {
   range: ReportRange;
   projectKeys: string[];
   theme: ReportTheme;
-  sync: SyncSettings;
+  taskTransfer: TaskTransferSettings;
   projectTransitions: ProjectTransitionsSettings;
 };
 
@@ -66,24 +59,6 @@ export type ProjectChoice = {
   detail: string;
   totalTokens: number;
   picked: boolean;
-};
-
-export type SyncMenuAction =
-  | "pullTasks"
-  | "pushTasks"
-  | "syncStatus"
-  | "pauseSync"
-  | "resumeSync"
-  | "changeFolder"
-  | "changeTasks"
-  | "clearSync"
-  | "openSyncFolder";
-
-export type SyncMenuQuickPickItem = {
-  label: string;
-  description: string;
-  detail: string;
-  action: SyncMenuAction;
 };
 
 export type TransitionChoice = {
@@ -103,19 +78,7 @@ export type TransitionChoice = {
   };
 };
 
-export type WebviewControlState = {
-  range: ReportRange;
-  projectKeys: string[];
-  theme: ReportTheme;
-  sync?: Pick<SyncSettings, "enabled" | "dir" | "selectionVersion" | "threadIds">;
-  versionLabel?: string;
-};
-
 export const PROJECT_KEYS_STATE_KEY = "projectKeys";
-export const SYNC_DIR_STATE_KEY = "syncDir";
-export const SYNC_THREAD_IDS_STATE_KEY = "syncThreadIds";
-export const SYNC_SELECTION_VERSION = VALID_SYNC_SELECTION_VERSION;
-export const SYNC_SELECTION_VERSION_STATE_KEY = "syncSelectionVersion";
 
 export type GlobalStateReader = {
   get<T>(key: string, defaultValue: T): T;
@@ -153,69 +116,8 @@ export function normalizeProjectKeys(values: unknown): string[] {
   return selected;
 }
 
-export function normalizeThreadIds(values: unknown): string[] {
-  return normalizeProjectKeys(values);
-}
-
 export function readProjectKeysState(state: GlobalStateReader): string[] {
   return normalizeProjectKeys(state.get(PROJECT_KEYS_STATE_KEY, []));
-}
-
-export function readSyncDirState(state?: GlobalStateReader): string {
-  const value = state?.get(SYNC_DIR_STATE_KEY, "");
-  return typeof value === "string" ? value.trim() : "";
-}
-
-export function readSyncThreadIdsState(state?: GlobalStateReader): string[] {
-  return normalizeThreadIds(state?.get(SYNC_THREAD_IDS_STATE_KEY, []));
-}
-
-export function readSyncSelectionVersionState(state?: GlobalStateReader): number {
-  return state?.get<number>(SYNC_SELECTION_VERSION_STATE_KEY, 0) === SYNC_SELECTION_VERSION
-    ? SYNC_SELECTION_VERSION
-    : 0;
-}
-
-export function normalizeSyncSettings(value: unknown): SyncSettings {
-  const input = isRecord(value) ? value : {};
-  const selectionVersion = input.selectionVersion === SYNC_SELECTION_VERSION ? SYNC_SELECTION_VERSION : 0;
-  return {
-    enabled: input.enabled === true,
-    dir: typeof input.dir === "string" ? input.dir.trim() : "",
-    selectionVersion,
-    threadIds: selectionVersion === SYNC_SELECTION_VERSION ? normalizeThreadIds(input.threadIds) : [],
-  };
-}
-
-export function hasValidSyncSelection(settings: SyncSettings): boolean {
-  const normalized = normalizeSyncSettings(settings);
-  return Boolean(
-    normalized.dir &&
-    normalized.selectionVersion === SYNC_SELECTION_VERSION &&
-    normalized.threadIds.length > 0
-  );
-}
-
-export function syncStatusKindLabel(kind: SyncStatusKind): string {
-  if (kind === "off") {
-    return "Off";
-  }
-  if (kind === "idle") {
-    return "Idle";
-  }
-  if (kind === "scanning") {
-    return "Scanning";
-  }
-  if (kind === "pulling") {
-    return "Pulling";
-  }
-  if (kind === "pushing") {
-    return "Pushing";
-  }
-  if (kind === "conflict") {
-    return "Conflict";
-  }
-  return "Issue";
 }
 
 export function cacheDirPath(globalStoragePath: string): string {
@@ -234,14 +136,6 @@ export function buildCodexUsageEnv(
     ...baseEnv,
     CODEX_USAGE_CACHE_DIR: cacheDirPath(globalStoragePath),
   };
-}
-
-export type SyncSetupStepOptions = {
-  refreshDashboard?: boolean;
-};
-
-export function shouldRefreshAfterSyncSetupStep(options: SyncSetupStepOptions | undefined): boolean {
-  return options?.refreshDashboard !== false;
 }
 
 export function extensionVersionLabel(packageJson: unknown): string {
@@ -415,254 +309,6 @@ export function parseTransitionChoices(transitionsJson: string): TransitionChoic
   return choices;
 }
 
-export function injectWebviewControls(reportHtml: string, state: WebviewControlState): string {
-  const controls = renderWebviewControls(state);
-  const style = `<style id="codex-usage-extension-style">
-    .codex-usage-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      margin: 0 0 18px;
-      padding: 8px;
-      border: 1px solid var(--vscode-panel-border, var(--border));
-      border-radius: 8px;
-      background: var(--vscode-editor-background, var(--surface));
-    }
-    .codex-usage-actions a {
-      display: inline-flex;
-      align-items: center;
-      min-height: 28px;
-      padding: 4px 9px;
-      border: 1px solid var(--vscode-button-border, var(--border));
-      border-radius: 6px;
-      color: var(--vscode-textLink-foreground, var(--accent));
-      text-decoration: none;
-      font-size: 13px;
-    }
-    .codex-usage-actions a:hover {
-      background: var(--vscode-toolbar-hoverBackground, var(--surface-soft));
-    }
-    .codex-usage-version {
-      margin-left: auto;
-      color: var(--vscode-descriptionForeground, var(--muted));
-      font-size: 12px;
-      white-space: nowrap;
-    }
-  </style>`;
-
-  let html = reportHtml
-    .replace(/<style id="codex-usage-extension-style">[\s\S]*?<\/style>\s*/i, "")
-    .replace(/<nav class="codex-usage-actions"[\s\S]*?<\/nav>\s*/i, "");
-  html = html.replace(/<\/head>/i, `${style}\n</head>`);
-  if (/<main[^>]*>/i.test(html)) {
-    return html.replace(/<main[^>]*>/i, (match) => `${match}\n    ${controls}`);
-  }
-  if (/<body[^>]*>/i.test(html)) {
-    return html.replace(/<body[^>]*>/i, (match) => `${match}\n  ${controls}`);
-  }
-  return `${controls}\n${html}`;
-}
-
-export function injectWebviewCsp(reportHtml: string, cspSource: string): string {
-  const csp = [
-    "default-src 'none'",
-    "img-src data:",
-    "style-src 'unsafe-inline'",
-    `font-src ${cspSource}`,
-  ].join("; ");
-  const meta = `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(csp)}" />`;
-
-  const existingCsp = /<meta\s+http-equiv=["']Content-Security-Policy["'][^>]*>\s*/i;
-  if (existingCsp.test(reportHtml)) {
-    return reportHtml.replace(existingCsp, meta);
-  }
-  return reportHtml.replace(/<head[^>]*>/i, (match) => `${match}\n  ${meta}`);
-}
-
-export function renderErrorHtml(message: string): string {
-  const escaped = escapeHtml(message);
-  return `<!doctype html>
-<html lang="en" data-codex-theme="auto">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-${basicWebviewCss()}
-    .error { border-left: 4px solid var(--danger); background: var(--warn-bg); padding: 12px; }
-  </style>
-</head>
-<body>
-  <h1>Codex Usage Dashboard</h1>
-  <div class="error">${escaped}</div>
-</body>
-</html>`;
-}
-
-export function renderLoadingHtml(message = "Generating Codex usage dashboard..."): string {
-  const escaped = escapeHtml(message);
-  return `<!doctype html>
-<html lang="en" data-codex-theme="auto">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-${basicWebviewCss()}
-  </style>
-</head>
-<body>
-  <main class="report-shell">
-    <section class="notice loading" role="status" aria-live="polite">${escaped}</section>
-  </main>
-</body>
-</html>`;
-}
-
-function escapeAttribute(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function renderWebviewControls(state: WebviewControlState): string {
-  const version = state.versionLabel?.trim()
-    ? `<span class="codex-usage-version" aria-label="Codex Usage extension version">${escapeHtml(state.versionLabel.trim())}</span>`
-    : "";
-  return (
-    '<nav class="codex-usage-actions" aria-label="Codex Usage dashboard controls">' +
-    `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` +
-    `<a href="command:codexUsage.selectProjects">Projects: ${escapeHtml(projectFilterLabel(state.projectKeys))}</a>` +
-    `<a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(themeLabel(state.theme))}</a>` +
-    `<a href="command:codexUsage.openSyncMenu">${escapeHtml(syncControlLabel(state.sync))}</a>` +
-    '<a href="command:codexUsage.refreshDashboard">Refresh</a>' +
-    '<a href="command:codexUsage.openSettings">Settings</a>' +
-    version +
-    "</nav>"
-  );
-}
-
-export function syncControlLabel(sync: WebviewControlState["sync"]): string {
-  const normalized = normalizeSyncSettings(sync ?? {});
-  if (!hasValidSyncSelection(normalized)) {
-    return "Sync: Setup required ▾";
-  }
-  if (!normalized.enabled) {
-    return "Sync: Off ▾";
-  }
-  if (normalized.threadIds.length === 1) {
-    return "Sync: 1 task ▾";
-  }
-  return `Sync: ${normalized.threadIds.length} tasks ▾`;
-}
-
-export function syncMenuQuickPickItems(sync: SyncSettings): SyncMenuQuickPickItem[] {
-  const settings = normalizeSyncSettings(sync);
-  const taskCount = settings.threadIds.length;
-  const taskDescription = taskCount === 1 ? "1 selected" : `${taskCount} selected`;
-
-  const items: SyncMenuQuickPickItem[] = settings.enabled
-    ? [
-        {
-          label: "$(cloud-download) Pull Tasks",
-          description: "Import remote changes",
-          detail: "Pull selected tasks and bind imported tasks to matching local projects.",
-          action: "pullTasks",
-        },
-        {
-          label: "$(cloud-upload) Push Tasks",
-          description: "Publish local changes",
-          detail: "Push selected local task changes after checking for remote updates.",
-          action: "pushTasks",
-        },
-      ]
-    : [
-        {
-        label: "$(play) Resume Sync",
-        description: hasValidSyncSelection(settings) ? "Paused" : "Setup needed",
-        detail: "Enable the manual pull and push commands without changing selections.",
-        action: "resumeSync",
-        },
-      ];
-
-  items.push(
-    {
-      label: "$(info) Sync Status",
-      description: "Inspect selected tasks",
-      detail: "Show local/remote state, conflicts, missing files, and memory warnings.",
-      action: "syncStatus",
-    },
-  );
-
-  if (settings.enabled) {
-    items.push({
-      label: "$(debug-pause) Pause Sync",
-      description: "Disable manual sync commands",
-      detail: "Keeps the selected folder and tasks so sync can be resumed later.",
-      action: "pauseSync",
-    });
-  }
-
-  items.push(
-    {
-      label: "$(folder-opened) Change Folder",
-      description: settings.dir || "No folder selected",
-      detail: "Choose a different bring-your-own sync folder.",
-      action: "changeFolder",
-    },
-    {
-      label: "$(checklist) Change Tasks",
-      description: taskDescription,
-      detail: "Choose the exact Codex tasks to sync.",
-      action: "changeTasks",
-    },
-    {
-      label: "$(trash) Clear Sync Setup",
-      description: "Disable sync and forget selections",
-      detail: "Does not delete local Codex files or anything inside the sync folder.",
-      action: "clearSync",
-    },
-    {
-      label: "$(folder) Open Sync Folder",
-      description: settings.dir || "No folder selected",
-      detail: "Open the configured bring-your-own sync folder.",
-      action: "openSyncFolder",
-    },
-  );
-  return items;
-}
-
-function themeLabel(theme: ReportTheme): string {
-  if (theme === "day") {
-    return "Day";
-  }
-  if (theme === "night") {
-    return "Night";
-  }
-  return "Auto";
-}
-
-function projectFilterLabel(projectKeys: string[]): string {
-  const selected = normalizeProjectKeys(projectKeys);
-  if (selected.length === 0) {
-    return "All Projects";
-  }
-  if (selected.length === 1) {
-    return "1 selected";
-  }
-  return `${selected.length} selected`;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -711,36 +357,4 @@ function transitionDetail(options: {
 
 function formatInt(value: number): string {
   return Math.round(value).toLocaleString("en-US");
-}
-
-function basicWebviewCss(): string {
-  return `    :root {
-      color-scheme: light;
-      --bg: #f7f8fa;
-      --text: #0a0b0d;
-      --muted: #5b616e;
-      --danger: #cf202f;
-      --warn-bg: #fef3f2;
-    }
-    body.vscode-dark {
-      color-scheme: dark;
-      --bg: var(--vscode-editor-background, #0d0f12);
-      --text: var(--vscode-editor-foreground, #eef2f6);
-      --muted: var(--vscode-descriptionForeground, #a7b0bc);
-      --danger: #ff6b78;
-      --warn-bg: rgba(255, 107, 120, 0.14);
-    }
-    body.vscode-high-contrast {
-      --bg: var(--vscode-editor-background, #000000);
-      --text: var(--vscode-editor-foreground, #ffffff);
-      --muted: var(--vscode-editor-foreground, #ffffff);
-      --danger: var(--vscode-errorForeground, #ffffff);
-      --warn-bg: transparent;
-    }
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-      margin: 24px;
-      background: var(--bg);
-      color: var(--text);
-    }`;
 }

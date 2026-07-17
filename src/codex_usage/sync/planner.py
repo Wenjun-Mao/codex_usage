@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from codex_usage.session_files import codex_home_from_session_dir, owning_session_dir
-from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME
+from codex_usage.sync.constants import TRANSFER_TASKS_DIRNAME
 from codex_usage.sync.io import is_byte_prefix, snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
+    ProjectResolutionRequest,
     RemoteInventory,
     RemoteThreadEntry,
     SyncFileSnapshot,
@@ -35,11 +36,11 @@ def classify_snapshots(
     if local.exists and remote.exists and local.sha256 == remote.sha256:
         return "synced", "none", "local and remote match"
     if local.exists and not remote.exists:
-        return "local_only", "push", "local conversation is not in the sync folder"
+        return "local_only", "push", "local task is not in the transfer folder"
     if remote.exists and not local.exists:
-        return "remote_only", "pull", "sync folder conversation is not local"
+        return "remote_only", "pull", "sync folder task is not local"
     if not local.exists and not remote.exists:
-        return "missing", "skip", "conversation is missing locally and remotely"
+        return "missing", "skip", "task is missing locally and remotely"
 
     if last_local_sha256 and last_remote_sha256:
         local_changed = local.sha256 != last_local_sha256
@@ -75,6 +76,8 @@ def build_sync_plan(
     remote: RemoteInventory,
     selected_thread_ids: tuple[str, ...],
     sync_dir: Path,
+    *,
+    project_resolution: ProjectResolutionRequest | None,
 ) -> SyncPlan:
     selected_ids = tuple(dict.fromkeys(selected_thread_ids))
     unmaterialized = [
@@ -135,16 +138,18 @@ def build_sync_plan(
 
         local_project_root: Path | None = None
         if (
-            not item_issues
+            project_resolution is not None
+            and not item_issues
             and effective_entry is not None
             and remote_snapshot.exists
             and action in {"pull", "push", "none"}
-            and (action == "pull" or (local_thread is not None and local_thread.cwd))
+            and (action == "pull" or local_thread is not None)
         ):
             local_project_root, project_issue = resolve_local_project_root(
                 local,
                 local_thread,
                 effective_entry,
+                project_resolution,
             )
             if project_issue is not None:
                 issues.append(project_issue)
@@ -251,7 +256,7 @@ def _local_path(
                 return local_thread.session_path, None
         return None, SyncIssue(
             "unsafe_local_path",
-            f"Discovered local conversation for thread {thread_id!r} is outside the session directory",
+            f"Discovered local task for thread {thread_id!r} is outside the session directory",
             thread_id,
         )
     if session_dir is None:
@@ -270,7 +275,7 @@ def _local_path(
     if target is None:
         return None, SyncIssue(
             "unsafe_local_path",
-            f"Local conversation path {relative_path!r} escapes the session directory",
+            f"Local task path {relative_path!r} escapes the session directory",
             thread_id,
         )
     return target, None
@@ -288,7 +293,7 @@ def _remote_snapshot(
     if remote_entry is not None:
         return SyncFileSnapshot(path=sync_dir / remote_entry.file, exists=False)
     return SyncFileSnapshot(
-        path=sync_dir / SYNC_CONVERSATIONS_DIRNAME / portable_thread_filename(thread_id),
+        path=sync_dir / TRANSFER_TASKS_DIRNAME / portable_thread_filename(thread_id),
         exists=False,
     )
 

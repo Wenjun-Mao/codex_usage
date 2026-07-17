@@ -1,8 +1,24 @@
+import { requireValidPlannerRows } from "./syncPlanContract";
+
+export type ProjectBinding = {
+  projectKey: string;
+  path: string;
+  confirmedUnverified: boolean;
+};
+
 export type SyncCommandOptions = {
   syncDir: string;
   threadIds: string[];
   autoTransitions: boolean;
+  candidateProjectRoots: string[];
+  projectBindings: ProjectBinding[];
 };
+
+type SyncCommandBuilderOptions = Omit<
+  SyncCommandOptions,
+  "candidateProjectRoots" | "projectBindings"
+> &
+  Partial<Pick<SyncCommandOptions, "candidateProjectRoots" | "projectBindings">>;
 
 export type SyncProgressPhase = "scanning" | "pulling" | "pushing";
 
@@ -107,31 +123,70 @@ const THREAD_KEYS = [
   "memory_database_rows",
 ] as const;
 const ISSUE_KEYS = ["code", "message", "thread_id"] as const;
+const STATUS_KEYS = ["threads", "issues"] as const;
 const PROGRESS_PHASES = new Set<SyncProgressPhase>(["scanning", "pulling", "pushing"]);
+type ValidationFailure = (message: string) => never;
 
-export function buildSyncPullArgs(options: SyncCommandOptions): string[] {
+export function buildSyncPullArgs(options: SyncCommandBuilderOptions): string[] {
   return buildSyncArgs("pull", options);
 }
 
-export function buildSyncPushArgs(options: SyncCommandOptions): string[] {
+export function buildSyncPushArgs(options: SyncCommandBuilderOptions): string[] {
   return buildSyncArgs("push", options);
 }
 
-export function buildSyncStatusArgs(options: SyncCommandOptions): string[] {
+export function buildSyncStatusArgs(options: SyncCommandBuilderOptions): string[] {
   return buildSyncArgs("status", options);
 }
 
-function buildSyncArgs(command: "pull" | "push" | "status", options: SyncCommandOptions): string[] {
+function buildSyncArgs(command: "pull" | "push" | "status", options: SyncCommandBuilderOptions): string[] {
   const args = ["sync", command, "--json"];
   const syncDir = options.syncDir.trim();
   if (syncDir) {
     args.push("--sync-dir", syncDir);
   }
+  appendSelectors(args, "--candidate-project-root", options.candidateProjectRoots);
   if (options.autoTransitions === false) {
     args.push("--no-auto-transitions");
   }
+  appendProjectBindings(args, options.projectBindings);
   appendSelectors(args, "--thread-id", options.threadIds);
   return args;
+}
+
+function appendProjectBindings(args: string[], values: unknown): void {
+  const bindings = normalizeProjectBindings(values);
+  for (const binding of bindings) {
+    args.push("--project-binding", binding.projectKey, binding.path);
+  }
+  for (const binding of bindings) {
+    if (binding.confirmedUnverified) {
+      args.push("--confirm-unverified-project", binding.projectKey);
+    }
+  }
+}
+
+function normalizeProjectBindings(values: unknown): ProjectBinding[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  const bindings: ProjectBinding[] = [];
+  for (const value of values) {
+    if (
+      !isRecord(value) ||
+      typeof value.projectKey !== "string" ||
+      typeof value.path !== "string" ||
+      typeof value.confirmedUnverified !== "boolean"
+    ) {
+      continue;
+    }
+    const projectKey = value.projectKey.trim();
+    const path = value.path.trim();
+    if (projectKey && path) {
+      bindings.push({ projectKey, path, confirmedUnverified: value.confirmedUnverified });
+    }
+  }
+  return bindings;
 }
 
 function appendSelectors(args: string[], flag: string, values: unknown): void {
@@ -194,10 +249,13 @@ export function parseSyncRunResult(resultJson: string): SyncRunResult {
     outcome: result.outcome,
     counts: parseCounts(result.counts),
     timings_ms: parseTimings(result.timings_ms),
-    threads: parseArray(result.threads, parseThread, "threads"),
+    threads: requireValidPlannerRows(
+      parseArray(result.threads, (item, index) => parseThread(item, index), "threads"),
+      invalidResult,
+    ),
     pulled: parseStringArray(result.pulled, "pulled"),
     pushed: parseStringArray(result.pushed, "pushed"),
-    issues: parseArray(result.issues, parseIssue, "issues"),
+    issues: parseArray(result.issues, (item, index) => parseIssue(item, index), "issues"),
   };
 }
 
@@ -227,44 +285,65 @@ function parseTimings(value: unknown): SyncTimings {
   };
 }
 
-function parseThread(value: unknown, index: number): SyncPlanItem {
+function parseThread(
+  value: unknown,
+  index: number,
+  invalid: ValidationFailure = invalidResult,
+): SyncPlanItem {
   const label = `threads[${index}]`;
-  const thread = exactRecord(value, THREAD_KEYS, ["memory_note"], label);
+  const thread = exactRecord(value, THREAD_KEYS, ["memory_note"], label, invalid);
   const parsed: SyncPlanItem = {
-    thread_id: stringField(thread.thread_id, `${label}.thread_id`),
-    state: stringField(thread.state, `${label}.state`),
-    action: stringField(thread.action, `${label}.action`),
-    reason: stringField(thread.reason, `${label}.reason`),
-    local_path: stringField(thread.local_path, `${label}.local_path`),
-    remote_path: stringField(thread.remote_path, `${label}.remote_path`),
-    local_sha256: stringField(thread.local_sha256, `${label}.local_sha256`),
-    remote_sha256: stringField(thread.remote_sha256, `${label}.remote_sha256`),
-    base_sha256: stringField(thread.base_sha256, `${label}.base_sha256`),
-    updated_at: stringField(thread.updated_at, `${label}.updated_at`),
-    source_relative_path: stringField(thread.source_relative_path, `${label}.source_relative_path`),
-    project_key: stringField(thread.project_key, `${label}.project_key`),
-    project_label: stringField(thread.project_label, `${label}.project_label`),
-    memory_database_rows: nonnegativeInteger(thread.memory_database_rows, `${label}.memory_database_rows`),
+    thread_id: stringField(thread.thread_id, `${label}.thread_id`, invalid),
+    state: stringField(thread.state, `${label}.state`, invalid),
+    action: stringField(thread.action, `${label}.action`, invalid),
+    reason: stringField(thread.reason, `${label}.reason`, invalid),
+    local_path: stringField(thread.local_path, `${label}.local_path`, invalid),
+    remote_path: stringField(thread.remote_path, `${label}.remote_path`, invalid),
+    local_sha256: stringField(thread.local_sha256, `${label}.local_sha256`, invalid),
+    remote_sha256: stringField(thread.remote_sha256, `${label}.remote_sha256`, invalid),
+    base_sha256: stringField(thread.base_sha256, `${label}.base_sha256`, invalid),
+    updated_at: stringField(thread.updated_at, `${label}.updated_at`, invalid),
+    source_relative_path: stringField(
+      thread.source_relative_path,
+      `${label}.source_relative_path`,
+      invalid,
+    ),
+    project_key: stringField(thread.project_key, `${label}.project_key`, invalid),
+    project_label: stringField(thread.project_label, `${label}.project_label`, invalid),
+    memory_database_rows: nonnegativeInteger(
+      thread.memory_database_rows,
+      `${label}.memory_database_rows`,
+      invalid,
+    ),
   };
   if ("memory_note" in thread) {
-    parsed.memory_note = stringField(thread.memory_note, `${label}.memory_note`);
+    parsed.memory_note = stringField(thread.memory_note, `${label}.memory_note`, invalid);
   }
   return parsed;
 }
 
-function parseIssue(value: unknown, index: number): SyncIssue {
+function parseIssue(
+  value: unknown,
+  index: number,
+  invalid: ValidationFailure = invalidResult,
+): SyncIssue {
   const label = `issues[${index}]`;
-  const issue = exactRecord(value, ISSUE_KEYS, [], label);
+  const issue = exactRecord(value, ISSUE_KEYS, [], label, invalid);
   return {
-    code: stringField(issue.code, `${label}.code`),
-    message: stringField(issue.message, `${label}.message`),
-    thread_id: stringField(issue.thread_id, `${label}.thread_id`),
+    code: stringField(issue.code, `${label}.code`, invalid),
+    message: stringField(issue.message, `${label}.message`, invalid),
+    thread_id: stringField(issue.thread_id, `${label}.thread_id`, invalid),
   };
 }
 
-function parseArray<T>(value: unknown, parseItem: (item: unknown, index: number) => T, label: string): T[] {
+function parseArray<T>(
+  value: unknown,
+  parseItem: (item: unknown, index: number) => T,
+  label: string,
+  invalid: ValidationFailure = invalidResult,
+): T[] {
   if (!Array.isArray(value)) {
-    invalidResult(`${label} must be an array`);
+    invalid(`${label} must be an array`);
   }
   return value.map(parseItem);
 }
@@ -278,33 +357,46 @@ function exactRecord(
   requiredKeys: readonly string[],
   optionalKeys: readonly string[],
   label: string,
+  invalid: ValidationFailure = invalidResult,
 ): Record<string, unknown> {
   if (!isRecord(value)) {
-    invalidResult(`${label} must be an object`);
+    invalid(`${label} must be an object`);
   }
   const allowed = new Set([...requiredKeys, ...optionalKeys]);
   if (requiredKeys.some((key) => !(key in value)) || Object.keys(value).some((key) => !allowed.has(key))) {
-    invalidResult(`${label} does not match the v2 payload contract`);
+    invalid(`${label} does not match the task transfer payload contract`);
   }
   return value;
 }
 
-function nonnegativeInteger(value: unknown, label: string): number {
+function nonnegativeInteger(
+  value: unknown,
+  label: string,
+  invalid: ValidationFailure = invalidResult,
+): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    invalidResult(`${label} must be a nonnegative safe integer`);
+    invalid(`${label} must be a nonnegative safe integer`);
   }
   return value;
 }
 
-function stringField(value: unknown, label: string): string {
+function stringField(
+  value: unknown,
+  label: string,
+  invalid: ValidationFailure = invalidResult,
+): string {
   if (typeof value !== "string") {
-    invalidResult(`${label} must be a string`);
+    invalid(`${label} must be a string`);
   }
   return value;
 }
 
 function invalidResult(message: string): never {
   throw new Error(`Invalid Codex sync result: ${message}`);
+}
+
+function invalidStatus(message: string): never {
+  throw new Error(`Invalid Codex sync status: ${message}`);
 }
 
 export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
@@ -314,8 +406,22 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
   } catch (error) {
     throw new Error(`Could not parse Codex sync status JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const rows = isRecord(payload) && Array.isArray(payload.threads) ? payload.threads : [];
-  const issueRows = isRecord(payload) && Array.isArray(payload.issues) ? payload.issues : [];
+  const status = exactRecord(payload, STATUS_KEYS, [], "status", invalidStatus);
+  const rows = requireValidPlannerRows(
+    parseArray(
+      status.threads,
+      (row, index) => parseThread(row, index, invalidStatus),
+      "threads",
+      invalidStatus,
+    ),
+    invalidStatus,
+  );
+  const issueRows = parseArray(
+    status.issues,
+    (issue, index) => parseIssue(issue, index, invalidStatus),
+    "issues",
+    invalidStatus,
+  );
   let synced = 0;
   let conflicts = 0;
   let missing = 0;
@@ -324,10 +430,7 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
   let remoteChanges = 0;
   let fastForwards = 0;
   for (const row of rows) {
-    if (!isRecord(row)) {
-      continue;
-    }
-    const state = typeof row.state === "string" ? row.state : "";
+    const state = row.state;
     if (state === "synced") {
       synced += 1;
     } else if (state === "conflict") {
@@ -341,7 +444,7 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
     } else if (state === "fast_forward_push" || state === "fast_forward_pull") {
       fastForwards += 1;
     }
-    if (numberValue(row.memory_database_rows) > 0) {
+    if (row.memory_database_rows > 0) {
       memoryWarnings += 1;
     }
   }
@@ -349,14 +452,6 @@ export function parseSyncStatusSummary(statusJson: string): SyncStatusSummary {
   let issues = 0;
   let firstIssueMessage = "";
   for (const issue of issueRows) {
-    if (
-      !isRecord(issue) ||
-      typeof issue.code !== "string" ||
-      typeof issue.message !== "string" ||
-      typeof issue.thread_id !== "string"
-    ) {
-      continue;
-    }
     issues += 1;
     if (!firstIssueMessage && issue.message.trim()) {
       firstIssueMessage = issue.message.trim();
@@ -399,8 +494,4 @@ function appendCount(parts: string[], count: number, label: string): void {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function numberValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }

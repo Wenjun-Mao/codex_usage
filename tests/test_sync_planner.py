@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-import codex_usage.sync.planner as sync_planner
+from codex_usage.sync.constants import REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.io import snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
+    ProjectBinding,
+    ProjectResolutionRequest,
     RemoteIndex,
     RemoteInventory,
     RemoteThreadEntry,
     SyncFileSnapshot,
     SyncIssue,
 )
-from codex_usage.sync.planner import build_sync_plan, classify_snapshots
+from codex_usage.sync.planner import build_sync_plan
 from codex_usage.threads import ThreadInfo
 
 
@@ -38,7 +39,7 @@ def _thread(thread_id: str, project_key: str = "repo", aliases: tuple[str, ...] 
 def _remote_entry(thread_id: str, project_key: str = "repo") -> RemoteThreadEntry:
     return RemoteThreadEntry(
         thread_id=thread_id,
-        file=f"conversations/{thread_id}.jsonl",
+        file=f"tasks/{thread_id}.jsonl",
         source_relative_path=f"synced/{thread_id}.jsonl",
         index_entry={"id": thread_id},
         project_key=project_key,
@@ -62,7 +63,11 @@ def _local_inventory(*threads: ThreadInfo) -> LocalInventory:
 
 
 def _remote_inventory(*entries: RemoteThreadEntry) -> RemoteInventory:
-    index = RemoteIndex(format_version=2, updated_at="", threads={item.thread_id: item for item in entries})
+    index = RemoteIndex(
+        format_version=REMOTE_TRANSFER_FORMAT_VERSION,
+        updated_at="",
+        threads={item.thread_id: item for item in entries},
+    )
     return RemoteInventory(
         persisted_index=index,
         index=index,
@@ -83,8 +88,16 @@ def _one_thread_remote(
 ) -> RemoteInventory:
     persisted = persisted_entry or effective_entry
     return RemoteInventory(
-        persisted_index=RemoteIndex(2, "", {persisted.thread_id: persisted}),
-        index=RemoteIndex(2, "", {effective_entry.thread_id: effective_entry}),
+        persisted_index=RemoteIndex(
+            REMOTE_TRANSFER_FORMAT_VERSION,
+            "",
+            {persisted.thread_id: persisted},
+        ),
+        index=RemoteIndex(
+            REMOTE_TRANSFER_FORMAT_VERSION,
+            "",
+            {effective_entry.thread_id: effective_entry},
+        ),
         index_snapshot=SyncFileSnapshot(path=None, exists=False),
         files={effective_entry.thread_id: snapshot},
         repaired_thread_ids=(effective_entry.thread_id,) if repaired else (),
@@ -92,12 +105,22 @@ def _one_thread_remote(
     )
 
 
-def _snapshot_bytes(tmp_path: Path, name: str, value: bytes | None) -> SyncFileSnapshot:
-    path = tmp_path / name
-    if value is None:
-        return SyncFileSnapshot(path=path, exists=False)
-    path.write_bytes(value)
-    return snapshot_file(path)
+def _materialized_remote_only(
+    tmp_path: Path,
+    project_key: str,
+) -> tuple[LocalInventory, RemoteInventory, Path]:
+    sessions = tmp_path / "codex" / "sessions"
+    sessions.mkdir(parents=True)
+    sync_dir = tmp_path / "sync"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
+    remote_path.parent.mkdir(parents=True)
+    remote_path.write_bytes(b"remote")
+    entry = _remote_entry("thread-1", project_key=project_key)
+    return (
+        LocalInventory((sessions,), {}, {}, 0),
+        _one_thread_remote(entry, snapshot_file(remote_path)),
+        sync_dir,
+    )
 
 
 def test_build_sync_plan_rejects_unmaterialized_selected_remote_entry(
@@ -111,129 +134,79 @@ def test_build_sync_plan_rejects_unmaterialized_selected_remote_entry(
             remote,
             ("thread-1",),
             tmp_path / "sync",
+            project_resolution=ProjectResolutionRequest(),
         )
 
 
-@pytest.mark.parametrize(
-    ("local", "remote", "base", "expected_state", "expected_action"),
-    [
-        (b"same", b"same", b"same", "synced", "none"),
-        (b"base+local", b"base", b"base", "local_ahead", "push"),
-        (b"base", b"base+remote", b"base", "remote_ahead", "pull"),
-        (b"base+local", b"base", None, "fast_forward_push", "push"),
-        (b"base", b"base+remote", None, "fast_forward_pull", "pull"),
-        (b"left", b"right", b"base", "conflict", "conflict"),
-        (b"left", b"righty", None, "conflict", "conflict"),
-        (b"local", None, None, "local_only", "push"),
-        (None, b"remote", None, "remote_only", "pull"),
-        (None, None, None, "missing", "skip"),
-    ],
-)
-def test_planner_classifies_three_way_state(
-    tmp_path: Path,
-    local: bytes | None,
-    remote: bytes | None,
-    base: bytes | None,
-    expected_state: str,
-    expected_action: str,
-) -> None:
-    local_snapshot = _snapshot_bytes(tmp_path, "local.jsonl", local)
-    remote_snapshot = _snapshot_bytes(tmp_path, "remote.jsonl", remote)
-    base_sha256 = hashlib.sha256(base).hexdigest() if base is not None else ""
-
-    state, action, _reason = classify_snapshots(local_snapshot, remote_snapshot, base_sha256)
-
-    assert state == expected_state
-    assert action == expected_action
-
-
-def test_planner_treats_distinct_materialized_local_and_remote_baselines_as_synced(
+def test_selection_only_plan_does_not_require_project_destination(
     tmp_path: Path,
 ) -> None:
-    local = _snapshot_bytes(tmp_path, "local.jsonl", b'local-cwd\nhistory')
-    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b'remote-cwd\nhistory')
-
-    state, action, reason = classify_snapshots(
-        local,
-        remote,
-        base_sha256=local.sha256,
-        last_local_sha256=local.sha256,
-        last_remote_sha256=remote.sha256,
+    local, remote, sync_dir = _materialized_remote_only(
+        tmp_path,
+        "https://github.com/example/project",
     )
 
-    assert (state, action) == ("synced", "none")
-    assert reason == "local and remote match their last synchronized versions"
-
-
-def test_planner_detects_real_local_change_from_distinct_materialized_baselines(
-    tmp_path: Path,
-) -> None:
-    previous_local = _snapshot_bytes(tmp_path, "previous-local.jsonl", b'local-cwd\nhistory')
-    local = _snapshot_bytes(tmp_path, "local.jsonl", b'local-cwd\nhistory\nnew turn')
-    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b'remote-cwd\nhistory')
-
-    state, action, _reason = classify_snapshots(
+    plan = build_sync_plan(
         local,
         remote,
-        base_sha256=previous_local.sha256,
-        last_local_sha256=previous_local.sha256,
-        last_remote_sha256=remote.sha256,
+        ("thread-1",),
+        sync_dir,
+        project_resolution=None,
     )
 
-    assert (state, action) == ("local_ahead", "push")
+    item = plan.items[0]
+    assert (item.state, item.action) == ("remote_only", "pull")
+    assert item.local_project_root is None
+    assert plan.issues == ()
 
 
-def test_equal_hashes_do_not_require_prefix_file_reads(tmp_path: Path) -> None:
-    local = _snapshot_bytes(tmp_path, "local.jsonl", b"same")
-    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b"same")
-    assert local.path is not None
-    assert remote.path is not None
-    local.path.unlink()
-    remote.path.unlink()
-
-    assert classify_snapshots(local, remote, "")[:2] == ("synced", "none")
-
-
-def test_equal_size_different_hashes_do_not_require_prefix_file_reads(tmp_path: Path) -> None:
-    local = _snapshot_bytes(tmp_path, "local.jsonl", b"left")
-    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b"rght")
-    assert local.path is not None
-    assert remote.path is not None
-    local.path.unlink()
-    remote.path.unlink()
-
-    assert classify_snapshots(local, remote, "")[:2] == ("conflict", "conflict")
-
-
-def test_different_sizes_check_only_possible_prefix_direction(
+def test_runtime_plan_uses_workspace_candidate_for_remote_only_task(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    local = _snapshot_bytes(tmp_path, "local.jsonl", b"longer")
-    remote = _snapshot_bytes(tmp_path, "remote.jsonl", b"short")
-    calls: list[tuple[SyncFileSnapshot, SyncFileSnapshot]] = []
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    git_dir = checkout / ".git"
+    git_dir.mkdir()
+    (git_dir / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/example/project.git\n',
+        encoding="utf-8",
+    )
+    local, remote, sync_dir = _materialized_remote_only(
+        tmp_path,
+        "https://github.com/example/project",
+    )
 
-    def not_a_prefix(prefix: SyncFileSnapshot, full: SyncFileSnapshot) -> bool:
-        calls.append((prefix, full))
-        return False
+    plan = build_sync_plan(
+        local,
+        remote,
+        ("thread-1",),
+        sync_dir,
+        project_resolution=ProjectResolutionRequest(candidate_roots=(checkout,)),
+    )
 
-    monkeypatch.setattr(sync_planner, "is_byte_prefix", not_a_prefix)
-
-    assert classify_snapshots(local, remote, "")[:2] == ("conflict", "conflict")
-    assert calls == [(remote, local)]
+    item = plan.items[0]
+    assert (item.state, item.action) == ("remote_only", "pull")
+    assert item.local_project_root == checkout.absolute()
+    assert plan.issues == ()
 
 
 def test_planner_rejects_remote_path_traversal_without_mutating_local_files(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     sessions.mkdir(parents=True)
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(b"remote")
     entry = replace(_remote_entry("thread-1"), source_relative_path="../outside.jsonl")
     remote = _one_thread_remote(entry, snapshot_file(remote_path))
 
-    plan = build_sync_plan(_local_inventory(), remote, ("thread-1",), sync_dir)
+    plan = build_sync_plan(
+        _local_inventory(),
+        remote,
+        ("thread-1",),
+        sync_dir,
+        project_resolution=ProjectResolutionRequest(),
+    )
 
     assert plan.items[0].state == "issue"
     assert plan.items[0].action == "issue"
@@ -252,6 +225,7 @@ def test_planner_uses_portable_fallback_target_when_thread_is_missing_everywhere
         _remote_inventory(),
         ("thread-1",),
         tmp_path / "sync",
+        project_resolution=ProjectResolutionRequest(),
     )
 
     item = plan.items[0]
@@ -274,6 +248,7 @@ def test_planner_rejects_discovered_local_path_outside_session_directory(tmp_pat
         _remote_inventory(),
         ("thread-1",),
         tmp_path / "sync",
+        project_resolution=ProjectResolutionRequest(),
     )
 
     assert plan.items[0].state == "issue"
@@ -284,17 +259,20 @@ def test_planner_rejects_discovered_local_path_outside_session_directory(tmp_pat
 
 def test_planner_prefers_discovered_local_path_over_remote_source_path(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
+    local_project_root = tmp_path / "local-project-root"
+    local_project_root.mkdir()
     actual_path = sessions / "2026" / "07" / "13" / "actual.jsonl"
     actual_path.parent.mkdir(parents=True)
     actual_path.write_bytes(b"base+local")
     thread = replace(
         _thread("thread-1", project_key="local-project"),
         session_path=actual_path,
+        cwd=str(local_project_root),
         project_label="Local Label",
         updated_at="2026-07-13T13:00:00Z",
     )
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(b"base")
     entry = replace(
@@ -318,6 +296,7 @@ def test_planner_prefers_discovered_local_path_over_remote_source_path(tmp_path:
         remote,
         ("thread-1",),
         sync_dir,
+        project_resolution=ProjectResolutionRequest(),
     )
 
     item = plan.items[0]
@@ -341,17 +320,20 @@ def test_planner_uses_coherent_local_metadata_for_none_and_conflict(
     expected_state: str,
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
+    local_project_root = tmp_path / "local-project-root"
+    local_project_root.mkdir()
     local_path = sessions / "actual.jsonl"
     local_path.parent.mkdir(parents=True)
     local_path.write_bytes(local_bytes)
     local_thread = replace(
         _thread("thread-1", project_key="local-project"),
         session_path=local_path,
+        cwd=str(local_project_root),
         project_label="Local Label",
         updated_at="2026-07-13T13:00:00Z",
     )
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(remote_bytes)
     remote_entry = replace(
@@ -366,6 +348,7 @@ def test_planner_uses_coherent_local_metadata_for_none_and_conflict(
         _one_thread_remote(remote_entry, snapshot_file(remote_path)),
         ("thread-1",),
         sync_dir,
+        project_resolution=ProjectResolutionRequest(),
     )
 
     item = plan.items[0]
@@ -391,7 +374,7 @@ def test_planner_uses_coherent_effective_remote_metadata_for_pull(tmp_path: Path
         cwd=str(tmp_path / "remote-project"),
     )
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(b"base+remote")
     remote_entry = replace(
@@ -400,6 +383,7 @@ def test_planner_uses_coherent_effective_remote_metadata_for_pull(tmp_path: Path
         project_label="Remote Label",
         session_updated_at="2026-07-13T13:00:00Z",
     )
+    (tmp_path / "remote-project").mkdir()
 
     plan = build_sync_plan(
         LocalInventory(
@@ -412,6 +396,7 @@ def test_planner_uses_coherent_effective_remote_metadata_for_pull(tmp_path: Path
         _one_thread_remote(remote_entry, snapshot_file(remote_path)),
         ("thread-1",),
         sync_dir,
+        project_resolution=ProjectResolutionRequest(bindings=(ProjectBinding("remote-project", tmp_path / "remote-project", True),)),
     )
 
     item = plan.items[0]
@@ -434,7 +419,7 @@ def test_selected_missing_remote_file_becomes_issue_item(tmp_path: Path) -> None
     sessions.mkdir(parents=True)
     sync_dir = tmp_path / "sync"
     entry = _remote_entry("thread-1")
-    issue = SyncIssue("missing_remote_file", "Remote conversation is missing", "thread-1")
+    issue = SyncIssue("missing_remote_file", "Remote task is missing", "thread-1")
     remote = _one_thread_remote(
         entry,
         SyncFileSnapshot(path=sync_dir / entry.file, exists=False),
@@ -446,6 +431,7 @@ def test_selected_missing_remote_file_becomes_issue_item(tmp_path: Path) -> None
         remote,
         ("thread-1",),
         sync_dir,
+        project_resolution=ProjectResolutionRequest(),
     )
 
     assert plan.items[0].state == "issue"
@@ -461,7 +447,7 @@ def test_unselected_remote_issue_remains_visible_without_blocking_selected_work(
     local_path.parent.mkdir(parents=True)
     local_path.write_bytes(b"local")
     selected = replace(_thread("selected"), session_path=local_path)
-    issue = SyncIssue("missing_remote_file", "Remote conversation is missing", "other")
+    issue = SyncIssue("missing_remote_file", "Remote task is missing", "other")
     remote = _remote_inventory()
     remote = replace(remote, issues=(issue,))
 
@@ -470,6 +456,7 @@ def test_unselected_remote_issue_remains_visible_without_blocking_selected_work(
         remote,
         ("selected",),
         tmp_path / "sync",
+        project_resolution=ProjectResolutionRequest(),
     )
 
     assert plan.items[0].action == "push"
@@ -481,7 +468,7 @@ def test_planner_uses_effective_metadata_and_persisted_expected_entry(tmp_path: 
     sessions = tmp_path / "codex" / "sessions"
     sessions.mkdir(parents=True)
     sync_dir = tmp_path / "sync"
-    remote_path = sync_dir / "conversations" / "thread-1.jsonl"
+    remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(b"remote bytes")
     persisted = _remote_entry("thread-1", project_key="old")
@@ -501,7 +488,13 @@ def test_planner_uses_effective_metadata_and_persisted_expected_entry(tmp_path: 
         repaired=True,
     )
 
-    plan = build_sync_plan(LocalInventory((sessions,), {}, {}, 0), remote, ("thread-1",), sync_dir)
+    plan = build_sync_plan(
+        LocalInventory((sessions,), {}, {}, 0),
+        remote,
+        ("thread-1",),
+        sync_dir,
+        project_resolution=ProjectResolutionRequest(),
+    )
 
     item = plan.items[0]
     assert item.expected_remote_entry == persisted

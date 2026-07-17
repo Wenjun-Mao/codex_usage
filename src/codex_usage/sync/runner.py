@@ -3,20 +3,20 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
-from typing import Literal
 
 from codex_usage.session_cache import CachedSessionData
-from codex_usage.session_files import codex_home_from_session_dir, owning_session_dir
+from codex_usage.session_files import codex_home_from_session_dir
 from codex_usage.sync.bookkeeping import repair_matching_bookkeeping
-from codex_usage.sync.constants import SYNC_CONVERSATIONS_DIRNAME
+from codex_usage.sync.constants import TRANSFER_TASKS_DIRNAME
+from codex_usage.sync.directional_preflight import Direction, directional_blockers
 from codex_usage.sync.errors import (
     ConcurrentLocalChangeError,
     ConcurrentRemoteChangeError,
     SyncStoreError,
+    TransferFilesystemError,
 )
 from codex_usage.sync.inventory import (
     build_local_inventory,
@@ -26,9 +26,9 @@ from codex_usage.sync.identity import require_remote_index_thread_identity
 from codex_usage.sync.io import atomic_copy, snapshot_file
 from codex_usage.sync.models import (
     LocalInventory,
+    ProjectResolutionRequest,
     RemoteInventory,
     RemoteThreadEntry,
-    SyncFileSnapshot,
     SyncIssue,
     SyncPlan,
     SyncPlanItem,
@@ -36,25 +36,24 @@ from codex_usage.sync.models import (
     SyncRunResult,
     SyncTimings,
 )
-from codex_usage.sync.paths import portable_thread_filename
 from codex_usage.sync.planner import build_sync_plan
+from codex_usage.sync.execution import (
+    PushExecution,
+    emit_progress,
+    execute_pushes,
+    same_contents,
+    session_dir as resolve_session_dir,
+    validate_local_snapshot,
+)
 from codex_usage.sync.remote_reconciliation import promote_matching_local_metadata
 from codex_usage.sync.session_materialization import materialize_session_cwd
 from codex_usage.sync.state import (
     LocalStateStore,
     backup_local_session,
     merge_session_index,
-    now_iso,
     save_conflict_candidate,
 )
 from codex_usage.sync.store import RemoteStore
-
-
-@dataclass(frozen=True)
-class PushExecution:
-    thread_ids: tuple[str, ...]
-    snapshots: dict[str, SyncFileSnapshot]
-    entries: dict[str, RemoteThreadEntry]
 
 
 class PhaseTimer:
@@ -91,6 +90,7 @@ def sync_status(
     data: CachedSessionData,
     sync_dir: Path,
     thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
 ) -> SyncPlan:
     local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
@@ -100,6 +100,7 @@ def sync_status(
             store,
             sync_dir,
             thread_ids,
+            project_resolution,
         )
     except SyncStoreError as error:
         return _load_failure_plan(local, error)
@@ -111,6 +112,7 @@ def pull_sync(
     data: CachedSessionData,
     sync_dir: Path,
     thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
     discovery_ms: int = 0,
     on_progress: Callable[[SyncProgressEvent], None] | None = None,
 ) -> SyncRunResult:
@@ -119,6 +121,7 @@ def pull_sync(
         data=data,
         sync_dir=sync_dir,
         thread_ids=thread_ids,
+        project_resolution=project_resolution,
         machine_id="",
         discovery_ms=discovery_ms,
         on_progress=on_progress,
@@ -131,6 +134,7 @@ def push_sync(
     sync_dir: Path,
     thread_ids: Iterable[str],
     machine_id: str,
+    project_resolution: ProjectResolutionRequest = ProjectResolutionRequest(),
     discovery_ms: int = 0,
     on_progress: Callable[[SyncProgressEvent], None] | None = None,
 ) -> SyncRunResult:
@@ -139,6 +143,7 @@ def push_sync(
         data=data,
         sync_dir=sync_dir,
         thread_ids=thread_ids,
+        project_resolution=project_resolution,
         machine_id=machine_id,
         discovery_ms=discovery_ms,
         on_progress=on_progress,
@@ -147,10 +152,11 @@ def push_sync(
 
 def _run_direction(
     *,
-    direction: Literal["pull", "push"],
+    direction: Direction,
     data: CachedSessionData,
     sync_dir: Path,
     thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
     machine_id: str,
     discovery_ms: int,
     on_progress: Callable[[SyncProgressEvent], None] | None,
@@ -166,25 +172,35 @@ def _run_direction(
     try:
         with store.transaction():
             blocked = False
+            direction_issues: tuple[SyncIssue, ...] = ()
             with timer.measure("planning"):
                 remote, plan = _prepare_sync_plan(
                     local,
                     store,
                     sync_dir,
                     thread_ids,
+                    project_resolution,
                 )
                 if plan.blocks_execution:
                     save_conflict_candidates(plan)
                     blocked = True
                 else:
-                    validate_local_selected(plan)
-                    store.validate_selected(
-                        plan.expected_remote_entries(),
-                        plan.expected_remote_snapshots(),
-                    )
+                    direction_issues = directional_blockers(plan, direction)
+                    if not direction_issues:
+                        validate_local_selected(plan)
+                        store.validate_selected(
+                            plan.expected_remote_entries(),
+                            plan.expected_remote_snapshots(),
+                        )
 
             if blocked:
                 return SyncRunResult.blocked(plan, timings=timer.finish())
+            if direction_issues:
+                return SyncRunResult.blocked_with_issues(
+                    plan,
+                    direction_issues,
+                    timings=timer.finish(),
+                )
 
             push_execution = PushExecution((), {}, {})
             if direction == "pull":
@@ -206,7 +222,13 @@ def _run_direction(
                 )
                 if direction == "push":
                     commit_remote_index_once(plan, remote, store, push_execution)
-    except SyncStoreError as error:
+    except (OSError, SyncStoreError) as error:
+        if isinstance(error, OSError):
+            error = TransferFilesystemError(
+                error,
+                pulled_thread_ids=pulled,
+                pushed_thread_ids=pushed,
+            )
         if plan is None:
             failure_plan = _load_failure_plan(local, error)
             return SyncRunResult.blocked(failure_plan, timings=timer.finish())
@@ -233,17 +255,19 @@ def _prepare_sync_plan(
     store: RemoteStore,
     sync_dir: Path,
     thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
 ) -> tuple[RemoteInventory, SyncPlan]:
     remote = store.load_inventory()
     selected = normalize_selected_thread_ids(thread_ids)
     remote = store.materialize_selected(remote, selected)
-    plan = build_sync_plan(local, remote, selected, sync_dir)
+    plan = build_sync_plan(
+        local,
+        remote,
+        selected,
+        sync_dir,
+        project_resolution=project_resolution,
+    )
     return promote_matching_local_metadata(remote, local, plan), plan
-
-
-def emit(callback: Callable[[SyncProgressEvent], None] | None, phase: str) -> None:
-    if callback is not None:
-        callback(SyncProgressEvent("sync_progress", phase))
 
 
 def save_conflict_candidates(plan: SyncPlan) -> None:
@@ -256,15 +280,15 @@ def save_conflict_candidates(plan: SyncPlan) -> None:
         candidate_path = save_conflict_candidate(
             item.remote.path, backup_dir, item.thread_id
         )
-        if not _same_contents(snapshot_file(candidate_path), item.remote):
+        if not same_contents(snapshot_file(candidate_path), item.remote):
             raise ConcurrentRemoteChangeError(
-                f"Remote conversation changed while saving conflict candidate for thread {item.thread_id!r}"
+                f"Remote task changed while saving conflict candidate for thread {item.thread_id!r}"
             )
 
 
 def validate_local_selected(plan: SyncPlan) -> None:
     for item in plan.items:
-        _validate_local_snapshot(item)
+        validate_local_snapshot(item)
 
 
 def execute_pulls(
@@ -276,7 +300,7 @@ def execute_pulls(
     actions = [item for item in plan.items if item.action == "pull"]
     if not actions:
         return ()
-    emit(callback, "pulling")
+    emit_progress(callback, "pulling")
     validated_actions: list[tuple[SyncPlanItem, RemoteThreadEntry]] = []
     for item in actions:
         remote_entry = remote.index.threads[item.thread_id]
@@ -292,22 +316,25 @@ def execute_pulls(
     label = _backup_label()
     try:
         for item, remote_entry in validated_actions:
-            _validate_local_snapshot(item)
+            validate_local_snapshot(item)
             _validate_remote_snapshot(item)
             if item.local.path is None or item.remote.path is None:
                 raise ValueError("pull action requires local and remote paths")
-            session_dir = _session_dir(item, local)
-            backup_dir = backup_dirs.setdefault(session_dir, _backup_dir(item, label))
+            local_session_dir = resolve_session_dir(item, local)
+            backup_dir = backup_dirs.setdefault(
+                local_session_dir,
+                _backup_dir(item, label),
+            )
             if item.local.exists:
                 backup_local_session(item.local.path, backup_dir, item.thread_id)
-            _validate_local_snapshot(item)
+            validate_local_snapshot(item)
             try:
                 if item.local_project_root is None:
                     copied = atomic_copy(
                         item.remote.path,
                         item.local.path,
                         expected_target=item.local,
-                        target_label="local conversation",
+                        target_label="local task",
                     )
                 else:
                     copied = materialize_session_cwd(
@@ -326,70 +353,33 @@ def execute_pulls(
             except ConcurrentRemoteChangeError as error:
                 if snapshot_file(item.local.path) != item.local:
                     raise ConcurrentLocalChangeError(
-                        f"Local conversation changed before replacement for thread {item.thread_id!r}"
+                        f"Local task changed before replacement for thread {item.thread_id!r}"
                     ) from error
                 raise
-            if item.local_project_root is None and not _same_contents(
+            if item.local_project_root is None and not same_contents(
                 copied, item.remote
             ):
                 raise ConcurrentRemoteChangeError(
-                    f"Remote conversation changed while pulling thread {item.thread_id!r}"
+                    f"Remote task changed while pulling thread {item.thread_id!r}"
                 )
             _validate_remote_snapshot(item)
-            index_entries.setdefault(session_dir, []).append(
+            index_entries.setdefault(local_session_dir, []).append(
                 dict(remote_entry.index_entry)
             )
             completed.append(item.thread_id)
-            LocalStateStore(session_dir, _sync_dir(item)).record_success(
+            LocalStateStore(local_session_dir, _sync_dir(item)).record_success(
                 item, copied, item.remote
             )
         _merge_pulled_indexes(index_entries, backup_dirs)
+    except OSError as error:
+        raise TransferFilesystemError(
+            error,
+            pulled_thread_ids=tuple(completed),
+        ) from error
     except SyncStoreError as error:
         error.pulled_thread_ids = tuple(completed)
         raise
     return tuple(completed)
-
-
-def execute_pushes(
-    plan: SyncPlan,
-    local: LocalInventory,
-    store: RemoteStore,
-    machine_id: str,
-    callback: Callable[[SyncProgressEvent], None] | None,
-) -> PushExecution:
-    actions = [item for item in plan.items if item.action == "push"]
-    if not actions:
-        return PushExecution((), {}, {})
-    emit(callback, "pushing")
-    completed: list[str] = []
-    snapshots: dict[str, SyncFileSnapshot] = {}
-    entries: dict[str, RemoteThreadEntry] = {}
-    try:
-        for item in actions:
-            _validate_local_snapshot(item)
-            if item.local.path is None:
-                raise ValueError("push action requires a local path")
-            filename = portable_thread_filename(item.thread_id)
-            written = store.write_conversation(item.local.path, filename, item.remote)
-            _validate_local_snapshot(item)
-            if snapshot_file(written.path) != written or not _same_contents(
-                written, item.local
-            ):
-                raise ConcurrentRemoteChangeError(
-                    f"Remote conversation changed while pushing thread {item.thread_id!r}"
-                )
-            entry = _remote_entry(item, local, filename, written, machine_id)
-            session_dir = _session_dir(item, local)
-            snapshots[item.thread_id] = written
-            entries[item.thread_id] = entry
-            completed.append(item.thread_id)
-            LocalStateStore(session_dir, store.root).record_success(
-                item, item.local, written
-            )
-    except SyncStoreError as error:
-        error.pushed_thread_ids = tuple(completed)
-        raise
-    return PushExecution(tuple(completed), snapshots, entries)
 
 
 def commit_remote_index_once(
@@ -412,69 +402,17 @@ def commit_remote_index_once(
     )
 
 
-def _remote_entry(
-    item: SyncPlanItem,
-    local: LocalInventory,
-    filename: str,
-    written: SyncFileSnapshot,
-    machine_id: str,
-) -> RemoteThreadEntry:
-    thread = local.threads.get(item.thread_id)
-    aliases = thread.project_aliases if thread is not None else ()
-    index_entry = dict(
-        local.index_entries.get(item.thread_id) or {"id": item.thread_id}
-    )
-    return RemoteThreadEntry(
-        thread_id=item.thread_id,
-        file=f"{SYNC_CONVERSATIONS_DIRNAME}/{filename}",
-        source_relative_path=item.source_relative_path,
-        index_entry=index_entry,
-        project_key=item.project_key,
-        project_label=item.project_label,
-        project_aliases=aliases,
-        sha256=written.sha256,
-        size_bytes=written.size_bytes,
-        session_updated_at=item.updated_at,
-        exported_at=now_iso(),
-        source_machine_id=machine_id,
-    )
-
-
-def _validate_local_snapshot(item: SyncPlanItem) -> None:
-    if snapshot_file(item.local.path) != item.local:
-        raise ConcurrentLocalChangeError(
-            f"Local conversation changed after planning for thread {item.thread_id!r}"
-        )
-
-
 def _validate_remote_snapshot(item: SyncPlanItem) -> None:
     if snapshot_file(item.remote.path) != item.remote:
         raise ConcurrentRemoteChangeError(
-            f"Remote conversation changed after planning for thread {item.thread_id!r}"
+            f"Remote task changed after planning for thread {item.thread_id!r}"
         )
-
-
-def _same_contents(first: SyncFileSnapshot, second: SyncFileSnapshot) -> bool:
-    return (
-        first.exists == second.exists
-        and first.sha256 == second.sha256
-        and first.size_bytes == second.size_bytes
-    )
-
-
-def _session_dir(item: SyncPlanItem, local: LocalInventory) -> Path:
-    thread = local.threads.get(item.thread_id)
-    if thread is not None:
-        return owning_session_dir(thread.session_path, list(local.session_dirs))
-    if local.session_dirs:
-        return local.session_dirs[0]
-    raise ValueError(f"No local session directory for thread {item.thread_id!r}")
 
 
 def _sync_dir(item: SyncPlanItem) -> Path:
     if (
         item.remote.path is None
-        or item.remote.path.parent.name != SYNC_CONVERSATIONS_DIRNAME
+        or item.remote.path.parent.name != TRANSFER_TASKS_DIRNAME
     ):
         raise ValueError(f"No remote sync directory for thread {item.thread_id!r}")
     return item.remote.path.parent.parent
@@ -518,6 +456,8 @@ def _merge_pulled_indexes(
 
 
 def _issue_from_error(error: SyncStoreError) -> SyncIssue:
+    if isinstance(error, TransferFilesystemError):
+        return SyncIssue("transfer_filesystem_failure", str(error))
     name = re.sub(r"(?<!^)(?=[A-Z])", "_", type(error).__name__).casefold()
     return SyncIssue(name.removesuffix("_error"), str(error))
 

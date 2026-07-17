@@ -164,7 +164,10 @@ def test_exact_materialization_rejects_a_source_change_before_replacement(
         write_then_change_source,
     )
 
-    with pytest.raises(ConcurrentRemoteChangeError):
+    with pytest.raises(
+        ConcurrentRemoteChangeError,
+        match="Remote task changed during cwd materialization",
+    ):
         materialize_session_cwd(
             source,
             target,

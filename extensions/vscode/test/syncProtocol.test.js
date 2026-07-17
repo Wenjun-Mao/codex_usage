@@ -17,9 +17,9 @@ function syncThread(overrides = {}) {
     thread_id: "thread-1",
     state: "local_ahead",
     action: "push",
-    reason: "local conversation changed",
+    reason: "local task changed",
     local_path: "/codex/thread-1.jsonl",
-    remote_path: "/sync/conversations/thread-1.jsonl",
+    remote_path: "/sync/tasks/thread-1.jsonl",
     local_sha256: "local-hash",
     remote_sha256: "remote-hash",
     base_sha256: "base-hash",
@@ -35,7 +35,7 @@ function syncThread(overrides = {}) {
 function syncIssue(overrides = {}) {
   return {
     code: "concurrent_local_change",
-    message: "Local conversation changed during sync.",
+    message: "Local task changed during transfer.",
     thread_id: "thread-1",
     ...overrides,
   };
@@ -65,11 +65,23 @@ function syncResult(outcome = "completed", overrides = {}) {
 
 test("directional sync builders pass exact task ids without project selectors", () => {
   assert.deepEqual(
-    buildSyncPullArgs({ syncDir: "/sync", threadIds: ["thread-1"], autoTransitions: false }),
+    buildSyncPullArgs({
+      syncDir: "/sync",
+      threadIds: ["thread-1"],
+      autoTransitions: false,
+      candidateProjectRoots: [],
+      projectBindings: [],
+    }),
     ["sync", "pull", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--thread-id", "thread-1"],
   );
   assert.deepEqual(
-    buildSyncPushArgs({ syncDir: "/sync", threadIds: ["thread-1"], autoTransitions: false }),
+    buildSyncPushArgs({
+      syncDir: "/sync",
+      threadIds: ["thread-1"],
+      autoTransitions: false,
+      candidateProjectRoots: [],
+      projectBindings: [],
+    }),
     ["sync", "push", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--thread-id", "thread-1"],
   );
 });
@@ -79,6 +91,8 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     syncDir: " /sync ",
     threadIds: [" thread-1 ", "thread-1", "thread-2"],
     autoTransitions: true,
+    candidateProjectRoots: [],
+    projectBindings: [],
   };
 
   assert.deepEqual(buildSyncPullArgs(options), [
@@ -119,7 +133,7 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
   assert.doesNotMatch(buildSyncStatusArgs(options).join(" "), /--project-key/);
 });
 
-test("sync command options expose only the exact task selector contract", () => {
+test("sync command options expose the transient project resolution contract", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/syncProtocol.ts"), "utf8");
   const optionsContract = source.slice(
     source.indexOf("export type SyncCommandOptions"),
@@ -129,8 +143,67 @@ test("sync command options expose only the exact task selector contract", () => 
   assert.match(optionsContract, /syncDir:\s*string/);
   assert.match(optionsContract, /threadIds:\s*string\[\]/);
   assert.match(optionsContract, /autoTransitions:\s*boolean/);
+  assert.match(optionsContract, /candidateProjectRoots:\s*string\[\]/);
+  assert.match(optionsContract, /projectBindings:\s*ProjectBinding\[\]/);
   assert.doesNotMatch(optionsContract, /projectKeys/);
   assert.doesNotMatch(source, /--project-key/);
+});
+
+test("import args preserve Windows paths and repository keys as separate argv values", () => {
+  assert.deepEqual(
+    buildSyncPullArgs({
+      syncDir: "C:\\Transfer",
+      threadIds: ["task-1"],
+      autoTransitions: true,
+      candidateProjectRoots: ["C:\\Code\\repo"],
+      projectBindings: [
+        {
+          projectKey: "https://github.com/example/repo",
+          path: "C:\\Code\\repo",
+          confirmedUnverified: false,
+        },
+        {
+          projectKey: "c:/source/plain",
+          path: "D:\\Code\\plain",
+          confirmedUnverified: true,
+        },
+      ],
+    }),
+    [
+      "sync", "pull", "--json", "--sync-dir", "C:\\Transfer",
+      "--candidate-project-root", "C:\\Code\\repo",
+      "--project-binding", "https://github.com/example/repo", "C:\\Code\\repo",
+      "--project-binding", "c:/source/plain", "D:\\Code\\plain",
+      "--confirm-unverified-project", "c:/source/plain",
+      "--thread-id", "task-1",
+    ],
+  );
+});
+
+test("export and status args append roots and only explicitly supplied bindings", () => {
+  const options = {
+    syncDir: "/transfer",
+    threadIds: ["task-1"],
+    autoTransitions: true,
+    candidateProjectRoots: ["/code/repo"],
+    projectBindings: [
+      {
+        projectKey: "/source/plain",
+        path: "/code/repo",
+        confirmedUnverified: true,
+      },
+    ],
+  };
+  const suffix = [
+    "--sync-dir", "/transfer",
+    "--candidate-project-root", "/code/repo",
+    "--project-binding", "/source/plain", "/code/repo",
+    "--confirm-unverified-project", "/source/plain",
+    "--thread-id", "task-1",
+  ];
+
+  assert.deepEqual(buildSyncPushArgs(options), ["sync", "push", "--json", ...suffix]);
+  assert.deepEqual(buildSyncStatusArgs(options), ["sync", "status", "--json", ...suffix]);
 });
 
 test("parseSyncProgressLine accepts only typed phase events", () => {
@@ -190,12 +263,15 @@ test("parseSyncRunResult rejects malformed top-level and nested result fields", 
   }
 });
 
-test("parseSyncRunResult requires every v2 result structure", () => {
+test("parseSyncRunResult requires every task transfer result structure", () => {
   const requiredFields = ["outcome", "counts", "timings_ms", "threads", "pulled", "pushed", "issues"];
   for (const field of requiredFields) {
     const payload = syncResult();
     delete payload[field];
-    assert.throws(() => parseSyncRunResult(JSON.stringify(payload)), /Codex sync result/);
+    assert.throws(
+      () => parseSyncRunResult(JSON.stringify(payload)),
+      /task transfer payload contract/,
+    );
   }
 });
 
@@ -233,9 +309,10 @@ test("parseSyncStatusSummary counts states and memory warnings", () => {
   const summary = parseSyncStatusSummary(
     JSON.stringify({
       threads: [
-        { thread_id: "t1", state: "synced", memory_database_rows: 0 },
-        { thread_id: "t2", state: "conflict", memory_database_rows: 2 },
+        syncThread({ thread_id: "t1", state: "synced", action: "none" }),
+        syncThread({ thread_id: "t2", state: "conflict", action: "conflict", memory_database_rows: 2 }),
       ],
+      issues: [],
     }),
   );
 
@@ -256,12 +333,13 @@ test("parseSyncStatusSummary describes planned pull push and fast-forward states
   const summary = parseSyncStatusSummary(
     JSON.stringify({
       threads: [
-        { thread_id: "a", state: "local_ahead" },
-        { thread_id: "b", state: "remote_ahead" },
-        { thread_id: "c", state: "fast_forward_push" },
-        { thread_id: "d", state: "fast_forward_pull" },
-        { thread_id: "e", state: "synced" },
+        syncThread({ thread_id: "a", state: "local_ahead", action: "push" }),
+        syncThread({ thread_id: "b", state: "remote_ahead", action: "pull" }),
+        syncThread({ thread_id: "c", state: "fast_forward_push", action: "push" }),
+        syncThread({ thread_id: "d", state: "fast_forward_pull", action: "pull" }),
+        syncThread({ thread_id: "e", state: "synced", action: "none" }),
       ],
+      issues: [],
     }),
   );
 
@@ -275,11 +353,10 @@ test("parseSyncStatusSummary describes planned pull push and fast-forward states
 test("parseSyncStatusSummary counts valid plan issues and retains the first actionable message", () => {
   const summary = parseSyncStatusSummary(
     JSON.stringify({
-      threads: [{ thread_id: "t1", state: "issue" }, null, "malformed row"],
+      threads: [syncThread({ thread_id: "t1", state: "issue", action: "issue" })],
       issues: [
         { code: "empty_message", message: "", thread_id: "t1" },
-        null,
-        { code: "missing_remote_file", message: " Remote conversation file is missing. ", thread_id: "t1" },
+        { code: "missing_remote_file", message: " Remote task file is missing. ", thread_id: "t1" },
         { code: "later", message: "Later issue", thread_id: "t2" },
       ],
     }),
@@ -287,11 +364,68 @@ test("parseSyncStatusSummary counts valid plan issues and retains the first acti
 
   assert.equal(summary.issues, 3);
   assert.match(summary.message, /3 issues/);
-  assert.match(summary.message, /Remote conversation file is missing\./);
+  assert.match(summary.message, /Remote task file is missing\./);
   assert.doesNotMatch(summary.message, /Later issue/);
 });
 
-test("parseSyncStatusSummary rejects malformed top-level JSON but tolerates malformed collections", () => {
+test("parseSyncStatusSummary requires exact top-level status collections", () => {
   assert.throws(() => parseSyncStatusSummary("{"), /Could not parse Codex sync status JSON/);
-  assert.doesNotThrow(() => parseSyncStatusSummary(JSON.stringify({ threads: null, issues: [7, {}] })));
+  for (const payload of [
+    null,
+    [],
+    {},
+    { threads: [] },
+    { issues: [] },
+    { threads: null, issues: [] },
+    { threads: [], issues: null },
+    { threads: [], issues: [], unexpected: true },
+  ]) {
+    assert.throws(
+      () => parseSyncStatusSummary(JSON.stringify(payload)),
+      /Invalid Codex sync status/,
+    );
+  }
+});
+
+test("parseSyncStatusSummary rejects malformed task and issue records", () => {
+  const missingTaskField = syncThread();
+  delete missingTaskField.reason;
+  const extraTaskField = { ...syncThread(), unexpected: true };
+  const missingIssueField = syncIssue();
+  delete missingIssueField.thread_id;
+  const extraIssueField = { ...syncIssue(), unexpected: true };
+
+  for (const payload of [
+    { threads: [7], issues: [] },
+    { threads: [missingTaskField], issues: [] },
+    { threads: [extraTaskField], issues: [] },
+    { threads: [syncThread({ state: 7 })], issues: [] },
+    { threads: [syncThread({ memory_note: 7 })], issues: [] },
+    { threads: [], issues: [7] },
+    { threads: [], issues: [missingIssueField] },
+    { threads: [], issues: [extraIssueField] },
+    { threads: [], issues: [syncIssue({ message: null })] },
+  ]) {
+    assert.throws(
+      () => parseSyncStatusSummary(JSON.stringify(payload)),
+      /Invalid Codex sync status/,
+    );
+  }
+});
+
+test("parseSyncStatusSummary requires safe memory database row integers", () => {
+  const valid = syncThread({ memory_database_rows: Number.MAX_SAFE_INTEGER });
+  assert.equal(
+    parseSyncStatusSummary(JSON.stringify({ threads: [valid], issues: [] })).memoryWarnings,
+    1,
+  );
+
+  const unsafe = JSON.stringify({ threads: [syncThread()], issues: [] }).replace(
+    '"memory_database_rows":0',
+    '"memory_database_rows":9007199254740993',
+  );
+  assert.throws(
+    () => parseSyncStatusSummary(unsafe),
+    /threads\[0\]\.memory_database_rows/,
+  );
 });

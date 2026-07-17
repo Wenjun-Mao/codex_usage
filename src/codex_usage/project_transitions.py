@@ -7,7 +7,7 @@ from datetime import datetime
 from codex_usage.models import UsageRecord
 from codex_usage.project_transition_evidence import (
     RepoPathObservation,
-    collect_repo_path_observations,
+    collect_repo_path_observations as collect_repo_path_observations,
 )
 
 

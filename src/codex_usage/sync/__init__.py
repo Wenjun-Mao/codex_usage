@@ -1,6 +1,11 @@
+from codex_usage.sync.directional_preflight import Direction, directional_blockers
 from codex_usage.sync.models import (
     LocalInventory,
     LocalSyncState,
+    ProjectBinding,
+    ProjectDestination,
+    ProjectIdentityKind,
+    ProjectResolutionRequest,
     RemoteIndex,
     RemoteInventory,
     RemoteThreadEntry,
@@ -23,8 +28,13 @@ from codex_usage.sync.selection_inventory import (
 )
 
 __all__ = [
+    "Direction",
     "LocalInventory",
     "LocalSyncState",
+    "ProjectBinding",
+    "ProjectDestination",
+    "ProjectIdentityKind",
+    "ProjectResolutionRequest",
     "RemoteIndex",
     "RemoteInventory",
     "RemoteThreadEntry",
@@ -40,6 +50,7 @@ __all__ = [
     "SyncTaskInventoryItem",
     "SyncTimings",
     "build_sync_selection_inventory",
+    "directional_blockers",
     "load_sync_selection_inventory",
     "pull_sync",
     "push_sync",

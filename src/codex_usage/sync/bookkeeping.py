@@ -43,11 +43,11 @@ def repair_matching_bookkeeping(
             continue
         if snapshot_file(item.local.path) != item.local:
             raise ConcurrentLocalChangeError(
-                f"Local conversation changed before bookkeeping repair for thread {item.thread_id!r}"
+                f"Local task changed before bookkeeping repair for thread {item.thread_id!r}"
             )
         if snapshot_file(item.remote.path) != item.remote:
             raise ConcurrentRemoteChangeError(
-                f"Remote conversation changed before bookkeeping repair for thread {item.thread_id!r}"
+                f"Remote task changed before bookkeeping repair for thread {item.thread_id!r}"
             )
         session_dir = _session_dir(item, local)
         remote_entry = remote.index.threads.get(item.thread_id)
