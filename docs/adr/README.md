@@ -21,4 +21,5 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 | [0011](0011-flat-single-process-sync.md) | Use flat conversation files and one plan-driven sync process. |
 | [0012](0012-exact-task-sync-selection.md) | Select exact Codex tasks from one project-grouped local and remote inventory. |
 | [0013](0013-manual-directional-cross-platform-sync.md) | Use explicit Pull and Push commands and rebind imported tasks to canonical local projects. |
+| [0014](0014-manual-task-transfer.md) | Present the feature as optional Task Transfer with three deliberate operations: Import Tasks, Export Tasks, and Review Transfer Status. |
 | [0015](0015-explicit-token-category-accounting.md) | Preserve explicit upstream token categories without reconstructing missing evidence. |

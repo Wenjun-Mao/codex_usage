@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DOCS = (ROOT / "README.md", ROOT / "extensions/vscode/README.md")
 CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 ADR_0014 = ROOT / "docs/adr/0014-manual-task-transfer.md"
+ADR_INDEX = ROOT / "docs/adr/README.md"
 CURRENT_TASK_TRANSFER_FIXTURES = (
     ROOT / "scripts/build-windows-exe.ps1",
     ROOT / "scripts/packaged_sync_smoke_validation.py",
@@ -285,3 +286,24 @@ def test_adr_0014_supersedes_the_correct_selection_and_transfer_contracts() -> N
         )
     )
     assert not re.search(r"adr 0013[^.]*persist(?:ed|ent) selection", supersession)
+
+
+def test_adr_index_keeps_manual_task_transfer_before_token_accounting() -> None:
+    rows = re.findall(
+        r"^\| \[(\d{4})\]\(([^)]+)\) \| ([^|]+) \|$",
+        ADR_INDEX.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert [number for number, _, _ in rows] == sorted(number for number, _, _ in rows)
+    assert rows[-2:] == [
+        (
+            "0014",
+            "0014-manual-task-transfer.md",
+            "Present the feature as optional Task Transfer with three deliberate operations: Import Tasks, Export Tasks, and Review Transfer Status.",
+        ),
+        (
+            "0015",
+            "0015-explicit-token-category-accounting.md",
+            "Preserve explicit upstream token categories without reconstructing missing evidence.",
+        ),
+    ]
