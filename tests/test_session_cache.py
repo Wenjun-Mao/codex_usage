@@ -156,6 +156,69 @@ def test_schema_rebuild_retains_missing_file_usage(tmp_path: Path) -> None:
     assert [record.usage.cache_write_input_tokens for record in data.records] == [0]
 
 
+def test_schema_rebuild_rejects_partial_history_without_dropping_child_rows(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    db_path = cache_dir / CACHE_DB_NAME
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
+        connection.execute("drop table files")
+
+    with pytest.raises(sqlite3.DatabaseError, match="incomplete cache history.*files"):
+        load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    with sqlite3.connect(db_path) as connection:
+        usage_rows = connection.execute(
+            "select session_id, total_tokens from usage_records order by file_key, record_index"
+        ).fetchall()
+        metadata_rows = connection.execute(
+            "select session_id, project_key from session_metadata order by file_key"
+        ).fetchall()
+
+    assert usage_rows == [("thread-1", 100)]
+    assert metadata_rows == [("thread-1", "/repo/demo")]
+
+
+def test_restore_duplicate_rolls_back_entire_schema_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    db_path = cache_dir / CACHE_DB_NAME
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
+
+    original_restore = cache_module._restore_cached_rows
+
+    def restore_with_duplicate(
+        connection: sqlite3.Connection, snapshot: cache_module.CachedRowsSnapshot
+    ) -> None:
+        original_restore(connection, snapshot)
+        cache_module._insert_dict_rows(connection, "usage_records", [snapshot.usage_records[0]])
+
+    monkeypatch.setattr(cache_module, "_restore_cached_rows", restore_with_duplicate)
+
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
+        load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    with sqlite3.connect(db_path) as connection:
+        schema_version = connection.execute(
+            "select value from schema_meta where key = 'schema_version'"
+        ).fetchone()
+        usage_rows = connection.execute(
+            "select session_id, total_tokens from usage_records order by file_key, record_index"
+        ).fetchall()
+
+    assert schema_version == ("old",)
+    assert usage_rows == [("thread-1", 100)]
+
+
 def test_interrupted_schema_rebuild_reparses_active_file_on_next_load(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -217,7 +280,7 @@ def test_snapshot_cached_rows_raises_on_child_table_read_error(tmp_path: Path) -
     with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
         connection.row_factory = sqlite3.Row
         connection.execute("drop table session_metadata")
-        with pytest.raises(sqlite3.OperationalError, match="no such table: session_metadata"):
+        with pytest.raises(sqlite3.DatabaseError, match="incomplete cache history.*session_metadata"):
             cache_module._snapshot_cached_rows(connection)
 
 

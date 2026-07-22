@@ -26,6 +26,10 @@ PARSER_CACHE_VERSION = 2
 PROJECT_TRANSITION_CACHE_VERSION = 1
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
+_KNOWN_CACHE_TABLES = frozenset(
+    {"schema_meta", "files", "usage_records", "session_metadata", "project_transitions"}
+)
+_REQUIRED_HISTORY_TABLES = frozenset({"files", "usage_records", "session_metadata"})
 
 
 @dataclass(frozen=True)
@@ -158,11 +162,35 @@ def load_cached_session_data(
 def _ensure_schema(connection: sqlite3.Connection) -> bool:
     if _schema_matches(connection):
         return False
-    cached_rows = _snapshot_cached_rows(connection)
-    _drop_cache_tables(connection)
-    connection.executescript(
+    connection.execute("begin immediate")
+    try:
+        cached_rows = _snapshot_cached_rows(connection)
+        _drop_cache_tables(connection)
+        _create_cache_tables(connection)
+        connection.executemany(
+            "insert into schema_meta (key, value) values (?, ?)",
+            [
+                ("schema_version", str(CACHE_SCHEMA_VERSION)),
+                ("parser_version", str(PARSER_CACHE_VERSION)),
+                ("project_transition_version", str(PROJECT_TRANSITION_CACHE_VERSION)),
+            ],
+        )
+        _restore_cached_rows(connection, cached_rows)
+        connection.execute(
+            "update files set error = ? where is_missing = 0",
+            (_REPARSE_REQUIRED_ERROR,),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    return True
+
+
+def _create_cache_tables(connection: sqlite3.Connection) -> None:
+    statements = (
+        "create table schema_meta (key text primary key, value text not null)",
         """
-        create table schema_meta (key text primary key, value text not null);
         create table files (
             file_key text primary key,
             path text not null,
@@ -176,7 +204,9 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
             is_missing integer not null,
             session_id text,
             error text
-        );
+        )
+        """,
+        """
         create table usage_records (
             file_key text not null,
             file_path text not null,
@@ -201,7 +231,9 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
             reasoning_output_tokens integer not null,
             total_tokens integer not null,
             primary key (file_key, record_index)
-        );
+        )
+        """,
+        """
         create table session_metadata (
             file_key text primary key,
             file_path text not null,
@@ -219,7 +251,9 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
             has_base_instructions integer not null,
             session_bytes integer not null,
             estimated_sync_bytes integer not null
-        );
+        )
+        """,
+        """
         create table project_transitions (
             source_key text not null,
             source_label text not null,
@@ -229,24 +263,11 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
             confidence integer not null,
             evidence_json text not null,
             thread_ids_json text not null
-        );
-        """
+        )
+        """,
     )
-    connection.executemany(
-        "insert into schema_meta (key, value) values (?, ?)",
-        [
-            ("schema_version", str(CACHE_SCHEMA_VERSION)),
-            ("parser_version", str(PARSER_CACHE_VERSION)),
-            ("project_transition_version", str(PROJECT_TRANSITION_CACHE_VERSION)),
-        ],
-    )
-    _restore_cached_rows(connection, cached_rows)
-    connection.execute(
-        "update files set error = ? where is_missing = 0",
-        (_REPARSE_REQUIRED_ERROR,),
-    )
-    connection.commit()
-    return True
+    for statement in statements:
+        connection.execute(statement)
 
 
 def _schema_matches(connection: sqlite3.Connection) -> bool:
@@ -262,15 +283,8 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
 
 
 def _drop_cache_tables(connection: sqlite3.Connection) -> None:
-    connection.executescript(
-        """
-        drop table if exists project_transitions;
-        drop table if exists session_metadata;
-        drop table if exists usage_records;
-        drop table if exists files;
-        drop table if exists schema_meta;
-        """
-    )
+    for table in ("project_transitions", "session_metadata", "usage_records", "files", "schema_meta"):
+        connection.execute(f"drop table if exists {table}")
 
 
 def _refresh_files(
@@ -383,11 +397,17 @@ def _refresh_one_file(
 
 
 def _snapshot_cached_rows(connection: sqlite3.Connection) -> CachedRowsSnapshot:
-    files_table = connection.execute(
-        "select 1 from sqlite_master where type = 'table' and name = 'files'"
-    ).fetchone()
-    if files_table is None:
+    existing_tables = {
+        str(row["name"])
+        for row in connection.execute("select name from sqlite_master where type = 'table'")
+        if str(row["name"]) in _KNOWN_CACHE_TABLES
+    }
+    if not existing_tables:
         return CachedRowsSnapshot(files=[], usage_records=[], session_metadata=[])
+    missing_history_tables = _REQUIRED_HISTORY_TABLES - existing_tables
+    if missing_history_tables:
+        missing = ", ".join(sorted(missing_history_tables))
+        raise sqlite3.DatabaseError(f"incomplete cache history; missing required table(s): {missing}")
     file_rows = _dict_rows(connection, "select * from files")
     usage_rows = _dict_rows(connection, "select * from usage_records order by file_key, record_index")
     metadata_rows = _dict_rows(connection, "select * from session_metadata")
@@ -414,10 +434,10 @@ def _insert_dict_rows(connection: sqlite3.Connection, table: str, rows: list[dic
     columns = _table_columns(connection, table)
     selected_columns = [column for column in columns if column in rows[0]]
     if not selected_columns:
-        return
+        raise sqlite3.DatabaseError(f"cannot restore {table}: snapshot has no compatible columns")
     placeholders = ",".join("?" for _ in selected_columns)
     column_sql = ",".join(selected_columns)
-    sql = f"insert or ignore into {table} ({column_sql}) values ({placeholders})"
+    sql = f"insert into {table} ({column_sql}) values ({placeholders})"
     for row in rows:
         connection.execute(sql, [row.get(column) for column in selected_columns])
 
