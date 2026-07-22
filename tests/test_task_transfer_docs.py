@@ -116,7 +116,8 @@ def test_current_docs_define_gpt_5_6_cache_write_pricing_contract() -> None:
         assert "more than 272,000 input tokens, including 272,001" in prose
         assert "codex credits do not use long-context or api cache-write categories" in prose
         assert "api-equivalent usd figures are estimates, not actual api or codex billing" in prose
-        assert not re.search(r"\$10(?:\.00)?\s+uncached input", prose)
+        for stale_phrase in ("$10 uncached input", "$5 uncached input", "$2 uncached input"):
+            assert stale_phrase not in prose
 
 
 def test_current_docs_lead_with_six_step_task_transfer_workflow() -> None:

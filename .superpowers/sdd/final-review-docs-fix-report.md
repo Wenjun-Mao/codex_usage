@@ -33,3 +33,13 @@ both new cost fields, but its end-to-end summary test did not assert them.
 
 No production pricing, session-cache, ADR, version, lock, dependency,
 screenshot, tag, push, publish, or workflow files changed.
+
+## Follow-up Verification - 2026-07-22
+
+- Extended the current-docs pricing guardrail to reject $10, $5, and $2
+  uncached-input labels independently while preserving the positive pricing
+  assertions.
+- Focused test: `UV_CACHE_DIR=.uv-cache uv run pytest tests/test_task_transfer_docs.py -v` passed: 12 passed.
+- Full suite: `UV_CACHE_DIR=.uv-cache uv run pytest -q` passed: 561 passed, 1 skipped.
+- `git diff --check` passed with no output.
+- Only `tests/test_task_transfer_docs.py` and this report were changed.
