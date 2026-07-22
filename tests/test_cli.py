@@ -71,6 +71,9 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
     assert payload["total"]["usage"]["cache_write_input_tokens"] == 10
     assert payload["total"]["usage"]["ordinary_input_tokens"] == 65
     assert "cost" in payload["total"]
+    assert payload["total"]["cost"]["ordinary_input_usd"] == pytest.approx(0.000325)
+    assert payload["total"]["cost"]["cache_write_input_usd"] == pytest.approx(0.00005)
+    assert payload["total"]["cost"]["uncached_input_usd"] == pytest.approx(0.000375)
     assert "credits" in payload["total"]
     assert payload["rows"][0]["label"] == "demo"
     assert "credits" in payload["rows"][0]

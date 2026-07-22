@@ -105,6 +105,20 @@ def test_current_docs_describe_observed_cache_write_accounting() -> None:
         assert "no distinct cache-write token count" not in prose
 
 
+def test_current_docs_define_gpt_5_6_cache_write_pricing_contract() -> None:
+    for path in CURRENT_DOCS:
+        prose = normalized_prose(path.read_text(encoding="utf-8"))
+        assert "standard cache-write rates per 1m tokens are: sol $6.25, terra $3.125, luna $1.25" in prose
+        assert "sol ordinary input $10, cache read (cached input) $1, cache write $12.50, output $45" in prose
+        assert "terra ordinary input $5, cache read (cached input) $0.50, cache write $6.25, output $22.50" in prose
+        assert "luna ordinary input $2, cache read (cached input) $0.20, cache write $2.50, output $9" in prose
+        assert "exactly 272,000 input tokens is short-context pricing" in prose
+        assert "more than 272,000 input tokens, including 272,001" in prose
+        assert "codex credits do not use long-context or api cache-write categories" in prose
+        assert "api-equivalent usd figures are estimates, not actual api or codex billing" in prose
+        assert not re.search(r"\$10(?:\.00)?\s+uncached input", prose)
+
+
 def test_current_docs_lead_with_six_step_task_transfer_workflow() -> None:
     for path in CURRENT_DOCS:
         section = markdown_section(path, "## Task Transfer")
