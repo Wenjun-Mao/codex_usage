@@ -167,12 +167,6 @@ def render_html_report(
             files_retained_missing=view_model.files_retained_missing,
         )
     )
-    retained_missing_comment = (
-        "<!-- newer token details may be unavailable until source files are restored -->"
-        if view_model.files_retained_missing
-        else ""
-    )
-
     body = f"""<!doctype html>
 <html lang="en" data-codex-theme="{html.escape(theme)}">
 <head>
@@ -190,7 +184,7 @@ def render_html_report(
     <div class="muted summary-line">Pricing uses rates effective at each usage event.</div>
     <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
     <div class="muted summary-line">Sessions: {html.escape(', '.join(str(path) for path in sessions_dirs))}</div>
-    <div class="muted summary-line">{html.escape(storage_summary)}</div>{retained_missing_comment}
+    <div class="muted summary-line">{html.escape(storage_summary)}</div>
     {_render_kpis(view_model)}
     {pricing_notice_html}
     {_empty_report_notice(view_model)}

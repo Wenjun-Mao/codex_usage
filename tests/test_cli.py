@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 import subprocess
@@ -74,15 +76,17 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
     assert "credits" in payload["rows"][0]
 
     csv_result = _run_cli(["summary", "--range", "all", "--by", "day", "--csv"], env=env)
-    assert "total_tokens" in csv_result.stdout
-    assert "cache_write_input_tokens" in csv_result.stdout
-    assert "ordinary_input_tokens" in csv_result.stdout
-    assert "codex_credits" in csv_result.stdout
-    assert "120" in csv_result.stdout
+    csv_rows = list(csv.DictReader(io.StringIO(csv_result.stdout)))
+    assert csv_rows[0]["label"] == "2026-04-29"
+    assert csv_rows[0]["total_tokens"] == "120"
+    assert csv_rows[0]["cache_write_input_tokens"] == "10"
+    assert csv_rows[0]["ordinary_input_tokens"] == "65"
 
     terminal_result = _run_cli(["summary", "--range", "all", "--by", "day"], env=env)
     assert "Cache Read" in terminal_result.stdout
     assert "Cache Write" in terminal_result.stdout
+    day_row = next(line for line in terminal_result.stdout.splitlines() if line.startswith("2026-04-29"))
+    assert day_row.split()[:6] == ["2026-04-29", "120", "100", "25", "10", "20"]
 
     report_path = tmp_path / "report.html"
     _run_cli(

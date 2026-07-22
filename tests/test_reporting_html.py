@@ -73,6 +73,7 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(t
     assert '<th class="num">Cache Read</th>' in html
     assert '<th class="num">Cache Write</th>' in html
     assert '<td class="num">125</td>' in html
+    assert "Newer token details may be unavailable until source files are restored" not in html
     assert "rates effective at each usage event" in html
     assert "API USD excludes" not in html
     assert "Cost is partial" not in html
@@ -195,7 +196,8 @@ def test_report_html_mentions_archived_and_retained_missing_files(tmp_path: Path
 
     assert "Archived files included: 1" in html
     assert "Retained missing files: 1" in html
-    assert "newer token details may be unavailable until source files are restored" in html
+    assert "Newer token details may be unavailable until source files are restored" in html
+    assert "<!-- newer token details may be unavailable until source files are restored -->" not in html
 
 
 def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> None:
