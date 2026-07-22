@@ -24,16 +24,27 @@ def test_parser_uses_positive_cumulative_deltas(tmp_path: Path) -> None:
             _session_meta(cwd="C:/repo/demo"),
             _turn_context(model="gpt-5.5"),
             _token("2026-04-29T10:00:00Z", None),
-            _token("2026-04-29T10:01:00Z", _usage(total=100, input_tokens=80, cached=20, output=20)),
-            _token("2026-04-29T10:02:00Z", _usage(total=100, input_tokens=80, cached=20, output=20)),
-            _token("2026-04-29T10:03:00Z", _usage(total=160, input_tokens=120, cached=30, output=40)),
+            _token(
+                "2026-04-29T10:01:00Z",
+                _usage(total=100, input_tokens=80, cached=20, cache_write=10, output=20),
+            ),
+            _token(
+                "2026-04-29T10:02:00Z",
+                _usage(total=100, input_tokens=80, cached=20, cache_write=10, output=20),
+            ),
+            _token(
+                "2026-04-29T10:03:00Z",
+                _usage(total=160, input_tokens=120, cached=30, cache_write=15, output=40),
+            ),
         ],
     )
 
     records = parse_session_file(path)
 
     assert [record.usage.total_tokens for record in records] == [100, 60]
+    assert [record.usage.cache_write_input_tokens for record in records] == [10, 5]
     assert summarize_records(records).usage.total_tokens == 160
+    assert summarize_records(records).usage.cache_write_input_tokens == 15
 
 
 def test_parser_tracks_model_changes_within_session(tmp_path: Path) -> None:
@@ -644,12 +655,19 @@ def _token(timestamp: str, usage: dict | None) -> dict:
     }
 
 
-def _usage(total: int, input_tokens: int | None = None, cached: int = 0, output: int | None = None) -> dict:
+def _usage(
+    total: int,
+    input_tokens: int | None = None,
+    cached: int = 0,
+    cache_write: int = 0,
+    output: int | None = None,
+) -> dict:
     input_value = input_tokens if input_tokens is not None else total
     output_value = output if output is not None else 0
     return {
         "input_tokens": input_value,
         "cached_input_tokens": cached,
+        "cache_write_input_tokens": cache_write,
         "output_tokens": output_value,
         "reasoning_output_tokens": 0,
         "total_tokens": total,

@@ -13,6 +13,7 @@ UNKNOWN = "unknown"
 class TokenUsage:
     input_tokens: int = 0
     cached_input_tokens: int = 0
+    cache_write_input_tokens: int = 0
     output_tokens: int = 0
     reasoning_output_tokens: int = 0
     total_tokens: int = 0
@@ -21,12 +22,17 @@ class TokenUsage:
     def uncached_input_tokens(self) -> int:
         return max(0, self.input_tokens - self.cached_input_tokens)
 
+    @property
+    def ordinary_input_tokens(self) -> int:
+        return max(0, self.input_tokens - self.cached_input_tokens - self.cache_write_input_tokens)
+
     @classmethod
     def from_mapping(cls, data: dict[str, Any] | None) -> "TokenUsage":
         data = data or {}
         return cls(
             input_tokens=_as_int(data.get("input_tokens")),
             cached_input_tokens=_as_int(data.get("cached_input_tokens")),
+            cache_write_input_tokens=_as_int(data.get("cache_write_input_tokens")),
             output_tokens=_as_int(data.get("output_tokens")),
             reasoning_output_tokens=_as_int(data.get("reasoning_output_tokens")),
             total_tokens=_as_int(data.get("total_tokens")),
@@ -36,6 +42,7 @@ class TokenUsage:
         return TokenUsage(
             input_tokens=self.input_tokens + other.input_tokens,
             cached_input_tokens=self.cached_input_tokens + other.cached_input_tokens,
+            cache_write_input_tokens=self.cache_write_input_tokens + other.cache_write_input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
             reasoning_output_tokens=self.reasoning_output_tokens + other.reasoning_output_tokens,
             total_tokens=self.total_tokens + other.total_tokens,
@@ -52,6 +59,7 @@ class TokenUsage:
         return TokenUsage(
             input_tokens=max(0, self.input_tokens - previous.input_tokens),
             cached_input_tokens=max(0, self.cached_input_tokens - previous.cached_input_tokens),
+            cache_write_input_tokens=max(0, self.cache_write_input_tokens - previous.cache_write_input_tokens),
             output_tokens=max(0, self.output_tokens - previous.output_tokens),
             reasoning_output_tokens=max(0, self.reasoning_output_tokens - previous.reasoning_output_tokens),
             total_tokens=total_delta,
@@ -61,7 +69,9 @@ class TokenUsage:
         return {
             "input_tokens": self.input_tokens,
             "cached_input_tokens": self.cached_input_tokens,
+            "cache_write_input_tokens": self.cache_write_input_tokens,
             "uncached_input_tokens": self.uncached_input_tokens,
+            "ordinary_input_tokens": self.ordinary_input_tokens,
             "output_tokens": self.output_tokens,
             "reasoning_output_tokens": self.reasoning_output_tokens,
             "total_tokens": self.total_tokens,
