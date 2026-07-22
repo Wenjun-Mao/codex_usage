@@ -25,6 +25,7 @@ CACHE_SCHEMA_VERSION = 3
 PARSER_CACHE_VERSION = 2
 PROJECT_TRANSITION_CACHE_VERSION = 1
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
+_REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
 
 
 @dataclass(frozen=True)
@@ -240,6 +241,10 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
         ],
     )
     _restore_cached_rows(connection, cached_rows)
+    connection.execute(
+        "update files set error = ? where is_missing = 0",
+        (_REPARSE_REQUIRED_ERROR,),
+    )
     connection.commit()
     return True
 
@@ -285,8 +290,13 @@ def _refresh_files(
     for file_key, row in cached_rows.items():
         if file_key not in current_keys and int(row["is_missing"]) == 0:
             connection.execute(
-                "update files set is_missing = 1, missing_since = ?, last_seen_at = ? where file_key = ?",
-                (now, now, file_key),
+                """
+                update files
+                set is_missing = 1, missing_since = ?, last_seen_at = ?,
+                    error = case when error = ? then '' else error end
+                where file_key = ?
+                """,
+                (now, now, _REPARSE_REQUIRED_ERROR, file_key),
             )
             connection.execute("update session_metadata set is_missing = 1 where file_key = ?", (file_key,))
             missing_marked += 1
@@ -373,27 +383,14 @@ def _refresh_one_file(
 
 
 def _snapshot_cached_rows(connection: sqlite3.Connection) -> CachedRowsSnapshot:
-    try:
-        file_rows = _dict_rows(connection, "select * from files")
-    except sqlite3.Error:
+    files_table = connection.execute(
+        "select 1 from sqlite_master where type = 'table' and name = 'files'"
+    ).fetchone()
+    if files_table is None:
         return CachedRowsSnapshot(files=[], usage_records=[], session_metadata=[])
-    file_keys = [str(row["file_key"]) for row in file_rows if row.get("file_key")]
-    if not file_keys:
-        return CachedRowsSnapshot(files=[], usage_records=[], session_metadata=[])
-    placeholders = ",".join("?" for _ in file_keys)
-    try:
-        usage_rows = _dict_rows(
-            connection,
-            f"select * from usage_records where file_key in ({placeholders}) order by file_key, record_index",
-            file_keys,
-        )
-        metadata_rows = _dict_rows(
-            connection,
-            f"select * from session_metadata where file_key in ({placeholders})",
-            file_keys,
-        )
-    except sqlite3.Error:
-        return CachedRowsSnapshot(files=file_rows, usage_records=[], session_metadata=[])
+    file_rows = _dict_rows(connection, "select * from files")
+    usage_rows = _dict_rows(connection, "select * from usage_records order by file_key, record_index")
+    metadata_rows = _dict_rows(connection, "select * from session_metadata")
     return CachedRowsSnapshot(files=file_rows, usage_records=usage_rows, session_metadata=metadata_rows)
 
 

@@ -31,4 +31,6 @@ Usage schema changes require a parser-cache rebuild. Missing source files cannot
 - Do not add a Codex-credit category without an official rate card.
 - Default absent optional fields to zero; do not infer values.
 - Preserve last-successful usage and metadata through cache rebuilds; replace that fallback only after an active file reparses successfully.
+- Persist mandatory reparse state before committing restored active rows, so interruption cannot make fallback evidence reusable.
 - Never reuse an errored cache row by fingerprint; retry it on later loads even when no prior parse succeeded.
+- Snapshot all cache history without file-count-dependent query limits, and fail closed on unexpected child-data read errors; only an absent initial cache schema may yield an empty snapshot.
