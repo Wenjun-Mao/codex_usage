@@ -73,7 +73,7 @@ class CachedSessionData:
 
 
 @dataclass(frozen=True)
-class RetainedMissingRows:
+class CachedRowsSnapshot:
     files: list[dict[str, Any]]
     usage_records: list[dict[str, Any]]
     session_metadata: list[dict[str, Any]]
@@ -157,7 +157,7 @@ def load_cached_session_data(
 def _ensure_schema(connection: sqlite3.Connection) -> bool:
     if _schema_matches(connection):
         return False
-    retained_missing = _snapshot_retained_missing_rows(connection)
+    cached_rows = _snapshot_cached_rows(connection)
     _drop_cache_tables(connection)
     connection.executescript(
         """
@@ -239,7 +239,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
             ("project_transition_version", str(PROJECT_TRANSITION_CACHE_VERSION)),
         ],
     )
-    _restore_retained_missing_rows(connection, retained_missing)
+    _restore_cached_rows(connection, cached_rows)
     connection.commit()
     return True
 
@@ -278,7 +278,7 @@ def _refresh_files(
     now = datetime.now(UTC).isoformat()
     cached_rows = {
         str(row["file_key"]): row
-        for row in connection.execute("select file_key, path, size_bytes, mtime_ns, is_missing from files")
+        for row in connection.execute("select file_key, path, size_bytes, mtime_ns, is_missing, error from files")
     }
     current_keys = {entry.file_key for entry in inventory}
     missing_marked = 0
@@ -297,11 +297,13 @@ def _refresh_files(
     for entry in inventory:
         cached = cached_rows.get(entry.file_key)
         if (
-            cached
+            not rebuilt
+            and cached
             and str(cached["path"]) == str(entry.path)
             and int(cached["size_bytes"]) == entry.size_bytes
             and int(cached["mtime_ns"]) == entry.mtime_ns
             and int(cached["is_missing"]) == 0
+            and not cached["error"]
         ):
             reused += 1
             connection.execute("update files set last_seen_at = ? where file_key = ?", (now, entry.file_key))
@@ -370,14 +372,14 @@ def _refresh_one_file(
     return (len(records), "")
 
 
-def _snapshot_retained_missing_rows(connection: sqlite3.Connection) -> RetainedMissingRows:
+def _snapshot_cached_rows(connection: sqlite3.Connection) -> CachedRowsSnapshot:
     try:
-        file_rows = _dict_rows(connection, "select * from files where is_missing = 1")
+        file_rows = _dict_rows(connection, "select * from files")
     except sqlite3.Error:
-        return RetainedMissingRows(files=[], usage_records=[], session_metadata=[])
+        return CachedRowsSnapshot(files=[], usage_records=[], session_metadata=[])
     file_keys = [str(row["file_key"]) for row in file_rows if row.get("file_key")]
     if not file_keys:
-        return RetainedMissingRows(files=[], usage_records=[], session_metadata=[])
+        return CachedRowsSnapshot(files=[], usage_records=[], session_metadata=[])
     placeholders = ",".join("?" for _ in file_keys)
     try:
         usage_rows = _dict_rows(
@@ -391,11 +393,11 @@ def _snapshot_retained_missing_rows(connection: sqlite3.Connection) -> RetainedM
             file_keys,
         )
     except sqlite3.Error:
-        return RetainedMissingRows(files=file_rows, usage_records=[], session_metadata=[])
-    return RetainedMissingRows(files=file_rows, usage_records=usage_rows, session_metadata=metadata_rows)
+        return CachedRowsSnapshot(files=file_rows, usage_records=[], session_metadata=[])
+    return CachedRowsSnapshot(files=file_rows, usage_records=usage_rows, session_metadata=metadata_rows)
 
 
-def _restore_retained_missing_rows(connection: sqlite3.Connection, snapshot: RetainedMissingRows) -> None:
+def _restore_cached_rows(connection: sqlite3.Connection, snapshot: CachedRowsSnapshot) -> None:
     _insert_dict_rows(connection, "files", snapshot.files)
     _insert_dict_rows(connection, "usage_records", snapshot.usage_records)
     _insert_dict_rows(connection, "session_metadata", snapshot.session_metadata)

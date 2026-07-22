@@ -159,6 +159,73 @@ def test_schema_rebuild_retains_missing_file_usage(tmp_path: Path) -> None:
     assert [record.usage.cache_write_input_tokens for record in data.records] == [0]
 
 
+def test_schema_rebuild_keeps_active_fallback_and_retries_parse_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    original_stat = session_path.stat()
+    _write_session(sessions, "thread-1", "/repo/demo", 200)
+    assert session_path.stat().st_size == original_stat.st_size
+    os.utime(session_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    db_path = cache_dir / CACHE_DB_NAME
+
+    import sqlite3
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("update schema_meta set value = ? where key = 'parser_version'", ("old",))
+
+    original_parser = cache_module.parse_session_file
+
+    def fail_parse(_path: Path):
+        raise OSError("transient rebuild failure")
+
+    monkeypatch.setattr(cache_module, "parse_session_file", fail_parse)
+    failed = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert failed.stats.rebuilt is True
+    assert failed.stats.file_errors == 1
+    assert failed.file_errors[str(session_path)] == "OSError: transient rebuild failure"
+    assert [record.usage.total_tokens for record in failed.records] == [100]
+    assert failed.file_summaries[session_path].project_key == "/repo/demo"
+
+    monkeypatch.setattr(cache_module, "parse_session_file", original_parser)
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert recovered.stats.files_parsed == 1
+    assert recovered.stats.files_reused == 0
+    assert recovered.stats.file_errors == 0
+    assert recovered.file_errors == {}
+    assert [record.usage.total_tokens for record in recovered.records] == [200]
+
+
+def test_parse_error_without_prior_success_retries_unchanged_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    original_parser = cache_module.parse_session_file
+
+    def fail_parse(_path: Path):
+        raise OSError("transient first-read failure")
+
+    monkeypatch.setattr(cache_module, "parse_session_file", fail_parse)
+    failed = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    assert failed.stats.file_errors == 1
+    assert failed.records == []
+
+    monkeypatch.setattr(cache_module, "parse_session_file", original_parser)
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert recovered.stats.files_parsed == 1
+    assert recovered.stats.files_reused == 0
+    assert recovered.file_errors == {}
+    assert [record.usage.total_tokens for record in recovered.records] == [100]
+
+
 def test_corrupt_file_records_error_and_keeps_other_files(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", "/repo/good", 100)
