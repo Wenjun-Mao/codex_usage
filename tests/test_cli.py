@@ -46,6 +46,7 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
                                 "total_token_usage": {
                                     "input_tokens": 100,
                                     "cached_input_tokens": 25,
+                                    "cache_write_input_tokens": 10,
                                     "output_tokens": 20,
                                     "reasoning_output_tokens": 5,
                                     "total_tokens": 120,
@@ -65,6 +66,8 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
     payload = json.loads(json_result.stdout)
     assert payload["pricing_method"] == "effective_dated"
     assert payload["total"]["usage"]["total_tokens"] == 120
+    assert payload["total"]["usage"]["cache_write_input_tokens"] == 10
+    assert payload["total"]["usage"]["ordinary_input_tokens"] == 65
     assert "cost" in payload["total"]
     assert "credits" in payload["total"]
     assert payload["rows"][0]["label"] == "demo"
@@ -72,8 +75,14 @@ def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
 
     csv_result = _run_cli(["summary", "--range", "all", "--by", "day", "--csv"], env=env)
     assert "total_tokens" in csv_result.stdout
+    assert "cache_write_input_tokens" in csv_result.stdout
+    assert "ordinary_input_tokens" in csv_result.stdout
     assert "codex_credits" in csv_result.stdout
     assert "120" in csv_result.stdout
+
+    terminal_result = _run_cli(["summary", "--range", "all", "--by", "day"], env=env)
+    assert "Cache Read" in terminal_result.stdout
+    assert "Cache Write" in terminal_result.stdout
 
     report_path = tmp_path / "report.html"
     _run_cli(

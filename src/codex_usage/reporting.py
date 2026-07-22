@@ -94,6 +94,7 @@ def render_terminal(
             total.usage.total_tokens,
             total.usage.input_tokens,
             total.usage.cached_input_tokens,
+            total.usage.cache_write_input_tokens,
             total.usage.output_tokens,
             total.cost.total_usd,
             total.credits.total_credits,
@@ -110,6 +111,7 @@ def render_terminal(
                 row.usage.total_tokens,
                 row.usage.input_tokens,
                 row.usage.cached_input_tokens,
+                row.usage.cache_write_input_tokens,
                 row.usage.output_tokens,
                 row.cost.total_usd,
                 row.credits.total_credits,
@@ -165,6 +167,11 @@ def render_html_report(
             files_retained_missing=view_model.files_retained_missing,
         )
     )
+    retained_missing_comment = (
+        "<!-- newer token details may be unavailable until source files are restored -->"
+        if view_model.files_retained_missing
+        else ""
+    )
 
     body = f"""<!doctype html>
 <html lang="en" data-codex-theme="{html.escape(theme)}">
@@ -183,7 +190,7 @@ def render_html_report(
     <div class="muted summary-line">Pricing uses rates effective at each usage event.</div>
     <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
     <div class="muted summary-line">Sessions: {html.escape(', '.join(str(path) for path in sessions_dirs))}</div>
-    <div class="muted summary-line">{html.escape(storage_summary)}</div>
+    <div class="muted summary-line">{html.escape(storage_summary)}</div>{retained_missing_comment}
     {_render_kpis(view_model)}
     {pricing_notice_html}
     {_empty_report_notice(view_model)}
@@ -214,6 +221,7 @@ def _storage_bits(*, files_scanned: int, files_archived: int, files_retained_mis
         bits.append(f"Archived files included: {files_archived}")
     if files_retained_missing:
         bits.append(f"Retained missing files: {files_retained_missing}")
+        bits.append("Newer token details may be unavailable until source files are restored")
     return bits
 
 
@@ -227,6 +235,8 @@ def _write_csv_rows(rows: list[AggregateRow], handle: TextIO) -> None:
             "total_tokens",
             "input_tokens",
             "cached_input_tokens",
+            "cache_write_input_tokens",
+            "ordinary_input_tokens",
             "uncached_input_tokens",
             "output_tokens",
             "reasoning_output_tokens",
@@ -246,6 +256,8 @@ def _write_csv_rows(rows: list[AggregateRow], handle: TextIO) -> None:
                 "total_tokens": row.usage.total_tokens,
                 "input_tokens": row.usage.input_tokens,
                 "cached_input_tokens": row.usage.cached_input_tokens,
+                "cache_write_input_tokens": row.usage.cache_write_input_tokens,
+                "ordinary_input_tokens": row.usage.ordinary_input_tokens,
                 "uncached_input_tokens": row.usage.uncached_input_tokens,
                 "output_tokens": row.usage.output_tokens,
                 "reasoning_output_tokens": row.usage.reasoning_output_tokens,
@@ -335,8 +347,9 @@ def _chart_section(title: str, svg: str, table_html: str, *, scroll_class: str =
 
 def _format_header() -> str:
     return (
-        f"{'Label':<34} {'Total':>14} {'Input':>14} {'Cached':>14} "
-        f"{'Output':>14} {'Cost':>11} {'Credits':>12} {'API Excl.':>14} {'No Credit':>14}"
+        f"{'Label':<34} {'Total':>14} {'Input':>14} {'Cache Read':>14} "
+        f"{'Cache Write':>14} {'Output':>14} {'Cost':>11} {'Credits':>12} "
+        f"{'API Excl.':>14} {'No Credit':>14}"
     )
 
 
@@ -345,6 +358,7 @@ def _format_row(
     total: int,
     input_tokens: int,
     cached: int,
+    cache_write: int,
     output: int,
     cost: float,
     credits: float,
@@ -353,7 +367,7 @@ def _format_row(
 ) -> str:
     return (
         f"{label[:34]:<34} {_fmt_int(total):>14} {_fmt_int(input_tokens):>14} "
-        f"{_fmt_int(cached):>14} {_fmt_int(output):>14} ${cost:>10.4f} "
+        f"{_fmt_int(cached):>14} {_fmt_int(cache_write):>14} {_fmt_int(output):>14} ${cost:>10.4f} "
         f"{_fmt_credits(credits):>12} {_fmt_int(unpriced):>14} {_fmt_int(credit_unpriced):>14}"
     )
 
@@ -371,6 +385,7 @@ def _table_section(title: str, rows: list[AggregateRow]) -> str:
             f"<td class=\"num\">{_fmt_int(row.usage.total_tokens)}</td>"
             f"<td class=\"num\">{_fmt_int(row.usage.input_tokens)}</td>"
             f"<td class=\"num\">{_fmt_int(row.usage.cached_input_tokens)}</td>"
+            f"<td class=\"num\">{_fmt_int(row.usage.cache_write_input_tokens)}</td>"
             f"<td class=\"num\">{_fmt_int(row.usage.output_tokens)}</td>"
             f"<td class=\"num\">${row.cost.total_usd:.4f}</td>"
             f"<td class=\"num\">{_fmt_credits(row.credits.total_credits)}</td>"
@@ -382,7 +397,7 @@ def _table_section(title: str, rows: list[AggregateRow]) -> str:
     return (
         f"<h3>{html.escape(title)}</h3><div class=\"table-wrap\">"
         "<table><thead><tr><th>Label</th><th class=\"num\">Total</th><th class=\"num\">Input</th>"
-        "<th class=\"num\">Cached</th><th class=\"num\">Output</th><th class=\"num\">API Cost</th>"
+        "<th class=\"num\">Cache Read</th><th class=\"num\">Cache Write</th><th class=\"num\">Output</th><th class=\"num\">API Cost</th>"
         "<th class=\"num\">Codex Credits</th><th class=\"num\">API Excl.</th><th class=\"num\">No Credit Rate</th><th>Share</th>"
         "</tr></thead><tbody>"
         + "".join(table_rows)

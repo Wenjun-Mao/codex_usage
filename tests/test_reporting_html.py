@@ -11,7 +11,13 @@ from codex_usage.reporting import render_html_report
 def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(tmp_path: Path) -> None:
     output = tmp_path / "report.html"
     total = UsageSummary(
-        usage=TokenUsage(input_tokens=1_000, cached_input_tokens=500, output_tokens=100, total_tokens=1_100),
+        usage=TokenUsage(
+            input_tokens=1_000,
+            cached_input_tokens=500,
+            cache_write_input_tokens=125,
+            output_tokens=100,
+            total_tokens=1_100,
+        ),
         cost=CostBreakdown(total_usd=1.75),
         credits=CreditBreakdown(total_credits=14.25),
         record_count=4,
@@ -22,7 +28,7 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(t
         generated_at=datetime(2026, 4, 29, 12, tzinfo=UTC),
         range_name="all",
         total=total,
-        daily_rows=[_row("2026-04-29", "2026-04-29", 1_100, cost=1.75, credits=14.25)],
+        daily_rows=[_row("2026-04-29", "2026-04-29", 1_100, cost=1.75, credits=14.25, cache_write=125)],
         hourly_rows=[_row("2026-04-29 10:00", "2026-04-29 10:00", 700, cost=0.75, credits=9.0)],
         project_rows=[_row("repo", "demo", 1_100, cost=1.75, credits=14.25)],
         model_rows=[
@@ -64,6 +70,9 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(t
     assert "<title>demo:" not in html
     assert "<title>gpt-5.5:" not in html
     assert "Codex Credits" in html
+    assert '<th class="num">Cache Read</th>' in html
+    assert '<th class="num">Cache Write</th>' in html
+    assert '<td class="num">125</td>' in html
     assert "rates effective at each usage event" in html
     assert "API USD excludes" not in html
     assert "Cost is partial" not in html
@@ -186,6 +195,7 @@ def test_report_html_mentions_archived_and_retained_missing_files(tmp_path: Path
 
     assert "Archived files included: 1" in html
     assert "Retained missing files: 1" in html
+    assert "newer token details may be unavailable until source files are restored" in html
 
 
 def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> None:
@@ -280,11 +290,18 @@ def _row(
     credits: float = 0.0,
     unpriced: int = 0,
     credit_unpriced: int = 0,
+    cache_write: int = 0,
 ) -> AggregateRow:
     return AggregateRow(
         key=key,
         label=label,
-        usage=TokenUsage(input_tokens=total, cached_input_tokens=total // 2, output_tokens=10, total_tokens=total),
+        usage=TokenUsage(
+            input_tokens=total,
+            cached_input_tokens=total // 2,
+            cache_write_input_tokens=cache_write,
+            output_tokens=10,
+            total_tokens=total,
+        ),
         cost=CostBreakdown(total_usd=cost, unpriced_tokens=unpriced),
         credits=CreditBreakdown(total_credits=credits, unpriced_tokens=credit_unpriced),
         record_count=1,
