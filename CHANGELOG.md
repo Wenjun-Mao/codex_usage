@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.37 - 2026-07-21 - GPT-5.6 Cache-Write Accounting
+
+- Preserved Codex cache-write token counts through parsing, local caching, aggregation, JSON, CSV, terminal, and HTML reports.
+- Applied the published GPT-5.6 cache-write API rates, including long-context multipliers, while keeping Codex credits on their published input rate.
+- Rebuilt available cached source data and disclosed the evidence limitation for retained records whose source JSONL is missing.
+
 ## 0.1.36 - 2026-07-16 - Task Transfer UX And Storage V3
 
 - Repositioned the former selected-task feature as deliberate Task Transfer with explicit Import Tasks, Export Tasks, and Review Transfer Status operations.

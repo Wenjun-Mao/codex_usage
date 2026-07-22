@@ -123,7 +123,7 @@ For GPT-5.6 API USD, exactly 272,000 input tokens is short-context pricing. More
 
 The parser reads cumulative token records but reports only retained positive deltas. A local audit of GPT-5.6 Sol sessions found retained positive deltas matched request-level `last_token_usage`, so pricing is per retained event and cumulative session totals cannot trigger long-context pricing.
 
-For GPT-5.6 and later API models, explicit cache writes can have a separate 1.25x input charge. Local Codex logs expose no distinct cache-write token count, so the API-equivalent estimate cannot include that unobservable uplift.
+For GPT-5.6 and later API models, local Codex logs expose `cache_write_input_tokens`. API-equivalent USD prices those explicit cache writes at 1.25 times the ordinary input rate, including the long-context multiplier when applicable; remaining ordinary input uses the standard input rate. Codex credits have no separate cache-write category, so cache writes use the published ordinary input credit rate. Cache-contract changes reparse available source JSONL files, but retained records whose source JSONL is missing cannot gain newly observed token evidence; reports disclose that limitation.
 
 Codex fast mode is counted through the token usage that Codex records. At the moment, Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.
 

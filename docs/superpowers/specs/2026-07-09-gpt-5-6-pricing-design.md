@@ -65,6 +65,10 @@ Local Codex token-count events expose `input_tokens`, `cached_input_tokens`, `ou
 
 Codex credit estimates are unaffected by this limitation because the Codex rate card publishes only input, cached input, and output credit categories, matching the local token fields used by the dashboard.
 
+## Supersession Note
+
+ADR 0015, dated 2026-07-21, supersedes this design's cache-write limitation. Local Codex logs are now known to expose explicit `cache_write_input_tokens`; current API-equivalent USD uses the published cache-write rate while Codex credits retain the published ordinary input rate. The original exact model matching, API effective date `2026-06-26T00:00:00Z`, credit effective date `2026-07-09T00:00:00Z`, and 272,000-token long-context boundary remain unchanged.
+
 ## Tests
 
 Add regression coverage that:

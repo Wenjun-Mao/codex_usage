@@ -158,7 +158,7 @@ The parser reads cumulative `total_token_usage` records but reports only retaine
 
 The tool does not fetch live pricing. Cost and credit values are estimates based on the checked-in pricing table version shown in each report. New Codex models may appear in local logs before this repository has official checked-in rates for them; those models remain visible in totals and model mix, but their API USD and Codex credit estimates are excluded until exact effective-dated rates are checked in.
 
-For GPT-5.6 and later API models, explicit cache writes can have a separate 1.25x input charge. Local Codex logs expose cached-input reads but no distinct cache-write token count, so API-equivalent USD applies the standard input rate to non-cached input and cannot include an unobservable cache-write uplift.
+For GPT-5.6 and later API models, local Codex logs expose `cache_write_input_tokens`. API-equivalent USD prices those explicit cache writes at 1.25 times the ordinary input rate, including the long-context multiplier when applicable; remaining ordinary input uses the standard input rate. Codex credits have no separate cache-write category, so cache writes use the published ordinary input credit rate. Cache-contract changes reparse available source JSONL files, but retained records whose source JSONL is missing cannot gain newly observed token evidence; reports disclose that limitation.
 
 ## Project Transitions
 

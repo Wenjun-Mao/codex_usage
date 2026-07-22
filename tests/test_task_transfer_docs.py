@@ -19,6 +19,7 @@ CURRENT_TASK_TRANSFER_FIXTURES = (
 )
 
 ROOT_RELEASE_DATES = {
+    "0.1.37": "2026-07-21",
     "0.1.36": "2026-07-16",
     "0.1.35": "2026-07-14",
     "0.1.34": "2026-07-14",
@@ -55,6 +56,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "0.1.37",
     "0.1.36",
     "0.1.35",
     "0.1.34",
@@ -92,6 +94,14 @@ def release_dates(path: Path) -> dict[str, str]:
 
 def normalized_prose(value: str) -> str:
     return " ".join(value.casefold().split())
+
+
+def test_current_docs_describe_observed_cache_write_accounting() -> None:
+    for path in CURRENT_DOCS:
+        prose = normalized_prose(path.read_text(encoding="utf-8"))
+        assert "cache_write_input_tokens" in prose
+        assert "cannot include" not in prose
+        assert "no distinct cache-write token count" not in prose
 
 
 def test_current_docs_lead_with_six_step_task_transfer_workflow() -> None:
