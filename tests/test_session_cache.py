@@ -15,7 +15,7 @@ from codex_usage.session_cache import (
 
 def test_first_cache_build_parses_and_stores_records(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
-    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
+    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100, cache_write=25)
     cache_dir = tmp_path / "cache"
 
     data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
@@ -26,12 +26,13 @@ def test_first_cache_build_parses_and_stores_records(tmp_path: Path) -> None:
     assert data.stats.files_reused == 0
     assert data.records[0].session_id == "thread-1"
     assert data.records[0].usage.total_tokens == 100
+    assert data.records[0].usage.cache_write_input_tokens == 25
     assert (cache_dir / CACHE_DB_NAME).is_file()
 
 
 def test_unchanged_file_is_reused_without_reparse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, "thread-1", "/repo/demo", 100)
+    _write_session(sessions, "thread-1", "/repo/demo", 100, cache_write=25)
     cache_dir = tmp_path / "cache"
     load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
@@ -43,6 +44,7 @@ def test_unchanged_file_is_reused_without_reparse(tmp_path: Path, monkeypatch: p
 
     assert data.stats.files_reused == 1
     assert data.records[0].usage.total_tokens == 100
+    assert data.records[0].usage.cache_write_input_tokens == 25
 
 
 def test_changed_file_reparses_when_size_or_mtime_changes(tmp_path: Path) -> None:
@@ -110,7 +112,7 @@ def test_active_and_archived_duplicate_prefers_active_file(tmp_path: Path) -> No
 
 def test_schema_version_mismatch_rebuilds_cache(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, "thread-1", "/repo/demo", 100)
+    _write_session(sessions, "thread-1", "/repo/demo", 100, cache_write=25)
     cache_dir = tmp_path / "cache"
     load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
     db_path = cache_dir / CACHE_DB_NAME
@@ -124,6 +126,8 @@ def test_schema_version_mismatch_rebuilds_cache(tmp_path: Path) -> None:
 
     assert data.stats.rebuilt is True
     assert data.records[0].usage.total_tokens == 100
+    assert data.records[0].usage.cache_write_input_tokens == 25
+    assert data.stats.files_parsed == 1
     with sqlite3.connect(db_path) as connection:
         row = connection.execute("select value from schema_meta where key = 'schema_version'").fetchone()
     assert row == (str(CACHE_SCHEMA_VERSION),)
@@ -142,7 +146,9 @@ def test_schema_rebuild_retains_missing_file_usage(tmp_path: Path) -> None:
     import sqlite3
 
     with sqlite3.connect(db_path) as connection:
-        connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
+        connection.execute("alter table usage_records drop column cache_write_input_tokens")
+        connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("2",))
+        connection.execute("update schema_meta set value = ? where key = 'parser_version'", ("1",))
 
     data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
@@ -150,6 +156,7 @@ def test_schema_rebuild_retains_missing_file_usage(tmp_path: Path) -> None:
     assert data.stats.files_missing_retained == 1
     assert [record.session_id for record in data.records] == ["thread-1"]
     assert [record.usage.total_tokens for record in data.records] == [100]
+    assert [record.usage.cache_write_input_tokens for record in data.records] == [0]
 
 
 def test_corrupt_file_records_error_and_keeps_other_files(tmp_path: Path) -> None:
@@ -193,7 +200,7 @@ def test_resolve_cache_dir_prefers_internal_env_var(tmp_path: Path, monkeypatch:
     assert resolve_cache_dir([tmp_path / "codex" / "sessions"]) == env_cache
 
 
-def _write_session(sessions: Path, session_id: str, cwd: str, total: int) -> Path:
+def _write_session(sessions: Path, session_id: str, cwd: str, total: int, cache_write: int = 0) -> Path:
     day = sessions / "2026" / "04" / "29"
     day.mkdir(parents=True, exist_ok=True)
     path = day / f"{session_id}.jsonl"
@@ -204,18 +211,18 @@ def _write_session(sessions: Path, session_id: str, cwd: str, total: int) -> Pat
             "payload": {"id": session_id, "timestamp": "2026-04-29T10:00:00Z", "cwd": cwd},
         },
         {"timestamp": "2026-04-29T10:00:01Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
-        _token_count("2026-04-29T10:00:02Z", total),
+        _token_count("2026-04-29T10:00:02Z", total, cache_write=cache_write),
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
     return path
 
 
-def _append_token_count(path: Path, timestamp: str, total: int) -> None:
+def _append_token_count(path: Path, timestamp: str, total: int, cache_write: int = 0) -> None:
     with path.open("a", encoding="utf-8") as handle:
-        handle.write("\n" + json.dumps(_token_count(timestamp, total)))
+        handle.write("\n" + json.dumps(_token_count(timestamp, total, cache_write=cache_write)))
 
 
-def _token_count(timestamp: str, total: int) -> dict[str, object]:
+def _token_count(timestamp: str, total: int, cache_write: int = 0) -> dict[str, object]:
     return {
         "timestamp": timestamp,
         "type": "event_msg",
@@ -225,6 +232,7 @@ def _token_count(timestamp: str, total: int) -> dict[str, object]:
                 "total_token_usage": {
                     "input_tokens": total,
                     "cached_input_tokens": 0,
+                    "cache_write_input_tokens": cache_write,
                     "output_tokens": 0,
                     "reasoning_output_tokens": 0,
                     "total_tokens": total,

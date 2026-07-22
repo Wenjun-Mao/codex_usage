@@ -21,8 +21,8 @@ from codex_usage.session_files import owning_session_dir, read_session_metadata
 from codex_usage.session_inventory import SessionFileInventoryEntry, collect_session_file_inventory
 
 CACHE_DB_NAME = "usage-cache.sqlite3"
-CACHE_SCHEMA_VERSION = 2
-PARSER_CACHE_VERSION = 1
+CACHE_SCHEMA_VERSION = 3
+PARSER_CACHE_VERSION = 2
 PROJECT_TRANSITION_CACHE_VERSION = 1
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
 
@@ -195,6 +195,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
             parent_thread_id text,
             input_tokens integer not null,
             cached_input_tokens integer not null,
+            cache_write_input_tokens integer not null default 0,
             output_tokens integer not null,
             reasoning_output_tokens integer not null,
             total_tokens integer not null,
@@ -484,9 +485,9 @@ def _insert_record(connection: sqlite3.Connection, file_key: str, file_path: Pat
             file_key, file_path, record_index, timestamp, session_id, turn_id, model, effort,
             collaboration_mode, project_key, project_label, project_aliases_json,
             cwd, git_repository_url, git_branch, parent_thread_id,
-            input_tokens, cached_input_tokens, output_tokens,
+            input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens,
             reasoning_output_tokens, total_tokens
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             file_key,
@@ -507,6 +508,7 @@ def _insert_record(connection: sqlite3.Connection, file_key: str, file_path: Pat
             record.parent_thread_id,
             usage.input_tokens,
             usage.cached_input_tokens,
+            usage.cache_write_input_tokens,
             usage.output_tokens,
             usage.reasoning_output_tokens,
             usage.total_tokens,
@@ -574,6 +576,7 @@ def _row_to_record(row: sqlite3.Row) -> UsageRecord:
         usage=TokenUsage(
             input_tokens=int(row["input_tokens"]),
             cached_input_tokens=int(row["cached_input_tokens"]),
+            cache_write_input_tokens=int(row["cache_write_input_tokens"]),
             output_tokens=int(row["output_tokens"]),
             reasoning_output_tokens=int(row["reasoning_output_tokens"]),
             total_tokens=int(row["total_tokens"]),
