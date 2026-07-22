@@ -330,7 +330,7 @@ def test_parse_error_without_prior_success_retries_unchanged_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
-    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
+    _write_session(sessions, "thread-1", "/repo/demo", 100)
     cache_dir = tmp_path / "cache"
     original_parser = cache_module.parse_session_file
 
