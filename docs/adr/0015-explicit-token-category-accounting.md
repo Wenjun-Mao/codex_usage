@@ -24,6 +24,8 @@ API USD and Codex credits may intentionally classify the same token differently 
 
 Usage schema changes require a parser-cache rebuild. Missing source files cannot gain categories introduced after they were cached, so reports disclose that evidence limitation.
 
+Project transitions are derived cache data. Persist a dirty marker independently of per-load cache statistics, set it for rebuilds and source additions, changes, or removals, and clear it only in the transaction that successfully replaces all inferred transitions. Disabling automatic transitions suppresses application but preserves dirty state for the next enabled load. A current older cache without the marker is dirty by default.
+
 ## Guardrails
 
 - Keep upstream field names at ingestion boundaries.
@@ -35,3 +37,5 @@ Usage schema changes require a parser-cache rebuild. Missing source files cannot
 - Never reuse an errored cache row by fingerprint; retry it on later loads even when no prior parse succeeded.
 - Snapshot all cache history without file-count-dependent query limits, and fail closed on unexpected child-data read errors; only an absent initial cache schema may yield an empty snapshot.
 - Make schema rebuild and restoration atomic and fail-closed: reject incomplete history schemas before dropping tables, perform drop/create/metadata/restore/reparse marking in one explicit transaction, and roll back the entire rebuild on any restoration error.
+- Validate the three cache version keys while allowing internal metadata such as derived-cache dirty markers.
+- Never restore project transitions through a transition-version rebuild; recompute them from preserved source evidence.

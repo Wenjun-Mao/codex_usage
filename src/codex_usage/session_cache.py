@@ -26,6 +26,9 @@ PARSER_CACHE_VERSION = 2
 PROJECT_TRANSITION_CACHE_VERSION = 1
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
+_PROJECT_TRANSITIONS_DIRTY_KEY = "project_transitions_dirty"
+_DIRTY_VALUE = "1"
+_CLEAN_VALUE = "0"
 _KNOWN_CACHE_TABLES = frozenset(
     {"schema_meta", "files", "usage_records", "session_metadata", "project_transitions"}
 )
@@ -139,7 +142,6 @@ def load_cached_session_data(
             session_dirs=session_dirs,
             session_files=session_files,
             records=records,
-            stats=stats,
             auto_transitions=auto_transitions,
         )
         if auto_transitions:
@@ -173,6 +175,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> bool:
                 ("schema_version", str(CACHE_SCHEMA_VERSION)),
                 ("parser_version", str(PARSER_CACHE_VERSION)),
                 ("project_transition_version", str(PROJECT_TRANSITION_CACHE_VERSION)),
+                (_PROJECT_TRANSITIONS_DIRTY_KEY, _DIRTY_VALUE),
             ],
         )
         _restore_cached_rows(connection, cached_rows)
@@ -275,11 +278,13 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
         rows = connection.execute("select key, value from schema_meta").fetchall()
     except sqlite3.Error:
         return False
-    return {str(row["key"]): str(row["value"]) for row in rows} == {
+    metadata = {str(row["key"]): str(row["value"]) for row in rows}
+    expected_versions = {
         "schema_version": str(CACHE_SCHEMA_VERSION),
         "parser_version": str(PARSER_CACHE_VERSION),
         "project_transition_version": str(PROJECT_TRANSITION_CACHE_VERSION),
     }
+    return all(metadata.get(key) == value for key, value in expected_versions.items())
 
 
 def _drop_cache_tables(connection: sqlite3.Connection) -> None:
@@ -336,6 +341,8 @@ def _refresh_files(
         parsed += 1
         if error:
             errors += 1
+    if rebuilt or parsed or missing_marked:
+        _set_project_transitions_dirty(connection, dirty=True)
     connection.commit()
     missing_count = connection.execute("select count(*) from files where is_missing = 1").fetchone()[0]
     return CacheStats(
@@ -622,14 +629,46 @@ def _refresh_or_load_transitions(
     session_dirs: list[Path],
     session_files: list[Path],
     records: list[UsageRecord],
-    stats: CacheStats,
     auto_transitions: bool,
 ) -> list[ProjectTransition]:
+    dirty = _project_transitions_are_dirty(connection)
     if not auto_transitions:
+        if dirty:
+            _set_project_transitions_dirty(connection, dirty=True)
+            connection.commit()
         return []
-    if stats.rebuilt or stats.files_parsed or stats.files_removed:
+    if dirty:
         observations = collect_repo_path_observations(session_dirs, session_files)
         transitions = infer_project_transitions(records, observations)
+        _replace_project_transitions(connection, transitions)
+        return transitions
+    return _load_transitions(connection)
+
+
+def _project_transitions_are_dirty(connection: sqlite3.Connection) -> bool:
+    row = connection.execute(
+        "select value from schema_meta where key = ?",
+        (_PROJECT_TRANSITIONS_DIRTY_KEY,),
+    ).fetchone()
+    return row is None or str(row["value"]) != _CLEAN_VALUE
+
+
+def _set_project_transitions_dirty(connection: sqlite3.Connection, *, dirty: bool) -> None:
+    connection.execute(
+        """
+        insert into schema_meta (key, value) values (?, ?)
+        on conflict(key) do update set value = excluded.value
+        """,
+        (_PROJECT_TRANSITIONS_DIRTY_KEY, _DIRTY_VALUE if dirty else _CLEAN_VALUE),
+    )
+
+
+def _replace_project_transitions(
+    connection: sqlite3.Connection,
+    transitions: list[ProjectTransition],
+) -> None:
+    connection.execute("begin immediate")
+    try:
         connection.execute("delete from project_transitions")
         for transition in transitions:
             connection.execute(
@@ -650,9 +689,11 @@ def _refresh_or_load_transitions(
                     json.dumps(list(transition.thread_ids)),
                 ),
             )
+        _set_project_transitions_dirty(connection, dirty=False)
         connection.commit()
-        return transitions
-    return _load_transitions(connection)
+    except BaseException:
+        connection.rollback()
+        raise
 
 
 def _load_transitions(connection: sqlite3.Connection) -> list[ProjectTransition]:

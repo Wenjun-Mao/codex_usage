@@ -1,8 +1,18 @@
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+import codex_usage.session_cache as cache_module
+from codex_usage.models import UsageRecord
+from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
+
+
+_TRANSITIONS_DIRTY_KEY = "project_transitions_dirty"
 
 
 def test_cli_summary_and_report_apply_auto_project_transitions(tmp_path: Path) -> None:
@@ -94,6 +104,167 @@ def test_cli_transitions_without_subcommand_shows_transitions_help() -> None:
     assert "{summary,report,threads,transitions,sync}" not in result.stderr
 
 
+def test_transition_recomputed_after_disabled_version_rebuild(tmp_path: Path) -> None:
+    codex_home, source_key, target_key = _write_transition_fixture(tmp_path)
+    sessions = codex_home / "sessions"
+    cache_dir = tmp_path / "cache"
+    established = load_cached_session_data([sessions], cache_dir=cache_dir)
+    assert _usage_by_project(established.records) == {source_key: 100, target_key: 200}
+    assert len(established.project_transitions) == 1
+
+    db_path = cache_dir / CACHE_DB_NAME
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            update schema_meta set value = 'old'
+            where key in ('parser_version', 'project_transition_version')
+            """
+        )
+
+    disabled = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert disabled.stats.rebuilt is True
+    assert disabled.project_transitions == []
+    assert _usage_by_project(disabled.records) == {source_key: 300}
+    assert _transition_dirty_value(db_path) == "1"
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("select count(*) from project_transitions").fetchone() == (0,)
+
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
+
+    assert recovered.stats.files_parsed == 0
+    assert recovered.stats.files_reused == 1
+    assert len(recovered.project_transitions) == 1
+    assert _usage_by_project(recovered.records) == {source_key: 100, target_key: 200}
+    assert _transition_dirty_value(db_path) == "0"
+
+
+def test_transition_recomputed_after_file_change_while_disabled(tmp_path: Path) -> None:
+    codex_home, source_key, initial_target_key = _write_transition_fixture(tmp_path)
+    sessions = codex_home / "sessions"
+    cache_dir = tmp_path / "cache"
+    established = load_cached_session_data([sessions], cache_dir=cache_dir)
+    assert _usage_by_project(established.records) == {source_key: 100, initial_target_key: 200}
+
+    replacement_repo = tmp_path / "billing-console"
+    replacement_target_key = "https://github.com/example/billing-console"
+    _write_git_config(replacement_repo, f"{replacement_target_key}.git")
+    session_path = sessions / "2026" / "05" / "23" / "thread-1.jsonl"
+    _write_transition_session(session_path, "thread-1", tmp_path / "signoz-stack", replacement_repo)
+
+    disabled = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert disabled.stats.files_parsed == 1
+    assert disabled.project_transitions == []
+    assert _transition_dirty_value(cache_dir / CACHE_DB_NAME) == "1"
+
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
+
+    assert recovered.stats.files_parsed == 0
+    assert recovered.stats.files_reused == 1
+    assert [transition.target_key for transition in recovered.project_transitions] == [replacement_target_key]
+    assert _usage_by_project(recovered.records) == {source_key: 100, replacement_target_key: 200}
+
+
+def test_missing_transition_dirty_marker_is_conservatively_recomputed(tmp_path: Path) -> None:
+    codex_home, source_key, target_key = _write_transition_fixture(tmp_path)
+    sessions = codex_home / "sessions"
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir)
+    db_path = cache_dir / CACHE_DB_NAME
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("delete from schema_meta where key = ?", (_TRANSITIONS_DIRTY_KEY,))
+        connection.execute("delete from project_transitions")
+
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
+
+    assert recovered.stats.rebuilt is False
+    assert recovered.stats.files_reused == 1
+    assert len(recovered.project_transitions) == 1
+    assert _usage_by_project(recovered.records) == {source_key: 100, target_key: 200}
+    assert _transition_dirty_value(db_path) == "0"
+
+
+def test_version_match_tolerates_transition_dirty_metadata(tmp_path: Path) -> None:
+    codex_home, _, _ = _write_transition_fixture(tmp_path)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([codex_home / "sessions"], cache_dir=cache_dir)
+
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute(
+            "insert or replace into schema_meta (key, value) values (?, '0')",
+            (_TRANSITIONS_DIRTY_KEY,),
+        )
+        assert cache_module._schema_matches(connection) is True
+
+
+def test_failed_transition_inference_leaves_dirty_for_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    codex_home, source_key, target_key = _write_transition_fixture(tmp_path)
+    sessions = codex_home / "sessions"
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    db_path = cache_dir / CACHE_DB_NAME
+
+    original_infer = cache_module.infer_project_transitions
+
+    def fail_inference(*_args, **_kwargs):
+        raise RuntimeError("transition inference interrupted")
+
+    monkeypatch.setattr(cache_module, "infer_project_transitions", fail_inference)
+    with pytest.raises(RuntimeError, match="transition inference interrupted"):
+        load_cached_session_data([sessions], cache_dir=cache_dir)
+    assert _transition_dirty_value(db_path) == "1"
+
+    monkeypatch.setattr(cache_module, "infer_project_transitions", original_infer)
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
+
+    assert recovered.stats.files_reused == 1
+    assert _usage_by_project(recovered.records) == {source_key: 100, target_key: 200}
+    assert _transition_dirty_value(db_path) == "0"
+
+
+def test_failed_transition_replacement_rolls_back_and_leaves_dirty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    codex_home, _, initial_target_key = _write_transition_fixture(tmp_path)
+    sessions = codex_home / "sessions"
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir)
+
+    replacement_repo = tmp_path / "billing-console"
+    replacement_target_key = "https://github.com/example/billing-console"
+    _write_git_config(replacement_repo, f"{replacement_target_key}.git")
+    session_path = sessions / "2026" / "05" / "23" / "thread-1.jsonl"
+    _write_transition_session(session_path, "thread-1", tmp_path / "signoz-stack", replacement_repo)
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    original_set_dirty = cache_module._set_project_transitions_dirty
+
+    def interrupt_clean(connection: sqlite3.Connection, *, dirty: bool) -> None:
+        if not dirty:
+            raise RuntimeError("transition replacement interrupted")
+        original_set_dirty(connection, dirty=dirty)
+
+    monkeypatch.setattr(cache_module, "_set_project_transitions_dirty", interrupt_clean)
+    with pytest.raises(RuntimeError, match="transition replacement interrupted"):
+        load_cached_session_data([sessions], cache_dir=cache_dir)
+
+    db_path = cache_dir / CACHE_DB_NAME
+    assert _transition_dirty_value(db_path) == "1"
+    with sqlite3.connect(db_path) as connection:
+        targets = connection.execute("select target_key from project_transitions").fetchall()
+    assert targets == [(initial_target_key,)]
+
+    monkeypatch.setattr(cache_module, "_set_project_transitions_dirty", original_set_dirty)
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
+
+    assert [transition.target_key for transition in recovered.project_transitions] == [replacement_target_key]
+    assert _transition_dirty_value(db_path) == "0"
+
+
 def _run_cli(args: list[str], *, codex_home: Path | None = None) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.pop("CODEX_USAGE_SESSIONS_DIR", None)
@@ -107,6 +278,21 @@ def _run_cli(args: list[str], *, codex_home: Path | None = None) -> subprocess.C
         text=True,
         env=env,
     )
+
+
+def _usage_by_project(records: list[UsageRecord]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for record in records:
+        totals[record.project_key] = totals.get(record.project_key, 0) + record.usage.total_tokens
+    return totals
+
+
+def _transition_dirty_value(db_path: Path) -> str | None:
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            "select value from schema_meta where key = ?", (_TRANSITIONS_DIRTY_KEY,)
+        ).fetchone()
+    return None if row is None else str(row[0])
 
 
 def _write_transition_fixture(tmp_path: Path, *, include_second: bool = False) -> tuple[Path, str, str]:
