@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from codex_usage.models import TokenUsage
 
 
-PRICING_AS_OF = "2026-07-09"
+PRICING_AS_OF = "2026-07-21"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
@@ -18,6 +18,11 @@ class ModelRate:
     input_per_1m: float
     cached_input_per_1m: float
     output_per_1m: float
+    cache_write_input_per_1m: float | None = None
+
+    @property
+    def resolved_cache_write_input_per_1m(self) -> float:
+        return self.input_per_1m if self.cache_write_input_per_1m is None else self.cache_write_input_per_1m
 
 
 @dataclass(frozen=True)
@@ -35,6 +40,11 @@ class RequestLevelLongContextPricing:
             input_per_1m=rate.input_per_1m * self.input_rate_multiplier,
             cached_input_per_1m=rate.cached_input_per_1m * self.cached_input_rate_multiplier,
             output_per_1m=rate.output_per_1m * self.output_rate_multiplier,
+            cache_write_input_per_1m=(
+                None
+                if rate.cache_write_input_per_1m is None
+                else rate.cache_write_input_per_1m * self.input_rate_multiplier
+            ),
         )
 
 
@@ -73,16 +83,22 @@ class EffectiveModelRate:
 
 @dataclass(frozen=True)
 class CostBreakdown:
-    uncached_input_usd: float = 0.0
+    ordinary_input_usd: float = 0.0
     cached_input_usd: float = 0.0
+    cache_write_input_usd: float = 0.0
     output_usd: float = 0.0
     total_usd: float = 0.0
     unpriced_tokens: int = 0
 
+    @property
+    def uncached_input_usd(self) -> float:
+        return self.ordinary_input_usd + self.cache_write_input_usd
+
     def add(self, other: "CostBreakdown") -> "CostBreakdown":
         return CostBreakdown(
-            uncached_input_usd=self.uncached_input_usd + other.uncached_input_usd,
+            ordinary_input_usd=self.ordinary_input_usd + other.ordinary_input_usd,
             cached_input_usd=self.cached_input_usd + other.cached_input_usd,
+            cache_write_input_usd=self.cache_write_input_usd + other.cache_write_input_usd,
             output_usd=self.output_usd + other.output_usd,
             total_usd=self.total_usd + other.total_usd,
             unpriced_tokens=self.unpriced_tokens + other.unpriced_tokens,
@@ -91,7 +107,9 @@ class CostBreakdown:
     def to_dict(self) -> dict[str, float | int]:
         return {
             "uncached_input_usd": round(self.uncached_input_usd, 6),
+            "ordinary_input_usd": round(self.ordinary_input_usd, 6),
             "cached_input_usd": round(self.cached_input_usd, 6),
+            "cache_write_input_usd": round(self.cache_write_input_usd, 6),
             "output_usd": round(self.output_usd, 6),
             "total_usd": round(self.total_usd, 6),
             "unpriced_tokens": self.unpriced_tokens,
@@ -131,6 +149,7 @@ def _effective_rate(
     input_per_1m: float,
     cached_input_per_1m: float,
     output_per_1m: float,
+    cache_write_input_per_1m: float | None = None,
     effective_from: datetime = BASELINE_EFFECTIVE_FROM,
     aliases: tuple[str, ...] = (),
     request_pricing_contract: RequestPricingContract = STANDARD_REQUEST_PRICING,
@@ -142,6 +161,7 @@ def _effective_rate(
             input_per_1m=input_per_1m,
             cached_input_per_1m=cached_input_per_1m,
             output_per_1m=output_per_1m,
+            cache_write_input_per_1m=cache_write_input_per_1m,
         ),
         aliases=aliases,
         request_pricing_contract=request_pricing_contract,
@@ -154,6 +174,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         input_per_1m=5.00,
         cached_input_per_1m=0.50,
         output_per_1m=30.00,
+        cache_write_input_per_1m=6.25,
         effective_from=GPT_5_6_API_EFFECTIVE_FROM,
         aliases=("gpt-5.6",),
         request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
@@ -163,6 +184,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         input_per_1m=2.50,
         cached_input_per_1m=0.25,
         output_per_1m=15.00,
+        cache_write_input_per_1m=3.125,
         effective_from=GPT_5_6_API_EFFECTIVE_FROM,
         request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
     ),
@@ -171,6 +193,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         input_per_1m=1.00,
         cached_input_per_1m=0.10,
         output_per_1m=6.00,
+        cache_write_input_per_1m=1.25,
         effective_from=GPT_5_6_API_EFFECTIVE_FROM,
         request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
     ),
@@ -258,14 +281,18 @@ def estimate_cost(usage: TokenUsage, model: str, at: datetime | None = None) -> 
         return None
     rate = entry.rate_for_usage(usage)
 
-    uncached_input_usd = usage.uncached_input_tokens / 1_000_000 * rate.input_per_1m
+    ordinary_input_usd = usage.ordinary_input_tokens / 1_000_000 * rate.input_per_1m
     cached_input_usd = usage.cached_input_tokens / 1_000_000 * rate.cached_input_per_1m
+    cache_write_input_usd = (
+        usage.cache_write_input_tokens / 1_000_000 * rate.resolved_cache_write_input_per_1m
+    )
     output_usd = usage.output_tokens / 1_000_000 * rate.output_per_1m
     return CostBreakdown(
-        uncached_input_usd=uncached_input_usd,
+        ordinary_input_usd=ordinary_input_usd,
         cached_input_usd=cached_input_usd,
+        cache_write_input_usd=cache_write_input_usd,
         output_usd=output_usd,
-        total_usd=uncached_input_usd + cached_input_usd + output_usd,
+        total_usd=ordinary_input_usd + cached_input_usd + cache_write_input_usd + output_usd,
     )
 
 

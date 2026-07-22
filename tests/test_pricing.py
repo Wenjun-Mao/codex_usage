@@ -65,23 +65,23 @@ GPT_5_6_CREDIT_EFFECTIVE_AT = datetime(2026, 7, 9, tzinfo=UTC)
 GPT_5_6_RATE_CASES = (
     (
         "gpt-5.6-sol",
-        ModelRate(input_per_1m=5.0, cached_input_per_1m=0.5, output_per_1m=30.0),
+        ModelRate(input_per_1m=5.0, cached_input_per_1m=0.5, output_per_1m=30.0, cache_write_input_per_1m=6.25),
         ModelRate(input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0),
-        12.25,
+        12.75,
         171.875,
     ),
     (
         "gpt-5.6-terra",
-        ModelRate(input_per_1m=2.5, cached_input_per_1m=0.25, output_per_1m=15.0),
+        ModelRate(input_per_1m=2.5, cached_input_per_1m=0.25, output_per_1m=15.0, cache_write_input_per_1m=3.125),
         ModelRate(input_per_1m=62.5, cached_input_per_1m=6.25, output_per_1m=375.0),
-        6.125,
+        6.375,
         85.9375,
     ),
     (
         "gpt-5.6-luna",
-        ModelRate(input_per_1m=1.0, cached_input_per_1m=0.1, output_per_1m=6.0),
+        ModelRate(input_per_1m=1.0, cached_input_per_1m=0.1, output_per_1m=6.0, cache_write_input_per_1m=1.25),
         ModelRate(input_per_1m=25.0, cached_input_per_1m=2.5, output_per_1m=150.0),
-        2.45,
+        2.55,
         34.375,
     ),
 )
@@ -101,6 +101,7 @@ def test_gpt_5_6_family_has_official_rates(
     usage = TokenUsage(
         input_tokens=1_000_000,
         cached_input_tokens=250_000,
+        cache_write_input_tokens=200_000,
         output_tokens=100_000,
         total_tokens=1_100_000,
     )
@@ -115,6 +116,68 @@ def test_gpt_5_6_family_has_official_rates(
     assert credits is not None
     assert cost.total_usd == pytest.approx(expected_cost)
     assert credits.total_credits == pytest.approx(expected_credits)
+
+
+@pytest.mark.parametrize(
+    ("model", "write_rate"),
+    (
+        ("gpt-5.6-sol", 6.25),
+        ("gpt-5.6-terra", 3.125),
+        ("gpt-5.6-luna", 1.25),
+    ),
+)
+def test_gpt_5_6_prices_cache_writes_separately(model: str, write_rate: float) -> None:
+    usage = TokenUsage(
+        input_tokens=200_000,
+        cached_input_tokens=50_000,
+        cache_write_input_tokens=40_000,
+        output_tokens=20_000,
+        total_tokens=220_000,
+    )
+
+    rate = rate_for_model(model, at=GPT_5_6_API_EFFECTIVE_AT)
+    cost = estimate_cost(usage, model, at=GPT_5_6_API_EFFECTIVE_AT)
+
+    assert rate is not None
+    assert rate.resolved_cache_write_input_per_1m == write_rate
+    assert cost is not None
+    assert cost.cache_write_input_usd == pytest.approx(0.04 * write_rate)
+    assert cost.ordinary_input_usd == pytest.approx(usage.ordinary_input_tokens / 1_000_000 * rate.input_per_1m)
+    assert cost.uncached_input_usd == pytest.approx(cost.ordinary_input_usd + cost.cache_write_input_usd)
+
+
+def test_pre_gpt_5_6_cache_write_falls_back_to_input_rate() -> None:
+    usage = TokenUsage(
+        input_tokens=1_000_000,
+        cached_input_tokens=250_000,
+        cache_write_input_tokens=200_000,
+        output_tokens=100_000,
+        total_tokens=1_100_000,
+    )
+
+    cost = estimate_cost(usage, "gpt-5.5")
+
+    assert cost is not None
+    assert cost.cache_write_input_usd == pytest.approx(1.0)
+    assert cost.total_usd == pytest.approx(6.875)
+
+
+def test_cache_writes_remain_normal_uncached_input_for_codex_credits() -> None:
+    usage = TokenUsage(
+        input_tokens=1_000_000,
+        cached_input_tokens=250_000,
+        cache_write_input_tokens=200_000,
+        output_tokens=100_000,
+        total_tokens=1_100_000,
+    )
+
+    credits = estimate_codex_credits(usage, "gpt-5.6-sol", at=GPT_5_6_CREDIT_EFFECTIVE_AT)
+
+    assert credits is not None
+    assert credits.uncached_input_credits == pytest.approx(93.75)
+    assert credits.cached_input_credits == pytest.approx(3.125)
+    assert credits.output_credits == pytest.approx(75.0)
+    assert credits.total_credits == pytest.approx(171.875)
 
 
 @pytest.mark.parametrize("model", [case[0] for case in GPT_5_6_RATE_CASES])
@@ -132,6 +195,7 @@ def test_gpt_5_6_short_context_api_cost_uses_base_rate_at_threshold() -> None:
     usage = TokenUsage(
         input_tokens=272_000,
         cached_input_tokens=72_000,
+        cache_write_input_tokens=50_000,
         output_tokens=10_000,
         total_tokens=282_000,
     )
@@ -139,29 +203,33 @@ def test_gpt_5_6_short_context_api_cost_uses_base_rate_at_threshold() -> None:
     cost = estimate_cost(usage, "gpt-5.6-sol", at=GPT_5_6_API_EFFECTIVE_AT)
 
     assert cost is not None
-    assert cost.uncached_input_usd == pytest.approx(1.0)
+    assert cost.ordinary_input_usd == pytest.approx(0.75)
+    assert cost.cache_write_input_usd == pytest.approx(0.3125)
+    assert cost.uncached_input_usd == pytest.approx(1.0625)
     assert cost.cached_input_usd == pytest.approx(0.036)
     assert cost.output_usd == pytest.approx(0.3)
-    assert cost.total_usd == pytest.approx(1.336)
+    assert cost.total_usd == pytest.approx(1.3985)
 
 
 @pytest.mark.parametrize(
-    ("model", "expected_uncached", "expected_cached", "expected_output"),
+    ("model", "expected_ordinary", "expected_cache_write", "expected_cached", "expected_output"),
     (
-        ("gpt-5.6-sol", 2.0, 0.072001, 4.5),
-        ("gpt-5.6-terra", 1.0, 0.0360005, 2.25),
-        ("gpt-5.6-luna", 0.4, 0.0144002, 0.9),
+        ("gpt-5.6-sol", 1.5, 0.625, 0.072001, 4.5),
+        ("gpt-5.6-terra", 0.75, 0.3125, 0.0360005, 2.25),
+        ("gpt-5.6-luna", 0.3, 0.125, 0.0144002, 0.9),
     ),
 )
 def test_gpt_5_6_long_context_api_cost_uses_request_level_rates(
     model: str,
-    expected_uncached: float,
+    expected_ordinary: float,
+    expected_cache_write: float,
     expected_cached: float,
     expected_output: float,
 ) -> None:
     usage = TokenUsage(
         input_tokens=272_001,
         cached_input_tokens=72_001,
+        cache_write_input_tokens=50_000,
         output_tokens=100_000,
         total_tokens=372_001,
     )
@@ -169,16 +237,19 @@ def test_gpt_5_6_long_context_api_cost_uses_request_level_rates(
     cost = estimate_cost(usage, model, at=GPT_5_6_API_EFFECTIVE_AT)
 
     assert cost is not None
-    assert cost.uncached_input_usd == pytest.approx(expected_uncached)
+    assert cost.ordinary_input_usd == pytest.approx(expected_ordinary)
+    assert cost.cache_write_input_usd == pytest.approx(expected_cache_write)
+    assert cost.uncached_input_usd == pytest.approx(expected_ordinary + expected_cache_write)
     assert cost.cached_input_usd == pytest.approx(expected_cached)
     assert cost.output_usd == pytest.approx(expected_output)
-    assert cost.total_usd == pytest.approx(expected_uncached + expected_cached + expected_output)
+    assert cost.total_usd == pytest.approx(expected_ordinary + expected_cache_write + expected_cached + expected_output)
 
 
 def test_gpt_5_6_long_context_does_not_change_codex_credit_rates() -> None:
     usage = TokenUsage(
         input_tokens=272_001,
         cached_input_tokens=72_001,
+        cache_write_input_tokens=50_000,
         output_tokens=100_000,
         total_tokens=372_001,
     )
@@ -204,7 +275,7 @@ def test_gpt_5_6_alias_resolves_to_sol_api_and_credit_rates() -> None:
 
 
 def test_pricing_table_date_covers_gpt_5_6_general_availability() -> None:
-    assert pricing.PRICING_AS_OF == "2026-07-09"
+    assert pricing.PRICING_AS_OF == "2026-07-21"
 
 
 def test_rate_lookup_requires_exact_model_or_explicit_alias(monkeypatch) -> None:

@@ -141,7 +141,13 @@ def test_gpt_5_6_sol_ultra_is_priced_by_model(tmp_path: Path) -> None:
             _turn_context(model="gpt-5.6-sol", effort="ultra"),
             _token(
                 "2026-07-09T10:00:00Z",
-                _usage(total=1_100_000, input_tokens=1_000_000, cached=250_000, output=100_000),
+                _usage(
+                    total=1_100_000,
+                    input_tokens=1_000_000,
+                    cached=250_000,
+                    cache_write=200_000,
+                    output=100_000,
+                ),
             ),
         ],
     )
@@ -152,8 +158,11 @@ def test_gpt_5_6_sol_ultra_is_priced_by_model(tmp_path: Path) -> None:
 
     assert records[0].model == "gpt-5.6-sol"
     assert records[0].effort == "ultra"
+    assert records[0].usage.cache_write_input_tokens == 200_000
     assert rows[0].key == "gpt-5.6-sol"
-    assert total.cost.total_usd == 12.25
+    assert total.cost.ordinary_input_usd == 5.5
+    assert total.cost.cache_write_input_usd == 2.5
+    assert total.cost.total_usd == 12.75
     assert total.cost.unpriced_tokens == 0
     assert total.credits.total_credits == 171.875
     assert total.credits.unpriced_tokens == 0
