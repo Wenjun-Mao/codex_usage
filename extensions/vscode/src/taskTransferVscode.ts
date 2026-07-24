@@ -33,6 +33,7 @@ import type {
   TransferMenuQuickPickItem,
   TransferTransientStatus,
 } from "./transferPresentation";
+import type { CodexTaskRegistrationResult } from "./codexAppServer";
 
 type CommandResult = { stdout: string; stderr: string };
 
@@ -42,6 +43,7 @@ export type TaskTransferVscodeDependencies = {
   processEnv(): NodeJS.ProcessEnv;
   runCommand(args: string[]): Promise<CommandResult>;
   runSyncProcess?: typeof runSyncProcess;
+  registerImportedTasks(threadIds: readonly string[]): Promise<CodexTaskRegistrationResult>;
   refreshUi(): Promise<void>;
   setTransientStatus(status: TransferTransientStatus | undefined): void;
 };
@@ -83,6 +85,7 @@ export function createTaskTransferVscodePort(
       const result = await dependencies.runCommand(buildSyncStatusArgs(request));
       return parseSyncStatusSummary(result.stdout);
     },
+    registerImportedTasks: (threadIds) => dependencies.registerImportedTasks(threadIds),
     notify: showMessage,
     log: (message) => dependencies.output.appendLine(message),
     setTransientStatus: dependencies.setTransientStatus,

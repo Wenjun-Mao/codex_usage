@@ -126,10 +126,12 @@ function context(folder = "/transfer") {
 function dependencies(overrides = {}) {
   const commands = [];
   const processCalls = [];
+  const registrationCalls = [];
   const statuses = [];
   return {
     commands,
     processCalls,
+    registrationCalls,
     statuses,
     output: { append() {}, appendLine() {} },
     async resolveExecutable() { return "/bin/codex-usage"; },
@@ -154,6 +156,14 @@ function dependencies(overrides = {}) {
       };
     },
     async refreshUi() {},
+    async registerImportedTasks(threadIds) {
+      registrationCalls.push(threadIds);
+      return {
+        attemptedThreadIds: [...threadIds],
+        registeredThreadIds: [...threadIds],
+        failures: [],
+      };
+    },
     setTransientStatus(status) { statuses.push(status); },
     ...overrides,
   };
@@ -371,6 +381,26 @@ test("execution adapter preserves structured partial completion", async () => {
 
   assert.deepEqual(result, partial);
   assert.deepEqual(result.pulled, ["task-1"]);
+});
+
+test("port delegates imported-task registration and preserves the structured result", async () => {
+  const registration = {
+    attemptedThreadIds: ["task-a"],
+    registeredThreadIds: [],
+    failures: [{ threadId: "task-a", message: "Codex is unavailable" }],
+  };
+  const deps = dependencies({
+    async registerImportedTasks(threadIds) {
+      deps.registrationCalls.push(threadIds);
+      return registration;
+    },
+  });
+  const port = createTaskTransferVscodePort(context(), deps);
+
+  const result = await port.registerImportedTasks(["task-a"]);
+
+  assert.deepEqual(deps.registrationCalls, [["task-a"]]);
+  assert.equal(result, registration);
 });
 
 test("missing remembered folder is actionable and never rewrites state", async () => {

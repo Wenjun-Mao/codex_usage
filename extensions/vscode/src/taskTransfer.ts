@@ -28,6 +28,7 @@ import {
   type TransferOperation,
   type TransferTransientStatus,
 } from "./transferPresentation";
+import type { CodexTaskRegistrationResult } from "./codexAppServer";
 
 export type TransferExecutionRequest = SyncTransferCommandOptions & {
   projectLabel: string;
@@ -68,6 +69,7 @@ export interface TaskTransferPort {
     request: TransferExecutionRequest,
   ): Promise<SyncRunResult>;
   review(request: TransferReviewRequest): Promise<SyncStatusSummary>;
+  registerImportedTasks(threadIds: readonly string[]): Promise<CodexTaskRegistrationResult>;
   notify(kind: "info" | "warning" | "error", message: string): void;
   log(message: string): void;
   setTransientStatus(status: TransferTransientStatus | undefined): void;

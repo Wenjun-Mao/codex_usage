@@ -32,6 +32,7 @@ import {
   createTaskTransferVscodePort,
   migrateVscodeTaskTransferState,
 } from "./taskTransferVscode";
+import { createCodexTaskRegistrar } from "./codexRegistrationVscode";
 import { TaskTransferController } from "./taskTransfer";
 import { readTaskTransferFolder } from "./taskTransferVscodeState";
 import {
@@ -55,6 +56,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateStatusItem(readSettings(context));
   statusItem.show();
 
+  const registerImportedTasks = createCodexTaskRegistrar({
+    extensionVersion: context.extension.packageJSON.version,
+  });
   const taskTransferPort = createTaskTransferVscodePort(context, {
     output,
     resolveExecutable: () => resolveBundledExecutable(context),
@@ -64,6 +68,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       args,
       buildCodexUsageEnv(context.globalStorageUri.fsPath),
     ),
+    registerImportedTasks,
     refreshUi: async () => {
       updateStatusItem(readSettings(context));
       if (panel) {
