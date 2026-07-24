@@ -10,13 +10,20 @@ export function certifiedImportThreadIds(
   result: SyncRunResult,
   selectedThreadIds: readonly string[],
 ): string[] {
-  if (result.outcome === "completed") {
-    return uniqueThreadIds(selectedThreadIds);
+  if (result.outcome !== "completed" && result.outcome !== "issue") {
+    return [];
   }
-  if (result.pulled.length > 0) {
-    return uniqueThreadIds(result.pulled);
+  const selected = uniqueThreadIds(selectedThreadIds);
+  const selectedSet = new Set(selected);
+  if (
+    result.counts.pulled !== result.pulled.length ||
+    result.pulled.some((threadId) => !isCanonicalThreadId(threadId)) ||
+    new Set(result.pulled).size !== result.pulled.length ||
+    result.pulled.some((threadId) => !selectedSet.has(threadId))
+  ) {
+    return [];
   }
-  return [];
+  return result.outcome === "completed" ? selected : [...result.pulled];
 }
 
 export function formatTaskRegistrationFailureLog(threadId: string): string {
@@ -28,4 +35,8 @@ export function formatTaskRegistrationFailureLog(threadId: string): string {
 
 function uniqueThreadIds(threadIds: readonly string[]): string[] {
   return [...new Set(threadIds)];
+}
+
+function isCanonicalThreadId(threadId: string): boolean {
+  return threadId.length > 0 && threadId === threadId.trim();
 }

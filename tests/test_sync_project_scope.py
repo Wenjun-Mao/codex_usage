@@ -120,6 +120,18 @@ def test_cross_project_selection_is_rejected() -> None:
     assert "one project at a time" in issues[0].message
 
 
+def test_mixed_known_and_unknown_selection_is_rejected() -> None:
+    issues = transfer_project_scope_issues(
+        local=local_inventory(task("task-1", project_key="repo-a")),
+        remote=empty_remote_inventory(),
+        thread_ids=("task-1", "unknown"),
+        expected_project_key="repo-a",
+    )
+
+    assert [issue.code for issue in issues] == ["unresolved_selected_task"]
+    assert issues[0].thread_id == "unknown"
+
+
 def test_declared_project_must_match_selected_project() -> None:
     issues = transfer_project_scope_issues(
         local=local_inventory(task("task-1", project_key="repo-a")),

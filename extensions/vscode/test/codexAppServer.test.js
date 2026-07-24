@@ -48,7 +48,11 @@ test("registers exact unique ids through one direct app-server process", async (
   assert.deepEqual(recorder.calls[0], {
     executablePath: "/official/codex",
     args: ["app-server", "--stdio"],
-    options: { shell: false, stdio: ["pipe", "pipe", "pipe"] },
+    options: {
+      shell: false,
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    },
   });
   assert.equal(recorder.calls.length, 1);
   assert.deepEqual(child.messages, [

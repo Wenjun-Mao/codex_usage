@@ -54,11 +54,16 @@ one-project boundary.
 - Use **project** in user-facing copy; preserve support for non-Git projects.
 - Start all eligible tasks in the active project selected.
 - Never silently combine or discard selections from different projects.
+- Require every selected task id to resolve from the local or transfer
+  inventory before accepting the declared project.
 - Reject cross-project selections before destination resolution, preflight, or
-  file writes.
+  file writes. Use read-only local and transfer inventory probes before lock
+  creation, transfer-format migration, session-directory creation, or cache
+  writes.
 - Name the selected project in folder prompts, progress, and results.
 - Preserve unrelated projects already present in the transfer folder.
-- Do not apply the write restriction to cross-project status review.
+- Do not apply the write restriction to cross-project status review, and never
+  migrate or lock the transfer folder while reviewing it.
 
 ## Supersession
 

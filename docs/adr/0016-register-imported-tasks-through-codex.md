@@ -53,8 +53,12 @@ registration without requiring a migration.
 - Never modify Codex desktop project registries or reset backfill state.
 - Issue only initialization and targeted task-read requests; never start a turn
   or invoke a model.
-- Register only selected task ids with certified local files.
-- Bound child-process lifetime, output, retries, and request timeouts.
+- Register only completed Imports or certified partial `issue` results. Reject
+  the whole registration batch when pulled ids are noncanonical, duplicated,
+  inconsistent with the result count, or outside the selected task set.
+- Bound child-process lifetime, output, retries, and request timeouts. Await
+  graceful process-tree shutdown, then force and bound tree termination before
+  settling the registration attempt.
 - Do not roll back certified task files after registration failure.
 - Keep client restart/refresh under user control.
 

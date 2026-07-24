@@ -9,8 +9,12 @@ import {
   returnedThreadIdFrom,
   rpcErrorMessage,
 } from "./codexAppServerProtocol";
+import {
+  closeCodexProcessTree,
+  type CodexProcessCleanupOptions,
+} from "./codexProcessCleanup";
 
-export type CodexAppServerSessionOptions = {
+export type CodexAppServerSessionOptions = CodexProcessCleanupOptions & {
   extensionVersion: string;
   startupTimeoutMs?: number;
   requestTimeoutMs?: number;
@@ -27,7 +31,7 @@ export type CodexAppServerCandidateOutcome =
       failures: Map<string, string>;
     };
 
-type SessionPhase = "initializing" | "dispatched" | "settled";
+type SessionPhase = "initializing" | "dispatched" | "cleaning" | "settled";
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 5_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
@@ -101,7 +105,7 @@ class CandidateSession {
     this.stdoutDiagnostic.append(bytes);
     try {
       for (const line of this.stdoutFramer.push(bytes)) {
-        if (this.phase === "settled") {
+        if (this.isFinishing()) {
           return;
         }
         if (line.length > 0) {
@@ -258,7 +262,7 @@ class CandidateSession {
 
   private handleRequestTimeout(requestId: number): void {
     const threadId = this.pendingRequests.get(requestId);
-    if (threadId === undefined || this.phase === "settled") {
+    if (threadId === undefined || this.isFinishing()) {
       return;
     }
     this.failures.set(threadId, "Codex app-server thread/read request timed out");
@@ -283,7 +287,7 @@ class CandidateSession {
   }
 
   private failUnresolved(message: string): void {
-    if (this.phase === "settled") {
+    if (this.isFinishing()) {
       return;
     }
     const diagnosticMessage = this.withStderr(message);
@@ -305,7 +309,7 @@ class CandidateSession {
   }
 
   private failSession(message: string): void {
-    if (this.phase === "settled") {
+    if (this.isFinishing()) {
       return;
     }
     if (this.phase === "dispatched") {
@@ -316,7 +320,7 @@ class CandidateSession {
   }
 
   private writeMessage(message: JsonObject): boolean {
-    if (this.phase === "settled") {
+    if (this.isFinishing()) {
       return false;
     }
     this.child.stdin.write(`${JSON.stringify(message)}\n`);
@@ -329,14 +333,19 @@ class CandidateSession {
   }
 
   private hasSettled(): boolean {
-    return this.phase === "settled";
+    return this.isFinishing();
+  }
+
+  private isFinishing(): boolean {
+    return this.phase === "cleaning" || this.phase === "settled";
   }
 
   private transitionTo(nextPhase: Exclude<SessionPhase, "initializing">): boolean {
     const phaseOrder: Record<SessionPhase, number> = {
       initializing: 0,
       dispatched: 1,
-      settled: 2,
+      cleaning: 2,
+      settled: 3,
     };
     if (phaseOrder[nextPhase] <= phaseOrder[this.phase]) {
       return false;
@@ -346,22 +355,18 @@ class CandidateSession {
   }
 
   private finish(outcome: CodexAppServerCandidateOutcome): void {
-    if (!this.transitionTo("settled")) {
+    if (!this.transitionTo("cleaning")) {
       return;
     }
     this.clearTimers();
     this.removeListeners();
-    try {
-      this.child.stdin.end();
-    } catch {
-      // The process is terminated below even when its stdin has already failed.
-    }
-    try {
-      this.child.kill();
-    } catch {
-      // Cleanup is best-effort after the result boundary has been determined.
-    }
-    this.resolveOutcome?.(outcome);
+    const resolve = this.resolveOutcome;
+    this.resolveOutcome = undefined;
+    void closeCodexProcessTree(this.child, this.options).finally(() => {
+      if (this.transitionTo("settled")) {
+        resolve?.(outcome);
+      }
+    });
   }
 
   private clearTimers(): void {

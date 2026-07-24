@@ -41,6 +41,10 @@ from codex_usage.sync.remote_reconciliation import (
     materialize_selected_remote,
     reconcile_remote_discovery,
 )
+from codex_usage.sync.remote_inventory_probe import (
+    materialize_probed_remote,
+    probe_remote_inventory,
+)
 
 
 class RemoteStore:
@@ -70,6 +74,20 @@ class RemoteStore:
             return self._load_inventory_locked()
         with self.transaction():
             return self._load_inventory_locked()
+
+    def probe_inventory(self) -> RemoteInventory:
+        return probe_remote_inventory(self.root)
+
+    def materialize_probed(
+        self,
+        inventory: RemoteInventory,
+        selected_thread_ids: tuple[str, ...],
+    ) -> RemoteInventory:
+        return materialize_probed_remote(
+            self.root,
+            inventory,
+            selected_thread_ids,
+        )
 
     def _load_inventory_locked(self) -> RemoteInventory:
         self._require_transaction()

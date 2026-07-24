@@ -54,6 +54,60 @@ test("certifies completed, partial, conflict, and blocked imports", () => {
   assert.deepEqual(certifiedImportThreadIds(blockedIssueResult, ["task-a"]), []);
 });
 
+test("rejects conflict results even when they claim pulled tasks", () => {
+  const conflict = completed("import", ["task-a"]);
+  conflict.outcome = "conflict";
+  conflict.counts.conflicts = 1;
+
+  assert.deepEqual(
+    certifiedImportThreadIds(conflict, ["task-a"]),
+    [],
+  );
+});
+
+test("rejects a partial result whose pulled set is not fully certified", () => {
+  const cases = [
+    {
+      name: "unselected id",
+      pulled: ["task-a", "unselected"],
+      pulledCount: 2,
+    },
+    {
+      name: "padded id",
+      pulled: [" task-a "],
+      pulledCount: 1,
+    },
+    {
+      name: "duplicate id",
+      pulled: ["task-a", "task-a"],
+      pulledCount: 2,
+    },
+    {
+      name: "count mismatch",
+      pulled: ["task-a"],
+      pulledCount: 2,
+    },
+  ];
+
+  for (const entry of cases) {
+    const partial = completed("import", entry.pulled);
+    partial.outcome = "issue";
+    partial.counts.pulled = entry.pulledCount;
+    partial.counts.issues = 1;
+    partial.issues = [{
+      code: "transfer_filesystem_failure",
+      message: entry.name,
+      thread_id: "task-b",
+    }];
+
+    assert.deepEqual(
+      certifiedImportThreadIds(partial, ["task-a", "task-b"]),
+      [],
+      entry.name,
+    );
+  }
+});
+
 test("completed imports register every selected id after transfer, including unchanged", async () => {
   const executionResult = completed("import", ["task-a"]);
   executionResult.counts.selected = 2;
@@ -118,6 +172,28 @@ test("export, review, conflict, and pre-copy issues never register", async () =>
   for (const entry of cases) {
     await new TaskTransferController(entry.port, () => true)[entry.method]();
     assert.deepEqual(entry.port.registrationCalls, [], entry.method);
+  }
+});
+
+test("conflict and unselected pulled claims never reach the registrar", async () => {
+  const conflict = completed("import", ["task-a"]);
+  conflict.outcome = "conflict";
+  conflict.counts.conflicts = 1;
+  const unselectedPartial = completed("import", ["unselected"]);
+  unselectedPartial.outcome = "issue";
+  unselectedPartial.counts.issues = 1;
+  unselectedPartial.issues = [{
+    code: "transfer_filesystem_failure",
+    message: "copy stopped",
+    thread_id: "task-a",
+  }];
+
+  for (const executionResult of [conflict, unselectedPartial]) {
+    const port = importPort(["task-a"], executionResult);
+
+    await new TaskTransferController(port, () => true).importTasks();
+
+    assert.deepEqual(port.registrationCalls, []);
   }
 });
 

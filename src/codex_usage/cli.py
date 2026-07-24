@@ -35,6 +35,7 @@ from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_them
 from codex_usage.session_cache import CacheStats, CachedSessionData, load_cached_session_data, uncached_session_data
 from codex_usage.session_inventory import storage_snapshots
 from codex_usage.settings import get_settings
+from codex_usage.sync.local_session_probe import load_sync_session_data_read_only
 from codex_usage.sync_cli import (
     add_sync_common_options,
     add_sync_execution_options,
@@ -274,19 +275,19 @@ def handle_storage_snapshot(args: argparse.Namespace) -> int:
 
 
 def handle_sync_pull(args: argparse.Namespace) -> int:
-    return sync_pull_command(args, _load_session_data)
+    return sync_pull_command(args, load_sync_session_data_read_only)
 
 
 def handle_sync_push(args: argparse.Namespace) -> int:
-    return sync_push_command(args, _load_session_data)
+    return sync_push_command(args, load_sync_session_data_read_only)
 
 
 def handle_sync_inventory(args: argparse.Namespace) -> int:
-    return sync_inventory_command(args, _load_session_data)
+    return sync_inventory_command(args, load_sync_session_data_read_only)
 
 
 def handle_sync_status(args: argparse.Namespace) -> int:
-    return sync_status_command(args, _load_session_data)
+    return sync_status_command(args, load_sync_session_data_read_only)
 
 
 class _Context:

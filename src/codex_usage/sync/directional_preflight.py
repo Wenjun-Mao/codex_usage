@@ -27,6 +27,15 @@ def prepare_direction_plan(
     project_resolution: ProjectResolutionRequest,
     project_key: str,
 ) -> tuple[RemoteInventory, SyncPlan, tuple[SyncIssue, ...]]:
+    probed_remote, probed_plan, scope_issues = probe_direction_scope(
+        local,
+        store,
+        sync_dir,
+        thread_ids,
+        project_key,
+    )
+    if scope_issues:
+        return probed_remote, probed_plan, scope_issues
     remote = store.load_inventory()
     selected = normalize_selected_thread_ids(thread_ids)
     remote = store.materialize_selected(remote, selected)
@@ -39,6 +48,47 @@ def prepare_direction_plan(
         project_resolution=None if scope_issues else project_resolution,
     )
     return promote_matching_local_metadata(remote, local, plan), plan, scope_issues
+
+
+def probe_direction_scope(
+    local: LocalInventory,
+    store: RemoteStore,
+    sync_dir: Path,
+    thread_ids: Iterable[str],
+    project_key: str,
+) -> tuple[RemoteInventory, SyncPlan, tuple[SyncIssue, ...]]:
+    selected = normalize_selected_thread_ids(thread_ids)
+    remote = store.probe_inventory()
+    remote = store.materialize_probed(remote, selected)
+    scope_issues = transfer_project_scope_issues(local, remote, selected, project_key)
+    plan = build_sync_plan(
+        local,
+        remote,
+        selected,
+        sync_dir,
+        project_resolution=None,
+    )
+    return remote, plan, scope_issues
+
+
+def prepare_status_plan(
+    local: LocalInventory,
+    store: RemoteStore,
+    sync_dir: Path,
+    thread_ids: Iterable[str],
+    project_resolution: ProjectResolutionRequest,
+) -> tuple[RemoteInventory, SyncPlan]:
+    selected = normalize_selected_thread_ids(thread_ids)
+    remote = store.probe_inventory()
+    remote = store.materialize_probed(remote, selected)
+    plan = build_sync_plan(
+        local,
+        remote,
+        selected,
+        sync_dir,
+        project_resolution=project_resolution,
+    )
+    return promote_matching_local_metadata(remote, local, plan), plan
 
 
 def directional_blockers(

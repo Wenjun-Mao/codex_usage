@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import errno
-import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -27,7 +26,6 @@ from codex_usage.sync.format_migration_cleanup import (
 )
 from codex_usage.sync.format_migration_layout import (
     LayoutScan as _LayoutScan,
-    guard_index as _guard_index,
     guard_legacy_directory as _guard_legacy_directory,
     guard_legacy_file as _guard_legacy_file,
     guard_task_file as _guard_task_file,
@@ -39,7 +37,6 @@ from codex_usage.sync.format_migration_layout import (
 from codex_usage.sync.io import (
     atomic_copy,
     atomic_write_json,
-    read_bytes_with_snapshot,
     snapshot_file,
 )
 from codex_usage.sync.models import RemoteIndex, RemoteInventory, SyncFileSnapshot
@@ -48,6 +45,12 @@ from codex_usage.sync.remote_reconciliation import (
     materialize_remote_task,
     materialize_selected_remote,
     reconcile_remote_discovery,
+)
+from codex_usage.sync.remote_inventory_probe import (
+    parse_remote_index as _parse_index,
+    read_remote_index_value as _read_index_value,
+    remote_format_version as _format_version,
+    validate_v2_inventory as _validate_v2_inventory,
 )
 
 
@@ -191,33 +194,6 @@ def _validate_v2_commit(
             )
 
 
-def _validate_v2_inventory(inventory: RemoteInventory) -> None:
-    if inventory.issues:
-        details = "; ".join(issue.message for issue in inventory.issues)
-        raise TransferFormatMigrationError(
-            f"Version-2 migration validation failed: {details}"
-        )
-
-    _validate_file_claims(inventory.index, LEGACY_TRANSFER_CONVERSATIONS_DIRNAME)
-    for thread_id, entry in inventory.index.threads.items():
-        snapshot = inventory.files.get(thread_id)
-        if snapshot is None or not snapshot.exists:
-            raise TransferFormatMigrationError(f"Remote task {entry.file} is missing")
-        persisted_entry = inventory.persisted_index.threads.get(thread_id)
-        if persisted_entry is None or persisted_entry.file != entry.file:
-            continue
-        mismatches: list[str] = []
-        if persisted_entry.sha256 != snapshot.sha256:
-            mismatches.append("sha256")
-        if persisted_entry.size_bytes != snapshot.size_bytes:
-            mismatches.append("size_bytes")
-        if mismatches:
-            fields = " and ".join(mismatches)
-            raise TransferFormatMigrationError(
-                f"Remote task {entry.file} does not match indexed {fields}"
-            )
-
-
 def _stage_tasks(
     root: Path,
     inventory: RemoteInventory,
@@ -334,43 +310,6 @@ def _cleanup_legacy(
         expected_legacy=pending_legacy,
     )
     return True
-
-
-def _read_index_value(
-    root: Path,
-) -> tuple[dict[str, Any] | None, SyncFileSnapshot]:
-    path = root / SYNC_INDEX_FILENAME
-    _guard_index(root)
-    contents, snapshot = read_bytes_with_snapshot(path)
-    if contents is None:
-        return None, snapshot
-    try:
-        value = json.loads(contents)
-        if not isinstance(value, dict):
-            raise ValueError(f"Expected a JSON object in {path}")
-        return value, snapshot
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError) as error:
-        raise MalformedSyncIndexError(
-            f"Malformed {SYNC_INDEX_FILENAME}: {error}"
-        ) from error
-
-
-def _format_version(value: dict[str, Any]) -> int:
-    version = value.get("format_version")
-    if type(version) is not int:
-        raise MalformedSyncIndexError(
-            f"Malformed {SYNC_INDEX_FILENAME}: format_version must be an integer"
-        )
-    return version
-
-
-def _parse_index(value: dict[str, Any], expected_version: int) -> RemoteIndex:
-    try:
-        return RemoteIndex.from_dict(value, expected_format_version=expected_version)
-    except (ValueError, TypeError) as error:
-        raise MalformedSyncIndexError(
-            f"Malformed {SYNC_INDEX_FILENAME}: {error}"
-        ) from error
 
 
 def _is_transient_filesystem_error(error: BaseException) -> bool:

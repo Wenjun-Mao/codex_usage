@@ -20,6 +20,23 @@ def transfer_project_scope_issues(
 ) -> tuple[SyncIssue, ...]:
     expected = expected_project_key.strip()
     selected = normalize_selected_thread_ids(thread_ids)
+    unresolved = next(
+        (
+            thread_id
+            for thread_id in selected
+            if thread_id not in local.threads
+            and thread_id not in remote.index.threads
+        ),
+        None,
+    )
+    if unresolved is not None:
+        return (
+            SyncIssue(
+                "unresolved_selected_task",
+                "A selected task is not present in either transfer inventory.",
+                unresolved,
+            ),
+        )
     project_keys = {
         project_key
         for thread_id in selected

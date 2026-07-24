@@ -154,8 +154,6 @@ _INVALID_INDEXED_CONVERSATIONS = (
 def _snapshot_tree(root: Path) -> tuple[tuple[str, str, bytes], ...]:
     entries: list[tuple[str, str, bytes]] = []
     for path in sorted(root.rglob("*")):
-        if path.name.endswith(".codex-usage.lock"):
-            continue
         relative = path.relative_to(root).as_posix()
         if path.is_symlink():
             entries.append((relative, "symlink", os.readlink(path).encode()))
@@ -179,12 +177,12 @@ def test_load_inventory_is_read_only(tmp_path: Path) -> None:
     assert _snapshot_tree(tmp_path) == before
 
 
-def test_load_inventory_migrates_indexed_remote_task_without_local_sessions(
+def test_load_inventory_reads_v2_task_without_migration_or_lock(
     tmp_path: Path,
 ) -> None:
     sync_dir = tmp_path / "sync"
-    source = _write_indexed_remote_task(sync_dir, _session_jsonl("thread-1"))
-    payload = source.read_bytes()
+    _write_indexed_remote_task(sync_dir, _session_jsonl("thread-1"))
+    before = _snapshot_tree(tmp_path)
 
     result = load_sync_selection_inventory(
         _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
@@ -200,10 +198,11 @@ def test_load_inventory_migrates_indexed_remote_task_without_local_sessions(
     ] == [("thread-1", "Remote task", "remote")]
     assert result.issues == ()
     index = json.loads((sync_dir / "sync-index.json").read_text(encoding="utf-8"))
-    assert index["format_version"] == 3
-    assert index["threads"]["thread-1"]["file"] == "tasks/thread-1.jsonl"
-    assert (sync_dir / "tasks" / "thread-1.jsonl").read_bytes() == payload
-    assert not (sync_dir / "conversations").exists()
+    assert index["format_version"] == 2
+    assert index["threads"]["thread-1"]["file"] == "conversations/thread-1.jsonl"
+    assert _snapshot_tree(tmp_path) == before
+    assert not (sync_dir / "tasks").exists()
+    assert not (tmp_path / ".sync.codex-usage.lock").exists()
 
 
 def test_load_inventory_rejects_mismatched_remote_index_identity_without_mutation(

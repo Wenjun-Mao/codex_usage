@@ -19,10 +19,17 @@ function createFakeChild(onMessage = () => {}) {
   child.stdin = stdin;
   child.stdout = stdout;
   child.stderr = stderr;
+  child.exitCode = null;
+  child.signalCode = null;
   child.killCalls = 0;
   child.stdinEndCalls = 0;
-  child.kill = () => {
+  child.kill = (signal = "SIGTERM") => {
     child.killCalls += 1;
+    child.signalCode = signal;
+    queueMicrotask(() => {
+      child.emit("exit", null, signal);
+      child.emit("close", null, signal);
+    });
     return true;
   };
   child.sendStdout = (...chunks) => {
@@ -38,7 +45,12 @@ function createFakeChild(onMessage = () => {}) {
       stderr.write(chunk);
     }
   };
-  child.exit = (code = 1, signal = null) => child.emit("exit", code, signal);
+  child.exit = (code = 1, signal = null) => {
+    child.exitCode = code;
+    child.signalCode = signal;
+    child.emit("exit", code, signal);
+    queueMicrotask(() => child.emit("close", code, signal));
+  };
 
   const transportWrite = stdin.write.bind(stdin);
   const originalEnd = stdin.end.bind(stdin);
@@ -114,6 +126,7 @@ function assertCleanedUp(child) {
   assert.equal(child.killCalls, 1);
   assert.equal(child.listenerCount("error"), 0);
   assert.equal(child.listenerCount("exit"), 0);
+  assert.equal(child.listenerCount("close"), 0);
   assert.equal(child.stdout.listenerCount("data"), 0);
   assert.equal(child.stderr.listenerCount("data"), 0);
   assert.equal(child.stdin.listenerCount("error"), 0);

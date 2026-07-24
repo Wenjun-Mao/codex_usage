@@ -134,7 +134,7 @@ def handle_sync_pull(
     thread_ids = _sync_thread_ids(args)
     data, discovery_ms = _load_sync_data(
         args,
-        create_sessions=True,
+        create_sessions=False,
         load_session_data=load_session_data,
     )
     result = pull_sync(
@@ -156,7 +156,7 @@ def handle_sync_push(
     thread_ids = _sync_thread_ids(args)
     data, discovery_ms = _load_sync_data(
         args,
-        create_sessions=True,
+        create_sessions=False,
         load_session_data=load_session_data,
     )
     result = push_sync(

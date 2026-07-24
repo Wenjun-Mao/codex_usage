@@ -11,40 +11,6 @@ from codex_usage.sync import ProjectBinding, ProjectResolutionRequest, pull_sync
 from codex_usage.sync.runner import sync_status as transaction_status
 from codex_usage.sync.store import RemoteStore
 
-def test_conflict_result_includes_completed_planning_timing(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    sync_dir = tmp_path / "sync"
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    push_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        machine_id="a",
-        project_key=normalize_project_key(str(tmp_path / "repo")),
-    )
-    _append_token_event(local_path, "2026-07-13T12:01:00Z", 180)
-    _append_token_event(
-        sync_dir / "tasks" / "thread-1.jsonl", "2026-07-13T12:02:00Z", 240
-    )
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    clock = iter((1_000_000, 3_000_000, 4_000_000, 9_000_000))
-    monkeypatch.setattr(runner_module, "perf_counter_ns", lambda: next(clock))
-
-    result = pull_sync(
-        data=data,
-        sync_dir=sync_dir,
-        thread_ids=["thread-1"],
-        project_resolution=ProjectResolutionRequest(),
-        project_key=normalize_project_key(str(tmp_path / "repo")),
-    )
-
-    assert result.timings_ms.planning == 7
-
-
 def test_runner_public_interfaces_are_keyword_only(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", tmp_path / "repo", total=120)

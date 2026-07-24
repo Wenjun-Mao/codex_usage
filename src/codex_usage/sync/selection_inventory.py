@@ -98,7 +98,7 @@ def _materialize_remote_for_selection(
     remote: RemoteInventory,
 ) -> RemoteInventory:
     issue_offset = len(remote.issues)
-    materialized = store.materialize_selected(remote, tuple(remote.index.threads))
+    materialized = store.materialize_probed(remote, tuple(remote.index.threads))
     failed_validation_thread_ids = {
         issue.thread_id
         for issue in materialized.issues[issue_offset:]
@@ -265,7 +265,7 @@ def load_sync_selection_inventory(
 ) -> SyncSelectionInventory:
     local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
-    remote = store.load_inventory()
+    remote = store.probe_inventory()
     remote = _materialize_remote_for_selection(store, remote)
     return build_sync_selection_inventory(
         local,

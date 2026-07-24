@@ -21,6 +21,7 @@ export type CodexTaskRegistrationResult = {
 type SpawnOptions = {
   shell: false;
   stdio: ["pipe", "pipe", "pipe"];
+  detached: boolean;
 };
 
 export type CodexAppServerSpawner = (
@@ -57,6 +58,7 @@ export async function registerCodexTasks(options: CodexAppServerOptions): Promis
       child = spawnProcess(candidate.executablePath, ["app-server", "--stdio"], {
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
       });
     } catch (error) {
       lastPreDispatchFailure = `Could not start Codex app-server: ${errorMessage(error)}`;

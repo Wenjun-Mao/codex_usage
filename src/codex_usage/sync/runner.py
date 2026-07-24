@@ -15,6 +15,8 @@ from codex_usage.sync.directional_preflight import (
     Direction,
     directional_blockers,
     prepare_direction_plan,
+    prepare_status_plan,
+    probe_direction_scope,
 )
 from codex_usage.sync.errors import (
     ConcurrentLocalChangeError,
@@ -24,7 +26,6 @@ from codex_usage.sync.errors import (
 )
 from codex_usage.sync.inventory import (
     build_local_inventory,
-    normalize_selected_thread_ids,
 )
 from codex_usage.sync.identity import require_remote_index_thread_identity
 from codex_usage.sync.io import atomic_copy, snapshot_file
@@ -40,7 +41,6 @@ from codex_usage.sync.models import (
     SyncRunResult,
     SyncTimings,
 )
-from codex_usage.sync.planner import build_sync_plan
 from codex_usage.sync.execution import (
     PushExecution,
     emit_progress,
@@ -49,7 +49,6 @@ from codex_usage.sync.execution import (
     session_dir as resolve_session_dir,
     validate_local_snapshot,
 )
-from codex_usage.sync.remote_reconciliation import promote_matching_local_metadata
 from codex_usage.sync.session_materialization import materialize_session_cwd
 from codex_usage.sync.state import (
     LocalStateStore,
@@ -99,7 +98,7 @@ def sync_status(
     local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
     try:
-        _, plan = _prepare_sync_plan(
+        _, plan = prepare_status_plan(
             local,
             store,
             sync_dir,
@@ -179,6 +178,20 @@ def _run_direction(
     pushed: tuple[str, ...] = ()
 
     try:
+        with timer.measure("planning"):
+            _, plan, scope_issues = probe_direction_scope(
+                local,
+                store,
+                sync_dir,
+                thread_ids,
+                project_key,
+            )
+            if scope_issues:
+                return SyncRunResult.blocked_with_issues(
+                    plan,
+                    scope_issues,
+                    timings=timer.finish(),
+                )
         with store.transaction():
             blocked = False
             direction_issues: tuple[SyncIssue, ...] = ()
@@ -264,26 +277,6 @@ def _run_direction(
         pushed=pushed,
         timings=timer.finish(),
     )
-
-
-def _prepare_sync_plan(
-    local: LocalInventory,
-    store: RemoteStore,
-    sync_dir: Path,
-    thread_ids: Iterable[str],
-    project_resolution: ProjectResolutionRequest,
-) -> tuple[RemoteInventory, SyncPlan]:
-    remote = store.load_inventory()
-    selected = normalize_selected_thread_ids(thread_ids)
-    remote = store.materialize_selected(remote, selected)
-    plan = build_sync_plan(
-        local,
-        remote,
-        selected,
-        sync_dir,
-        project_resolution=project_resolution,
-    )
-    return promote_matching_local_metadata(remote, local, plan), plan
 
 
 def save_conflict_candidates(plan: SyncPlan) -> None:
