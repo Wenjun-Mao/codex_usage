@@ -22,6 +22,20 @@ const {
   WEBVIEW_COMMANDS,
 } = core;
 
+function findWorkflowJob(workflow, jobName) {
+  const normalizedWorkflow = workflow.replace(/\r\n?/g, "\n");
+  const jobStart = normalizedWorkflow.indexOf(`\n  ${jobName}:\n`);
+  if (jobStart === -1) {
+    return { jobStart, job: "" };
+  }
+
+  const nextJob = normalizedWorkflow.slice(jobStart + 1).search(/\n  [a-z][a-z-]*:\n/);
+  return {
+    jobStart,
+    job: normalizedWorkflow.slice(jobStart, nextJob === -1 ? undefined : jobStart + nextJob + 1),
+  };
+}
+
 test("buildReportArgs includes optional CLI arguments for the bundled executable", () => {
   const args = buildReportArgs({
     range: "all",
@@ -360,6 +374,16 @@ test("macos Apple Silicon VSIX package script creates the release output directo
   );
 });
 
+test("workflow job extraction accepts LF and CRLF workflow text", () => {
+  const repositoryRoot = path.resolve(__dirname, "../../..");
+  const workflow = fs.readFileSync(path.join(repositoryRoot, ".github/workflows/package-vsix.yml"), "utf8");
+
+  for (const lineEnding of ["\n", "\r\n"]) {
+    const workflowVariant = lineEnding === "\n" ? workflow : workflow.replace(/\n/g, lineEnding);
+    assert.match(findWorkflowJob(workflowVariant, "windows").job, /run: npm ci/);
+  }
+});
+
 test("native release jobs gate direct Codex registration before VSIX packaging", () => {
   const repositoryRoot = path.resolve(__dirname, "../../..");
   const workflow = fs.readFileSync(path.join(repositoryRoot, ".github/workflows/package-vsix.yml"), "utf8");
@@ -374,21 +398,22 @@ test("native release jobs gate direct Codex registration before VSIX packaging",
     packageJson.scripts["test:registration-smoke"],
     "npm run build && node ../../scripts/smoke-test-codex-registration.js",
   );
-  for (const jobName of ["windows", "macos"]) {
-    const packageCommand =
-      jobName === "windows" ? "npm run package:vsix:win" : "npm run package:vsix:mac";
-    const jobStart = workflow.indexOf(`\n  ${jobName}:\n`);
-    assert.notEqual(jobStart, -1, `expected ${jobName} job`);
-    const nextJob = workflow.slice(jobStart + 1).search(/\n  [a-z][a-z-]*:\n/);
-    const job = workflow.slice(jobStart, nextJob === -1 ? undefined : jobStart + nextJob + 1);
-    const installIndex = job.indexOf("run: npm ci");
-    const smokeIndex = job.indexOf("run: npm run test:registration-smoke");
-    const packageIndex = job.indexOf(`run: ${packageCommand}`);
-    assert.notEqual(installIndex, -1, `expected ${jobName} npm install`);
-    assert.notEqual(smokeIndex, -1, `expected ${jobName} registration smoke`);
-    assert.notEqual(packageIndex, -1, `expected ${jobName} package step`);
-    assert(installIndex < smokeIndex, `expected ${jobName} install before registration smoke`);
-    assert(smokeIndex < packageIndex, `expected ${jobName} registration smoke before packaging`);
+  for (const lineEnding of ["\n", "\r\n"]) {
+    const workflowVariant = lineEnding === "\n" ? workflow : workflow.replace(/\n/g, lineEnding);
+    for (const jobName of ["windows", "macos"]) {
+      const packageCommand =
+        jobName === "windows" ? "npm run package:vsix:win" : "npm run package:vsix:mac";
+      const { jobStart, job } = findWorkflowJob(workflowVariant, jobName);
+      assert.notEqual(jobStart, -1, `expected ${jobName} job`);
+      const installIndex = job.indexOf("run: npm ci");
+      const smokeIndex = job.indexOf("run: npm run test:registration-smoke");
+      const packageIndex = job.indexOf(`run: ${packageCommand}`);
+      assert.notEqual(installIndex, -1, `expected ${jobName} npm install`);
+      assert.notEqual(smokeIndex, -1, `expected ${jobName} registration smoke`);
+      assert.notEqual(packageIndex, -1, `expected ${jobName} package step`);
+      assert(installIndex < smokeIndex, `expected ${jobName} install before registration smoke`);
+      assert(smokeIndex < packageIndex, `expected ${jobName} registration smoke before packaging`);
+    }
   }
   assert.match(registrationSmoke, /process\.execPath/);
   assert.match(registrationSmoke, /app-server/);
