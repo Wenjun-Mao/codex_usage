@@ -13,13 +13,14 @@ const {
   project,
   statusSummary,
   task,
+  transferSelection,
 } = require("./taskTransferFixtures");
 
 test("import lazily chooses and remembers a transfer folder", async () => {
   const port = fakePort({
     chosenTransferFolder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/workspace"] })]),
-    selection: { threadIds: ["remote-task"] },
+    selection: transferSelection(["remote-task"]),
   });
 
   await new TaskTransferController(port, () => true).importTasks();
@@ -89,7 +90,7 @@ test("each operation opens a fresh picker without an initial task selection", as
     folder: "/transfer",
     inventoryQueue: [remote, remote],
     selectionQueue: [
-      { projectKey: "git:https://example.com/repo.git", threadIds: ["remote-task"] },
+      transferSelection(["remote-task"]),
       undefined,
     ],
   });
@@ -127,13 +128,16 @@ test("ambiguous destination choice becomes one binding for all selected project 
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([remoteProject]),
-    selection: { threadIds: ["task-1", "task-2"] },
+    selection: transferSelection(["task-1", "task-2"]),
     chosenProjectRoot: "/repo-b",
   });
 
   await new TaskTransferController(port, () => true).importTasks();
 
   assert.equal(port.projectRootPrompts.length, 1);
+  assert.equal(port.executions[0].request.projectKey, remoteProject.projectKey);
+  assert.equal(port.executions[0].request.projectLabel, remoteProject.projectLabel);
+  assert.deepEqual(port.executions[0].request.threadIds, ["task-1", "task-2"]);
   assert.deepEqual(port.executions[0].request.projectBindings, [{
     projectKey: remoteProject.projectKey,
     path: "/repo-b",
@@ -141,75 +145,37 @@ test("ambiguous destination choice becomes one binding for all selected project 
   }]);
 });
 
-test("non-git mapping requires confirmation and cancellation aborts the whole import", async () => {
-  const remoteProject = project({
-    projectKey: "path:/source/project",
-    identityKind: "path",
-    tasks: [task("task-1"), task("task-2")],
-  });
+test("cross-project transfer selection is rejected before prompts or execution", async () => {
   const port = fakePort({
     folder: "/transfer",
-    inventory: inventory([remoteProject]),
-    selection: { threadIds: ["task-1", "task-2"] },
-    chosenProjectRoot: "/local/project",
-    confirmUnverified: false,
+    inventory: inventory([
+      project({
+        projectKey: "repo-a",
+        projectLabel: "Repo A",
+        tasks: [task("task-a")],
+      }),
+      project({
+        projectKey: "repo-b",
+        projectLabel: "Repo B",
+        tasks: [task("task-b")],
+      }),
+    ]),
+    selection: transferSelection(["task-a", "task-b"], "repo-a"),
   });
 
   await new TaskTransferController(port, () => true).importTasks();
-
-  assert.equal(port.confirmationPrompts.length, 1);
-  assert.deepEqual(port.executions, []);
-  assert.deepEqual(port.notifications, []);
-  assert.deepEqual(port.statuses, ["checking", undefined]);
-});
-
-test("a unique destination candidate resolves without prompting", async () => {
-  const port = fakePort({
-    folder: "/transfer",
-    workspaceRoots: ["/workspace", "/repo"],
-    inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selection: { threadIds: ["remote-task"] },
-  });
-
-  await new TaskTransferController(port, () => false).importTasks();
 
   assert.deepEqual(port.projectRootPrompts, []);
-  assert.deepEqual(port.executions[0].request, {
-    syncDir: "/transfer",
-    threadIds: ["remote-task"],
-    autoTransitions: false,
-    candidateProjectRoots: ["/workspace", "/repo"],
-    projectBindings: [{
-      projectKey: "git:https://example.com/repo.git",
-      path: "/repo",
-      confirmedUnverified: false,
-    }],
-  });
-});
-
-test("a missing destination candidate falls back to one current-operation binding", async () => {
-  const port = fakePort({
-    folder: "/transfer",
-    inventory: inventory([project()]),
-    selection: { threadIds: ["remote-task"] },
-    chosenProjectRoot: "/chosen/repo",
-  });
-
-  await new TaskTransferController(port, () => true).importTasks();
-
-  assert.deepEqual(port.projectRootPrompts[0].candidates, []);
-  assert.deepEqual(port.executions[0].request.projectBindings, [{
-    projectKey: "git:https://example.com/repo.git",
-    path: "/chosen/repo",
-    confirmedUnverified: false,
-  }]);
+  assert.deepEqual(port.executions, []);
+  assert.equal(port.notifications[0][0], "error");
+  assert.match(port.notifications[0][1], /one project at a time/i);
 });
 
 test("engine destination issues stay technical while the notification stays concise", async () => {
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selection: { threadIds: ["remote-task"] },
+    selection: transferSelection(["remote-task"]),
     executionResult: issueResult(
       "project_binding_identity_mismatch",
       "Expected git:example/repo but found git:other/repo.",
@@ -227,40 +193,28 @@ test("engine destination issues stay technical while the notification stays conc
   assert.deepEqual(port.statuses, ["checking", "issue", undefined]);
 });
 
-test("destination mappings are prompted again and never retained across imports", async () => {
-  const remote = inventory([project()]);
-  const port = fakePort({
-    folder: "/transfer",
-    inventoryQueue: [remote, remote],
-    selectionQueue: [
-      { threadIds: ["remote-task"] },
-      { threadIds: ["remote-task"] },
-    ],
-    chosenProjectRootQueue: ["/first", "/second"],
-  });
-  const controller = new TaskTransferController(port, () => true);
-
-  await controller.importTasks();
-  await controller.importTasks();
-
-  assert.equal(port.projectRootPrompts.length, 2);
-  assert.deepEqual(
-    port.executions.map((call) => call.request.projectBindings[0].path),
-    ["/first", "/second"],
-  );
-});
-
 test("local counterparts and Review never prompt for destination bindings", async () => {
   const bothProject = project({ tasks: [task("both-task", "both")] });
   const importPort = fakePort({
     folder: "/transfer",
     inventory: inventory([bothProject]),
-    selection: { threadIds: ["both-task"] },
+    selection: transferSelection(["both-task"]),
   });
   const reviewPort = fakePort({
     folder: "/transfer",
-    inventory: inventory([project({ candidateRoots: ["/desktop-root"] })]),
-    selection: { threadIds: ["remote-task"] },
+    inventory: inventory([
+      project({
+        projectKey: "repo-a",
+        candidateRoots: ["/desktop-root"],
+        tasks: [task("remote-a")],
+      }),
+      project({
+        projectKey: "repo-b",
+        candidateRoots: ["/other-root"],
+        tasks: [task("remote-b")],
+      }),
+    ]),
+    selection: { threadIds: ["remote-a", "remote-b"] },
     reviewResult: statusSummary({
       total: 3,
       synced: 1,
@@ -277,8 +231,10 @@ test("local counterparts and Review never prompt for destination bindings", asyn
   assert.deepEqual(reviewPort.projectRootPrompts, []);
   assert.deepEqual(reviewPort.reviews[0].projectBindings, []);
   assert.deepEqual(reviewPort.reviews[0].candidateProjectRoots, [
-    "/workspace", "/desktop-root",
+    "/workspace", "/desktop-root", "/other-root",
   ]);
+  assert.equal("projectKey" in reviewPort.reviews[0], false);
+  assert.equal("projectLabel" in reviewPort.reviews[0], false);
   assert.deepEqual(reviewPort.notifications, [[
     "info",
     "Task Transfer status: 3 tasks, 1 up to date, 1 newer on this computer, 1 newer in the transfer folder.",
@@ -290,7 +246,7 @@ test("malformed native Review output becomes an actionable controller failure", 
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project()]),
-    selection: { threadIds: ["remote-task"] },
+    selection: transferSelection(["remote-task"]),
     reviewError: new Error("Invalid Codex sync status: threads must be an array"),
   });
 
@@ -310,7 +266,7 @@ test("semantically malformed native Review rows reach the actionable failure", a
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project()]),
-    selection: { threadIds: ["remote-task"] },
+    selection: transferSelection(["remote-task"]),
     reviewError: new Error(
       "Invalid Codex sync status: threads[0] has invalid state/action pair unknown_state/unknown_action",
     ),
@@ -337,7 +293,7 @@ test("structured partial execution results never claim that zero tasks were copi
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selection: { threadIds: ["remote-task"] },
+    selection: transferSelection(["remote-task"]),
     executionResult: partial,
   });
 
@@ -356,7 +312,7 @@ test("task and destination picker cancellations stay silent", async () => {
   const projectPort = fakePort({
     folder: "/transfer",
     inventory: inventory([project()]),
-    selection: { threadIds: ["remote-task"] },
+    selection: transferSelection(["remote-task"]),
     chosenProjectRoot: undefined,
   });
 
@@ -407,7 +363,7 @@ test("unexpected failures are logged and always clear transient transfer status"
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selection: { threadIds: ["remote-task"] },
+    selection: transferSelection(["remote-task"]),
     executionError: new Error("process failed"),
   });
 
@@ -427,7 +383,7 @@ test("export execution failures keep export-specific notification copy", async (
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ tasks: [task("local-task", "local")] })]),
-    selection: { threadIds: ["local-task"] },
+    selection: transferSelection(["local-task"]),
     executionError: new Error("process failed"),
   });
 

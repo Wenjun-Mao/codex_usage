@@ -9,11 +9,17 @@ import type {
   SyncInventoryProject,
 } from "./syncInventory";
 import type {
-  ProjectBinding,
+  SyncCommandOptions,
   SyncRunResult,
   SyncStatusSummary,
+  SyncTransferCommandOptions,
 } from "./syncProtocol";
 import { chooseFreshTaskTransferSelection } from "./taskTransferOperation";
+import {
+  requireSelectedTransferProject,
+  resolveImportProjectBindings,
+  TransferProjectScopeError,
+} from "./taskTransferProjectScope";
 import {
   formatTransferResult,
   taskTransferMenuItems,
@@ -23,13 +29,16 @@ import {
   type TransferTransientStatus,
 } from "./transferPresentation";
 
-export type TransferExecutionRequest = {
-  syncDir: string;
-  threadIds: string[];
-  autoTransitions: boolean;
-  candidateProjectRoots: string[];
-  projectBindings: ProjectBinding[];
+export type TransferExecutionRequest = SyncTransferCommandOptions & {
+  projectLabel: string;
 };
+
+export type TransferReviewRequest = SyncCommandOptions;
+
+type TransferRequestContext = Omit<
+  TransferReviewRequest,
+  "threadIds" | "projectBindings"
+>;
 
 export interface TaskTransferPort {
   readFolder(): string;
@@ -55,7 +64,7 @@ export interface TaskTransferPort {
     operation: "import" | "export",
     request: TransferExecutionRequest,
   ): Promise<SyncRunResult>;
-  review(request: TransferExecutionRequest): Promise<SyncStatusSummary>;
+  review(request: TransferReviewRequest): Promise<SyncStatusSummary>;
   notify(kind: "info" | "warning" | "error", message: string): void;
   log(message: string): void;
   setTransientStatus(status: TransferTransientStatus | undefined): void;
@@ -227,8 +236,13 @@ export class TaskTransferController {
         return;
       }
 
+      const selectedProject = requireSelectedTransferProject(
+        inventory,
+        operation,
+        selection,
+      );
       const projectBindings = operation === "import"
-        ? await this.resolveImportBindings(inventory, selection.threadIds)
+        ? await resolveImportProjectBindings(selectedProject, this.port)
         : [];
       if (projectBindings === undefined) {
         return;
@@ -238,7 +252,9 @@ export class TaskTransferController {
       const result = await this.port.execute(operation, {
         ...requestContext,
         candidateProjectRoots: executionCandidateRoots(requestContext, inventory),
-        threadIds: [...selection.threadIds],
+        projectKey: selectedProject.projectKey,
+        projectLabel: selectedProject.projectLabel,
+        threadIds: selectedProject.threadIds,
         projectBindings,
       });
       this.logIssues(result);
@@ -256,7 +272,7 @@ export class TaskTransferController {
     }
   }
 
-  private requestContext(folder: string): Omit<TransferExecutionRequest, "threadIds" | "projectBindings"> {
+  private requestContext(folder: string): TransferRequestContext {
     return {
       syncDir: folder,
       autoTransitions: this.autoTransitions(),
@@ -265,58 +281,13 @@ export class TaskTransferController {
   }
 
   private async loadInventory(
-    request: Omit<TransferExecutionRequest, "threadIds" | "projectBindings">,
+    request: TransferRequestContext,
   ): Promise<SyncInventory> {
     const inventory = await this.port.loadInventory(request);
     for (const issue of inventory.issues) {
       this.port.log(formatIssue("sync inventory", issue));
     }
     return inventory;
-  }
-
-  private async resolveImportBindings(
-    inventory: SyncInventory,
-    threadIds: string[],
-  ): Promise<ProjectBinding[] | undefined> {
-    const selected = new Set(threadIds);
-    const bindings: ProjectBinding[] = [];
-
-    for (const project of inventory.projects) {
-      const requiresDestination = project.tasks.some(
-        (task) => selected.has(task.threadId) && task.availability === "remote",
-      );
-      if (!requiresDestination) {
-        continue;
-      }
-
-      const candidates = normalizedPaths(project.candidateRoots);
-      if (candidates.length === 1) {
-        bindings.push({
-          projectKey: project.projectKey,
-          path: candidates[0],
-          confirmedUnverified: false,
-        });
-        continue;
-      }
-      const chosenPath = await this.port.chooseProjectRoot(project, candidates);
-      if (!chosenPath) {
-        return undefined;
-      }
-
-      let confirmedUnverified = false;
-      if (project.identityKind === "path" && chosenPath.trim() !== project.projectKey.trim()) {
-        confirmedUnverified = await this.port.confirmUnverifiedProject(project, chosenPath);
-        if (!confirmedUnverified) {
-          return undefined;
-        }
-      }
-      bindings.push({
-        projectKey: project.projectKey,
-        path: chosenPath,
-        confirmedUnverified,
-      });
-    }
-    return bindings;
   }
 
   private logIssues(result: SyncRunResult): void {
@@ -342,6 +313,10 @@ export class TaskTransferController {
     const detail = error instanceof Error ? error.message : String(error);
     this.port.log(`[error] ${detail}`);
     this.port.setTransientStatus("issue");
+    if (error instanceof TransferProjectScopeError) {
+      this.port.notify("error", error.message);
+      return;
+    }
     if (stage === "review") {
       this.port.notify(
         "error",
@@ -426,7 +401,7 @@ function normalizedPaths(paths: readonly string[]): string[] {
 }
 
 function executionCandidateRoots(
-  request: Omit<TransferExecutionRequest, "threadIds" | "projectBindings">,
+  request: TransferRequestContext,
   inventory: SyncInventory,
 ): string[] {
   return normalizedPaths([

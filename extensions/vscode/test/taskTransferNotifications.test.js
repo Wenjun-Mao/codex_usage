@@ -2,7 +2,12 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { TaskTransferController } = require("../out/taskTransfer");
-const { fakePort, inventory, project } = require("./taskTransferFixtures");
+const {
+  fakePort,
+  inventory,
+  project,
+  transferSelection,
+} = require("./taskTransferFixtures");
 
 const inventoryIssue = {
   code: "unidentified_remote_task",
@@ -21,7 +26,7 @@ test("inventory diagnostics stay log-only when import succeeds", async () => {
       [project({ candidateRoots: ["/repo"] })],
       [inventoryIssue],
     ),
-    selection: { threadIds: ["remote-task"] },
+    selection: transferSelection(["remote-task"]),
   });
 
   await new TaskTransferController(port, () => true).importTasks();

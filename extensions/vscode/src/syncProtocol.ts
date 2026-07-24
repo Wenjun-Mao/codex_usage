@@ -14,11 +14,15 @@ export type SyncCommandOptions = {
   projectBindings: ProjectBinding[];
 };
 
-type SyncCommandBuilderOptions = Omit<
-  SyncCommandOptions,
-  "candidateProjectRoots" | "projectBindings"
-> &
-  Partial<Pick<SyncCommandOptions, "candidateProjectRoots" | "projectBindings">>;
+export type SyncTransferCommandOptions = SyncCommandOptions & {
+  projectKey: string;
+};
+
+export {
+  buildSyncPullArgs,
+  buildSyncPushArgs,
+  buildSyncStatusArgs,
+} from "./syncCommandArgs";
 
 export type SyncProgressPhase = "scanning" | "pulling" | "pushing";
 
@@ -126,94 +130,6 @@ const ISSUE_KEYS = ["code", "message", "thread_id"] as const;
 const STATUS_KEYS = ["threads", "issues"] as const;
 const PROGRESS_PHASES = new Set<SyncProgressPhase>(["scanning", "pulling", "pushing"]);
 type ValidationFailure = (message: string) => never;
-
-export function buildSyncPullArgs(options: SyncCommandBuilderOptions): string[] {
-  return buildSyncArgs("pull", options);
-}
-
-export function buildSyncPushArgs(options: SyncCommandBuilderOptions): string[] {
-  return buildSyncArgs("push", options);
-}
-
-export function buildSyncStatusArgs(options: SyncCommandBuilderOptions): string[] {
-  return buildSyncArgs("status", options);
-}
-
-function buildSyncArgs(command: "pull" | "push" | "status", options: SyncCommandBuilderOptions): string[] {
-  const args = ["sync", command, "--json"];
-  const syncDir = options.syncDir.trim();
-  if (syncDir) {
-    args.push("--sync-dir", syncDir);
-  }
-  appendSelectors(args, "--candidate-project-root", options.candidateProjectRoots);
-  if (options.autoTransitions === false) {
-    args.push("--no-auto-transitions");
-  }
-  appendProjectBindings(args, options.projectBindings);
-  appendSelectors(args, "--thread-id", options.threadIds);
-  return args;
-}
-
-function appendProjectBindings(args: string[], values: unknown): void {
-  const bindings = normalizeProjectBindings(values);
-  for (const binding of bindings) {
-    args.push("--project-binding", binding.projectKey, binding.path);
-  }
-  for (const binding of bindings) {
-    if (binding.confirmedUnverified) {
-      args.push("--confirm-unverified-project", binding.projectKey);
-    }
-  }
-}
-
-function normalizeProjectBindings(values: unknown): ProjectBinding[] {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  const bindings: ProjectBinding[] = [];
-  for (const value of values) {
-    if (
-      !isRecord(value) ||
-      typeof value.projectKey !== "string" ||
-      typeof value.path !== "string" ||
-      typeof value.confirmedUnverified !== "boolean"
-    ) {
-      continue;
-    }
-    const projectKey = value.projectKey.trim();
-    const path = value.path.trim();
-    if (projectKey && path) {
-      bindings.push({ projectKey, path, confirmedUnverified: value.confirmedUnverified });
-    }
-  }
-  return bindings;
-}
-
-function appendSelectors(args: string[], flag: string, values: unknown): void {
-  for (const value of normalizeSelectors(values)) {
-    args.push(flag, value);
-  }
-}
-
-function normalizeSelectors(values: unknown): string[] {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  const normalized: string[] = [];
-  const seen = new Set<string>();
-  for (const value of values) {
-    if (typeof value !== "string") {
-      continue;
-    }
-    const selector = value.trim();
-    if (!selector || seen.has(selector)) {
-      continue;
-    }
-    seen.add(selector);
-    normalized.push(selector);
-  }
-  return normalized;
-}
 
 export function parseSyncProgressLine(line: string): SyncProgressEvent | undefined {
   let payload: unknown;

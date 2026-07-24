@@ -162,6 +162,8 @@ function dependencies(overrides = {}) {
 function executionRequest() {
   return {
     syncDir: "/transfer",
+    projectKey: "repo-a",
+    projectLabel: "Repo A",
     threadIds: ["task-1"],
     autoTransitions: false,
     candidateProjectRoots: ["/Repo"],
@@ -171,6 +173,12 @@ function executionRequest() {
       confirmedUnverified: false,
     }],
   };
+}
+
+function reviewRequest() {
+  const { projectKey: _projectKey, projectLabel: _projectLabel, ...request } =
+    executionRequest();
+  return request;
 }
 
 test("workspace roots are trimmed deduplicated and preserve first spelling", () => {
@@ -231,8 +239,17 @@ test("port transports workspace roots and maps import progress to user-facing tr
     "--candidate-project-root", "/Repo", "--candidate-project-root", "/Other",
     "--no-auto-transitions",
   ]);
-  assert.deepEqual(deps.processCalls[0].args.slice(0, 3), ["sync", "pull", "--json"]);
+  assert.deepEqual(deps.processCalls[0].args, [
+    "sync", "pull", "--json",
+    "--sync-dir", "/transfer",
+    "--project-key", "repo-a",
+    "--candidate-project-root", "/Repo",
+    "--no-auto-transitions",
+    "--project-binding", "https://github.com/example/project", "/Repo",
+    "--thread-id", "task-1",
+  ]);
   assert.deepEqual(deps.statuses, ["importing"]);
+  assert.equal(calls.progress[0].title, "Importing 1 task into Repo A");
 });
 
 test("port maps export to push and review to status exactly once", async () => {
@@ -245,13 +262,49 @@ test("port maps export to push and review to status exactly once", async () => {
   });
   const port = createTaskTransferVscodePort(context(), deps);
   await port.execute("export", executionRequest());
-  await port.review(executionRequest());
+  await port.review(reviewRequest());
 
   assert.deepEqual(deps.processCalls[0].args.slice(0, 3), ["sync", "push", "--json"]);
   assert.deepEqual(deps.statuses, ["exporting"]);
   assert.deepEqual(deps.commands[0].slice(0, 3), ["sync", "status", "--json"]);
+  assert.doesNotMatch(deps.commands[0].join(" "), /--project-key/);
+  assert.equal(calls.progress[0].title, "Exporting 1 task from Repo A");
   assert.equal(deps.processCalls.length, 1);
   assert.equal(deps.commands.length, 1);
+});
+
+test("project destination prompts use one project-specific destination title", async () => {
+  resetCalls();
+  const port = createTaskTransferVscodePort(context(), dependencies());
+  const selectedProject = {
+    projectKey: "repo-a",
+    projectLabel: "Repo A",
+    identityKind: "git",
+    candidateRoots: [],
+    tasks: [],
+  };
+
+  await port.chooseProjectRoot(selectedProject, ["/repo-a", "/repo-b"]);
+  assert.deepEqual(calls.quickPicks[0][1], {
+    title: "Choose Destination Folder for Repo A",
+    placeHolder: "Choose the matching local project folder",
+  });
+
+  await port.chooseProjectRoot(selectedProject, []);
+  assert.equal(calls.dialogs[0].title, "Choose Destination Folder for Repo A");
+});
+
+test("blank transfer project keys fail before process launch", async () => {
+  resetCalls();
+  const deps = dependencies();
+  const port = createTaskTransferVscodePort(context(), deps);
+
+  await assert.rejects(
+    () => port.execute("import", { ...executionRequest(), projectKey: " " }),
+    /project key/i,
+  );
+  assert.deepEqual(deps.processCalls, []);
+  assert.deepEqual(calls.progress, []);
 });
 
 test("review adapter rejects malformed native status output", async () => {
@@ -268,7 +321,7 @@ test("review adapter rejects malformed native status output", async () => {
   const port = createTaskTransferVscodePort(context(), deps);
 
   await assert.rejects(
-    () => port.review(executionRequest()),
+    () => port.review(reviewRequest()),
     /Invalid Codex sync status/,
   );
   assert.equal(deps.commands.length, 1);
@@ -291,7 +344,7 @@ test("review adapter rejects semantically invalid native status rows", async () 
   const port = createTaskTransferVscodePort(context(), deps);
 
   await assert.rejects(
-    () => port.review(executionRequest()),
+    () => port.review(reviewRequest()),
     /Invalid Codex sync status/,
   );
   assert.equal(deps.commands.length, 1);

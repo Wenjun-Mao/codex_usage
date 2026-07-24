@@ -9,6 +9,7 @@ const {
   project,
   statusSummary,
   task,
+  transferSelection,
 } = require("./taskTransferFixtures");
 
 const busyNotification = [
@@ -56,7 +57,7 @@ for (const pendingCommand of pendingCommandCases) {
           candidateRoots: ["/repo"],
           tasks: [task("remote-task"), task("local-task", "local")],
         })]),
-        selection: { threadIds: ["remote-task", "local-task"] },
+        selection: transferSelection(["remote-task", "local-task"]),
       });
       const commandEntered = deferred();
       const commandRelease = deferred();
@@ -95,8 +96,8 @@ test("an active transfer owns orchestration and transient status across every co
     folder: "/transfer",
     inventoryQueue: [remoteInventory, localInventory, remoteInventory],
     selectionQueue: [
-      { threadIds: ["remote-task"] },
-      { threadIds: ["local-task"] },
+      transferSelection(["remote-task"]),
+      transferSelection(["local-task"]),
       { threadIds: ["remote-task"] },
     ],
     chosenTransferFolderQueue: ["/chosen", "/changed"],

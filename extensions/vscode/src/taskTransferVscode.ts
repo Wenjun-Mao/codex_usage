@@ -113,7 +113,7 @@ async function chooseProjectRoot(
     const selected = await vscode.window.showQuickPick(
       candidates.map((candidate) => ({ label: candidate, path: candidate })),
       {
-        title: `Choose Local Project Folder for ${project.projectLabel}`,
+        title: `Choose Destination Folder for ${project.projectLabel}`,
         placeHolder: "Choose the matching local project folder",
       },
     );
@@ -121,7 +121,7 @@ async function chooseProjectRoot(
   }
   return chooseFolder({
     openLabel: "Choose Local Project Folder",
-    title: `Choose Local Project Folder for ${project.projectLabel}`,
+    title: `Choose Destination Folder for ${project.projectLabel}`,
   });
 }
 
@@ -143,16 +143,21 @@ async function executeTransfer(
   request: TransferExecutionRequest,
   dependencies: TaskTransferVscodeDependencies,
 ) {
-  const executablePath = await dependencies.resolveExecutable();
   const args = operation === "import"
     ? buildSyncPullArgs(request)
     : buildSyncPushArgs(request);
+  const executablePath = await dependencies.resolveExecutable();
   const processRunner = dependencies.runSyncProcess ?? runSyncProcess;
+  const direction = operation === "import" ? "into" : "from";
+  const verb = operation === "import" ? "Importing" : "Exporting";
+  const title =
+    `${verb} ${request.threadIds.length} ` +
+    `${taskWord(request.threadIds.length)} ${direction} ${request.projectLabel}`;
 
   const completion = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Window,
-      title: operation === "import" ? "Importing Codex tasks" : "Exporting Codex tasks",
+      title,
     },
     async () => {
       dependencies.output.appendLine(`> ${executablePath} ${args.join(" ")}`);
@@ -172,6 +177,10 @@ async function executeTransfer(
     },
   );
   return completion.result;
+}
+
+function taskWord(count: number): string {
+  return count === 1 ? "task" : "tasks";
 }
 
 async function chooseFolder(options: {

@@ -63,32 +63,45 @@ function syncResult(outcome = "completed", overrides = {}) {
   };
 }
 
-test("directional sync builders pass exact task ids without project selectors", () => {
+test("directional sync builders pass one explicit project key and exact task ids", () => {
   assert.deepEqual(
     buildSyncPullArgs({
       syncDir: "/sync",
+      projectKey: "repo-a",
       threadIds: ["thread-1"],
-      autoTransitions: false,
+      autoTransitions: true,
       candidateProjectRoots: [],
       projectBindings: [],
     }),
-    ["sync", "pull", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--thread-id", "thread-1"],
+    [
+      "sync", "pull", "--json",
+      "--sync-dir", "/sync",
+      "--project-key", "repo-a",
+      "--thread-id", "thread-1",
+    ],
   );
   assert.deepEqual(
     buildSyncPushArgs({
       syncDir: "/sync",
+      projectKey: "repo-a",
       threadIds: ["thread-1"],
-      autoTransitions: false,
+      autoTransitions: true,
       candidateProjectRoots: [],
       projectBindings: [],
     }),
-    ["sync", "push", "--json", "--sync-dir", "/sync", "--no-auto-transitions", "--thread-id", "thread-1"],
+    [
+      "sync", "push", "--json",
+      "--sync-dir", "/sync",
+      "--project-key", "repo-a",
+      "--thread-id", "thread-1",
+    ],
   );
 });
 
 test("sync argument builders normalize repeatable selectors and preserve JSON flag position", () => {
   const options = {
     syncDir: " /sync ",
+    projectKey: " repo-a ",
     threadIds: [" thread-1 ", "thread-1", "thread-2"],
     autoTransitions: true,
     candidateProjectRoots: [],
@@ -101,6 +114,8 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     "--json",
     "--sync-dir",
     "/sync",
+    "--project-key",
+    "repo-a",
     "--thread-id",
     "thread-1",
     "--thread-id",
@@ -112,12 +127,21 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     "--json",
     "--sync-dir",
     "/sync",
+    "--project-key",
+    "repo-a",
     "--thread-id",
     "thread-1",
     "--thread-id",
     "thread-2",
   ]);
-  assert.deepEqual(buildSyncStatusArgs(options), [
+  const statusOptions = {
+    syncDir: options.syncDir,
+    threadIds: options.threadIds,
+    autoTransitions: options.autoTransitions,
+    candidateProjectRoots: options.candidateProjectRoots,
+    projectBindings: options.projectBindings,
+  };
+  assert.deepEqual(buildSyncStatusArgs(statusOptions), [
     "sync",
     "status",
     "--json",
@@ -128,12 +152,10 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     "--thread-id",
     "thread-2",
   ]);
-  assert.doesNotMatch(buildSyncPullArgs(options).join(" "), /--project-key/);
-  assert.doesNotMatch(buildSyncPushArgs(options).join(" "), /--project-key/);
-  assert.doesNotMatch(buildSyncStatusArgs(options).join(" "), /--project-key/);
+  assert.doesNotMatch(buildSyncStatusArgs(statusOptions).join(" "), /--project-key/);
 });
 
-test("sync command options expose the transient project resolution contract", () => {
+test("sync command options separate status from one-project transfers", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/syncProtocol.ts"), "utf8");
   const optionsContract = source.slice(
     source.indexOf("export type SyncCommandOptions"),
@@ -145,14 +167,31 @@ test("sync command options expose the transient project resolution contract", ()
   assert.match(optionsContract, /autoTransitions:\s*boolean/);
   assert.match(optionsContract, /candidateProjectRoots:\s*string\[\]/);
   assert.match(optionsContract, /projectBindings:\s*ProjectBinding\[\]/);
+  assert.match(
+    optionsContract,
+    /export type SyncTransferCommandOptions = SyncCommandOptions & \{\s*projectKey:\s*string/,
+  );
   assert.doesNotMatch(optionsContract, /projectKeys/);
-  assert.doesNotMatch(source, /--project-key/);
+});
+
+test("directional sync builders reject blank transfer project keys", () => {
+  const options = {
+    syncDir: "/sync",
+    projectKey: "   ",
+    threadIds: ["thread-1"],
+    autoTransitions: true,
+    candidateProjectRoots: [],
+    projectBindings: [],
+  };
+  assert.throws(() => buildSyncPullArgs(options), /project key/i);
+  assert.throws(() => buildSyncPushArgs(options), /project key/i);
 });
 
 test("import args preserve Windows paths and repository keys as separate argv values", () => {
   assert.deepEqual(
     buildSyncPullArgs({
       syncDir: "C:\\Transfer",
+      projectKey: "https://github.com/example/repo",
       threadIds: ["task-1"],
       autoTransitions: true,
       candidateProjectRoots: ["C:\\Code\\repo"],
@@ -171,6 +210,7 @@ test("import args preserve Windows paths and repository keys as separate argv va
     }),
     [
       "sync", "pull", "--json", "--sync-dir", "C:\\Transfer",
+      "--project-key", "https://github.com/example/repo",
       "--candidate-project-root", "C:\\Code\\repo",
       "--project-binding", "https://github.com/example/repo", "C:\\Code\\repo",
       "--project-binding", "c:/source/plain", "D:\\Code\\plain",
@@ -183,6 +223,7 @@ test("import args preserve Windows paths and repository keys as separate argv va
 test("export and status args append roots and only explicitly supplied bindings", () => {
   const options = {
     syncDir: "/transfer",
+    projectKey: "/source/plain",
     threadIds: ["task-1"],
     autoTransitions: true,
     candidateProjectRoots: ["/code/repo"],
@@ -196,6 +237,7 @@ test("export and status args append roots and only explicitly supplied bindings"
   };
   const suffix = [
     "--sync-dir", "/transfer",
+    "--project-key", "/source/plain",
     "--candidate-project-root", "/code/repo",
     "--project-binding", "/source/plain", "/code/repo",
     "--confirm-unverified-project", "/source/plain",
@@ -203,7 +245,22 @@ test("export and status args append roots and only explicitly supplied bindings"
   ];
 
   assert.deepEqual(buildSyncPushArgs(options), ["sync", "push", "--json", ...suffix]);
-  assert.deepEqual(buildSyncStatusArgs(options), ["sync", "status", "--json", ...suffix]);
+  const statusSuffix = [
+    "--candidate-project-root", "/code/repo",
+    "--project-binding", "/source/plain", "/code/repo",
+    "--confirm-unverified-project", "/source/plain",
+    "--thread-id", "task-1",
+  ];
+  assert.deepEqual(
+    buildSyncStatusArgs({
+      syncDir: options.syncDir,
+      threadIds: options.threadIds,
+      autoTransitions: options.autoTransitions,
+      candidateProjectRoots: options.candidateProjectRoots,
+      projectBindings: options.projectBindings,
+    }),
+    ["sync", "status", "--json", "--sync-dir", "/transfer", ...statusSuffix],
+  );
 });
 
 test("parseSyncProgressLine accepts only typed phase events", () => {

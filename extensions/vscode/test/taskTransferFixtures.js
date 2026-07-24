@@ -24,6 +24,10 @@ function inventory(projects = [], issues = []) {
   return { inventoryVersion: 2, projects, issues };
 }
 
+function transferSelection(threadIds, projectKey = "git:https://example.com/repo.git") {
+  return { projectKey, threadIds };
+}
+
 function completed(operation, threadIds) {
   const imported = operation === "import" ? [...threadIds] : [];
   const exported = operation === "export" ? [...threadIds] : [];
@@ -181,4 +185,5 @@ module.exports = {
   project,
   statusSummary,
   task,
+  transferSelection,
 };
