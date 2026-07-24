@@ -14,42 +14,53 @@ function selectionPort(selections) {
       calls.push(["load", folder]);
       return [{ id: `task:${folder}`, kind: "task" }];
     },
-    async chooseTasks(operation, rows, initialThreadIds) {
-      calls.push(["choose", operation, rows.map((row) => row.id), [...initialThreadIds]]);
+    async chooseTasks(operation, rows) {
+      calls.push(["choose", operation, rows.map((row) => row.id)]);
       return selections.shift();
     },
   };
 }
 
 test("two consecutive operations each open with no preselection", async () => {
-  const port = selectionPort([["import-task"], ["export-task"]]);
+  const port = selectionPort([
+    { projectKey: "repo-a", threadIds: ["import-task"] },
+    { projectKey: "repo-b", threadIds: ["export-task"] },
+  ]);
 
-  assert.deepEqual(await selectTaskTransferOperation("import", "/transfer", port), ["import-task"]);
-  assert.deepEqual(await selectTaskTransferOperation("export", "/transfer", port), ["export-task"]);
+  assert.deepEqual(await selectTaskTransferOperation("import", "/transfer", port), {
+    projectKey: "repo-a", threadIds: ["import-task"],
+  });
+  assert.deepEqual(await selectTaskTransferOperation("export", "/transfer", port), {
+    projectKey: "repo-b", threadIds: ["export-task"],
+  });
 
-  assert.deepEqual(
-    port.calls.filter((call) => call[0] === "choose").map((call) => call[3]),
-    [[], []],
-  );
+  assert.deepEqual(port.calls.filter((call) => call[0] === "choose"), [
+    ["choose", "import", ["task:/transfer"]],
+    ["choose", "export", ["task:/transfer"]],
+  ]);
 });
 
 test("review cannot reuse a previous import or export selection", async () => {
-  const port = selectionPort([["import-task"], ["export-task"], undefined]);
+  const port = selectionPort([
+    { projectKey: "repo-a", threadIds: ["import-task"] },
+    { projectKey: "repo-b", threadIds: ["export-task"] },
+    undefined,
+  ]);
 
   await selectTaskTransferOperation("import", "/transfer", port);
   await selectTaskTransferOperation("export", "/transfer", port);
   assert.equal(await selectTaskTransferOperation("review", "/transfer", port), undefined);
 
-  assert.deepEqual(port.calls.at(-1), ["choose", "review", ["task:/transfer"], []]);
+  assert.deepEqual(port.calls.at(-1), ["choose", "review", ["task:/transfer"]]);
 });
 
 test("controller-ready rows still cross the shared empty-selection boundary", async () => {
-  const port = selectionPort([["task-1"]]);
+  const port = selectionPort([{ projectKey: "repo-a", threadIds: ["task-1"] }]);
   const rows = [{ id: "task:task-1", kind: "task" }];
 
   assert.deepEqual(
     await chooseFreshTaskTransferSelection("import", rows, port),
-    ["task-1"],
+    { projectKey: "repo-a", threadIds: ["task-1"] },
   );
-  assert.deepEqual(port.calls, [["choose", "import", ["task:task-1"], []]]);
+  assert.deepEqual(port.calls, [["choose", "import", ["task:task-1"]]]);
 });

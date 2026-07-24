@@ -343,7 +343,7 @@ test("sync has no automatic focus activation or file watcher trigger", () => {
   assert.doesNotMatch(extensionSource, /syncOnFocus|configureSyncWatcher|auto sync/);
 });
 
-test("task picker adapter canonicalizes hierarchical selections and settles once", () => {
+test("task picker adapter renders canonical project-aware selections and settles once", () => {
   const pickerSource = fs.readFileSync(
     path.join(__dirname, "../src/taskTransferVscodePicker.ts"),
     "utf8",
@@ -351,13 +351,14 @@ test("task picker adapter canonicalizes hierarchical selections and settles once
 
   assert.match(pickerSource, /createQuickPick<TaskQuickPickItem>\(\)/);
   assert.match(pickerSource, /canSelectMany = true/);
-  assert.match(pickerSource, /kind:\s*vscode\.QuickPickItemKind\.Separator/);
-  assert.doesNotMatch(pickerSource, /\.\.\.row/);
+  assert.match(pickerSource, /TRANSFER_PICKER_COPY/);
+  assert.match(pickerSource, /visibleTaskPickerItems\(rows, state, operation\)/);
+  assert.match(pickerSource, /Selected project/);
   assert.ok(
     pickerSource.indexOf("for (const rowId of removed)") <
       pickerSource.indexOf("for (const rowId of added)"),
   );
-  assert.match(pickerSource, /selectedPickerItemIds\(rows, selectedThreadIds\)/);
+  assert.match(pickerSource, /selectedTaskPickerItemIds\(rows, state, operation\)/);
   assert.match(pickerSource, /Select at least one Codex task/);
   assert.match(pickerSource, /let settled = false/);
 });

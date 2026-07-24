@@ -56,7 +56,7 @@ for (const pendingCommand of pendingCommandCases) {
           candidateRoots: ["/repo"],
           tasks: [task("remote-task"), task("local-task", "local")],
         })]),
-        selectedThreadIds: ["remote-task", "local-task"],
+        selection: { threadIds: ["remote-task", "local-task"] },
       });
       const commandEntered = deferred();
       const commandRelease = deferred();
@@ -94,7 +94,11 @@ test("an active transfer owns orchestration and transient status across every co
   const port = fakePort({
     folder: "/transfer",
     inventoryQueue: [remoteInventory, localInventory, remoteInventory],
-    selectedThreadIdsQueue: [["remote-task"], ["local-task"], ["remote-task"]],
+    selectionQueue: [
+      { threadIds: ["remote-task"] },
+      { threadIds: ["local-task"] },
+      { threadIds: ["remote-task"] },
+    ],
     chosenTransferFolderQueue: ["/chosen", "/changed"],
   });
   const operationStarted = deferred();
@@ -147,7 +151,7 @@ test("an active review blocks transfers without clearing its transient status", 
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
   });
   const reviewStarted = deferred();
   const reviewDone = deferred();

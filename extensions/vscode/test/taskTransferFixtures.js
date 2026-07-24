@@ -76,7 +76,7 @@ function fakePort(options = {}) {
   let folder = options.folder ?? "";
   const inventories = [...(options.inventoryQueue ?? [options.inventory ?? inventory()])];
   const selections = [...(
-    options.selectedThreadIdsQueue ?? [options.selectedThreadIds]
+    options.selectionQueue ?? [options.selection]
   )];
   const chosenFolders = [...(
     options.chosenTransferFolderQueue ?? [options.chosenTransferFolder]
@@ -135,8 +135,8 @@ function fakePort(options = {}) {
       }
       return inventories.shift() ?? inventory();
     },
-    async chooseTasks(operation, rows, initialThreadIds) {
-      this.selectionCalls.push({ operation, rows, initialThreadIds: [...initialThreadIds] });
+    async chooseTasks(operation, rows) {
+      this.selectionCalls.push({ operation, rows });
       return selections.shift();
     },
     async chooseProjectRoot(selectedProject, candidates) {

@@ -75,8 +75,7 @@ export function createTaskTransferVscodePort(
       const result = await dependencies.runCommand(buildSyncInventoryArgs(request));
       return parseSyncInventory(result.stdout);
     },
-    chooseTasks: (operation, rows, initialThreadIds) =>
-      showTaskTransferPicker(operation, rows, initialThreadIds),
+    chooseTasks: (operation, rows) => showTaskTransferPicker(operation, rows),
     chooseProjectRoot,
     confirmUnverifiedProject,
     execute: (operation, request) => executeTransfer(operation, request, dependencies),

@@ -3,9 +3,13 @@ const test = require("node:test");
 
 const { filterInventoryForOperation } = require("../out/syncInventory");
 const {
+  activateTaskPickerProject,
   buildTaskPickerItems,
+  initialTaskPickerSelection,
   reduceTaskSelection,
+  reduceTransferTaskSelection,
   selectedPickerItemIds,
+  visibleTaskPickerItems,
 } = require("../out/syncTaskPicker");
 
 function inventory() {
@@ -66,11 +70,49 @@ function taskIds(items) {
     .map((item) => item.threadId);
 }
 
-test("import lists transfer-folder tasks and starts unselected", () => {
+test("import lists transfer-folder tasks", () => {
   const items = buildTaskPickerItems(inventory(), "import");
 
   assert.deepEqual(taskIds(items), ["thread-2", "thread-3"]);
-  assert.deepEqual(selectedPickerItemIds(items, []), []);
+});
+
+test("activating an import project selects all eligible tasks in that project", () => {
+  const rows = buildTaskPickerItems(inventory(), "import");
+  const state = activateTaskPickerProject(rows, "repo-a");
+
+  assert.deepEqual(state, {
+    activeProjectKey: "repo-a",
+    selectedThreadIds: ["thread-2"],
+  });
+  assert.deepEqual(
+    visibleTaskPickerItems(rows, state, "import").map((item) => item.id),
+    ["project:repo-a", "task:thread-2", "project:repo-b"],
+  );
+});
+
+test("switching projects discards the old subset and selects the new project", () => {
+  const rows = buildTaskPickerItems(inventory(), "review");
+  const first = reduceTransferTaskSelection(
+    activateTaskPickerProject(rows, "repo-a"),
+    rows.find((row) => row.id === "task:thread-1"),
+    false,
+  );
+  const second = activateTaskPickerProject(rows, "repo-b");
+
+  assert.deepEqual(first.selectedThreadIds, ["thread-2"]);
+  assert.deepEqual(second, {
+    activeProjectKey: "repo-b",
+    selectedThreadIds: ["thread-3"],
+  });
+});
+
+test("review retains fresh cross-project selection", () => {
+  const rows = buildTaskPickerItems(inventory(), "review");
+  const state = initialTaskPickerSelection("review");
+
+  assert.equal(state.activeProjectKey, undefined);
+  assert.deepEqual(state.selectedThreadIds, []);
+  assert.deepEqual(visibleTaskPickerItems(rows, state, "review"), rows);
 });
 
 test("export lists active local tasks and review lists the union", () => {

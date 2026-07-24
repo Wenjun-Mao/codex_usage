@@ -21,7 +21,7 @@ test("inventory diagnostics stay log-only when import succeeds", async () => {
       [project({ candidateRoots: ["/repo"] })],
       [inventoryIssue],
     ),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
   });
 
   await new TaskTransferController(port, () => true).importTasks();
@@ -55,7 +55,7 @@ test("cancellation stays silent when inventory diagnostics were logged", async (
       [project({ candidateRoots: ["/repo"] })],
       [inventoryIssue],
     ),
-    selectedThreadIds: undefined,
+    selection: undefined,
   });
 
   await new TaskTransferController(port, () => true).importTasks();

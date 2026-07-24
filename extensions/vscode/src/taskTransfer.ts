@@ -1,6 +1,7 @@
 import {
   buildTaskPickerItems,
   type TaskPickerItem,
+  type TaskPickerSelection,
 } from "./syncTaskPicker";
 import type {
   SyncInventory,
@@ -41,8 +42,7 @@ export interface TaskTransferPort {
   chooseTasks(
     operation: TransferOperation,
     rows: TaskPickerItem[],
-    initialThreadIds: string[],
-  ): Promise<string[] | undefined>;
+  ): Promise<TaskPickerSelection | undefined>;
   chooseProjectRoot(
     project: SyncInventoryProject,
     candidates: string[],
@@ -184,8 +184,8 @@ export class TaskTransferController {
         );
         return;
       }
-      const threadIds = await chooseFreshTaskTransferSelection("review", rows, this.port);
-      if (!threadIds || threadIds.length === 0) {
+      const selection = await chooseFreshTaskTransferSelection("review", rows, this.port);
+      if (!selection || selection.threadIds.length === 0) {
         return;
       }
 
@@ -193,7 +193,7 @@ export class TaskTransferController {
       const summary = await this.port.review({
         ...requestContext,
         candidateProjectRoots: executionCandidateRoots(requestContext, inventory),
-        threadIds,
+        threadIds: selection.threadIds,
         projectBindings: [],
       });
       this.port.log(`[task transfer] ${summary.message}`);
@@ -222,13 +222,13 @@ export class TaskTransferController {
         return;
       }
 
-      const threadIds = await chooseFreshTaskTransferSelection(operation, rows, this.port);
-      if (!threadIds || threadIds.length === 0) {
+      const selection = await chooseFreshTaskTransferSelection(operation, rows, this.port);
+      if (!selection || selection.threadIds.length === 0) {
         return;
       }
 
       const projectBindings = operation === "import"
-        ? await this.resolveImportBindings(inventory, threadIds)
+        ? await this.resolveImportBindings(inventory, selection.threadIds)
         : [];
       if (projectBindings === undefined) {
         return;
@@ -238,7 +238,7 @@ export class TaskTransferController {
       const result = await this.port.execute(operation, {
         ...requestContext,
         candidateProjectRoots: executionCandidateRoots(requestContext, inventory),
-        threadIds: [...threadIds],
+        threadIds: [...selection.threadIds],
         projectBindings,
       });
       this.logIssues(result);

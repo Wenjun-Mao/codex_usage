@@ -19,7 +19,7 @@ test("import lazily chooses and remembers a transfer folder", async () => {
   const port = fakePort({
     chosenTransferFolder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/workspace"] })]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
   });
 
   await new TaskTransferController(port, () => true).importTasks();
@@ -72,7 +72,7 @@ test("inventory issues are logged while task cancellation stays silent", async (
       [project({ candidateRoots: ["/repo"] })],
       [{ code: "unidentified_remote_task", message: "technical path detail", threadId: "" }],
     ),
-    selectedThreadIds: undefined,
+    selection: undefined,
   });
 
   await new TaskTransferController(port, () => true).importTasks();
@@ -83,19 +83,22 @@ test("inventory issues are logged while task cancellation stays silent", async (
   assert.deepEqual(port.notifications, []);
 });
 
-test("each operation opens an empty fresh selection and never writes task ids", async () => {
+test("each operation opens a fresh picker without an initial task selection", async () => {
   const remote = inventory([project()]);
   const port = fakePort({
     folder: "/transfer",
     inventoryQueue: [remote, remote],
-    selectedThreadIdsQueue: [["remote-task"], undefined],
+    selectionQueue: [
+      { projectKey: "git:https://example.com/repo.git", threadIds: ["remote-task"] },
+      undefined,
+    ],
   });
   const controller = new TaskTransferController(port, () => true);
 
   await controller.importTasks();
   await controller.importTasks();
 
-  assert.deepEqual(port.selectionCalls.map((call) => call.initialThreadIds), [[], []]);
+  assert.deepEqual(port.selectionCalls.map((call) => call.operation), ["import", "import"]);
   assert.deepEqual(port.folderWrites, []);
   assert.equal("threadIdWrites" in port, false);
 });
@@ -124,7 +127,7 @@ test("ambiguous destination choice becomes one binding for all selected project 
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([remoteProject]),
-    selectedThreadIds: ["task-1", "task-2"],
+    selection: { threadIds: ["task-1", "task-2"] },
     chosenProjectRoot: "/repo-b",
   });
 
@@ -147,7 +150,7 @@ test("non-git mapping requires confirmation and cancellation aborts the whole im
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([remoteProject]),
-    selectedThreadIds: ["task-1", "task-2"],
+    selection: { threadIds: ["task-1", "task-2"] },
     chosenProjectRoot: "/local/project",
     confirmUnverified: false,
   });
@@ -165,7 +168,7 @@ test("a unique destination candidate resolves without prompting", async () => {
     folder: "/transfer",
     workspaceRoots: ["/workspace", "/repo"],
     inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
   });
 
   await new TaskTransferController(port, () => false).importTasks();
@@ -188,7 +191,7 @@ test("a missing destination candidate falls back to one current-operation bindin
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project()]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
     chosenProjectRoot: "/chosen/repo",
   });
 
@@ -206,7 +209,7 @@ test("engine destination issues stay technical while the notification stays conc
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
     executionResult: issueResult(
       "project_binding_identity_mismatch",
       "Expected git:example/repo but found git:other/repo.",
@@ -229,7 +232,10 @@ test("destination mappings are prompted again and never retained across imports"
   const port = fakePort({
     folder: "/transfer",
     inventoryQueue: [remote, remote],
-    selectedThreadIdsQueue: [["remote-task"], ["remote-task"]],
+    selectionQueue: [
+      { threadIds: ["remote-task"] },
+      { threadIds: ["remote-task"] },
+    ],
     chosenProjectRootQueue: ["/first", "/second"],
   });
   const controller = new TaskTransferController(port, () => true);
@@ -249,12 +255,12 @@ test("local counterparts and Review never prompt for destination bindings", asyn
   const importPort = fakePort({
     folder: "/transfer",
     inventory: inventory([bothProject]),
-    selectedThreadIds: ["both-task"],
+    selection: { threadIds: ["both-task"] },
   });
   const reviewPort = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/desktop-root"] })]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
     reviewResult: statusSummary({
       total: 3,
       synced: 1,
@@ -284,7 +290,7 @@ test("malformed native Review output becomes an actionable controller failure", 
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project()]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
     reviewError: new Error("Invalid Codex sync status: threads must be an array"),
   });
 
@@ -304,7 +310,7 @@ test("semantically malformed native Review rows reach the actionable failure", a
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project()]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
     reviewError: new Error(
       "Invalid Codex sync status: threads[0] has invalid state/action pair unknown_state/unknown_action",
     ),
@@ -331,7 +337,7 @@ test("structured partial execution results never claim that zero tasks were copi
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
     executionResult: partial,
   });
 
@@ -345,12 +351,12 @@ test("task and destination picker cancellations stay silent", async () => {
   const taskPort = fakePort({
     folder: "/transfer",
     inventory: inventory([project()]),
-    selectedThreadIds: undefined,
+    selection: undefined,
   });
   const projectPort = fakePort({
     folder: "/transfer",
     inventory: inventory([project()]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
     chosenProjectRoot: undefined,
   });
 
@@ -401,7 +407,7 @@ test("unexpected failures are logged and always clear transient transfer status"
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ candidateRoots: ["/repo"] })]),
-    selectedThreadIds: ["remote-task"],
+    selection: { threadIds: ["remote-task"] },
     executionError: new Error("process failed"),
   });
 
@@ -421,7 +427,7 @@ test("export execution failures keep export-specific notification copy", async (
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory([project({ tasks: [task("local-task", "local")] })]),
-    selectedThreadIds: ["local-task"],
+    selection: { threadIds: ["local-task"] },
     executionError: new Error("process failed"),
   });
 

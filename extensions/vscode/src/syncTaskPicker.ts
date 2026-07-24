@@ -17,6 +17,16 @@ export type TaskPickerItem = {
   childThreadIds: string[];
 };
 
+export type TaskPickerSelection = {
+  projectKey?: string;
+  threadIds: string[];
+};
+
+export type TaskPickerSelectionState = {
+  activeProjectKey?: string;
+  selectedThreadIds: string[];
+};
+
 export function buildTaskPickerItems(
   inventory: SyncInventory,
   operation: TransferOperation,
@@ -53,6 +63,83 @@ export function buildTaskPickerItems(
   return items;
 }
 
+export function initialTaskPickerSelection(
+  operation: TransferOperation,
+): TaskPickerSelectionState {
+  return operation === "review"
+    ? { selectedThreadIds: [] }
+    : { activeProjectKey: undefined, selectedThreadIds: [] };
+}
+
+export function activateTaskPickerProject(
+  rows: TaskPickerItem[],
+  projectKey: string,
+): TaskPickerSelectionState {
+  const project = rows.find(
+    (row) => row.kind === "project" && row.projectKey === projectKey,
+  );
+  return {
+    activeProjectKey: projectKey,
+    selectedThreadIds: project ? Array.from(project.childThreadIds) : [],
+  };
+}
+
+export function visibleTaskPickerItems(
+  rows: TaskPickerItem[],
+  state: TaskPickerSelectionState,
+  operation: TransferOperation,
+): TaskPickerItem[] {
+  if (operation === "review") {
+    return rows;
+  }
+  return rows.filter(
+    (row) => row.kind === "project" || row.projectKey === state.activeProjectKey,
+  );
+}
+
+export function reduceTransferTaskSelection(
+  state: TaskPickerSelectionState,
+  changedItem: TaskPickerItem,
+  selected: boolean,
+): TaskPickerSelectionState {
+  const selectedThreadIds = normalizeThreadIds(state.selectedThreadIds);
+  if (changedItem.kind === "project") {
+    return selected && changedItem.projectKey
+      ? activateTaskPickerProjectForRow(changedItem)
+      : { activeProjectKey: state.activeProjectKey, selectedThreadIds };
+  }
+  if (
+    changedItem.kind !== "task" ||
+    changedItem.threadId === undefined ||
+    changedItem.projectKey !== state.activeProjectKey
+  ) {
+    return { activeProjectKey: state.activeProjectKey, selectedThreadIds };
+  }
+  return {
+    activeProjectKey: state.activeProjectKey,
+    selectedThreadIds: selected
+      ? normalizeThreadIds([...selectedThreadIds, changedItem.threadId])
+      : selectedThreadIds.filter((threadId) => threadId !== changedItem.threadId),
+  };
+}
+
+export function selectedTaskPickerItemIds(
+  rows: TaskPickerItem[],
+  state: TaskPickerSelectionState,
+  operation: TransferOperation,
+): string[] {
+  if (operation === "review") {
+    return selectedPickerItemIds(rows, state.selectedThreadIds);
+  }
+  const selected = new Set(state.selectedThreadIds);
+  return visibleTaskPickerItems(rows, state, operation).flatMap((row) => {
+    if (row.kind === "project") {
+      return row.projectKey === state.activeProjectKey ? [row.id] : [];
+    }
+    return row.kind === "task" && row.threadId && selected.has(row.threadId) ? [row.id] : [];
+  });
+}
+
 export function reduceTaskSelection(
   selectedThreadIds: unknown,
   changedItem: TaskPickerItem,
@@ -78,6 +165,13 @@ export function reduceTaskSelection(
     return normalizeThreadIds([...current, changedItem.threadId]);
   }
   return current.filter((threadId) => threadId !== changedItem.threadId);
+}
+
+function activateTaskPickerProjectForRow(project: TaskPickerItem): TaskPickerSelectionState {
+  return {
+    activeProjectKey: project.projectKey,
+    selectedThreadIds: Array.from(project.childThreadIds),
+  };
 }
 
 export function selectedPickerItemIds(items: TaskPickerItem[], selectedThreadIds: unknown): string[] {

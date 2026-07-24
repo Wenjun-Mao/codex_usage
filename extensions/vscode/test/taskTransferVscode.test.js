@@ -197,15 +197,15 @@ test("adapter source never writes private Codex project registries", () => {
   }
 });
 
-test("picker source gives every operation its approved fresh-selection title", () => {
+test("picker source gives every operation its approved project-aware title", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../src/taskTransferVscodePicker.ts"),
     "utf8",
   );
   for (const title of [
-    "Select tasks to import",
-    "Select tasks to export",
-    "Select tasks to review",
+    "Import Tasks: Choose One Project",
+    "Export Tasks: Choose One Project",
+    "Review Tasks Across Projects",
   ]) {
     assert.match(source, new RegExp(title));
   }

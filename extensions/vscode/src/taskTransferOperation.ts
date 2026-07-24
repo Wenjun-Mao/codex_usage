@@ -1,4 +1,4 @@
-import type { TaskPickerItem } from "./syncTaskPicker";
+import type { TaskPickerItem, TaskPickerSelection } from "./syncTaskPicker";
 import type { TransferOperation } from "./transferPresentation";
 
 export interface TaskTransferSelectionPort {
@@ -6,15 +6,14 @@ export interface TaskTransferSelectionPort {
   chooseTasks(
     operation: TransferOperation,
     rows: TaskPickerItem[],
-    initialThreadIds: readonly string[],
-  ): Promise<string[] | undefined>;
+  ): Promise<TaskPickerSelection | undefined>;
 }
 
 export async function selectTaskTransferOperation(
   operation: TransferOperation,
   folder: string,
   port: TaskTransferSelectionPort,
-): Promise<string[] | undefined> {
+): Promise<TaskPickerSelection | undefined> {
   const rows = await port.loadRows(folder);
   return chooseFreshTaskTransferSelection(operation, rows, port);
 }
@@ -23,6 +22,6 @@ export function chooseFreshTaskTransferSelection(
   operation: TransferOperation,
   rows: TaskPickerItem[],
   port: Pick<TaskTransferSelectionPort, "chooseTasks">,
-): Promise<string[] | undefined> {
-  return port.chooseTasks(operation, rows, []);
+): Promise<TaskPickerSelection | undefined> {
+  return port.chooseTasks(operation, rows);
 }
