@@ -1,0 +1,421 @@
+const assert = require("node:assert/strict");
+const { createHook } = require("node:async_hooks");
+const { EventEmitter } = require("node:events");
+const { PassThrough } = require("node:stream");
+const test = require("node:test");
+
+const { registerCodexTasks } = require("../out/codexAppServer");
+
+const officialCandidate = {
+  executablePath: "/official/codex",
+  source: "official-vscode-extension",
+};
+const pathCandidate = { executablePath: "codex", source: "path" };
+
+function createFakeChild(onMessage = () => {}) {
+  const stdin = new PassThrough();
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  const child = new EventEmitter();
+  const messages = [];
+  let stdinBuffer = "";
+
+  child.stdin = stdin;
+  child.stdout = stdout;
+  child.stderr = stderr;
+  child.killCalls = 0;
+  child.stdinEndCalls = 0;
+  child.kill = () => {
+    child.killCalls += 1;
+    return true;
+  };
+  child.sendStdout = (...chunks) => {
+    for (const chunk of chunks) {
+      stdout.write(chunk);
+    }
+  };
+  child.sendStderr = (...chunks) => {
+    for (const chunk of chunks) {
+      stderr.write(chunk);
+    }
+  };
+  child.exit = (code = 1, signal = null) => child.emit("exit", code, signal);
+
+  const originalEnd = stdin.end.bind(stdin);
+  stdin.end = (...args) => {
+    child.stdinEndCalls += 1;
+    return originalEnd(...args);
+  };
+  stdin.on("data", (chunk) => {
+    stdinBuffer += chunk.toString("utf8");
+    let newlineIndex;
+    while ((newlineIndex = stdinBuffer.indexOf("\n")) >= 0) {
+      const line = stdinBuffer.slice(0, newlineIndex);
+      stdinBuffer = stdinBuffer.slice(newlineIndex + 1);
+      if (!line) {
+        continue;
+      }
+      const message = JSON.parse(line);
+      messages.push(message);
+      onMessage(message, child);
+    }
+  });
+  child.messages = messages;
+  return child;
+}
+
+function createSuccessChild(expectedThreadIds = ["task-a"]) {
+  const pending = new Set(expectedThreadIds);
+  return createFakeChild((message, child) => {
+    if (message.method === "initialize") {
+      queueMicrotask(() => child.sendStdout('{"id":1,"result":{"serverInfo":{"name":"fake"}}}\n'));
+      return;
+    }
+    if (message.method === "thread/read" && pending.delete(message.params.threadId)) {
+      queueMicrotask(() =>
+        child.sendStdout(`${JSON.stringify({ id: message.id, result: { thread: { id: message.params.threadId } } })}\n`),
+      );
+    }
+  });
+}
+
+function spawnRecorder(factory) {
+  const calls = [];
+  const spawnProcess = (executablePath, args, options) => {
+    calls.push({ executablePath, args, options });
+    return factory(executablePath, calls.length - 1);
+  };
+  return { calls, spawnProcess };
+}
+
+function baseOptions(overrides = {}) {
+  return {
+    candidates: [officialCandidate],
+    threadIds: ["task-a"],
+    extensionVersion: "0.1.37",
+    startupTimeoutMs: 40,
+    requestTimeoutMs: 40,
+    batchTimeoutMs: 80,
+    ...overrides,
+  };
+}
+
+function assertCleanedUp(child) {
+  assert.equal(child.stdinEndCalls, 1);
+  assert.equal(child.killCalls, 1);
+  assert.equal(child.listenerCount("error"), 0);
+  assert.equal(child.listenerCount("exit"), 0);
+  assert.equal(child.stdout.listenerCount("data"), 0);
+  assert.equal(child.stderr.listenerCount("data"), 0);
+  assert.equal(child.stdin.listenerCount("error"), 0);
+}
+
+test("registers exact unique ids through one direct app-server process", async () => {
+  const requested = [];
+  const child = createFakeChild((message, process) => {
+    if (message.method === "initialize") {
+      const notice = Buffer.from('{"method":"server/notice","params":{"text":"café"}}\n');
+      const split = notice.indexOf(Buffer.from("é")) + 1;
+      queueMicrotask(() => {
+        process.sendStdout(notice.subarray(0, split), notice.subarray(split));
+        process.sendStdout('{"id":1,"res', 'ult":{"serverInfo":{"name":"fake"}}}\n');
+      });
+      return;
+    }
+    if (message.method !== "thread/read") {
+      return;
+    }
+    requested.push(message);
+    if (requested.length === 2) {
+      queueMicrotask(() => {
+        process.sendStdout('{"method":"thread/status","params":{"threadId":"task-a"}}\n');
+        process.sendStdout('{"id":3,"result":{"thread":{"id":"task-b"}}}\n');
+        process.sendStdout('{"id":2,"result":{"thread":', '{"id":"task-a"}}}\n');
+      });
+    }
+  });
+  const recorder = spawnRecorder(() => child);
+
+  const result = await registerCodexTasks(
+    baseOptions({
+      threadIds: ["task-a", "task-a", "", " padded ", "task-b"],
+      spawnProcess: recorder.spawnProcess,
+    }),
+  );
+
+  assert.deepEqual(recorder.calls[0], {
+    executablePath: "/official/codex",
+    args: ["app-server", "--stdio"],
+    options: { shell: false, stdio: ["pipe", "pipe", "pipe"] },
+  });
+  assert.deepEqual(child.messages, [
+    {
+      id: 1,
+      method: "initialize",
+      params: { clientInfo: { name: "codex-usage", version: "0.1.37" }, capabilities: {} },
+    },
+    { method: "initialized", params: {} },
+    { id: 2, method: "thread/read", params: { threadId: "task-a", includeTurns: false } },
+    { id: 3, method: "thread/read", params: { threadId: "task-b", includeTurns: false } },
+  ]);
+  assert.deepEqual(result, {
+    attemptedThreadIds: ["task-a", "task-b"],
+    registeredThreadIds: ["task-a", "task-b"],
+    failures: [
+      { threadId: "", message: "Thread id must be nonempty and contain no surrounding whitespace" },
+      { threadId: " padded ", message: "Thread id must be nonempty and contain no surrounding whitespace" },
+    ],
+    executable: officialCandidate,
+  });
+  assert.equal(
+    child.messages.some(({ method = "" }) => /turn|prompt|model|message\/send|thread\/list/i.test(method)),
+    false,
+  );
+  assertCleanedUp(child);
+});
+
+test("reports invalid ids without spawning or altering their values", async () => {
+  const recorder = spawnRecorder(() => {
+    throw new Error("must not spawn");
+  });
+
+  const result = await registerCodexTasks(
+    baseOptions({ threadIds: ["", " task-a", "task-a ", ""], spawnProcess: recorder.spawnProcess }),
+  );
+
+  assert.deepEqual(result.attemptedThreadIds, []);
+  assert.deepEqual(
+    result.failures.map(({ threadId }) => threadId),
+    ["", " task-a", "task-a "],
+  );
+  assert.equal(recorder.calls.length, 0);
+});
+
+test("falls back to the next candidate after a synchronous spawn failure", async () => {
+  const child = createSuccessChild();
+  const recorder = spawnRecorder((_path, index) => {
+    if (index === 0) {
+      throw new Error("spawn denied");
+    }
+    return child;
+  });
+
+  const result = await registerCodexTasks(
+    baseOptions({ candidates: [officialCandidate, pathCandidate], spawnProcess: recorder.spawnProcess }),
+  );
+
+  assert.equal(recorder.calls.length, 2);
+  assert.deepEqual(result.registeredThreadIds, ["task-a"]);
+  assert.deepEqual(result.executable, pathCandidate);
+  assertCleanedUp(child);
+});
+
+test("falls back after initialization errors and startup timeouts", async () => {
+  const errorChild = createFakeChild((message, child) => {
+    if (message.method === "initialize") {
+      queueMicrotask(() => child.sendStdout('{"id":1,"error":{"code":-32000,"message":"unsupported"}}\n'));
+    }
+  });
+  const timeoutChild = createFakeChild();
+  const successChild = createSuccessChild();
+  const candidates = [
+    officialCandidate,
+    { executablePath: "/desktop/codex", source: "desktop-app" },
+    pathCandidate,
+  ];
+  const children = [errorChild, timeoutChild, successChild];
+  const recorder = spawnRecorder((_path, index) => children[index]);
+
+  const result = await registerCodexTasks(
+    baseOptions({ candidates, spawnProcess: recorder.spawnProcess, startupTimeoutMs: 10 }),
+  );
+
+  assert.equal(recorder.calls.length, 3);
+  assert.deepEqual(result.registeredThreadIds, ["task-a"]);
+  assert.deepEqual(result.executable, pathCandidate);
+  for (const child of children) {
+    assertCleanedUp(child);
+  }
+});
+
+test("does not fall back after task requests and reports explicit errors and mismatches", async () => {
+  const child = createFakeChild((message, process) => {
+    if (message.method === "initialize") {
+      queueMicrotask(() => process.sendStdout('{"id":1,"result":{}}\n'));
+    } else if (message.method === "thread/read" && message.params.threadId === "task-a") {
+      queueMicrotask(() => process.sendStdout('{"id":2,"error":{"code":-32001,"message":"not found"}}\n'));
+    } else if (message.method === "thread/read") {
+      queueMicrotask(() => process.sendStdout('{"id":3,"result":{"thread":{"id":"other-task"}}}\n'));
+    }
+  });
+  const recorder = spawnRecorder(() => child);
+
+  const result = await registerCodexTasks(
+    baseOptions({
+      candidates: [officialCandidate, pathCandidate],
+      threadIds: ["task-a", "task-b"],
+      spawnProcess: recorder.spawnProcess,
+    }),
+  );
+
+  assert.equal(recorder.calls.length, 1);
+  assert.deepEqual(result.registeredThreadIds, []);
+  assert.match(result.failures[0].message, /not found/);
+  assert.match(result.failures[1].message, /other-task/);
+  assert.deepEqual(result.executable, officialCandidate);
+  assertCleanedUp(child);
+});
+
+test("treats malformed stdout after dispatch as terminal without exposing its contents", async () => {
+  const secret = "ROLLOUT-CONTENT-MUST-NOT-LEAK";
+  const child = createFakeChild((message, process) => {
+    if (message.method === "initialize") {
+      queueMicrotask(() => process.sendStdout('{"id":1,"result":{}}\n'));
+    } else if (message.method === "thread/read") {
+      queueMicrotask(() => process.sendStdout(`{"id":2,"result":{"rollout":"${secret}"\n`));
+    }
+  });
+  const recorder = spawnRecorder(() => child);
+
+  const result = await registerCodexTasks(
+    baseOptions({ candidates: [officialCandidate, pathCandidate], spawnProcess: recorder.spawnProcess }),
+  );
+
+  assert.equal(recorder.calls.length, 1);
+  assert.match(result.failures[0].message, /malformed/i);
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
+  assertCleanedUp(child);
+});
+
+test("caps stderr diagnostics separately when the child exits early", async () => {
+  const child = createFakeChild((message, process) => {
+    if (message.method === "initialize") {
+      queueMicrotask(() => process.sendStdout('{"id":1,"result":{}}\n'));
+    } else if (message.method === "thread/read") {
+      queueMicrotask(() => {
+        process.sendStdout('{"method":"server/notice","params":{"rollout":"stdout-secret"}}\n');
+        process.sendStderr("abcdefghijklmnop");
+        process.exit(7);
+      });
+    }
+  });
+  const recorder = spawnRecorder(() => child);
+
+  const result = await registerCodexTasks(
+    baseOptions({ spawnProcess: recorder.spawnProcess, retainedDiagnosticBytes: 8 }),
+  );
+
+  assert.match(result.failures[0].message, /exited.*7/i);
+  assert.match(result.failures[0].message, /stderr: ijklmnop/);
+  assert.doesNotMatch(JSON.stringify(result), /stdout-secret/);
+  assertCleanedUp(child);
+});
+
+test("fails only unresolved requests when a per-task timer expires", async () => {
+  const child = createFakeChild((message, process) => {
+    if (message.method === "initialize") {
+      queueMicrotask(() => process.sendStdout('{"id":1,"result":{}}\n'));
+    } else if (message.method === "thread/read" && message.params.threadId === "task-a") {
+      queueMicrotask(() => process.sendStdout('{"id":2,"result":{"thread":{"id":"task-a"}}}\n'));
+    }
+  });
+  const recorder = spawnRecorder(() => child);
+
+  const result = await registerCodexTasks(
+    baseOptions({
+      threadIds: ["task-a", "task-b"],
+      spawnProcess: recorder.spawnProcess,
+      requestTimeoutMs: 10,
+      batchTimeoutMs: 80,
+    }),
+  );
+
+  assert.deepEqual(result.registeredThreadIds, ["task-a"]);
+  assert.deepEqual(result.failures.map(({ threadId }) => threadId), ["task-b"]);
+  assert.match(result.failures[0].message, /request timed out/i);
+  assertCleanedUp(child);
+});
+
+test("fails all unresolved requests at the whole-batch timeout", async () => {
+  const child = createFakeChild((message, process) => {
+    if (message.method === "initialize") {
+      queueMicrotask(() => process.sendStdout('{"id":1,"result":{}}\n'));
+    }
+  });
+  const recorder = spawnRecorder(() => child);
+
+  const result = await registerCodexTasks(
+    baseOptions({
+      threadIds: ["task-a", "task-b"],
+      spawnProcess: recorder.spawnProcess,
+      requestTimeoutMs: 80,
+      batchTimeoutMs: 10,
+    }),
+  );
+
+  assert.deepEqual(result.registeredThreadIds, []);
+  assert.deepEqual(result.failures.map(({ threadId }) => threadId), ["task-a", "task-b"]);
+  assert.ok(result.failures.every(({ message }) => /batch timed out/i.test(message)));
+  assertCleanedUp(child);
+});
+
+test("falls back after an asynchronous pre-dispatch process error", async () => {
+  const errorChild = createFakeChild();
+  const successChild = createSuccessChild();
+  const recorder = spawnRecorder((_path, index) => {
+    const child = index === 0 ? errorChild : successChild;
+    if (index === 0) {
+      queueMicrotask(() => child.emit("error", new Error("ENOENT")));
+    }
+    return child;
+  });
+
+  const result = await registerCodexTasks(
+    baseOptions({ candidates: [officialCandidate, pathCandidate], spawnProcess: recorder.spawnProcess }),
+  );
+
+  assert.equal(recorder.calls.length, 2);
+  assert.deepEqual(result.registeredThreadIds, ["task-a"]);
+  assertCleanedUp(errorChild);
+  assertCleanedUp(successChild);
+});
+
+test("leaves no timers behind when a task response arrives during the request write", async () => {
+  const child = createFakeChild((message, process) => {
+    if (message.method === "initialize") {
+      process.sendStdout('{"id":1,"result":{}}\n');
+    } else if (message.method === "thread/read") {
+      process.sendStdout('{"id":2,"result":{"thread":{"id":"task-a"}}}\n');
+    }
+  });
+  const recorder = spawnRecorder(() => child);
+  const activeTimerIds = new Set();
+  const timerHook = createHook({
+    init(asyncId, type) {
+      if (type === "Timeout") {
+        activeTimerIds.add(asyncId);
+      }
+    },
+    destroy(asyncId) {
+      activeTimerIds.delete(asyncId);
+    },
+  });
+  timerHook.enable();
+
+  try {
+    const result = await registerCodexTasks(
+      baseOptions({
+        spawnProcess: recorder.spawnProcess,
+        requestTimeoutMs: 250,
+        batchTimeoutMs: 250,
+      }),
+    );
+
+    assert.deepEqual(result.registeredThreadIds, ["task-a"]);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(activeTimerIds.size, 0);
+    assertCleanedUp(child);
+  } finally {
+    timerHook.disable();
+  }
+});
