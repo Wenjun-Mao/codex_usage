@@ -34,6 +34,24 @@ class SessionDataLoader(Protocol):
     ) -> CachedSessionData: ...
 
 
+class _SingleProjectKeyAction(argparse.Action):
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str,
+        option_string: str | None = None,
+    ) -> None:
+        if not values.strip():
+            parser.error("--project-key must not be blank.")
+        if getattr(namespace, self.dest, None) is not None:
+            parser.error(
+                "--project-key must be provided exactly once; "
+                "remove the duplicate option."
+            )
+        setattr(namespace, self.dest, values)
+
+
 def add_sync_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--sync-dir",
@@ -82,6 +100,7 @@ def add_sync_transfer_options(parser: argparse.ArgumentParser) -> None:
     add_sync_execution_options(parser)
     parser.add_argument(
         "--project-key",
+        action=_SingleProjectKeyAction,
         required=True,
         help="Exact project key for this one-project transfer operation.",
     )

@@ -360,6 +360,7 @@ def test_sync_transfers_require_project_key(sync_command: str, tmp_path: Path) -
 
 @pytest.mark.parametrize("sync_command", ["pull", "push"])
 def test_sync_transfers_accept_one_project_key(sync_command: str, tmp_path: Path) -> None:
+    project_key = " Repo/First "
     args = cli_module.build_parser().parse_args(
         [
             "sync",
@@ -367,11 +368,60 @@ def test_sync_transfers_accept_one_project_key(sync_command: str, tmp_path: Path
             "--sync-dir",
             str(tmp_path / "sync"),
             "--project-key",
-            "/repo/first",
+            project_key,
         ]
     )
 
-    assert args.project_key == "/repo/first"
+    assert args.project_key == project_key
+
+
+@pytest.mark.parametrize("sync_command", ["pull", "push"])
+def test_sync_transfers_reject_repeated_project_key(
+    sync_command: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as error:
+        cli_module.build_parser().parse_args(
+            [
+                "sync",
+                sync_command,
+                "--sync-dir",
+                str(tmp_path / "sync"),
+                "--project-key",
+                "/repo/first",
+                "--project-key",
+                "/repo/second",
+            ]
+        )
+
+    assert error.value.code == 2
+    assert (
+        "--project-key must be provided exactly once; remove the duplicate option."
+        in capsys.readouterr().err
+    )
+
+
+@pytest.mark.parametrize("sync_command", ["pull", "push"])
+def test_sync_transfers_reject_blank_project_key(
+    sync_command: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as error:
+        cli_module.build_parser().parse_args(
+            [
+                "sync",
+                sync_command,
+                "--sync-dir",
+                str(tmp_path / "sync"),
+                "--project-key",
+                " \t ",
+            ]
+        )
+
+    assert error.value.code == 2
+    assert "--project-key must not be blank." in capsys.readouterr().err
 
 
 def test_sync_status_rejects_project_key(tmp_path: Path) -> None:

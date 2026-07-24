@@ -353,6 +353,32 @@ def test_sync_status_is_read_only_and_builds_local_inventory_once(
     assert not (tmp_path / "sync").exists()
 
 
+def test_sync_status_accepts_cross_project_selection_without_writes(
+    tmp_path: Path,
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions, "thread-a", tmp_path / "repo-a", total=120)
+    _write_session(sessions, "thread-b", tmp_path / "repo-b", total=240)
+    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    sync_dir = tmp_path / "sync"
+
+    plan = transaction_status(
+        data=data,
+        sync_dir=sync_dir,
+        thread_ids=["thread-a", "thread-b"],
+        project_resolution=ProjectResolutionRequest(),
+    )
+
+    assert [item.thread_id for item in plan.items] == ["thread-a", "thread-b"]
+    assert [item.action for item in plan.items] == ["push", "push"]
+    assert {item.project_key for item in plan.items} == {
+        _project_key(data, "thread-a"),
+        _project_key(data, "thread-b"),
+    }
+    assert plan.issues == ()
+    assert not sync_dir.exists()
+
+
 def test_unselected_remote_diagnostic_does_not_block_selected_push(
     tmp_path: Path,
 ) -> None:
