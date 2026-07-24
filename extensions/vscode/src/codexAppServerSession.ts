@@ -27,6 +27,8 @@ export type CodexAppServerCandidateOutcome =
       failures: Map<string, string>;
     };
 
+type SessionPhase = "initializing" | "dispatched" | "settled";
+
 const DEFAULT_STARTUP_TIMEOUT_MS = 5_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_BATCH_TIMEOUT_MS = 10_000;
@@ -53,7 +55,7 @@ class CandidateSession {
   private startupTimer: NodeJS.Timeout | undefined;
   private batchTimer: NodeJS.Timeout | undefined;
   private resolveOutcome: ((outcome: CodexAppServerCandidateOutcome) => void) | undefined;
-  private phase: "initializing" | "dispatched" | "settled" = "initializing";
+  private phase: SessionPhase = "initializing";
 
   constructor(
     private readonly child: ChildProcessWithoutNullStreams,
@@ -190,7 +192,9 @@ class CandidateSession {
     }
 
     try {
-      this.writeMessage({ method: "initialized", params: {} });
+      if (!this.writeMessage({ method: "initialized", params: {} })) {
+        return;
+      }
       this.dispatchTaskRequests();
     } catch (error) {
       this.failSession(`Could not write to Codex app-server: ${errorMessage(error)}`);
@@ -198,6 +202,9 @@ class CandidateSession {
   }
 
   private dispatchTaskRequests(): void {
+    if (this.phase !== "initializing") {
+      return;
+    }
     const requestTimeoutMs = positiveInteger(this.options.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS);
     const requests = this.threadIds.map((threadId, index) => ({
       id: index + 2,
@@ -216,13 +223,16 @@ class CandidateSession {
       () => this.failUnresolved("Codex app-server batch timed out"),
       positiveInteger(this.options.batchTimeoutMs, DEFAULT_BATCH_TIMEOUT_MS),
     );
-    this.phase = "dispatched";
+    if (!this.transitionTo("dispatched")) {
+      this.clearTimers();
+      this.pendingRequests.clear();
+      return;
+    }
 
     for (const request of requests) {
-      if (this.isSettled()) {
+      if (!this.writeMessage(request)) {
         return;
       }
-      this.writeMessage(request);
     }
   }
 
@@ -305,8 +315,12 @@ class CandidateSession {
     this.finish({ kind: "pre-dispatch-failure", message: this.withStderr(message) });
   }
 
-  private writeMessage(message: JsonObject): void {
+  private writeMessage(message: JsonObject): boolean {
+    if (this.phase === "settled") {
+      return false;
+    }
     this.child.stdin.write(`${JSON.stringify(message)}\n`);
+    return !this.hasSettled();
   }
 
   private withStderr(message: string): string {
@@ -314,15 +328,27 @@ class CandidateSession {
     return stderr ? `${message} (stderr: ${stderr})` : message;
   }
 
-  private isSettled(): boolean {
+  private hasSettled(): boolean {
     return this.phase === "settled";
   }
 
+  private transitionTo(nextPhase: Exclude<SessionPhase, "initializing">): boolean {
+    const phaseOrder: Record<SessionPhase, number> = {
+      initializing: 0,
+      dispatched: 1,
+      settled: 2,
+    };
+    if (phaseOrder[nextPhase] <= phaseOrder[this.phase]) {
+      return false;
+    }
+    this.phase = nextPhase;
+    return true;
+  }
+
   private finish(outcome: CodexAppServerCandidateOutcome): void {
-    if (this.phase === "settled") {
+    if (!this.transitionTo("settled")) {
       return;
     }
-    this.phase = "settled";
     this.clearTimers();
     this.removeListeners();
     try {

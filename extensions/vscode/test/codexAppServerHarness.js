@@ -119,6 +119,27 @@ function assertCleanedUp(child) {
   assert.equal(child.stdin.listenerCount("error"), 0);
 }
 
+function installControllableTimers() {
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const timers = [];
+  global.setTimeout = (callback, delay) => {
+    const timer = { callback, cleared: false, delay };
+    timers.push(timer);
+    return timer;
+  };
+  global.clearTimeout = (timer) => {
+    timer.cleared = true;
+  };
+  return {
+    timers,
+    restore() {
+      global.setTimeout = originalSetTimeout;
+      global.clearTimeout = originalClearTimeout;
+    },
+  };
+}
+
 module.exports = {
   assertCleanedUp,
   baseOptions,
@@ -126,5 +147,6 @@ module.exports = {
   createSuccessChild,
   officialCandidate,
   pathCandidate,
+  installControllableTimers,
   spawnRecorder,
 };
