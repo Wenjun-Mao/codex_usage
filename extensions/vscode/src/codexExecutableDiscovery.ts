@@ -31,7 +31,7 @@ export async function discoverCodexExecutableCandidates(
   const candidates: CodexExecutableCandidate[] = [];
   const seen = new Set<string>();
   const addCandidate = (executablePath: string, source: CodexExecutableSource): void => {
-    const key = context.platform === "win32" ? executablePath.toLowerCase() : executablePath;
+    const key = candidateKey(context.platform, executablePath);
     if (seen.has(key)) {
       return;
     }
@@ -89,22 +89,21 @@ async function discoverWindowsDesktopCandidates(
   addExistingCandidate: (executablePath: string, source: CodexExecutableSource) => Promise<void>,
 ): Promise<void> {
   const localAppData = context.env.LOCALAPPDATA;
-  if (!localAppData) {
-    return;
-  }
-  const roots = [
-    path.win32.join(localAppData, "OpenAI", "Codex", "bin"),
-    path.win32.join(
-      localAppData,
-      "Packages",
-      "OpenAI.Codex_2p2nqsd0c76g0",
-      "LocalCache",
-      "Local",
-      "OpenAI",
-      "Codex",
-      "bin",
-    ),
-  ];
+  const roots = localAppData
+    ? [
+        path.win32.join(localAppData, "OpenAI", "Codex", "bin"),
+        path.win32.join(
+          localAppData,
+          "Packages",
+          "OpenAI.Codex_2p2nqsd0c76g0",
+          "LocalCache",
+          "Local",
+          "OpenAI",
+          "Codex",
+          "bin",
+        ),
+      ]
+    : [];
 
   for (const root of roots) {
     await addExistingCandidate(path.win32.join(root, "codex.exe"), "desktop-app");
@@ -117,6 +116,13 @@ async function discoverWindowsDesktopCandidates(
   if (appxLocation) {
     await addExistingCandidate(path.win32.join(appxLocation, "app", "resources", "codex.exe"), "desktop-app");
   }
+}
+
+function candidateKey(platform: NodeJS.Platform, executablePath: string): string {
+  if (platform === "win32") {
+    return path.win32.normalize(executablePath).toLowerCase();
+  }
+  return path.posix.normalize(executablePath);
 }
 
 async function pathExists(probe: CodexExecutableDiscoveryProbe, candidate: string): Promise<boolean> {

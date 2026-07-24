@@ -156,11 +156,51 @@ test("continues after inaccessible Windows desktop and AppX probes", async () =>
   ]);
 });
 
-test("deduplicates native Windows paths case-insensitively while preserving the first source", async () => {
+test("discovers AppX after writable desktop locations even when LOCALAPPDATA is unavailable", async () => {
+  const win = path.win32;
+  const appxLocation = "C:\\Program Files\\WindowsApps\\OpenAI.Codex";
+  const appxExecutable = win.join(appxLocation, "app", "resources", "codex.exe");
+  const candidates = await discoverCodexExecutableCandidates(
+    windowsContext({ env: {} }),
+    createProbe({ existing: [appxExecutable], appxLocation }),
+  );
+
+  assert.deepEqual(candidates, [
+    { executablePath: appxExecutable, source: "desktop-app" },
+    { executablePath: "codex.exe", source: "path" },
+  ]);
+});
+
+test("skips an inaccessible AppX executable probe and retains the Windows PATH candidate", async () => {
+  const win = path.win32;
+  const appxLocation = "C:\\Program Files\\WindowsApps\\OpenAI.Codex";
+  const appxExecutable = win.join(appxLocation, "app", "resources", "codex.exe");
+  const checkedPaths = [];
+  const candidates = await discoverCodexExecutableCandidates(
+    windowsContext({ env: {} }),
+    {
+      async pathExists(candidate) {
+        checkedPaths.push(candidate);
+        throw new Error(`Inaccessible path: ${candidate}`);
+      },
+      async listDirectoryNames() {
+        return [];
+      },
+      async windowsAppxInstallLocation() {
+        return appxLocation;
+      },
+    },
+  );
+
+  assert.deepEqual(candidates, [{ executablePath: "codex.exe", source: "path" }]);
+  assert.deepEqual(checkedPaths, [appxExecutable]);
+});
+
+test("deduplicates lexically equivalent native Windows paths while preserving the first source", async () => {
   const extensionExecutable = "C:\\Extensions\\OpenAI.ChatGPT\\bin\\windows-x86_64\\codex.exe";
   const candidates = await discoverCodexExecutableCandidates(
     windowsContext({
-      cliOverride: "c:\\extensions\\openai.chatgpt\\bin\\windows-x86_64\\CODEX.EXE",
+      cliOverride: "c:/extensions/openai.chatgpt/bin/windows-x86_64/../windows-x86_64/CODEX.EXE",
       officialExtensionPath: "C:\\Extensions\\OpenAI.ChatGPT",
     }),
     createProbe({ existing: [extensionExecutable] }),
@@ -168,14 +208,30 @@ test("deduplicates native Windows paths case-insensitively while preserving the 
 
   assert.deepEqual(candidates, [
     {
-      executablePath: "c:\\extensions\\openai.chatgpt\\bin\\windows-x86_64\\CODEX.EXE",
+      executablePath: "c:/extensions/openai.chatgpt/bin/windows-x86_64/../windows-x86_64/CODEX.EXE",
       source: "cli-override",
     },
     { executablePath: "codex.exe", source: "path" },
   ]);
 });
 
-test("rejects unsupported platform and architecture pairs before probing", async () => {
+test("deduplicates lexically equivalent native macOS paths while preserving the first source", async () => {
+  const systemApp = "/Applications/ChatGPT.app/Contents/Resources/codex";
+  const candidates = await discoverCodexExecutableCandidates(
+    macContext({ cliOverride: "/Applications/ChatGPT.app/Contents/Resources/../Resources/codex" }),
+    createProbe({ existing: [systemApp] }),
+  );
+
+  assert.deepEqual(candidates, [
+    {
+      executablePath: "/Applications/ChatGPT.app/Contents/Resources/../Resources/codex",
+      source: "cli-override",
+    },
+    { executablePath: "codex", source: "path" },
+  ]);
+});
+
+test("rejects unsupported platform and architecture pairs before invoking probes", async () => {
   const probe = createProbe();
 
   await assert.rejects(
@@ -186,4 +242,24 @@ test("rejects unsupported platform and architecture pairs before probing", async
     discoverCodexExecutableCandidates(windowsContext({ platform: "linux" }), probe),
     /Unsupported Codex executable discovery platform: linux x64/,
   );
+
+  const calls = { pathExists: 0, listDirectoryNames: 0, windowsAppxInstallLocation: 0 };
+  await assert.rejects(
+    discoverCodexExecutableCandidates(windowsContext({ arch: "arm64" }), {
+      async pathExists() {
+        calls.pathExists += 1;
+        return false;
+      },
+      async listDirectoryNames() {
+        calls.listDirectoryNames += 1;
+        return [];
+      },
+      async windowsAppxInstallLocation() {
+        calls.windowsAppxInstallLocation += 1;
+        return undefined;
+      },
+    }),
+    /Unsupported Codex executable discovery platform: win32 arm64/,
+  );
+  assert.deepEqual(calls, { pathExists: 0, listDirectoryNames: 0, windowsAppxInstallLocation: 0 });
 });
