@@ -21,10 +21,11 @@ const APPX_COMMAND = [
   "-Command",
   "(Get-AppxPackage -Name OpenAI.Codex | Select-Object -First 1 -ExpandProperty InstallLocation)",
 ] as const;
+const APPX_TIMEOUT_MS = 5_000;
 
 type FileStat = { isFile(): boolean };
 type DirectoryEntry = { name: string; isDirectory(): boolean };
-type PowerShellOptions = { shell: false; windowsHide: true };
+type PowerShellOptions = { shell: false; windowsHide: true; timeout: number };
 type PowerShellExecutor = (
   file: string,
   args: readonly string[],
@@ -76,11 +77,25 @@ export function createCodexTaskRegistrar(options: CreateCodexTaskRegistrarOption
       discoveryContext(dependencies, cliOverride, officialExtensionPath),
       createDiscoveryProbe(dependencies),
     );
+    if (candidates.length === 0) {
+      return noCandidateFailure(threadIds);
+    }
     return dependencies.registerTasks({
       candidates,
       threadIds,
       extensionVersion: options.extensionVersion,
     });
+  };
+}
+
+function noCandidateFailure(threadIds: readonly string[]): CodexTaskRegistrationResult {
+  return {
+    attemptedThreadIds: [...threadIds],
+    registeredThreadIds: [],
+    failures: threadIds.map((threadId) => ({
+      threadId,
+      message: "No Codex executable candidate was available",
+    })),
   };
 }
 
@@ -124,6 +139,7 @@ function createDiscoveryProbe(dependencies: RegistrarDependencies): CodexExecuta
         const result = await dependencies.executeFile("powershell.exe", APPX_COMMAND, {
           shell: false,
           windowsHide: true,
+          timeout: APPX_TIMEOUT_MS,
         });
         return result.stdout.trim() || undefined;
       } catch {

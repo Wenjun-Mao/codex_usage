@@ -187,8 +187,63 @@ test("queries Windows AppX with direct PowerShell argv and ignores unavailable c
       "-Command",
       "(Get-AppxPackage -Name OpenAI.Codex | Select-Object -First 1 -ExpandProperty InstallLocation)",
     ],
-    { shell: false, windowsHide: true },
+    { shell: false, windowsHide: true, timeout: 5_000 },
   ]]);
+});
+
+test("treats a timed-out Windows AppX probe as unavailable", async () => {
+  resetCalls();
+  const locations = [];
+  const registrar = createCodexTaskRegistrar({
+    extensionVersion: "0.1.37",
+    dependencies: dependencies({
+      platform: "win32",
+      arch: "x64",
+      async discoverCandidates(_context, probe) {
+        locations.push(await probe.windowsAppxInstallLocation());
+        return [];
+      },
+      async executeFile(file, args, options) {
+        calls.appx.push([file, args, options]);
+        throw Object.assign(new Error("command timed out"), { code: "ETIMEDOUT" });
+      },
+    }),
+  });
+
+  await registrar(["task-a"]);
+
+  assert.deepEqual(locations, [undefined]);
+  assert.equal(calls.appx.length, 1);
+  assert.deepEqual(calls.appx[0][2], { shell: false, windowsHide: true, timeout: 5_000 });
+});
+
+test("returns failures for every requested task without registering when discovery finds no candidates", async () => {
+  resetCalls();
+  let registrationAttempts = 0;
+  const registrar = createCodexTaskRegistrar({
+    extensionVersion: "0.1.37",
+    dependencies: dependencies({
+      async discoverCandidates() {
+        return [];
+      },
+      async registerTasks() {
+        registrationAttempts += 1;
+        throw new Error("registration must not be attempted");
+      },
+    }),
+  });
+
+  const result = await registrar(["task-a", "task-b"]);
+
+  assert.equal(registrationAttempts, 0);
+  assert.deepEqual(result, {
+    attemptedThreadIds: ["task-a", "task-b"],
+    registeredThreadIds: [],
+    failures: [
+      { threadId: "task-a", message: "No Codex executable candidate was available" },
+      { threadId: "task-b", message: "No Codex executable candidate was available" },
+    ],
+  });
 });
 
 test("returns the app-server's structured failure when no candidate initializes", async () => {
