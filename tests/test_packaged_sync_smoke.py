@@ -119,6 +119,29 @@ def test_cross_project_selection_accepts_the_native_issue_exit_code(
     ) == payload
 
 
+def test_rejected_cross_project_extra_remote_task_write_fails_native_smoke(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    smoke = load_packaged_sync_smoke()
+    command_double = PackagedCommandDouble(smoke)
+    original_run = command_double.run
+
+    def write_extra_remote_task(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        completed = original_run(command, **kwargs)
+        if len(command_double.calls) == 5:
+            sync_dir = Path(command[4])
+            (sync_dir / "tasks" / f"{smoke.UNRELATED_THREAD_ID}.jsonl").write_bytes(b"unexpected\n")
+        return completed
+
+    monkeypatch.setattr(command_double, "run", write_extra_remote_task)
+
+    with pytest.raises(RuntimeError, match="cross-project remote task-file isolation"):
+        run_main(smoke, command_double, tmp_path, monkeypatch)
+
+
 def test_packaged_sync_smoke_orchestrates_exact_round_trip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

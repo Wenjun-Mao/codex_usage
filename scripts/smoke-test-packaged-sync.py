@@ -244,6 +244,17 @@ def _validate_cross_project_selection(result: dict[str, object]) -> None:
         )
 
 
+def _snapshot_remote_task_files(sync_dir: Path) -> dict[Path, bytes]:
+    tasks_dir = sync_dir / TASKS_DIRNAME
+    if not tasks_dir.exists():
+        return {}
+    return {
+        path.relative_to(sync_dir): _read_required_bytes(path, "remote task file")
+        for path in sorted(tasks_dir.rglob("*"))
+        if path.is_file()
+    }
+
+
 def _create_git_checkout(path: Path) -> None:
     git_dir = path / ".git"
     git_dir.mkdir(parents=True)
@@ -353,6 +364,7 @@ def main() -> int:
             source_bytes,
             "source-home isolation",
         )
+        remote_task_files_before = _snapshot_remote_task_files(sync_dir)
 
         rejected = _run_sync(
             executable,
@@ -374,9 +386,9 @@ def main() -> int:
             "cross-project unrelated task isolation",
         )
         _require_equal(
-            _read_required_bytes(remote_jsonl, "remote task after rejected selection"),
-            source_bytes,
-            "cross-project remote task isolation",
+            _snapshot_remote_task_files(sync_dir),
+            remote_task_files_before,
+            "cross-project remote task-file isolation",
         )
 
         status = _run_sync(

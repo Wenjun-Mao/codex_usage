@@ -375,11 +375,20 @@ test("native release jobs gate direct Codex registration before VSIX packaging",
     "npm run build && node ../../scripts/smoke-test-codex-registration.js",
   );
   for (const jobName of ["windows", "macos"]) {
+    const packageCommand =
+      jobName === "windows" ? "npm run package:vsix:win" : "npm run package:vsix:mac";
     const jobStart = workflow.indexOf(`\n  ${jobName}:\n`);
     assert.notEqual(jobStart, -1, `expected ${jobName} job`);
     const nextJob = workflow.slice(jobStart + 1).search(/\n  [a-z][a-z-]*:\n/);
     const job = workflow.slice(jobStart, nextJob === -1 ? undefined : jobStart + nextJob + 1);
-    assert(job.indexOf("run: npm run test:registration-smoke") < job.indexOf("Package"));
+    const installIndex = job.indexOf("run: npm ci");
+    const smokeIndex = job.indexOf("run: npm run test:registration-smoke");
+    const packageIndex = job.indexOf(`run: ${packageCommand}`);
+    assert.notEqual(installIndex, -1, `expected ${jobName} npm install`);
+    assert.notEqual(smokeIndex, -1, `expected ${jobName} registration smoke`);
+    assert.notEqual(packageIndex, -1, `expected ${jobName} package step`);
+    assert(installIndex < smokeIndex, `expected ${jobName} install before registration smoke`);
+    assert(smokeIndex < packageIndex, `expected ${jobName} registration smoke before packaging`);
   }
   assert.match(registrationSmoke, /process\.execPath/);
   assert.match(registrationSmoke, /app-server/);
