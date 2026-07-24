@@ -33,9 +33,10 @@ test("import lazily chooses and remembers a transfer folder", async () => {
   }]);
   assert.deepEqual(port.notifications, [[
     "info",
-    "Imported 1 task. Reload VS Code or restart the Codex app to see it.",
+    "Imported 1 task into Repo. Open or restart Codex to display it.",
   ]]);
-  assert.deepEqual(port.statuses, ["checking", undefined]);
+  assert.deepEqual(port.registrationCalls, [["remote-task"]]);
+  assert.deepEqual(port.statuses, ["checking", "registering", undefined]);
 });
 
 test("cancelling lazy folder choice is silent", async () => {
@@ -188,7 +189,8 @@ test("engine destination issues stay technical while the notification stays conc
   assert.match(port.logs[0], /Expected git:example\/repo/);
   assert.deepEqual(port.notifications, [[
     "error",
-    "Import could not be completed. No tasks were copied. See the Codex Usage output for details.",
+    "Import into Repo could not be completed. No tasks were copied. " +
+      "See the Codex Usage output for details.",
   ]]);
   assert.deepEqual(port.statuses, ["checking", "issue", undefined]);
 });
@@ -299,7 +301,7 @@ test("structured partial execution results never claim that zero tasks were copi
 
   await new TaskTransferController(port, () => true).importTasks();
 
-  assert.match(port.notifications[0][1], /Imported 1 task before the issue occurred/);
+  assert.match(port.notifications[0][1], /Imported files for 1 task before the issue occurred/);
   assert.doesNotMatch(port.notifications[0][1], /No tasks were copied/i);
 });
 
@@ -370,6 +372,7 @@ test("unexpected failures are logged and always clear transient transfer status"
   await new TaskTransferController(port, () => true).importTasks();
 
   assert.deepEqual(port.logs, ["[error] process failed"]);
+  assert.deepEqual(port.registrationCalls, []);
   assert.deepEqual(port.statuses, ["checking", "issue", undefined]);
   assert.deepEqual(port.notifications, [[
     "error",

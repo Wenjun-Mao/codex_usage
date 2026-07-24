@@ -141,10 +141,10 @@ test("an active transfer owns orchestration and transient status across every co
     await activeImport;
   }
 
-  assert.deepEqual(port.statuses, ["checking", undefined]);
+  assert.deepEqual(port.statuses, ["checking", "registering", undefined]);
   assert.deepEqual(port.notifications.at(-1), [
     "info",
-    "Imported 1 task. Reload VS Code or restart the Codex app to see it.",
+    "Imported 1 task into Repo. Open or restart Codex to display it.",
   ]);
 });
 

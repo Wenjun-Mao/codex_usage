@@ -97,6 +97,9 @@ function fakePort(options = {}) {
   const reviewResults = [...(
     options.reviewResultQueue ?? [options.reviewResult]
   )];
+  const registrationResults = [...(
+    options.registrationResultQueue ?? [options.registrationResult]
+  )];
 
   return {
     folderWrites: [],
@@ -106,6 +109,7 @@ function fakePort(options = {}) {
     confirmationPrompts: [],
     executions: [],
     reviews: [],
+    registrationCalls: [],
     notifications: [],
     logs: [],
     statuses: [],
@@ -156,6 +160,9 @@ function fakePort(options = {}) {
       if (options.executionError) {
         throw options.executionError;
       }
+      if (options.executionStatus) {
+        this.setTransientStatus(options.executionStatus);
+      }
       return executionResults.shift() ?? completed(operation, request.threadIds);
     },
     async review(request) {
@@ -164,6 +171,18 @@ function fakePort(options = {}) {
         throw options.reviewError;
       }
       return reviewResults.shift() ?? statusSummary({ total: request.threadIds.length });
+    },
+    async registerImportedTasks(threadIds) {
+      this.registrationCalls.push([...threadIds]);
+      if (options.registrationError) {
+        throw options.registrationError;
+      }
+      const queued = registrationResults.shift();
+      return queued ?? {
+        attemptedThreadIds: [...threadIds],
+        registeredThreadIds: [...threadIds],
+        failures: [],
+      };
     },
     notify(kind, message) {
       this.notifications.push([kind, message]);

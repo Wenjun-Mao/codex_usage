@@ -56,7 +56,8 @@ Codex's built-in handoff can fail on a very large task. Task Transfer preserves 
 3. Clone or copy the corresponding project checkout to the destination computer if it is not already there.
 4. When using only the Codex IDE extension, open that checkout in VS Code.
 5. Run **Import Tasks**, select the tasks, and accept an automatic project match or choose a validated local folder.
-6. Reload VS Code or restart the Codex app so the imported tasks appear.
+6. Open or restart Codex so the imported tasks appear. In the official Codex VS Code
+   extension, reloading VS Code is the equivalent refresh.
 
 The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen checkout with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer does not clone repositories, so the destination checkout must already exist.
 

@@ -1,5 +1,7 @@
 import type { SyncTaskAvailability } from "./syncInventory";
 import type { SyncRunResult } from "./syncProtocol";
+import type { CodexTaskRegistrationResult } from "./codexAppServer";
+import type { TaskRegistrationSummary } from "./taskTransferRegistration";
 
 export type TransferOperation = "import" | "export" | "review";
 export type TransferMenuAction =
@@ -15,6 +17,7 @@ export type TransferTransientStatus =
   | "checking"
   | "importing"
   | "exporting"
+  | "registering"
   | "conflict"
   | "issue";
 
@@ -28,6 +31,11 @@ export type TransferMenuQuickPickItem = {
 export type TransferResultMessage = {
   kind: "info" | "warning" | "error";
   message: string;
+};
+
+export type TransferResultContext = {
+  projectLabel: string;
+  registration?: CodexTaskRegistrationResult;
 };
 
 export function taskTransferControlLabel(): string {
@@ -135,6 +143,7 @@ export function transientStatusLabel(value: TransferTransientStatus): string {
     checking: "Checking tasks",
     importing: "Importing tasks",
     exporting: "Exporting tasks",
+    registering: "Registering imported tasks",
     conflict: "Task transfer conflict",
     issue: "Task transfer issue",
   };
@@ -144,8 +153,11 @@ export function transientStatusLabel(value: TransferTransientStatus): string {
 export function formatTransferResult(
   operation: "import" | "export",
   result: SyncRunResult,
+  context: TransferResultContext,
 ): TransferResultMessage {
-  const operationLabel = operation === "import" ? "Import" : "Export";
+  const operationSubject = operation === "import"
+    ? `Import into ${context.projectLabel}`
+    : `Export from ${context.projectLabel}`;
   const oppositeCode = operation === "import" ? "pull_requires_push" : "push_requires_pull";
   const oppositeCount = result.issues.filter((issue) => issue.code === oppositeCode).length;
   const completedIds = operation === "import" ? result.pulled : result.pushed;
@@ -155,21 +167,30 @@ export function formatTransferResult(
     (issue) => issue.code === "transfer_filesystem_failure",
   );
 
+  if (context.registration && context.registration.failures.length > 0) {
+    return registrationFailureMessage(result, context, hasIssue);
+  }
+
   if (hasIssue && completedIds.length > 0) {
     if (operation === "import") {
       const pronoun = transferred === 1 ? "it" : "them";
+      const registered = context.registration?.registeredThreadIds.length ?? 0;
+      const registrationCopy = registered > 0
+        ? ` Registered ${pronoun} with Codex. ${refreshGuidance(registered)}`
+        : "";
       return {
         kind: "error",
         message:
-          `Import could not be completed. Imported ${transferred} ${taskWord(transferred)} ` +
-          `before the issue occurred. Reload VS Code or restart the Codex app to see ${pronoun}. ` +
+          `${operationSubject} could not be completed. Imported files for ${transferred} ` +
+          `${taskWord(transferred)} before the issue occurred.${registrationCopy} ` +
           "See the Codex Usage output for details.",
       };
     }
     return {
       kind: "error",
       message:
-        `Export could not be completed. Exported ${transferred} ${taskWord(transferred)} ` +
+        `${operationSubject} could not be completed. Exported ${transferred} ` +
+        `${taskWord(transferred)} ` +
         "to the transfer folder before the issue occurred. " +
         "See the Codex Usage output for details.",
     };
@@ -179,7 +200,7 @@ export function formatTransferResult(
     return {
       kind: "error",
       message:
-        `${operationLabel} could not be completed. Task completion could not be determined. ` +
+        `${operationSubject} could not be completed. Task completion could not be determined. ` +
         "See the Codex Usage output for details.",
     };
   }
@@ -191,7 +212,7 @@ export function formatTransferResult(
     return {
       kind: "warning",
       message:
-        `${operationLabel} was blocked because ${oppositeCount} selected ` +
+        `${operationSubject} was blocked because ${oppositeCount} selected ` +
         `${taskWord(oppositeCount)} ${oppositeCount === 1 ? "is" : "are"} newer ${source}. ` +
         `${remedy} ${pronoun} first.`,
     };
@@ -202,43 +223,129 @@ export function formatTransferResult(
     const detail = count > 0 ? ` by ${count} ${conflictWord(count)}` : " by a conflict";
     return {
       kind: "warning",
-      message: `${operationLabel} was blocked${detail}. No tasks were copied.`,
+      message: `${operationSubject} was blocked${detail}. No tasks were copied.`,
     };
   }
 
   if (hasIssue) {
     return {
       kind: "error",
-      message: `${operationLabel} could not be completed. No tasks were copied. See the Codex Usage output for details.`,
+      message:
+        `${operationSubject} could not be completed. No tasks were copied. ` +
+        "See the Codex Usage output for details.",
     };
   }
 
   if (transferred > 0) {
     if (operation === "import") {
-      const pronoun = transferred === 1 ? "it" : "them";
+      const registered = context.registration?.registeredThreadIds.length ?? 0;
+      if (result.counts.unchanged > 0 && registered !== transferred) {
+        return {
+          kind: "info",
+          message:
+            `Imported ${transferred} ${taskWord(transferred)} into ${context.projectLabel} ` +
+            `and registered ${registered} ${taskWord(registered)} with Codex. ` +
+            refreshGuidance(registered),
+        };
+      }
       return {
         kind: "info",
         message:
-          `Imported ${transferred} ${taskWord(transferred)}. ` +
-          `Reload VS Code or restart the Codex app to see ${pronoun}.`,
+          `Imported ${transferred} ${taskWord(transferred)} into ${context.projectLabel}. ` +
+          refreshGuidance(registered),
       };
     }
     return {
       kind: "info",
-      message: `Exported ${transferred} ${taskWord(transferred)} to the transfer folder.`,
+      message:
+        `Exported ${transferred} ${taskWord(transferred)} from ${context.projectLabel} ` +
+        "to the transfer folder.",
     };
   }
 
-  if (result.counts.selected === 1) {
-    return { kind: "info", message: "No changes were needed. The selected task is up to date." };
-  }
-  if (result.counts.selected > 1) {
+  if (operation === "import" && context.registration) {
+    const count = context.registration.registeredThreadIds.length;
+    const pronoun = count === 1 ? "it" : "them";
     return {
       kind: "info",
-      message: `No changes were needed. All ${result.counts.selected} selected tasks are up to date.`,
+      message:
+        `No file changes were needed for ${count} ${taskWord(count)} in ` +
+        `${context.projectLabel}. Registered ${pronoun} with Codex. ` +
+        refreshGuidance(count),
     };
   }
-  return { kind: "info", message: "No changes were needed. The chosen tasks are up to date." };
+
+  const count = result.counts.selected;
+  const status = count === 1 ? "It is up to date." : "They are up to date.";
+  return {
+    kind: "info",
+    message:
+      `No file changes were needed for ${count} ${taskWord(count)} in ` +
+      `${context.projectLabel}. ${status}`,
+  };
+}
+
+function registrationFailureMessage(
+  result: SyncRunResult,
+  context: TransferResultContext,
+  hasTransferIssue: boolean,
+): TransferResultMessage {
+  const registration = context.registration as CodexTaskRegistrationResult;
+  const summary = summarizeRegistration(registration);
+  const fileOutcome = registrationFileOutcome(result, context.projectLabel, summary);
+  const registrationOutcome = summary.registered > 0
+    ? `Codex registered only ${summary.registered}.`
+    : `Codex registered 0 and failed to register ${summary.failed}.`;
+  const safeFiles = summary.attempted === 1 ? "The file is safe." : "The files are safe.";
+  const transferIssue = hasTransferIssue
+    ? " Import also stopped before all selected tasks were copied. See the Codex Usage output for details."
+    : "";
+  return {
+    kind: "warning",
+    message:
+      `${fileOutcome}, but ${registrationOutcome} ${safeFiles} ` +
+      `Retry Import after resolving Codex availability.${transferIssue}`,
+  };
+}
+
+function summarizeRegistration(
+  registration: CodexTaskRegistrationResult,
+): TaskRegistrationSummary {
+  return {
+    attempted: registration.attemptedThreadIds.length,
+    registered: registration.registeredThreadIds.length,
+    failed: registration.failures.length,
+  };
+}
+
+function registrationFileOutcome(
+  result: SyncRunResult,
+  projectLabel: string,
+  summary: TaskRegistrationSummary,
+): string {
+  if (result.counts.pulled === 0) {
+    return (
+      `No file changes were needed for ${summary.attempted} ` +
+      `${taskWord(summary.attempted)} in ${projectLabel}`
+    );
+  }
+  if (result.counts.unchanged > 0) {
+    return (
+      `Imported files for ${result.counts.pulled} ${taskWord(result.counts.pulled)} ` +
+      `into ${projectLabel}; ${result.counts.unchanged} ` +
+      `${taskWord(result.counts.unchanged)} ` +
+      `${result.counts.unchanged === 1 ? "was" : "were"} already current`
+    );
+  }
+  return (
+    `Imported files for ${result.counts.pulled} ${taskWord(result.counts.pulled)} ` +
+    `into ${projectLabel}`
+  );
+}
+
+function refreshGuidance(count: number): string {
+  const pronoun = count === 1 ? "it" : "them";
+  return `Open or restart Codex to display ${pronoun}.`;
 }
 
 function taskWord(count: number): string {

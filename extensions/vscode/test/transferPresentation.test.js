@@ -56,6 +56,35 @@ function result(overrides = {}) {
   };
 }
 
+const PROJECT = "Letta-Open-ADE";
+
+function registration(attempted, registered = attempted) {
+  return {
+    attemptedThreadIds: Array.from(
+      { length: attempted },
+      (_, index) => `task-${index + 1}`,
+    ),
+    registeredThreadIds: Array.from(
+      { length: registered },
+      (_, index) => `task-${index + 1}`,
+    ),
+    failures: Array.from(
+      { length: attempted - registered },
+      (_, index) => ({
+        threadId: `task-${registered + index + 1}`,
+        message: "Codex unavailable",
+      }),
+    ),
+  };
+}
+
+function format(operation, syncResult, registrationResult) {
+  return formatTransferResult(operation, syncResult, {
+    projectLabel: PROJECT,
+    registration: registrationResult,
+  });
+}
+
 test("task transfer menu has no setup selection pause or resume concepts", () => {
   const empty = taskTransferMenuItems("");
   const configured = taskTransferMenuItems("/transfer");
@@ -108,28 +137,31 @@ test("transient states use usage-status Task Transfer wording", () => {
   assert.equal(transientStatusLabel("checking"), "Checking tasks");
   assert.equal(transientStatusLabel("importing"), "Importing tasks");
   assert.equal(transientStatusLabel("exporting"), "Exporting tasks");
+  assert.equal(transientStatusLabel("registering"), "Registering imported tasks");
   assert.equal(transientStatusLabel("conflict"), "Task transfer conflict");
   assert.equal(transientStatusLabel("issue"), "Task transfer issue");
 });
 
 test("result copy distinguishes success no-op opposite direction conflict and issue", () => {
   assert.equal(
-    formatTransferResult("import", result({ pulled: 1, selected: 1 })).message,
-    "Imported 1 task. Reload VS Code or restart the Codex app to see it.",
+    format("import", result({ pulled: 1, selected: 1 }), registration(1)).message,
+    "Imported 1 task into Letta-Open-ADE. Open or restart Codex to display it.",
   );
   assert.equal(
-    formatTransferResult("import", result({ selected: 2, unchanged: 2 })).message,
-    "No changes were needed. All 2 selected tasks are up to date.",
+    format("import", result({ selected: 2, unchanged: 2 }), registration(2)).message,
+    "No file changes were needed for 2 tasks in Letta-Open-ADE. " +
+      "Registered them with Codex. Open or restart Codex to display them.",
   );
   assert.equal(
-    formatTransferResult("export", result({ selected: 1, issues: [issue("push_requires_pull")] })).message,
-    "Export was blocked because 1 selected task is newer in the transfer folder. Import it first.",
+    format("export", result({ selected: 1, issues: [issue("push_requires_pull")] })).message,
+    "Export from Letta-Open-ADE was blocked because 1 selected task is newer " +
+      "in the transfer folder. Import it first.",
   );
   assert.match(
-    formatTransferResult("import", result({ outcome: "conflict", conflicts: 1 })).message,
-    /no tasks were copied/i,
+    format("import", result({ outcome: "conflict", conflicts: 1 })).message,
+    /Import into Letta-Open-ADE was blocked by 1 conflict.*no tasks were copied/i,
   );
-  const technicalIssue = formatTransferResult(
+  const technicalIssue = format(
     "import",
     result({ issues: [issue("unsafe_remote_layout", "do not show this stack detail")] }),
   );
@@ -139,52 +171,114 @@ test("result copy distinguishes success no-op opposite direction conflict and is
 
 test("result copy pluralizes import export no-op and blocked direction exactly", () => {
   assert.equal(
-    formatTransferResult("import", result({ pulled: 2, selected: 2 })).message,
-    "Imported 2 tasks. Reload VS Code or restart the Codex app to see them.",
+    format("import", result({ pulled: 2, selected: 2 }), registration(2)).message,
+    "Imported 2 tasks into Letta-Open-ADE. Open or restart Codex to display them.",
   );
   assert.equal(
-    formatTransferResult("export", result({ pushed: 1, selected: 1 })).message,
-    "Exported 1 task to the transfer folder.",
+    format("export", result({ pushed: 1, selected: 1 })).message,
+    "Exported 1 task from Letta-Open-ADE to the transfer folder.",
   );
   assert.equal(
-    formatTransferResult("export", result({ pushed: 2, selected: 2 })).message,
-    "Exported 2 tasks to the transfer folder.",
+    format("export", result({ pushed: 2, selected: 2 })).message,
+    "Exported 2 tasks from Letta-Open-ADE to the transfer folder.",
   );
   assert.equal(
-    formatTransferResult("export", result({ selected: 1, unchanged: 1 })).message,
-    "No changes were needed. The selected task is up to date.",
+    format("export", result({ selected: 1, unchanged: 1 })).message,
+    "No file changes were needed for 1 task in Letta-Open-ADE. It is up to date.",
   );
   assert.equal(
-    formatTransferResult("import", result({
+    format("import", result({
       selected: 2,
       issues: [issue("pull_requires_push"), issue("pull_requires_push")],
     })).message,
-    "Import was blocked because 2 selected tasks are newer on this computer. Export them first.",
+    "Import into Letta-Open-ADE was blocked because 2 selected tasks are newer " +
+      "on this computer. Export them first.",
+  );
+});
+
+test("registration failures report safe partial completion without false success", () => {
+  const partial = format(
+    "import",
+    result({ pulled: 2, selected: 2 }),
+    registration(2, 1),
+  );
+  assert.equal(partial.kind, "warning");
+  assert.equal(
+    partial.message,
+    "Imported files for 2 tasks into Letta-Open-ADE, but Codex registered only 1. " +
+      "The files are safe. Retry Import after resolving Codex availability.",
+  );
+
+  const zero = format(
+    "import",
+    result({ pulled: 1, selected: 1 }),
+    registration(1, 0),
+  );
+  assert.equal(zero.kind, "warning");
+  assert.equal(
+    zero.message,
+    "Imported files for 1 task into Letta-Open-ADE, but Codex registered 0 and " +
+      "failed to register 1. The file is safe. Retry Import after resolving " +
+      "Codex availability.",
+  );
+  assert.doesNotMatch(`${partial.message}\n${zero.message}`, /Imported \d+ tasks? into/);
+});
+
+test("singular no-op registration uses singular task and pronouns", () => {
+  assert.equal(
+    format(
+      "import",
+      result({ selected: 1, unchanged: 1 }),
+      registration(1),
+    ).message,
+    "No file changes were needed for 1 task in Letta-Open-ADE. Registered it " +
+      "with Codex. Open or restart Codex to display it.",
+  );
+});
+
+test("mixed imported and unchanged outcomes keep counts and grammar accurate", () => {
+  const mixedResult = result({
+    selected: 2,
+    pulled: 1,
+    unchanged: 1,
+  });
+  assert.equal(
+    format("import", mixedResult, registration(2)).message,
+    "Imported 1 task into Letta-Open-ADE and registered 2 tasks with Codex. " +
+      "Open or restart Codex to display them.",
+  );
+  assert.equal(
+    format("import", mixedResult, registration(2, 1)).message,
+    "Imported files for 1 task into Letta-Open-ADE; 1 task was already current, " +
+      "but Codex registered only 1. The files are safe. Retry Import after " +
+      "resolving Codex availability.",
   );
 });
 
 test("runtime import failure reports the task imported before the issue", () => {
-  const formatted = formatTransferResult(
+  const formatted = format(
     "import",
     result({
       selected: 2,
       pulled: 1,
       issues: [issue("transfer_filesystem_failure")],
     }),
+    registration(1),
   );
 
   assert.equal(formatted.kind, "error");
   assert.equal(
     formatted.message,
-    "Import could not be completed. Imported 1 task before the issue occurred. " +
-      "Reload VS Code or restart the Codex app to see it. " +
+    "Import into Letta-Open-ADE could not be completed. Imported files for 1 task " +
+      "before the issue occurred. Registered it with Codex. " +
+      "Open or restart Codex to display it. " +
       "See the Codex Usage output for details.",
   );
   assert.doesNotMatch(formatted.message, /no tasks were copied/i);
 });
 
 test("runtime export failure reports the task exported before the issue", () => {
-  const formatted = formatTransferResult(
+  const formatted = format(
     "export",
     result({
       selected: 2,
@@ -196,7 +290,8 @@ test("runtime export failure reports the task exported before the issue", () => 
   assert.equal(formatted.kind, "error");
   assert.equal(
     formatted.message,
-    "Export could not be completed. Exported 1 task to the transfer folder before the issue occurred. " +
+    "Export from Letta-Open-ADE could not be completed. Exported 1 task to the " +
+      "transfer folder before the issue occurred. " +
       "See the Codex Usage output for details.",
   );
   assert.doesNotMatch(formatted.message, /no tasks were copied/i);
@@ -204,7 +299,7 @@ test("runtime export failure reports the task exported before the issue", () => 
 
 test("filesystem failure without certified ids reports unknown completion", () => {
   for (const operation of ["import", "export"]) {
-    const formatted = formatTransferResult(
+    const formatted = format(
       operation,
       result({
         selected: 1,

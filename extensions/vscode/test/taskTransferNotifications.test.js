@@ -34,7 +34,7 @@ test("inventory diagnostics stay log-only when import succeeds", async () => {
   assert.deepEqual(port.logs, expectedLog);
   assert.deepEqual(port.notifications, [[
     "info",
-    "Imported 1 task. Reload VS Code or restart the Codex app to see it.",
+    "Imported 1 task into Repo. Open or restart Codex to display it.",
   ]]);
 });
 

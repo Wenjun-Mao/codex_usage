@@ -20,6 +20,7 @@ import {
   resolveImportProjectBindings,
   TransferProjectScopeError,
 } from "./taskTransferProjectScope";
+import { certifiedImportThreadIds } from "./taskTransferRegistration";
 import {
   formatTransferResult,
   taskTransferMenuItems,
@@ -263,12 +264,42 @@ export class TaskTransferController {
         projectBindings,
       });
       this.logIssues(result);
+      let registration: CodexTaskRegistrationResult | undefined;
+      if (operation === "import") {
+        const certifiedThreadIds = certifiedImportThreadIds(
+          result,
+          selectedProject.threadIds,
+        );
+        if (certifiedThreadIds.length > 0) {
+          this.port.setTransientStatus("registering");
+          try {
+            registration = await this.port.registerImportedTasks(certifiedThreadIds);
+          } catch {
+            registration = {
+              attemptedThreadIds: [...certifiedThreadIds],
+              registeredThreadIds: [],
+              failures: certifiedThreadIds.map((threadId) => ({
+                threadId,
+                message: "Codex registration could not be completed",
+              })),
+            };
+          }
+          for (const failure of registration.failures) {
+            this.port.log(
+              `[task registration] ${failure.threadId}: ${failure.message}`,
+            );
+          }
+        }
+      }
       if (result.outcome === "conflict") {
         this.port.setTransientStatus("conflict");
       } else if (result.outcome === "issue" || result.issues.length > 0) {
         this.port.setTransientStatus("issue");
       }
-      const formatted = formatTransferResult(operation, result);
+      const formatted = formatTransferResult(operation, result, {
+        projectLabel: selectedProject.projectLabel,
+        registration,
+      });
       this.port.notify(formatted.kind, formatted.message);
     } catch (error) {
       this.reportFailure(error, stage, operation);
