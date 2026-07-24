@@ -9,6 +9,7 @@ class FakeQuickPick extends EventEmitter {
     this.items = [];
     this._selectedItems = [];
     this.disposed = false;
+    this.queuedHideListeners = [];
     this.shown = false;
   }
 
@@ -51,6 +52,17 @@ class FakeQuickPick extends EventEmitter {
   accept() {
     this.emit("accept");
   }
+
+  queueHide() {
+    this.queuedHideListeners = this.listeners("hide");
+  }
+
+  runQueuedHide() {
+    for (const listener of this.queuedHideListeners) {
+      listener();
+    }
+    this.queuedHideListeners = [];
+  }
 }
 
 const quickPicks = [];
@@ -81,15 +93,26 @@ function inventory() {
         projectLabel: "Repo A",
         identityKind: "git",
         candidateRoots: [],
-        tasks: [{
-          threadId: "thread-2",
-          title: "Planning notes",
-          updatedAt: "2026-07-13T12:00:00Z",
-          estimatedSyncBytes: 2048,
-          availability: "both",
-          state: "synced",
-          action: "none",
-        }],
+        tasks: [
+          {
+            threadId: "thread-2",
+            title: "Planning notes",
+            updatedAt: "2026-07-13T12:00:00Z",
+            estimatedSyncBytes: 2048,
+            availability: "both",
+            state: "synced",
+            action: "none",
+          },
+          {
+            threadId: "thread-4",
+            title: "Import follow-up",
+            updatedAt: "2026-07-11T12:00:00Z",
+            estimatedSyncBytes: 1024,
+            availability: "remote",
+            state: "remote_only",
+            action: "pull",
+          },
+        ],
       },
       {
         projectKey: "repo-b",
@@ -111,7 +134,7 @@ function inventory() {
   };
 }
 
-test("import picker activates one project and returns its independent subset", async () => {
+test("import picker accepts a nonempty partial project subset", async () => {
   quickPicks.length = 0;
   const result = showTaskTransferPicker("import", buildTaskPickerItems(inventory(), "import"));
   const quickPick = quickPicks.at(-1);
@@ -122,18 +145,36 @@ test("import picker activates one project and returns its independent subset", a
 
   quickPick.select(["project:repo-a"]);
   assert.deepEqual(quickPick.items.map((item) => item.task?.id), [
-    "project:repo-a", "task:thread-2", "project:repo-b",
+    "project:repo-a", "task:thread-2", "task:thread-4", "project:repo-b",
   ]);
   assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), [
-    "project:repo-a", "task:thread-2",
+    "project:repo-a", "task:thread-2", "task:thread-4",
   ]);
   assert.equal(quickPick.items[0].description, "Selected project");
 
-  quickPick.select(["project:repo-a"]);
+  quickPick.select(["project:repo-a", "task:thread-4"]);
   assert.equal(quickPick.items[0].description, "Selected project");
-  assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), ["project:repo-a"]);
+  assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), [
+    "project:repo-a", "task:thread-4",
+  ]);
 
-  quickPick.select(["project:repo-a", "project:repo-b"]);
+  let settlementCount = 0;
+  result.then(() => { settlementCount += 1; });
+  quickPick.queueHide();
+  quickPick.accept();
+  quickPick.runQueuedHide();
+  assert.deepEqual(await result, { projectKey: "repo-a", threadIds: ["thread-4"] });
+  assert.equal(settlementCount, 1);
+});
+
+test("switching projects discards every retained task id from the previous project", async () => {
+  quickPicks.length = 0;
+  const result = showTaskTransferPicker("import", buildTaskPickerItems(inventory(), "import"));
+  const quickPick = quickPicks.at(-1);
+
+  quickPick.select(["project:repo-a"]);
+  quickPick.select(["project:repo-a", "task:thread-4"]);
+  quickPick.select(["project:repo-a", "task:thread-4", "project:repo-b"]);
   assert.deepEqual(quickPick.items.map((item) => item.task?.id), [
     "project:repo-a", "project:repo-b", "task:thread-3",
   ]);
@@ -142,8 +183,10 @@ test("import picker activates one project and returns its independent subset", a
   ]);
 
   quickPick.accept();
-  quickPick.emit("hide");
-  assert.deepEqual(await result, { projectKey: "repo-b", threadIds: ["thread-3"] });
+  const selection = await result;
+  assert.deepEqual(selection, { projectKey: "repo-b", threadIds: ["thread-3"] });
+  assert.equal(selection.threadIds.includes("thread-2"), false);
+  assert.equal(selection.threadIds.includes("thread-4"), false);
 });
 
 test("review picker copy makes cross-project selection explicit", async () => {
