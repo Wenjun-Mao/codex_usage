@@ -79,3 +79,63 @@ Tests:
 ## Concerns
 
 No known functional concerns.
+
+## Review Fix: Incompatible Review Request Contract
+
+### Status
+
+Review now explicitly forbids the transfer-only `projectKey` and `projectLabel`
+fields. A dedicated TypeScript contract test proves an execution request cannot
+cross the `TaskTransferPort.review` boundary.
+
+### RED / GREEN Evidence
+
+RED:
+
+`npm run typecheck:contracts`
+
+- Exited 2 with
+  `TS2578: Unused '@ts-expect-error' directive`, proving TypeScript accepted
+  `reviewBoundary.review(executionRequest)` under the structural base alias.
+
+GREEN:
+
+`npm run typecheck:contracts`
+
+- Exited 0 after `TransferReviewRequest` added `projectKey?: never` and
+  `projectLabel?: never`.
+
+Focused Task 3 verification:
+
+- `npm run build`: passed.
+- `node --test test/taskTransferProjectScope.test.js test/syncProtocol.test.js test/taskTransfer.test.js test/taskTransferVscode.test.js`:
+  56 passed, 0 failed.
+
+Full extension verification:
+
+- `npm test`: type contract check passed; 177 runtime tests passed, 0 failed.
+- `git diff --check`: passed.
+
+### Changed Files
+
+- `extensions/vscode/src/taskTransfer.ts`
+- `extensions/vscode/test/taskTransferTypeContracts.test.ts`
+- `extensions/vscode/tsconfig.type-tests.json`
+- `extensions/vscode/package.json`
+- `.superpowers/sdd/task-3-report.md`
+
+### Self-Review
+
+- The positive compile-time assertion still accepts a genuine
+  `TransferReviewRequest`.
+- The negative assertion calls the real `TaskTransferPort.review` boundary and
+  fails compilation without the incompatibility; it does not inspect source
+  text.
+- `npm test` runs the type contract check on every full extension test run.
+- Review runtime construction is unchanged, remains cross-project, and the
+  status argv regression test still proves no `--project-key` is emitted.
+- `taskTransfer.ts` is 453 lines and the type contract test is 14 lines.
+
+### Concerns
+
+No known concerns.

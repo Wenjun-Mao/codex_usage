@@ -33,7 +33,10 @@ export type TransferExecutionRequest = SyncTransferCommandOptions & {
   projectLabel: string;
 };
 
-export type TransferReviewRequest = SyncCommandOptions;
+export type TransferReviewRequest = SyncCommandOptions & {
+  projectKey?: never;
+  projectLabel?: never;
+};
 
 type TransferRequestContext = Omit<
   TransferReviewRequest,
