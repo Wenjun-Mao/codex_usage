@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- 2026-07-23: Made Import and Export one-project operations with all eligible tasks initially selected, while keeping Review Transfer Status cross-project and read-only.
+- 2026-07-23: Added defensive one-project enforcement in the Task Transfer CLI and core.
+- 2026-07-23: Registered certified imported tasks deterministically through an installed official Codex `app-server` using targeted reads.
+- 2026-07-23: Kept certified imported files safe after registration failures and made a repeated Import retry registration.
+- 2026-07-23: Documented cached-task-list refresh guidance and the no-model, no-direct-SQLite, and no-private-registry-write guarantees.
+
 ## 0.1.37 - 2026-07-21 - GPT-5.6 Cache-Write Accounting
 
 - Preserved Codex cache-write token counts through parsing, local caching, aggregation, JSON, CSV, terminal, and HTML reports.

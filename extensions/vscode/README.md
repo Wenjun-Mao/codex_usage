@@ -18,7 +18,7 @@ Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local 
 
 ## Preview Status
 
-This Marketplace preview supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS is not supported. Linux packaging is a follow-up and is not a supported target in this release.
+This Marketplace preview supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS, Windows ARM64, and Linux packaging are not supported targets in this release.
 
 ## Commands
 
@@ -51,19 +51,23 @@ Task Transfer deliberately moves selected active Codex tasks between computers t
 
 Codex's built-in handoff can fail on a very large task. Task Transfer preserves the task as a full JSONL without summarizing or repackaging its context, so the same long-running task can continue on another computer.
 
-1. On the source computer, run **Export Tasks** and select the active tasks to transfer.
+1. On the source computer, run **Export Tasks**, choose the project, and select the active tasks to transfer.
 2. Wait for the filesystem provider to finish copying the transfer folder.
 3. Clone or copy the corresponding project checkout to the destination computer if it is not already there.
 4. When using only the Codex IDE extension, open that checkout in VS Code.
-5. Run **Import Tasks**, select the tasks, and accept an automatic project match or choose a validated local folder.
-6. Open or restart Codex so the imported tasks appear. In the official Codex VS Code
-   extension, reloading VS Code is the equivalent refresh.
+5. Run **Import Tasks**, choose the project, and accept an automatic project match or choose a validated local folder.
+6. After successful registration, open or restart Codex so the imported tasks appear. In the
+   official Codex VS Code extension, reloading VS Code is the equivalent refresh.
 
 The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen checkout with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer does not clone repositories, so the destination checkout must already exist.
 
-Every **Import Tasks**, **Export Tasks**, and **Review Transfer Status** operation starts with a fresh, empty selection. Review inspects task state without copying files. Project rows select only the tasks visible for that operation, and neither task selections nor project mappings are saved. Imported tasks remain in the transfer folder, and changing or forgetting the remembered folder does not delete any task files.
+Each Import or Export handles one Codex project. Choose a project, then all eligible tasks in it start selected; deselect any tasks you do not want to transfer. The transfer folder can retain tasks from many projects across separate operations. Review Transfer Status remains cross-project and does not copy files. Neither task selections nor project mappings are saved. Imported tasks remain in the transfer folder, and changing or forgetting the remembered folder does not delete any task files.
 
-The extension checks the complete selected batch before copying anything. Conflicts, malformed folder structures, changed source files, unsafe mappings, and tasks that need the opposite direction block the whole operation. Existing local tasks keep their current checkout path. Task Transfer does not copy Codex auth, settings, caches, logs, archived tasks, or SQLite databases, and it never writes Codex private application state.
+The extension checks the complete selected batch before copying anything. Conflicts, malformed folder structures, changed source files, unsafe mappings, and tasks that need the opposite direction block the whole operation. Existing local tasks keep their current checkout path. Task Transfer does not copy Codex auth, settings, caches, logs, archived tasks, or SQLite databases.
+
+After certified task files are copied during Import, Codex Usage asks an installed official Codex runtime to register the selected tasks through targeted `app-server` task-read requests. Registration sends targeted reads only: it does not invoke a model, send a prompt, or start a turn. Codex Usage never writes Codex SQLite or private project registries directly; Codex owns the resulting state repair. If registration fails, the certified imported files remain safe in place, and re-running Import retries registration for the selected tasks. After successful registration, open or restart Codex, or reload VS Code when using the official Codex VS Code extension, to refresh a cached task list.
+
+On supported Windows x64 and macOS Apple Silicon installations, official runtime discovery checks the official Codex VS Code extension, the native Codex desktop app, and `PATH`; the desktop app is not required when another official runtime is available. The packaged Codex Usage VSIX is limited to Windows x64 and macOS Apple Silicon.
 
 The current transfer-folder layout is:
 
@@ -129,6 +133,13 @@ For GPT-5.6 and later API models, local Codex logs expose `cache_write_input_tok
 Codex fast mode is counted through the token usage that Codex records. At the moment, Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.
 
 ## Troubleshooting
+
+### Imported files exist but tasks are not visible
+
+1. Confirm an official Codex runtime is installed on the destination computer.
+2. Check the Codex Usage output for a post-import registration failure.
+3. Run **Import Tasks** again for the same project and task subset to retry registration.
+4. Open or restart Codex, or reload VS Code when using the official Codex VS Code extension.
 
 - If no usage appears, confirm Codex session files exist under `CODEX_HOME/sessions`, `CODEX_HOME/archived_sessions`, `%USERPROFILE%\.codex\sessions`, `%USERPROFILE%\.codex\archived_sessions`, `~/.codex/sessions`, or `~/.codex/archived_sessions`.
 - If project filtering shows no choices, switch the range to `all` and run `Codex Usage: Select Projects` again.
