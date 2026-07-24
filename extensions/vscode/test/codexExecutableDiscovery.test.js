@@ -231,6 +231,30 @@ test("deduplicates lexically equivalent native macOS paths while preserving the 
   ]);
 });
 
+test("retains a path-like relative macOS override alongside the bare PATH command", async () => {
+  const candidates = await discoverCodexExecutableCandidates(
+    macContext({ cliOverride: "./codex" }),
+    createProbe(),
+  );
+
+  assert.deepEqual(candidates, [
+    { executablePath: "./codex", source: "cli-override" },
+    { executablePath: "codex", source: "path" },
+  ]);
+});
+
+test("retains a path-like relative Windows override alongside the bare PATH command", async () => {
+  const candidates = await discoverCodexExecutableCandidates(
+    windowsContext({ cliOverride: ".\\codex.exe" }),
+    createProbe(),
+  );
+
+  assert.deepEqual(candidates, [
+    { executablePath: ".\\codex.exe", source: "cli-override" },
+    { executablePath: "codex.exe", source: "path" },
+  ]);
+});
+
 test("rejects unsupported platform and architecture pairs before invoking probes", async () => {
   const probe = createProbe();
 

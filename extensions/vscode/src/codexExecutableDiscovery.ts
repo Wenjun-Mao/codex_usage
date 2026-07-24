@@ -119,10 +119,19 @@ async function discoverWindowsDesktopCandidates(
 }
 
 function candidateKey(platform: NodeJS.Platform, executablePath: string): string {
-  if (platform === "win32") {
-    return path.win32.normalize(executablePath).toLowerCase();
+  if (!isFilesystemPath(platform, executablePath)) {
+    return platform === "win32" ? `command:${executablePath.toLowerCase()}` : `command:${executablePath}`;
   }
-  return path.posix.normalize(executablePath);
+  if (platform === "win32") {
+    return `path:${path.win32.normalize(executablePath).toLowerCase()}`;
+  }
+  return `path:${path.posix.normalize(executablePath)}`;
+}
+
+function isFilesystemPath(platform: NodeJS.Platform, executablePath: string): boolean {
+  return platform === "win32"
+    ? /[\\/]/.test(executablePath) || /^[a-z]:/i.test(executablePath)
+    : executablePath.includes("/");
 }
 
 async function pathExists(probe: CodexExecutableDiscoveryProbe, candidate: string): Promise<boolean> {
