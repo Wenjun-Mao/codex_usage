@@ -60,6 +60,10 @@ jobs:
         working-directory: extensions/vscode
         run: npm test
 
+      - name: Run Codex registration smoke
+        working-directory: extensions/vscode
+        run: npm run test:registration-smoke
+
       - name: Package Windows VSIX
         working-directory: extensions/vscode
         run: npm run package:vsix:win
@@ -107,6 +111,10 @@ jobs:
       - name: Run VS Code extension tests
         working-directory: extensions/vscode
         run: npm test
+
+      - name: Run Codex registration smoke
+        working-directory: extensions/vscode
+        run: npm run test:registration-smoke
 
       - name: Package macOS Apple Silicon VSIX
         working-directory: extensions/vscode

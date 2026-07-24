@@ -360,6 +360,37 @@ test("macos Apple Silicon VSIX package script creates the release output directo
   );
 });
 
+test("native release jobs gate direct Codex registration before VSIX packaging", () => {
+  const repositoryRoot = path.resolve(__dirname, "../../..");
+  const workflow = fs.readFileSync(path.join(repositoryRoot, ".github/workflows/package-vsix.yml"), "utf8");
+  const registrationSmoke = fs.readFileSync(
+    path.join(repositoryRoot, "scripts/smoke-test-codex-registration.js"),
+    "utf8",
+  );
+  const fixture = fs.readFileSync(path.join(repositoryRoot, "scripts/fake-codex-app-server"), "utf8");
+  const appServer = fs.readFileSync(path.join(repositoryRoot, "extensions/vscode/src/codexAppServer.ts"), "utf8");
+
+  assert.equal(
+    packageJson.scripts["test:registration-smoke"],
+    "npm run build && node ../../scripts/smoke-test-codex-registration.js",
+  );
+  for (const jobName of ["windows", "macos"]) {
+    const jobStart = workflow.indexOf(`\n  ${jobName}:\n`);
+    assert.notEqual(jobStart, -1, `expected ${jobName} job`);
+    const nextJob = workflow.slice(jobStart + 1).search(/\n  [a-z][a-z-]*:\n/);
+    const job = workflow.slice(jobStart, nextJob === -1 ? undefined : jobStart + nextJob + 1);
+    assert(job.indexOf("run: npm run test:registration-smoke") < job.indexOf("Package"));
+  }
+  assert.match(registrationSmoke, /process\.execPath/);
+  assert.match(registrationSmoke, /app-server/);
+  assert.match(fixture, /"thread\/read"/);
+  assert.match(fixture, /forbiddenMethod/);
+  assert.match(fixture, /process\.exitCode = 1/);
+  assert.match(appServer, /\["app-server", "--stdio"\]/);
+  assert.match(appServer, /shell: false/);
+  assert.doesNotMatch(appServer, /\b(?:exec|execFile|spawnSync)\s*\(/);
+});
+
 test("package metadata is ready for Marketplace preview publishing", () => {
   assert.equal(packageJson.publisher, "wenjun-mao");
   assert.equal(packageJson.private, undefined);

@@ -233,12 +233,37 @@ class PackagedCommandDouble:
             )
             self._mutate_destination("pull", codex_home)
         elif len(self.calls) == 5:
+            if command_args.count("--thread-id") == 2:
+                payload = self._cross_project_selection_payload()
+            else:
+                imported_jsonl = codex_home / "sessions" / self.smoke.SESSION_RELATIVE_PATH
+                payload = self._status_payload(imported_jsonl, remote_jsonl)
+                self._mutate_destination("status", codex_home)
+        elif len(self.calls) == 6:
             imported_jsonl = codex_home / "sessions" / self.smoke.SESSION_RELATIVE_PATH
             payload = self._status_payload(imported_jsonl, remote_jsonl)
             self._mutate_destination("status", codex_home)
         else:
             raise AssertionError(f"Unexpected packaged command: {command!r}")
-        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        return subprocess.CompletedProcess(
+            command,
+            2 if len(self.calls) == 5 and command_args.count("--thread-id") == 2 else 0,
+            json.dumps(payload),
+            "",
+        )
+
+    @staticmethod
+    def _cross_project_selection_payload() -> dict[str, object]:
+        return {
+            "outcome": "issue",
+            "issues": [
+                {
+                    "code": "cross_project_selection",
+                    "message": "Choose tasks from one project.",
+                    "thread_id": "",
+                }
+            ],
+        }
 
     def _candidate_root(self, command_args: tuple[str, ...]) -> str:
         index = command_args.index("--candidate-project-root")

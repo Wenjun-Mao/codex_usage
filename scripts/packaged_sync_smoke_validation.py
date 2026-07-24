@@ -8,6 +8,8 @@ from pathlib import Path
 
 THREAD_ID = "thread-1"
 SESSION_RELATIVE_PATH = Path("2026") / "04" / "29" / f"{THREAD_ID}.jsonl"
+UNRELATED_THREAD_ID = "unrelated-thread"
+UNRELATED_SESSION_RELATIVE_PATH = Path("2026") / "04" / "29" / f"{UNRELATED_THREAD_ID}.jsonl"
 TASK_TITLE = "Packaged Task Transfer smoke"
 TASK_UPDATED_AT = "2026-04-29T10:00:02Z"
 PROJECT_KEY = "https://github.com/example/packaged-sync-smoke"

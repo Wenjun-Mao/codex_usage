@@ -160,6 +160,7 @@
     "typecheck:contracts": "tsc -p tsconfig.type-tests.json",
     "watch": "tsc -watch -p .",
     "test": "npm run build && npm run typecheck:contracts && node --test test/*.test.js",
+    "test:registration-smoke": "npm run build && node ../../scripts/smoke-test-codex-registration.js",
     "package:vsix": "npm run package:vsix:win",
     "package:vsix:win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ..\\..\\output\\releases | Out-Null\" && npm run build:python:win && vsce package --target win32-x64 --out ../../output/releases/codex-usage-dashboard-win32-x64.vsix",
     "package:vsix:mac": "mkdir -p ../../output/releases && npm run build:python:mac && vsce package --target darwin-arm64 --out ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix",

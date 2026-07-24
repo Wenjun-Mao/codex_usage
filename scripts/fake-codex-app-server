@@ -1,0 +1,39 @@
+"use strict";
+
+const readline = require("node:readline");
+
+const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+const forbiddenMethod = /turn|prompt|model|list/i;
+
+console.error("fake Codex app-server smoke fixture started");
+
+async function main() {
+  for await (const line of input) {
+    const message = JSON.parse(line);
+    if (message.method === "initialize") {
+      process.stdout.write(`${JSON.stringify({ id: message.id, result: { serverInfo: { name: "fake" } } })}\n`);
+      continue;
+    }
+    if (message.method === "initialized") {
+      continue;
+    }
+    if (message.method === "thread/read") {
+      process.stdout.write(
+        `${JSON.stringify({ id: message.id, result: { thread: { id: message.params.threadId } } })}\n`,
+      );
+      continue;
+    }
+    if (forbiddenMethod.test(String(message.method))) {
+      console.error(`forbidden Codex method: ${message.method}`);
+    } else {
+      console.error(`unexpected Codex method: ${message.method}`);
+    }
+    process.exitCode = 1;
+    input.close();
+  }
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.stack : String(error));
+  process.exitCode = 1;
+});

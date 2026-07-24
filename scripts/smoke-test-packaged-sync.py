@@ -22,6 +22,8 @@ from packaged_sync_smoke_validation import (
     TASK_UPDATED_AT,
     THREAD_ID,
     UNRELATED_PROJECT_KEY,
+    UNRELATED_SESSION_RELATIVE_PATH,
+    UNRELATED_THREAD_ID,
     _read_required_bytes,
     _require_equal,
     _validate_baseline,
@@ -111,16 +113,58 @@ def _write_source_home(source_home: Path, project_root: Path) -> Path:
                 "id": THREAD_ID,
                 "thread_name": TASK_TITLE,
                 "updated_at": TASK_UPDATED_AT,
-            }
+            },
         ],
     )
     return source_jsonl
+
+
+def _write_unrelated_source_task(source_home: Path) -> Path:
+    unrelated_jsonl = source_home / "sessions" / UNRELATED_SESSION_RELATIVE_PATH
+    _write_jsonl(
+        unrelated_jsonl,
+        [
+            {
+                "timestamp": "2026-04-29T10:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": UNRELATED_THREAD_ID,
+                    "timestamp": "2026-04-29T10:00:00Z",
+                    "cwd": "/unrelated/source/spelling",
+                    "git": {"repository_url": UNRELATED_PROJECT_KEY},
+                },
+            },
+            {
+                "timestamp": TASK_UPDATED_AT,
+                "type": "event_msg",
+                "payload": {"type": "task_started"},
+            },
+        ],
+    )
+    _write_jsonl(
+        source_home / "session_index.jsonl",
+        [
+            {
+                "id": THREAD_ID,
+                "thread_name": TASK_TITLE,
+                "updated_at": TASK_UPDATED_AT,
+            },
+            {
+                "id": UNRELATED_THREAD_ID,
+                "thread_name": "Unrelated packaged smoke task",
+                "updated_at": TASK_UPDATED_AT,
+            },
+        ],
+    )
+    return unrelated_jsonl
 
 
 def _run_json(
     executable: Path,
     codex_home: Path,
     args: list[str],
+    *,
+    allowed_returncodes: frozenset[int] = frozenset({0}),
 ) -> dict[str, object]:
     environment = os.environ.copy()
     environment["CODEX_HOME"] = str(codex_home)
@@ -138,7 +182,7 @@ def _run_json(
         cwd=codex_home,
         check=False,
     )
-    if completed.returncode != 0:
+    if completed.returncode not in allowed_returncodes:
         raise RuntimeError(
             f"Packaged command exited with code {completed.returncode}.\n"
             f"stdout:\n{completed.stdout}\n"
@@ -164,19 +208,40 @@ def _run_sync(
     direction: str,
     *,
     candidate_project_root: Path | None = None,
+    thread_ids: tuple[str, ...] = (THREAD_ID,),
+    allow_issue: bool = False,
 ) -> dict[str, object]:
     args = [
         "sync",
         direction,
         "--sync-dir",
         str(sync_dir),
-        "--thread-id",
-        THREAD_ID,
-        "--json",
     ]
+    for thread_id in thread_ids:
+        args.extend(["--thread-id", thread_id])
+    if direction in {"pull", "push"}:
+        args.extend(["--project-key", PROJECT_KEY])
+    args.append("--json")
     if candidate_project_root is not None:
         args.extend(["--candidate-project-root", str(candidate_project_root)])
-    return _run_json(executable, codex_home, args)
+    return _run_json(
+        executable,
+        codex_home,
+        args,
+        allowed_returncodes=frozenset({0, 2}) if allow_issue else frozenset({0}),
+    )
+
+
+def _validate_cross_project_selection(result: dict[str, object]) -> None:
+    _require_equal(result.get("outcome"), "issue", "cross-project selection outcome")
+    issues = result.get("issues")
+    if not isinstance(issues, list) or not any(
+        isinstance(issue, dict) and issue.get("code") == "cross_project_selection"
+        for issue in issues
+    ):
+        raise RuntimeError(
+            "Packaged sync validation failed for cross-project selection issue"
+        )
 
 
 def _create_git_checkout(path: Path) -> None:
@@ -232,6 +297,8 @@ def main() -> int:
         )
         _validate_remote_layout(sync_dir, source_bytes)
         _validate_baseline(source_home, source_bytes, source_bytes)
+        unrelated_jsonl = _write_unrelated_source_task(source_home)
+        unrelated_bytes = _read_required_bytes(unrelated_jsonl, "unrelated task JSONL")
 
         remote_inventory = _run_json(
             executable,
@@ -285,6 +352,31 @@ def main() -> int:
             _read_required_bytes(source_jsonl, "source task JSONL after import"),
             source_bytes,
             "source-home isolation",
+        )
+
+        rejected = _run_sync(
+            executable,
+            source_home,
+            sync_dir,
+            "push",
+            thread_ids=(THREAD_ID, UNRELATED_THREAD_ID),
+            allow_issue=True,
+        )
+        _validate_cross_project_selection(rejected)
+        _require_equal(
+            _read_required_bytes(source_jsonl, "source task after rejected selection"),
+            source_bytes,
+            "cross-project local task isolation",
+        )
+        _require_equal(
+            _read_required_bytes(unrelated_jsonl, "unrelated task after rejected selection"),
+            unrelated_bytes,
+            "cross-project unrelated task isolation",
+        )
+        _require_equal(
+            _read_required_bytes(remote_jsonl, "remote task after rejected selection"),
+            source_bytes,
+            "cross-project remote task isolation",
         )
 
         status = _run_sync(

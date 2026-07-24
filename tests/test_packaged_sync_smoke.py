@@ -85,6 +85,40 @@ def test_source_fixture_has_selective_multi_record_project_metadata(tmp_path: Pa
     assert len([row for row in rows if row.get("type") != "session_meta"]) >= 2
 
 
+def test_cross_project_task_is_added_after_the_initial_source_fixture(tmp_path: Path) -> None:
+    smoke = load_packaged_sync_smoke()
+    source_home = tmp_path / "home"
+
+    smoke._write_source_home(source_home, tmp_path / "source-project")
+
+    unrelated_jsonl = source_home / "sessions" / smoke.UNRELATED_SESSION_RELATIVE_PATH
+    assert not unrelated_jsonl.exists()
+    smoke._write_unrelated_source_task(source_home)
+    assert unrelated_jsonl.is_file()
+
+
+def test_cross_project_selection_accepts_the_native_issue_exit_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    smoke = load_packaged_sync_smoke()
+    payload = {
+        "outcome": "issue",
+        "issues": [{"code": "cross_project_selection", "message": "blocked", "thread_id": ""}],
+    }
+    completed = subprocess.CompletedProcess([], 2, json.dumps(payload), "")
+    monkeypatch.setattr(smoke, "subprocess", SimpleNamespace(run=lambda *args, **kwargs: completed))
+
+    assert smoke._run_sync(
+        tmp_path / "codex-usage",
+        tmp_path / "codex-home",
+        tmp_path / "sync",
+        "push",
+        thread_ids=(smoke.THREAD_ID, smoke.UNRELATED_THREAD_ID),
+        allow_issue=True,
+    ) == payload
+
+
 def test_packaged_sync_smoke_orchestrates_exact_round_trip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -104,11 +138,24 @@ def test_packaged_sync_smoke_orchestrates_exact_round_trip(
         source_home,
         target_home,
         target_home,
+        source_home,
         target_home,
     ]
-    assert sum(call[1][1] == "push" for call in calls) == 1
-    assert sum(call[1][1] == "pull" for call in calls) == 1
-    assert all("--candidate-project-root" in calls[index][1] for index in (2, 3, 4))
+    assert [call[1][1] for call in calls] == [
+        "inventory",
+        "push",
+        "inventory",
+        "pull",
+        "push",
+        "status",
+    ]
+    assert all("--project-key" in calls[index][1] for index in (1, 3))
+    assert all("--candidate-project-root" in calls[index][1] for index in (2, 3, 5))
+    rejected_selection = calls[4][1]
+    assert rejected_selection[:2] == ("sync", "push")
+    assert rejected_selection.count("--thread-id") == 2
+    assert rejected_selection.count("--project-key") == 1
+    assert smoke.UNRELATED_THREAD_ID in rejected_selection
     for codex_home, _, environment in calls:
         expected_cache = codex_home.parent / "tool-cache" / codex_home.name
         assert environment["CODEX_USAGE_CACHE_DIR"] == str(expected_cache)
