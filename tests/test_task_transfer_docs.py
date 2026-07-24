@@ -188,6 +188,35 @@ def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:
         assert "re-running import retries registration" in section
 
 
+def test_current_docs_describe_registration_discovery_and_recovery() -> None:
+    troubleshooting_heading = "### Imported files exist but tasks are not visible\n"
+    for path in CURRENT_DOCS:
+        text = path.read_text(encoding="utf-8")
+        transfer = normalized_prose(markdown_section(path, "## Task Transfer"))
+        status_heading = (
+            "## VS Code Preview Packages"
+            if path == ROOT / "README.md"
+            else "## Preview Status"
+        )
+        status = normalized_prose(markdown_section(path, status_heading))
+
+        assert "official codex vs code extension" in transfer
+        assert "native codex desktop app" in transfer
+        assert "and `path`" in transfer
+        assert "certified imported files remain safe in place" in transfer
+        assert "does not invoke a model, send a prompt, or start a turn" in transfer
+        assert "intel macos and windows arm64 are not supported targets" in status
+
+        assert troubleshooting_heading in text
+        heading_index = text.index(troubleshooting_heading)
+        recovery = text[heading_index + len(troubleshooting_heading) :]
+        recovery = recovery.split("\n## ", 1)[0]
+        assert "official Codex runtime" in recovery
+        assert "Codex Usage output" in recovery
+        assert "retry registration" in recovery
+        assert "Open or restart Codex" in recovery and "reload VS Code" in recovery
+
+
 def test_current_docs_require_both_native_v3_packaged_workflow_gates() -> None:
     status_sections = (
         markdown_section(CURRENT_DOCS[0], "## VS Code Preview Packages"),
@@ -269,17 +298,34 @@ def test_changelogs_release_task_transfer_v3_on_actual_date() -> None:
 
 def test_unreleased_changelogs_describe_deterministic_task_transfer_contract() -> None:
     for path in CHANGELOGS:
-        unreleased = normalized_prose(markdown_section(path, "## Unreleased"))
-        assert unreleased.count("2026-07-23") == 5
-        assert "one-project operations" in unreleased
-        assert "all eligible tasks initially selected" in unreleased
-        assert "review transfer status cross-project and read-only" in unreleased
-        assert "defensive one-project enforcement" in unreleased
-        assert "official codex `app-server` using targeted reads" in unreleased
-        assert "safe after registration failures" in unreleased
-        assert "repeated import retry registration" in unreleased
-        assert "cached-task-list refresh guidance" in unreleased
-        assert "no-model, no-direct-sqlite, and no-private-registry-write guarantees" in unreleased
+        entries = [
+            entry.casefold()
+            for entry in re.findall(
+                r"^- 2026-07-23: (?P<entry>.+)$",
+                markdown_section(path, "## Unreleased"),
+                re.MULTILINE,
+            )
+        ]
+        assert any(
+            "one-project operations" in entry
+            and "all eligible tasks initially selected" in entry
+            and "review transfer status cross-project and read-only" in entry
+            for entry in entries
+        )
+        assert any("defensive one-project enforcement" in entry for entry in entries)
+        assert any(
+            "official codex `app-server` using targeted reads" in entry for entry in entries
+        )
+        assert any(
+            "safe after registration failures" in entry
+            and "repeated import retry registration" in entry
+            for entry in entries
+        )
+        assert any(
+            "cached-task-list refresh guidance" in entry
+            and "no-model, no-direct-sqlite, and no-private-registry-write guarantees" in entry
+            for entry in entries
+        )
 
 
 def test_changelogs_use_exact_historical_release_dates() -> None:
