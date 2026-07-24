@@ -310,7 +310,7 @@ def test_adr_index_keeps_manual_task_transfer_before_token_accounting() -> None:
         re.MULTILINE,
     )
     assert [number for number, _, _ in rows] == sorted(number for number, _, _ in rows)
-    assert rows[-2:] == [
+    assert rows[-4:] == [
         (
             "0014",
             "0014-manual-task-transfer.md",
@@ -320,5 +320,15 @@ def test_adr_index_keeps_manual_task_transfer_before_token_accounting() -> None:
             "0015",
             "0015-explicit-token-category-accounting.md",
             "Preserve explicit upstream token categories without reconstructing missing evidence.",
+        ),
+        (
+            "0016",
+            "0016-register-imported-tasks-through-codex.md",
+            "Register imported tasks through Codex's supported app-server read-repair path.",
+        ),
+        (
+            "0017",
+            "0017-one-project-per-transfer-operation.md",
+            "Constrain each Import and Export to one Codex project while keeping the transfer folder multi-project.",
         ),
     ]
