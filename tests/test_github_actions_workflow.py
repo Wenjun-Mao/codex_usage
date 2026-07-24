@@ -100,7 +100,7 @@ def test_release_workflow_keeps_only_supported_platform_targets() -> None:
     assert "linux-x64" not in workflow
 
 
-def test_release_metadata_versions_are_0_1_37():
+def test_release_metadata_versions_are_0_1_38():
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension_package = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -109,11 +109,11 @@ def test_release_metadata_versions_are_0_1_37():
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "0.1.37"
-    assert codex_usage_lock["version"] == "0.1.37"
-    assert extension_package["version"] == "0.1.37"
-    assert extension_lock["version"] == "0.1.37"
-    assert extension_lock["packages"][""]["version"] == "0.1.37"
+    assert pyproject["project"]["version"] == "0.1.38"
+    assert codex_usage_lock["version"] == "0.1.38"
+    assert extension_package["version"] == "0.1.38"
+    assert extension_lock["version"] == "0.1.38"
+    assert extension_lock["packages"][""]["version"] == "0.1.38"
 
 
 @pytest.mark.parametrize(

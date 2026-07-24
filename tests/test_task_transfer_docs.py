@@ -20,6 +20,7 @@ CURRENT_TASK_TRANSFER_FIXTURES = (
 )
 
 ROOT_RELEASE_DATES = {
+    "0.1.38": "2026-07-23",
     "0.1.37": "2026-07-21",
     "0.1.36": "2026-07-16",
     "0.1.35": "2026-07-14",
@@ -57,6 +58,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "0.1.38",
     "0.1.37",
     "0.1.36",
     "0.1.35",
@@ -296,13 +298,17 @@ def test_changelogs_release_task_transfer_v3_on_actual_date() -> None:
         assert "windows x64" in release and "macos apple silicon" in release
 
 
-def test_unreleased_changelogs_describe_deterministic_task_transfer_contract() -> None:
+def test_0_1_38_changelogs_describe_deterministic_task_transfer_contract() -> None:
+    release_heading = (
+        "## 0.1.38 - 2026-07-23 - Deterministic Task Import Registration"
+    )
     for path in CHANGELOGS:
+        assert markdown_section(path, "## Unreleased") == "\n"
         entries = [
             entry.casefold()
             for entry in re.findall(
-                r"^- 2026-07-23: (?P<entry>.+)$",
-                markdown_section(path, "## Unreleased"),
+                r"^- (?P<entry>.+)$",
+                markdown_section(path, release_heading),
                 re.MULTILINE,
             )
         ]
