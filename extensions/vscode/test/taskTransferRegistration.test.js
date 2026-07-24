@@ -148,8 +148,14 @@ test("registration is awaited, reported separately, and preserves single-flight 
     attemptedThreadIds: ["task-a", "task-b", "task-c"],
     registeredThreadIds: ["task-a"],
     failures: [
-      { threadId: "task-b", message: "Codex unavailable" },
-      { threadId: "task-c", message: "Codex unavailable" },
+      {
+        threadId: "task-b",
+        message: "ROLLOUT-CONTENT at /private/codex/state",
+      },
+      {
+        threadId: "task-c",
+        message: "RPC failed at /Users/example/.codex/private-state",
+      },
     ],
   });
   await importPending;
@@ -160,10 +166,13 @@ test("registration is awaited, reported separately, and preserves single-flight 
     "checking", "importing", "registering", undefined,
   ]);
   assert.deepEqual(port.logs, [
-    "[task registration] task-b: Codex unavailable",
-    "[task registration] task-c: Codex unavailable",
+    "[task registration] task-b: Codex registration could not be completed",
+    "[task registration] task-c: Codex registration could not be completed",
   ]);
-  assert.doesNotMatch(port.logs.join("\n"), /rollout content|\/private\//);
+  assert.doesNotMatch(
+    port.logs.join("\n"),
+    /ROLLOUT-CONTENT|\/private\/codex\/state|\/Users\/example\/\.codex/i,
+  );
   assert.doesNotMatch(port.notifications[1][1], /Task completion could not be determined/);
 });
 

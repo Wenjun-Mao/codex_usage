@@ -20,7 +20,10 @@ import {
   resolveImportProjectBindings,
   TransferProjectScopeError,
 } from "./taskTransferProjectScope";
-import { certifiedImportThreadIds } from "./taskTransferRegistration";
+import {
+  certifiedImportThreadIds,
+  formatTaskRegistrationFailureLog,
+} from "./taskTransferRegistration";
 import {
   formatTransferResult,
   taskTransferMenuItems,
@@ -285,9 +288,7 @@ export class TaskTransferController {
             };
           }
           for (const failure of registration.failures) {
-            this.port.log(
-              `[task registration] ${failure.threadId}: ${failure.message}`,
-            );
+            this.port.log(formatTaskRegistrationFailureLog(failure.threadId));
           }
         }
       }

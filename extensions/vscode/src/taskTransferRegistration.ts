@@ -19,6 +19,13 @@ export function certifiedImportThreadIds(
   return [];
 }
 
+export function formatTaskRegistrationFailureLog(threadId: string): string {
+  return (
+    `[task registration] ${threadId}: ` +
+    "Codex registration could not be completed"
+  );
+}
+
 function uniqueThreadIds(threadIds: readonly string[]): string[] {
   return [...new Set(threadIds)];
 }

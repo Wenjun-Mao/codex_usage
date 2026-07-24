@@ -293,9 +293,15 @@ function registrationFailureMessage(
   const registration = context.registration as CodexTaskRegistrationResult;
   const summary = summarizeRegistration(registration);
   const fileOutcome = registrationFileOutcome(result, context.projectLabel, summary);
-  const registrationOutcome = summary.registered > 0
-    ? `Codex registered only ${summary.registered}.`
-    : `Codex registered 0 and failed to register ${summary.failed}.`;
+  const registrationOutcome =
+    `Codex registered ${summary.registered} ${taskWord(summary.registered)} ` +
+    `and failed to register ${summary.failed} ${taskWord(summary.failed)}.`;
+  const refresh = summary.registered > 0
+    ? (
+      " Open or restart Codex to display the successfully registered " +
+      `${taskWord(summary.registered)}.`
+    )
+    : "";
   const safeFiles = summary.attempted === 1 ? "The file is safe." : "The files are safe.";
   const transferIssue = hasTransferIssue
     ? " Import also stopped before all selected tasks were copied. See the Codex Usage output for details."
@@ -303,7 +309,7 @@ function registrationFailureMessage(
   return {
     kind: "warning",
     message:
-      `${fileOutcome}, but ${registrationOutcome} ${safeFiles} ` +
+      `${fileOutcome}, but ${registrationOutcome}${refresh} ${safeFiles} ` +
       `Retry Import after resolving Codex availability.${transferIssue}`,
   };
 }

@@ -205,8 +205,24 @@ test("registration failures report safe partial completion without false success
   assert.equal(partial.kind, "warning");
   assert.equal(
     partial.message,
-    "Imported files for 2 tasks into Letta-Open-ADE, but Codex registered only 1. " +
-      "The files are safe. Retry Import after resolving Codex availability.",
+    "Imported files for 2 tasks into Letta-Open-ADE, but Codex registered 1 task " +
+      "and failed to register 1 task. Open or restart Codex to display the " +
+      "successfully registered task. The files are safe. Retry Import after " +
+      "resolving Codex availability.",
+  );
+
+  const pluralPartial = format(
+    "import",
+    result({ pulled: 4, selected: 4 }),
+    registration(4, 2),
+  );
+  assert.equal(pluralPartial.kind, "warning");
+  assert.equal(
+    pluralPartial.message,
+    "Imported files for 4 tasks into Letta-Open-ADE, but Codex registered 2 tasks " +
+      "and failed to register 2 tasks. Open or restart Codex to display the " +
+      "successfully registered tasks. The files are safe. Retry Import after " +
+      "resolving Codex availability.",
   );
 
   const zero = format(
@@ -217,11 +233,15 @@ test("registration failures report safe partial completion without false success
   assert.equal(zero.kind, "warning");
   assert.equal(
     zero.message,
-    "Imported files for 1 task into Letta-Open-ADE, but Codex registered 0 and " +
-      "failed to register 1. The file is safe. Retry Import after resolving " +
-      "Codex availability.",
+    "Imported files for 1 task into Letta-Open-ADE, but Codex registered 0 tasks " +
+      "and failed to register 1 task. The file is safe. Retry Import after " +
+      "resolving Codex availability.",
   );
-  assert.doesNotMatch(`${partial.message}\n${zero.message}`, /Imported \d+ tasks? into/);
+  assert.doesNotMatch(zero.message, /Open or restart Codex/);
+  assert.doesNotMatch(
+    `${partial.message}\n${pluralPartial.message}\n${zero.message}`,
+    /Imported \d+ tasks? into/,
+  );
 });
 
 test("singular no-op registration uses singular task and pronouns", () => {
@@ -250,8 +270,9 @@ test("mixed imported and unchanged outcomes keep counts and grammar accurate", (
   assert.equal(
     format("import", mixedResult, registration(2, 1)).message,
     "Imported files for 1 task into Letta-Open-ADE; 1 task was already current, " +
-      "but Codex registered only 1. The files are safe. Retry Import after " +
-      "resolving Codex availability.",
+      "but Codex registered 1 task and failed to register 1 task. Open or restart " +
+      "Codex to display the successfully registered task. The files are safe. " +
+      "Retry Import after resolving Codex availability.",
   );
 });
 
