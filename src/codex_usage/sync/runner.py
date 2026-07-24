@@ -11,7 +11,11 @@ from codex_usage.session_cache import CachedSessionData
 from codex_usage.session_files import codex_home_from_session_dir
 from codex_usage.sync.bookkeeping import repair_matching_bookkeeping
 from codex_usage.sync.constants import TRANSFER_TASKS_DIRNAME
-from codex_usage.sync.directional_preflight import Direction, directional_blockers
+from codex_usage.sync.directional_preflight import (
+    Direction,
+    directional_blockers,
+    prepare_direction_plan,
+)
 from codex_usage.sync.errors import (
     ConcurrentLocalChangeError,
     ConcurrentRemoteChangeError,
@@ -113,6 +117,7 @@ def pull_sync(
     sync_dir: Path,
     thread_ids: Iterable[str],
     project_resolution: ProjectResolutionRequest,
+    project_key: str,
     discovery_ms: int = 0,
     on_progress: Callable[[SyncProgressEvent], None] | None = None,
 ) -> SyncRunResult:
@@ -122,6 +127,7 @@ def pull_sync(
         sync_dir=sync_dir,
         thread_ids=thread_ids,
         project_resolution=project_resolution,
+        project_key=project_key,
         machine_id="",
         discovery_ms=discovery_ms,
         on_progress=on_progress,
@@ -134,6 +140,7 @@ def push_sync(
     sync_dir: Path,
     thread_ids: Iterable[str],
     machine_id: str,
+    project_key: str,
     project_resolution: ProjectResolutionRequest = ProjectResolutionRequest(),
     discovery_ms: int = 0,
     on_progress: Callable[[SyncProgressEvent], None] | None = None,
@@ -144,6 +151,7 @@ def push_sync(
         sync_dir=sync_dir,
         thread_ids=thread_ids,
         project_resolution=project_resolution,
+        project_key=project_key,
         machine_id=machine_id,
         discovery_ms=discovery_ms,
         on_progress=on_progress,
@@ -157,6 +165,7 @@ def _run_direction(
     sync_dir: Path,
     thread_ids: Iterable[str],
     project_resolution: ProjectResolutionRequest,
+    project_key: str,
     machine_id: str,
     discovery_ms: int,
     on_progress: Callable[[SyncProgressEvent], None] | None,
@@ -174,13 +183,20 @@ def _run_direction(
             blocked = False
             direction_issues: tuple[SyncIssue, ...] = ()
             with timer.measure("planning"):
-                remote, plan = _prepare_sync_plan(
+                remote, plan, scope_issues = prepare_direction_plan(
                     local,
                     store,
                     sync_dir,
                     thread_ids,
                     project_resolution,
+                    project_key,
                 )
+                if scope_issues:
+                    return SyncRunResult.blocked_with_issues(
+                        plan,
+                        scope_issues,
+                        timings=timer.finish(),
+                    )
                 if plan.blocks_execution:
                     save_conflict_candidates(plan)
                     blocked = True

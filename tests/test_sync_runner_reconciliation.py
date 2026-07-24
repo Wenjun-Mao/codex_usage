@@ -5,6 +5,7 @@ import codex_usage.sync.runner as runner_module
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.sync import ProjectResolutionRequest, push_sync
 from codex_usage.sync.errors import ConcurrentRemoteChangeError
+from codex_usage.sync.inventory import build_local_inventory
 from codex_usage.sync.runner import sync_status as transaction_status
 from codex_usage.sync.store import RemoteStore
 
@@ -28,6 +29,7 @@ def test_interrupted_unindexed_jsonl_is_repaired_on_next_run(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=_project_key(data),
     )
     monkeypatch.setattr(RemoteStore, "commit_index", original_commit)
 
@@ -42,6 +44,7 @@ def test_interrupted_unindexed_jsonl_is_repaired_on_next_run(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=_project_key(data),
     )
 
     assert repaired.outcome == "completed"
@@ -70,6 +73,7 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=_project_key(initial_data),
     )
 
     _append_token_event(local_path, "2026-07-13T12:03:00Z", 180)
@@ -91,6 +95,7 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=_project_key(newer_data),
     )
     monkeypatch.setattr(RemoteStore, "commit_index", original_commit)
     assert interrupted.outcome == "issue"
@@ -101,6 +106,7 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=_project_key(newer_data),
     )
 
     remote_entry = json.loads(
@@ -132,6 +138,7 @@ def test_matching_local_bytes_do_not_replace_newer_remote_metadata(tmp_path: Pat
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=_project_key(data),
     )
     index_path = sync_dir / "sync-index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
@@ -149,6 +156,7 @@ def test_matching_local_bytes_do_not_replace_newer_remote_metadata(tmp_path: Pat
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=_project_key(data),
     )
 
     retained = json.loads(index_path.read_text(encoding="utf-8"))["threads"]["thread-1"]
@@ -163,8 +171,9 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
 ) -> None:
     source_sessions = tmp_path / "source" / "sessions"
     sync_dir = tmp_path / "sync"
+    shared_project = tmp_path / "shared-project"
     for thread_id in ("thread-1", "thread-2"):
-        _write_session(source_sessions, thread_id, tmp_path / thread_id, total=120)
+        _write_session(source_sessions, thread_id, shared_project, total=120)
     source_data = load_cached_session_data(
         [source_sessions], cache_dir=tmp_path / "source-cache"
     )
@@ -173,6 +182,7 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
         sync_dir=sync_dir,
         thread_ids=["thread-1", "thread-2"],
         machine_id="source",
+        project_key=_project_key(source_data),
     )
     unindexed_source = _write_session(
         tmp_path / "orphan" / "sessions", "thread-3", tmp_path / "thread-3", total=120
@@ -192,7 +202,7 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
     monkeypatch.setattr(Path, "read_bytes", count_remote_reads)
     target_sessions = tmp_path / "target" / "sessions"
     target_sessions.mkdir(parents=True)
-    selected_project = tmp_path / "thread-1"
+    selected_project = shared_project
     _write_saved_projects(target_sessions.parent, [selected_project])
     target_data = load_cached_session_data(
         [target_sessions], cache_dir=tmp_path / "target-cache"
@@ -228,9 +238,10 @@ def test_push_blocks_unpulled_remote_before_committing_local_task(
         sync_dir=sync_dir,
         thread_ids=["remote-thread"],
         machine_id="source",
+        project_key=_project_key(source_data, "remote-thread"),
     )
     local_path = _write_session(
-        target_sessions, "local-thread", tmp_path / "local-repo", total=240
+        target_sessions, "local-thread", remote_project, total=240
     )
     target_data = load_cached_session_data(
         [target_sessions], cache_dir=tmp_path / "target-cache"
@@ -253,6 +264,7 @@ def test_push_blocks_unpulled_remote_before_committing_local_task(
         sync_dir=sync_dir,
         thread_ids=["remote-thread", "local-thread"],
         machine_id="target",
+        project_key=_project_key(target_data, "local-thread"),
     )
 
     assert result.outcome == "issue"
@@ -268,9 +280,10 @@ def test_run_sync_builds_each_inventory_once_and_emits_only_push_phase(
     monkeypatch,
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
+    shared_project = tmp_path / "repo"
     for number in range(20):
         _write_session(
-            sessions, f"thread-{number}", tmp_path / f"repo-{number}", total=number
+            sessions, f"thread-{number}", shared_project, total=number
         )
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
     calls = {"local": 0, "remote": 0}
@@ -295,6 +308,7 @@ def test_run_sync_builds_each_inventory_once_and_emits_only_push_phase(
         sync_dir=tmp_path / "sync",
         thread_ids=[f"thread-{number}" for number in range(20)],
         machine_id="a",
+        project_key=_project_key(data, "thread-0"),
         on_progress=progress.append,
     )
 
@@ -357,11 +371,16 @@ def test_unselected_remote_diagnostic_does_not_block_selected_push(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=_project_key(data),
     )
 
     assert result.outcome == "completed"
     assert result.pushed == ("thread-1",)
     assert [issue.code for issue in result.issues] == ["unindexed_unreadable"]
+
+
+def _project_key(data, thread_id: str = "thread-1") -> str:
+    return build_local_inventory(data).threads[thread_id].project_key
 
 
 def _write_session(sessions_dir: Path, thread_id: str, cwd: Path, total: int) -> Path:

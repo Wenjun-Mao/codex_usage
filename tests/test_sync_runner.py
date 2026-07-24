@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import codex_usage.sync.runner as runner_module
 import pytest
+from codex_usage.project_identity import normalize_project_key
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.sync import ProjectResolutionRequest, pull_sync, push_sync
 
@@ -20,6 +21,7 @@ def test_run_sync_pushes_flat_bytes_and_one_index(tmp_path: Path) -> None:
         sync_dir=tmp_path / "sync",
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
     assert result.outcome == "completed"
@@ -44,6 +46,7 @@ def test_new_task_in_same_project_remains_excluded_after_initial_selection(
         sync_dir=tmp_path / "sync",
         thread_ids=["selected-a", "selected-b"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
     _write_session(sessions, "future", tmp_path / "repo", total=100)
@@ -53,6 +56,7 @@ def test_new_task_in_same_project_remains_excluded_after_initial_selection(
         sync_dir=tmp_path / "sync",
         thread_ids=["selected-a", "selected-b"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
     assert set(first.pushed) == {"selected-a", "selected-b"}
@@ -80,6 +84,7 @@ def mixed_direction_fixture(tmp_path: Path) -> SimpleNamespace:
         sync_dir=sync_dir,
         thread_ids=["pull-thread", "push-thread"],
         machine_id="source",
+        project_key=normalize_project_key(str(project)),
     )
     assert set(initial.pushed) == {"pull-thread", "push-thread"}
 
@@ -109,12 +114,14 @@ def mixed_direction_fixture(tmp_path: Path) -> SimpleNamespace:
             "sync_dir": sync_dir,
             "thread_ids": ["pull-thread", "push-thread"],
             "project_resolution": ProjectResolutionRequest(),
+            "project_key": normalize_project_key(str(project)),
         },
         push_kwargs={
             "data": refreshed_data,
             "sync_dir": sync_dir,
             "thread_ids": ["pull-thread", "push-thread"],
             "machine_id": "target",
+            "project_key": normalize_project_key(str(project)),
         },
         snapshots={path: path.read_bytes() for path in authoritative_paths},
     )
@@ -186,6 +193,7 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="source",
+        project_key=normalize_project_key(str(source_project)),
     )
     target_data = load_cached_session_data(
         [target_home / "sessions"], cache_dir=tmp_path / "target-cache"
@@ -196,6 +204,7 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(source_project)),
     )
 
     target_path = target_home / "sessions" / source_path.relative_to(source_home / "sessions")
@@ -220,6 +229,7 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(source_project)),
     )
 
     assert second.outcome == "completed"
@@ -246,6 +256,7 @@ def test_remote_task_pull_requires_a_unique_matching_saved_project(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="source",
+        project_key=normalize_project_key(str(source_project)),
     )
     target_sessions = tmp_path / "target-codex" / "sessions"
     target_data = load_cached_session_data(
@@ -257,6 +268,7 @@ def test_remote_task_pull_requires_a_unique_matching_saved_project(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(source_project)),
     )
 
     assert result.outcome == "issue"
@@ -291,6 +303,7 @@ def test_remote_task_pull_rejects_ambiguous_matching_saved_projects(
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
         machine_id="source",
+        project_key=normalize_project_key(str(source_project)),
     )
     target_sessions = target_home / "sessions"
 
@@ -301,6 +314,7 @@ def test_remote_task_pull_rejects_ambiguous_matching_saved_projects(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(source_project)),
     )
 
     assert result.outcome == "issue"
@@ -332,6 +346,7 @@ def test_push_rejects_non_native_existing_project_path_without_rebinding(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="source",
+        project_key=normalize_project_key(str(source_project)),
     )
     target_sessions = target_home / "sessions"
     pull_sync(
@@ -341,6 +356,7 @@ def test_push_rejects_non_native_existing_project_path_without_rebinding(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(source_project)),
     )
     target_path = target_sessions / source_path.relative_to(source_home / "sessions")
     foreign_cwd = "/foreign/project" if os.name == "nt" else r"D:\Projects\repo"
@@ -354,6 +370,7 @@ def test_push_rejects_non_native_existing_project_path_without_rebinding(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="target",
+        project_key=normalize_project_key(foreign_cwd),
     )
 
     assert result.outcome == "issue"
@@ -372,6 +389,7 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
     remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     _append_token_event(local_path, "2026-07-13T12:01:00Z", 180)
@@ -386,6 +404,7 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
     assert result.outcome == "conflict"

@@ -78,6 +78,15 @@ def add_sync_execution_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_sync_transfer_options(parser: argparse.ArgumentParser) -> None:
+    add_sync_execution_options(parser)
+    parser.add_argument(
+        "--project-key",
+        required=True,
+        help="Exact project key for this one-project transfer operation.",
+    )
+
+
 def handle_sync_inventory(
     args: argparse.Namespace, load_session_data: SessionDataLoader
 ) -> int:
@@ -114,6 +123,7 @@ def handle_sync_pull(
         sync_dir=args.sync_dir,
         thread_ids=thread_ids,
         project_resolution=project_resolution,
+        project_key=args.project_key,
         discovery_ms=discovery_ms,
         on_progress=_emit_sync_progress,
     )
@@ -135,6 +145,7 @@ def handle_sync_push(
         sync_dir=args.sync_dir,
         thread_ids=thread_ids,
         machine_id=args.machine_id or _default_machine_id(),
+        project_key=args.project_key,
         project_resolution=project_resolution,
         discovery_ms=discovery_ms,
         on_progress=_emit_sync_progress,

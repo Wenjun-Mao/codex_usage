@@ -38,6 +38,7 @@ from codex_usage.settings import get_settings
 from codex_usage.sync_cli import (
     add_sync_common_options,
     add_sync_execution_options,
+    add_sync_transfer_options,
     handle_sync_inventory as sync_inventory_command,
     handle_sync_pull as sync_pull_command,
     handle_sync_push as sync_push_command,
@@ -117,13 +118,13 @@ def build_parser() -> argparse.ArgumentParser:
     pull_parser = sync_subparsers.add_parser(
         "pull", help="Pull selected Codex tasks from the sync folder."
     )
-    add_sync_execution_options(pull_parser)
+    add_sync_transfer_options(pull_parser)
     pull_parser.set_defaults(handler=handle_sync_pull)
 
     push_parser = sync_subparsers.add_parser(
         "push", help="Push selected Codex tasks to the sync folder."
     )
-    add_sync_execution_options(push_parser)
+    add_sync_transfer_options(push_parser)
     push_parser.add_argument(
         "--machine-id", default=None, help="Source machine id for sync metadata."
     )

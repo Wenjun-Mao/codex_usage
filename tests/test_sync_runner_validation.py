@@ -5,6 +5,7 @@ from pathlib import Path
 
 import codex_usage.sync.runner as runner_module
 import pytest
+from codex_usage.project_identity import normalize_project_key
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.sync import ProjectBinding, ProjectResolutionRequest, pull_sync, push_sync
 from codex_usage.sync.runner import sync_status as transaction_status
@@ -23,6 +24,7 @@ def test_conflict_result_includes_completed_planning_timing(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
     _append_token_event(local_path, "2026-07-13T12:01:00Z", 180)
     _append_token_event(
@@ -37,6 +39,7 @@ def test_conflict_result_includes_completed_planning_timing(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
     assert result.timings_ms.planning == 7
@@ -80,6 +83,7 @@ def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> 
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
     remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     _append_token_event(remote_path, "2026-07-13T12:02:00Z", 240)
@@ -91,6 +95,7 @@ def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> 
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
     assert result.pulled == ("thread-1",)
@@ -134,6 +139,7 @@ def test_pull_rejects_mismatched_remote_index_identity_before_local_writes(
         sync_dir=sync_dir,
         thread_ids=["task-a"],
         machine_id="source",
+        project_key=normalize_project_key(str(project)),
     )
     target_data = load_cached_session_data(
         [target_sessions], cache_dir=tmp_path / "target-cache"
@@ -163,6 +169,7 @@ def test_pull_rejects_mismatched_remote_index_identity_before_local_writes(
             sync_dir=sync_dir,
             thread_ids=["task-a"],
             project_resolution=ProjectResolutionRequest(),
+            project_key=normalize_project_key(str(project)),
         )
 
     assert not target_path.exists()
@@ -197,6 +204,7 @@ def test_pull_preflights_all_remote_identities_before_batch_writes(
         sync_dir=sync_dir,
         thread_ids=["task-a", "task-b"],
         machine_id="source",
+        project_key=normalize_project_key(str(project)),
     )
     target_data = load_cached_session_data(
         [target_sessions], cache_dir=tmp_path / "target-cache"
@@ -225,6 +233,7 @@ def test_pull_preflights_all_remote_identities_before_batch_writes(
             sync_dir=sync_dir,
             thread_ids=["task-a", "task-b"],
             project_resolution=ProjectResolutionRequest(),
+            project_key=normalize_project_key(str(project)),
         )
 
     for source_path in source_paths.values():
@@ -242,22 +251,13 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
     source_home = tmp_path / "source-codex"
     target_home = tmp_path / "target-codex"
     sync_dir = tmp_path / "sync"
-    source_projects = {
-        "stale-task": tmp_path / "source-stale-project",
-        "valid-task": tmp_path / "source-valid-project",
-    }
-    target_projects = {
-        "stale-task": tmp_path / "target-stale-project",
-        "valid-task": tmp_path / "target-valid-project",
-    }
-    project_keys = {
-        "stale-task": "https://github.com/example/stale-project",
-        "valid-task": "https://github.com/example/valid-project",
-    }
+    source_project = tmp_path / "source-project"
+    target_project = tmp_path / "target-project"
+    project_key = "https://github.com/example/project"
+    _write_git_origin(source_project, f"{project_key}.git")
+    _write_git_origin(target_project, f"{project_key}.git")
     source_paths: dict[str, Path] = {}
-    for thread_id, source_project in source_projects.items():
-        _write_git_origin(source_project, f"{project_keys[thread_id]}.git")
-        _write_git_origin(target_projects[thread_id], f"{project_keys[thread_id]}.git")
+    for thread_id in ("stale-task", "valid-task"):
         source_paths[thread_id] = _write_session(
             source_home / "sessions",
             thread_id,
@@ -274,6 +274,7 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
         sync_dir=sync_dir,
         thread_ids=selected,
         machine_id="source",
+        project_key=project_key,
     )
     assert set(first_push.pushed) == set(selected)
 
@@ -285,11 +286,9 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
         sync_dir=sync_dir,
         thread_ids=selected,
         project_resolution=ProjectResolutionRequest(
-            bindings=tuple(
-                ProjectBinding(project_keys[thread_id], target_projects[thread_id])
-                for thread_id in selected
-            ),
+            bindings=(ProjectBinding(project_key, target_project),),
         ),
+        project_key=project_key,
     )
     assert set(initial_pull.pulled) == set(selected)
 
@@ -307,10 +306,11 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
         sync_dir=sync_dir,
         thread_ids=selected,
         machine_id="source",
+        project_key=project_key,
     )
     assert set(second_push.pushed) == set(selected)
 
-    shutil.rmtree(target_projects["stale-task"])
+    shutil.rmtree(target_project)
     target_paths = {
         thread_id: target_home
         / "sessions"
@@ -336,6 +336,7 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
         sync_dir=sync_dir,
         thread_ids=selected,
         project_resolution=ProjectResolutionRequest(),
+        project_key=normalize_project_key(str(target_project)),
     )
 
     assert result.outcome == "issue"
@@ -370,6 +371,7 @@ def test_run_sync_returns_typed_issue_when_local_changes_after_planning(
         sync_dir=tmp_path / "sync",
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
     assert result.outcome == "issue"
@@ -391,6 +393,7 @@ def test_run_sync_returns_typed_issue_for_visible_remote_change(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
     _append_token_event(local_path, "2026-07-13T12:03:00Z", 180)
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
@@ -410,6 +413,7 @@ def test_run_sync_returns_typed_issue_for_visible_remote_change(
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
+        project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
     assert result.outcome == "issue"

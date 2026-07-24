@@ -10,6 +10,7 @@ import pytest
 
 import codex_usage.cli as cli_module
 import codex_usage.sync_cli as sync_cli
+from codex_usage.project_identity import normalize_project_key
 from codex_usage.sync import ProjectResolutionRequest
 from codex_usage.sync_cli import _sync_session_dirs
 
@@ -42,6 +43,8 @@ def test_cli_sync_push_and_pull_are_manual_directional_commands(tmp_path: Path) 
             str(sync_dir),
             "--thread-id",
             "thread-1",
+            "--project-key",
+            normalize_project_key(str(project)),
             "--json",
         ],
         env={"CODEX_HOME": str(source_home)},
@@ -66,6 +69,8 @@ def test_cli_sync_push_and_pull_are_manual_directional_commands(tmp_path: Path) 
             str(sync_dir),
             "--thread-id",
             "thread-1",
+            "--project-key",
+            normalize_project_key(str(project)),
             "--json",
         ],
         env={"CODEX_HOME": str(target_home)},
@@ -277,6 +282,7 @@ def test_sync_push_loads_cache_once_after_scanning_and_passes_normalized_thread_
     assert calls[1][0] == "run"
     assert calls[1][1]["data"] is data
     assert calls[1][1]["thread_ids"] == ("Thread/One",)
+    assert calls[1][1]["project_key"] == "/repo/first"
     assert calls[1][1]["project_resolution"] == ProjectResolutionRequest()
     assert "project_keys" not in calls[1][1]
     assert captured.err.splitlines()[0] == '{"type":"sync_progress","phase":"scanning"}'
@@ -313,6 +319,7 @@ def test_sync_pull_calls_directional_runner_without_machine_metadata(
 
     assert exit_code == 0
     assert calls[0]["thread_ids"] == ("thread-1",)
+    assert calls[0]["project_key"] == "/repo/first"
     assert "machine_id" not in calls[0]
 
 
@@ -331,8 +338,8 @@ def test_sync_commands_reject_empty_task_selection(
     )
 
 
-@pytest.mark.parametrize("sync_command", ["pull", "push", "status"])
-def test_sync_execution_commands_reject_project_key(sync_command: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize("sync_command", ["pull", "push"])
+def test_sync_transfers_require_project_key(sync_command: str, tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -340,6 +347,41 @@ def test_sync_execution_commands_reject_project_key(sync_command: str, tmp_path:
             "codex_usage.cli",
             "sync",
             sync_command,
+            "--sync-dir",
+            str(tmp_path / "sync"),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "the following arguments are required: --project-key" in result.stderr
+
+
+@pytest.mark.parametrize("sync_command", ["pull", "push"])
+def test_sync_transfers_accept_one_project_key(sync_command: str, tmp_path: Path) -> None:
+    args = cli_module.build_parser().parse_args(
+        [
+            "sync",
+            sync_command,
+            "--sync-dir",
+            str(tmp_path / "sync"),
+            "--project-key",
+            "/repo/first",
+        ]
+    )
+
+    assert args.project_key == "/repo/first"
+
+
+def test_sync_status_rejects_project_key(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "codex_usage.cli",
+            "sync",
+            "status",
             "--sync-dir",
             str(tmp_path / "sync"),
             "--project-key",
@@ -435,6 +477,7 @@ def _args(tmp_path: Path, **overrides) -> Namespace:
         "sync_dir": tmp_path / "sync",
         "thread_id": None,
         "machine_id": "machine-a",
+        "project_key": "/repo/first",
         "no_auto_transitions": False,
         "json": True,
     }

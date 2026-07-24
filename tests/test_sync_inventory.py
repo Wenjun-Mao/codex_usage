@@ -99,6 +99,7 @@ def test_push_sync_rejects_padded_local_identity_before_any_sync_write(tmp_path:
             sync_dir=sync_dir,
             thread_ids=["task"],
             machine_id="machine-a",
+            project_key="/repo/demo",
         )
 
     assert not sync_dir.exists()

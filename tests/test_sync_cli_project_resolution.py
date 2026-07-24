@@ -119,6 +119,8 @@ def test_pull_cli_passes_transient_project_resolution_request(
             str(tmp_path / "transfer"),
             "--thread-id",
             "task-1",
+            "--project-key",
+            "https://github.com/example/repo",
             "--candidate-project-root",
             str(tmp_path / "workspace"),
             "--project-binding",
@@ -134,6 +136,7 @@ def test_pull_cli_passes_transient_project_resolution_request(
     )
 
     assert exit_code == 0
+    assert calls[0]["project_key"] == "https://github.com/example/repo"
     request = calls[0]["project_resolution"]
     assert isinstance(request, ProjectResolutionRequest)
     assert request.candidate_roots == (tmp_path / "workspace",)
@@ -166,6 +169,8 @@ def test_conflicting_project_bindings_fail_before_session_discovery(
             str(tmp_path / "transfer"),
             "--thread-id",
             "task-1",
+            "--project-key",
+            "repo-key",
             "--project-binding",
             "repo-key",
             str(tmp_path / "first"),

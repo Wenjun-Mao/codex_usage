@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 import os
 from pathlib import Path
 
+import codex_usage.sync.planner as planner_module
 import codex_usage.sync.runner as runner_module
 import pytest
 
+from codex_usage.project_identity import normalize_project_key
+from codex_usage.session_cache import load_cached_session_data
 from codex_usage.sync.constants import REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.io import snapshot_file
 from codex_usage.sync.models import (
@@ -20,7 +24,7 @@ from codex_usage.sync.models import (
 )
 from codex_usage.sync.planner import build_sync_plan
 from codex_usage.sync.project_roots import resolve_local_project_root
-from codex_usage.sync.runner import pull_sync
+from codex_usage.sync.runner import pull_sync, push_sync
 from codex_usage.sync.store import RemoteStore
 from codex_usage.threads import ThreadInfo
 
@@ -108,6 +112,188 @@ def _fallback_request(
             ),
         ),
     )
+
+
+def test_cross_project_transfer_stops_before_project_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    sessions.mkdir(parents=True)
+    sync_dir = tmp_path / "transfer"
+    tasks = (
+        _local_thread(
+            tmp_path / "repo-a",
+            "repo-a",
+            thread_id="task-a",
+            session_path=sessions / "task-a.jsonl",
+        ),
+        _local_thread(
+            tmp_path / "repo-b",
+            "repo-b",
+            thread_id="task-b",
+            session_path=sessions / "task-b.jsonl",
+        ),
+    )
+    local = LocalInventory(
+        session_dirs=(sessions,),
+        threads={task.thread_id: task for task in tasks},
+        index_entries={},
+        discovered_count=2,
+    )
+    entries = (
+        _remote_entry("repo-a", thread_id="task-a"),
+        _remote_entry("repo-b", thread_id="task-b"),
+    )
+    index = RemoteIndex(
+        REMOTE_TRANSFER_FORMAT_VERSION,
+        "2026-07-23T12:00:00Z",
+        {entry.thread_id: entry for entry in entries},
+    )
+    remote = RemoteInventory(
+        persisted_index=index,
+        index=index,
+        index_snapshot=SyncFileSnapshot(sync_dir / "sync-index.json", False),
+        files={
+            entry.thread_id: SyncFileSnapshot(
+                sync_dir / entry.file,
+                True,
+                entry.sha256,
+                entry.size_bytes,
+            )
+            for entry in entries
+        },
+        repaired_thread_ids=(),
+        issues=(),
+    )
+    resolution_calls: list[str] = []
+
+    monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
+    monkeypatch.setattr(RemoteStore, "load_inventory", lambda store: remote)
+    monkeypatch.setattr(
+        RemoteStore,
+        "materialize_selected",
+        lambda store, inventory, selected: inventory,
+    )
+    monkeypatch.setattr(
+        planner_module,
+        "resolve_local_project_root",
+        lambda *args: resolution_calls.append("resolve") or (tmp_path / "repo-a", None),
+    )
+
+    result = pull_sync(
+        data=object(),
+        sync_dir=sync_dir,
+        thread_ids=("task-a", "task-b"),
+        project_resolution=ProjectResolutionRequest(),
+        project_key="repo-a",
+    )
+
+    assert result.outcome == "issue"
+    assert [issue.code for issue in result.issues] == ["cross_project_selection"]
+    assert not sync_dir.exists()
+    assert resolution_calls == []
+
+
+def test_declared_project_mismatch_stops_before_directional_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    sessions.mkdir(parents=True)
+    session_path = sessions / "task-a.jsonl"
+    session_path.write_bytes(b'{"type":"session_meta"}\n')
+    local = LocalInventory(
+        session_dirs=(sessions,),
+        threads={
+            "task-a": _local_thread(
+                tmp_path / "repo-a",
+                "repo-a",
+                thread_id="task-a",
+                session_path=session_path,
+            )
+        },
+        index_entries={},
+        discovered_count=1,
+    )
+    execution_calls: list[str] = []
+
+    monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
+    monkeypatch.setattr(
+        runner_module,
+        "execute_pushes",
+        lambda *args, **kwargs: execution_calls.append("push"),
+    )
+
+    sync_dir = tmp_path / "transfer"
+    result = push_sync(
+        data=object(),
+        sync_dir=sync_dir,
+        thread_ids=("task-a",),
+        machine_id="machine-a",
+        project_key="repo-b",
+    )
+
+    assert result.outcome == "issue"
+    assert [issue.code for issue in result.issues] == ["project_scope_mismatch"]
+    assert not sync_dir.exists()
+    assert session_path.read_bytes() == b'{"type":"session_meta"}\n'
+    assert execution_calls == []
+
+
+def test_single_project_export_preserves_unrelated_remote_project_bytes(
+    tmp_path: Path,
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    repo_a = tmp_path / "repo-a"
+    repo_b = tmp_path / "repo-b"
+    repo_a.mkdir()
+    repo_b.mkdir()
+    task_a = _write_session(sessions, "task-a", repo_a)
+    _write_session(sessions, "task-b", repo_b)
+    sync_dir = tmp_path / "transfer"
+    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+
+    push_sync(
+        data=data,
+        sync_dir=sync_dir,
+        thread_ids=("task-a",),
+        machine_id="machine-a",
+        project_key=normalize_project_key(str(repo_a)),
+    )
+    push_sync(
+        data=data,
+        sync_dir=sync_dir,
+        thread_ids=("task-b",),
+        machine_id="machine-a",
+        project_key=normalize_project_key(str(repo_b)),
+    )
+    before_index = json.loads(
+        (sync_dir / "sync-index.json").read_text(encoding="utf-8")
+    )
+    before_task_a = before_index["threads"]["task-a"]
+    before_task_b = before_index["threads"]["task-b"]
+    task_b_bytes = (sync_dir / "tasks" / "task-b.jsonl").read_bytes()
+
+    with task_a.open("a", encoding="utf-8") as stream:
+        stream.write('{"type":"event_msg","payload":{"type":"user_message"}}\n')
+    refreshed = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    result = push_sync(
+        data=refreshed,
+        sync_dir=sync_dir,
+        thread_ids=("task-a",),
+        machine_id="machine-a",
+        project_key=normalize_project_key(str(repo_a)),
+    )
+
+    after_index = json.loads(
+        (sync_dir / "sync-index.json").read_text(encoding="utf-8")
+    )
+    assert result.outcome == "completed"
+    assert result.pushed == ("task-a",)
+    assert after_index["threads"]["task-a"] != before_task_a
+    assert after_index["threads"]["task-b"] == before_task_b
+    assert (sync_dir / "tasks" / "task-b.jsonl").read_bytes() == task_b_bytes
 
 
 def test_remote_path_alias_cannot_authorize_wrong_origin_candidate(
@@ -385,9 +571,7 @@ def test_blank_existing_cwd_blocks_mixed_import_before_execution(
     sync_dir = tmp_path / "transfer"
     tasks_dir = sync_dir / "tasks"
     tasks_dir.mkdir(parents=True)
-    fallback = tmp_path / "fallback"
     remote_only_root = tmp_path / "remote-only-root"
-    fallback.mkdir()
     remote_only_root.mkdir()
 
     existing_id = "existing-task"
@@ -408,7 +592,7 @@ def test_blank_existing_cwd_blocks_mixed_import_before_execution(
         size_bytes=existing_snapshot.size_bytes,
     )
     remote_only_entry = replace(
-        _remote_entry("remote-only-project", thread_id=remote_only_id),
+        _remote_entry(existing_entry.project_key, thread_id=remote_only_id),
         source_relative_path=f"{remote_only_id}.jsonl",
         sha256=remote_only_snapshot.sha256,
         size_bytes=remote_only_snapshot.size_bytes,
@@ -440,8 +624,7 @@ def test_blank_existing_cwd_blocks_mixed_import_before_execution(
     )
     request = ProjectResolutionRequest(
         bindings=(
-            ProjectBinding(existing_entry.project_key, fallback, True),
-            ProjectBinding(remote_only_entry.project_key, remote_only_root, True),
+            ProjectBinding(existing_entry.project_key, remote_only_root, True),
         ),
     )
     selected = (existing_id, remote_only_id)
@@ -457,8 +640,8 @@ def test_blank_existing_cwd_blocks_mixed_import_before_execution(
     monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
     monkeypatch.setattr(
         runner_module,
-        "_prepare_sync_plan",
-        lambda *args, **kwargs: (remote, plan),
+        "prepare_direction_plan",
+        lambda *args, **kwargs: (remote, plan, ()),
     )
     monkeypatch.setattr(RemoteStore, "validate_selected", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -477,9 +660,32 @@ def test_blank_existing_cwd_blocks_mixed_import_before_execution(
         sync_dir=sync_dir,
         thread_ids=selected,
         project_resolution=request,
+        project_key=existing_entry.project_key,
     )
 
     assert result.outcome == "issue"
     assert result.pulled == ()
     assert {issue.code for issue in result.issues} == {"existing_project_path_blank"}
     assert execution_calls == []
+
+
+def _write_session(sessions: Path, thread_id: str, cwd: Path) -> Path:
+    day = sessions / "2026" / "07" / "23"
+    day.mkdir(parents=True, exist_ok=True)
+    session_path = day / f"{thread_id}.jsonl"
+    session_path.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-07-23T12:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "id": thread_id,
+                    "timestamp": "2026-07-23T12:00:00Z",
+                    "cwd": str(cwd),
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return session_path

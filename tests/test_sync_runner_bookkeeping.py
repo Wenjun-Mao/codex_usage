@@ -8,6 +8,7 @@ import codex_usage.sync_cli as sync_cli
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.sync import ProjectResolutionRequest, pull_sync, push_sync
 from codex_usage.sync.errors import ConcurrentLocalChangeError
+from codex_usage.sync.inventory import build_local_inventory
 from codex_usage.sync.state import LocalStateStore
 from codex_usage.sync.store import RemoteStore
 
@@ -330,11 +331,13 @@ def _push(
     progress: list | None = None,
 ):
     data = load_cached_session_data([sessions], cache_dir=cache_dir)
+    project_key = build_local_inventory(data).threads["thread-1"].project_key
     return push_sync(
         data=data,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id=machine_id,
+        project_key=project_key,
         on_progress=progress.append if progress is not None else None,
     )
 
@@ -346,11 +349,15 @@ def _pull(
     progress: list | None = None,
 ):
     data = load_cached_session_data([sessions], cache_dir=cache_dir)
+    project_key = RemoteStore(sync_dir).load_inventory().index.threads[
+        "thread-1"
+    ].project_key
     return pull_sync(
         data=data,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
+        project_key=project_key,
         on_progress=progress.append if progress is not None else None,
     )
 
