@@ -157,7 +157,8 @@ def test_current_docs_lead_with_six_step_task_transfer_workflow() -> None:
                 "validated local folder",
             )
         )
-        assert "reload vs code or restart the codex app" in steps[5]
+        assert "after successful registration" in steps[5]
+        assert "reload vs code or open/restart codex" in steps[5]
 
 
 def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:
@@ -166,8 +167,11 @@ def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:
         assert "desktop app is not required" in section
         assert "does not clone" in section or "never clones" in section
         assert "destination checkout must already exist" in section
-        assert "fresh, empty selection" in section
-        assert "review inspects task state without copying files" in section
+        assert "each import or export handles one codex project" in section
+        assert "all eligible tasks in it start selected" in section
+        assert "deselect any tasks you do not want to transfer" in section
+        assert "transfer folder can retain tasks from many projects across separate operations" in section
+        assert "review transfer status remains cross-project and does not copy files" in section
         assert "task selections" in section and "project mappings" in section
         assert re.search(
             r"neither task selections nor project mappings are saved|"
@@ -178,6 +182,10 @@ def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:
         assert "git origin" in section and "wrong origin" in section
         assert "non-git project" in section and "asks for confirmation" in section
         assert re.search(r"only (?:that|the) folder path is remembered", section)
+        assert "targeted `app-server` task-read requests" in section
+        assert "does not invoke a model" in section
+        assert "never writes codex sqlite or private project registries directly" in section
+        assert "re-running import retries registration" in section
 
 
 def test_current_docs_require_both_native_v3_packaged_workflow_gates() -> None:
@@ -250,7 +258,6 @@ def test_every_changelog_has_unreleased_and_dated_release_headings() -> None:
 def test_changelogs_release_task_transfer_v3_on_actual_date() -> None:
     release_heading = "## 0.1.36 - 2026-07-16 - Task Transfer UX And Storage V3"
     for path in CHANGELOGS:
-        assert not markdown_section(path, "## Unreleased").strip()
         release = normalized_prose(markdown_section(path, release_heading))
         assert "task transfer" in release
         assert "fresh" in release and "selection" in release
@@ -258,6 +265,21 @@ def test_changelogs_release_task_transfer_v3_on_actual_date() -> None:
         assert "version-3" in release and "tasks/" in release
         assert "all-or-nothing" in release
         assert "windows x64" in release and "macos apple silicon" in release
+
+
+def test_unreleased_changelogs_describe_deterministic_task_transfer_contract() -> None:
+    for path in CHANGELOGS:
+        unreleased = normalized_prose(markdown_section(path, "## Unreleased"))
+        assert unreleased.count("2026-07-23") == 5
+        assert "one-project operations" in unreleased
+        assert "all eligible tasks initially selected" in unreleased
+        assert "review transfer status cross-project and read-only" in unreleased
+        assert "defensive one-project enforcement" in unreleased
+        assert "official codex `app-server` using targeted reads" in unreleased
+        assert "safe after registration failures" in unreleased
+        assert "repeated import retry registration" in unreleased
+        assert "cached-task-list refresh guidance" in unreleased
+        assert "no-model, no-direct-sqlite, and no-private-registry-write guarantees" in unreleased
 
 
 def test_changelogs_use_exact_historical_release_dates() -> None:

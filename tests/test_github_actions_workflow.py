@@ -128,7 +128,10 @@ def test_task_transfer_documentation_describes_current_release_contract(readme: 
     transfer = markdown_section(readme, "## Task Transfer").casefold()
 
     assert "import tasks" in transfer and "export tasks" in transfer
-    assert "fresh, empty selection" in transfer
+    assert "each import or export handles one codex project" in transfer
+    assert "all eligible tasks in it start selected" in transfer
+    assert "deselect any tasks" in transfer
+    assert "review transfer status remains cross-project and does not copy files" in transfer
     assert "desktop app is not required" in transfer
     assert "open vs code workspace folders" in transfer
     assert "validated local folder" in transfer
@@ -137,6 +140,9 @@ def test_task_transfer_documentation_describes_current_release_contract(readme: 
     assert "complete operation" in transfer or "whole operation" in transfer
     assert "task selections" in transfer and "project mappings" in transfer
     assert "not saved" in transfer or "neither" in transfer
+    assert "targeted `app-server` task-read requests" in transfer
+    assert "does not invoke a model" in transfer
+    assert "never writes codex sqlite or private project registries directly" in transfer
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))

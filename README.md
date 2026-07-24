@@ -12,7 +12,7 @@ This repository contains:
 
 ## VS Code Preview Packages
 
-The current preview packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS, Windows ARM64, and Linux packaging are not supported targets in this release.
+The current preview packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
 
 Build and install the local macOS Apple Silicon VSIX:
 
@@ -106,8 +106,8 @@ Task Transfer deliberately moves selected active Codex tasks between computers t
 3. Clone or copy the corresponding project checkout to the destination computer if it is not already there.
 4. When using only the Codex IDE extension, open that checkout in VS Code.
 5. Run **Import Tasks**, choose the project, and accept an automatic project match or choose a validated local folder.
-6. After successful registration, open or restart Codex so the imported tasks appear. In the
-   official Codex VS Code extension, reloading VS Code is the equivalent refresh.
+6. After successful registration, reload VS Code or open/restart Codex so the imported tasks
+   appear. In the official Codex VS Code extension, reloading VS Code refreshes a cached task list.
 
 The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen folder with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer never clones a project, so its destination checkout must already exist.
 
