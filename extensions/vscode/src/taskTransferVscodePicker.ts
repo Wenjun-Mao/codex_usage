@@ -35,7 +35,8 @@ export function showTaskTransferPicker(
   const quickPick = vscode.window.createQuickPick<TaskQuickPickItem>();
   let state = initialTaskPickerSelection(operation);
   let canonicalSelectionIds = new Set<string>();
-  let applyingCanonicalSelection = false;
+  let pickerItemsById = new Map<string, TaskQuickPickItem>();
+  let pendingCanonicalSelectionIds: ReadonlySet<string> | undefined;
   let settled = false;
 
   quickPick.title = TRANSFER_PICKER_COPY[operation].title;
@@ -51,14 +52,17 @@ export function showTaskTransferPicker(
       detail: row.detail,
       task: row,
     }));
-    const pickerItemsById = new Map(
+    pickerItemsById = new Map(
       pickerItems.flatMap((item) => (item.task ? [[item.task.id, item] as const] : [])),
     );
     canonicalSelectionIds = new Set(selectedTaskPickerItemIds(rows, state, operation));
-    applyingCanonicalSelection = true;
+    pendingCanonicalSelectionIds = canonicalSelectionIds.size > 0
+      ? new Set(canonicalSelectionIds)
+      : undefined;
     quickPick.items = pickerItems;
-    quickPick.selectedItems = pickerItemsForIds(canonicalSelectionIds, pickerItemsById);
-    applyingCanonicalSelection = false;
+    if (canonicalSelectionIds.size > 0) {
+      quickPick.selectedItems = pickerItemsForIds(canonicalSelectionIds, pickerItemsById);
+    }
   };
 
   return new Promise((resolve) => {
@@ -77,15 +81,23 @@ export function showTaskTransferPicker(
 
     disposables.push(
       quickPick.onDidChangeSelection((selectedItems) => {
-        if (settled || applyingCanonicalSelection) {
+        if (settled) {
           return;
         }
         const selectedRowIds = new Set(
           selectedItems.flatMap((item) => (item.task ? [item.task.id] : [])),
         );
+        // Item replacement can echo an empty selection before VS Code applies our canonical selection.
+        if (pendingCanonicalSelectionIds !== undefined) {
+          if (sameItemIds(selectedRowIds, pendingCanonicalSelectionIds)) {
+            pendingCanonicalSelectionIds = undefined;
+          }
+          return;
+        }
         if (sameItemIds(selectedRowIds, canonicalSelectionIds)) {
           return;
         }
+        const previousActiveProjectKey = state.activeProjectKey;
         const removed = [...canonicalSelectionIds].filter((id) => !selectedRowIds.has(id));
         const added = [...selectedRowIds].filter((id) => !canonicalSelectionIds.has(id));
         for (const rowId of removed) {
@@ -100,7 +112,15 @@ export function showTaskTransferPicker(
             state = reducePickerSelection(state, row, true, operation);
           }
         }
-        render();
+        if (state.activeProjectKey !== previousActiveProjectKey) {
+          render();
+          return;
+        }
+        canonicalSelectionIds = new Set(selectedTaskPickerItemIds(rows, state, operation));
+        if (!sameItemIds(selectedRowIds, canonicalSelectionIds)) {
+          pendingCanonicalSelectionIds = new Set(canonicalSelectionIds);
+          quickPick.selectedItems = pickerItemsForIds(canonicalSelectionIds, pickerItemsById);
+        }
       }),
       quickPick.onDidAccept(() => {
         if (!hasValidPickerSelection(state, operation)) {

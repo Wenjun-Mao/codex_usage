@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.39 - 2026-07-29 - Stable Windows Task Selection
+
+- Fixed the Windows Task Transfer picker so VS Code's delayed selection refresh cannot undo task choices or make the selected count oscillate.
+
 ## 0.1.38 - 2026-07-23 - Deterministic Task Import Registration
 
 - Made Import and Export one-project operations with all eligible tasks initially selected, while keeping Review Transfer Status cross-project and read-only.

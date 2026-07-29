@@ -3,11 +3,16 @@ const EventEmitter = require("node:events");
 const Module = require("node:module");
 const test = require("node:test");
 
+let deferNextQuickPickSelectionEvents = false;
+
 class FakeQuickPick extends EventEmitter {
   constructor() {
     super();
-    this.items = [];
+    this._items = [];
     this._selectedItems = [];
+    this.deferProgrammaticSelectionEvents = deferNextQuickPickSelectionEvents;
+    deferNextQuickPickSelectionEvents = false;
+    this.queuedSelectionEvents = [];
     this.disposed = false;
     this.queuedHideListeners = [];
     this.shown = false;
@@ -42,11 +47,45 @@ class FakeQuickPick extends EventEmitter {
 
   set selectedItems(items) {
     this._selectedItems = items;
-    this.emit("selection", items);
+    this.emitProgrammaticSelection(items);
+  }
+
+  get items() {
+    return this._items;
+  }
+
+  set items(items) {
+    this._items = items;
+    if (this.shown && this._selectedItems.length > 0) {
+      this.emitProgrammaticSelection([]);
+    }
   }
 
   select(ids) {
-    this.selectedItems = this.items.filter((item) => ids.includes(item.task?.id));
+    this._selectedItems = this.items.filter((item) => ids.includes(item.task?.id));
+    this.emit("selection", this._selectedItems);
+  }
+
+  emitProgrammaticSelection(items) {
+    if (this.deferProgrammaticSelectionEvents && this.shown) {
+      this.queuedSelectionEvents.push([...items]);
+      return;
+    }
+    this.emit("selection", items);
+  }
+
+  flushProgrammaticSelectionEvents(limit = 20) {
+    let delivered = 0;
+    while (this.queuedSelectionEvents.length > 0 && delivered < limit) {
+      const items = this.queuedSelectionEvents.shift();
+      this._selectedItems = items;
+      this.emit("selection", items);
+      delivered += 1;
+    }
+    return {
+      delivered,
+      drained: this.queuedSelectionEvents.length === 0,
+    };
   }
 
   accept() {
@@ -187,6 +226,29 @@ test("switching projects discards every retained task id from the previous proje
   assert.deepEqual(selection, { projectKey: "repo-b", threadIds: ["thread-3"] });
   assert.equal(selection.threadIds.includes("thread-2"), false);
   assert.equal(selection.threadIds.includes("thread-4"), false);
+});
+
+test("programmatic list refresh events cannot undo a project task selection", async () => {
+  quickPicks.length = 0;
+  deferNextQuickPickSelectionEvents = true;
+  const result = showTaskTransferPicker("export", buildTaskPickerItems(inventory(), "export"));
+  const quickPick = quickPicks.at(-1);
+
+  quickPick.select(["project:repo-a"]);
+  const refresh = quickPick.flushProgrammaticSelectionEvents();
+
+  assert.equal(refresh.drained, true);
+  assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), [
+    "project:repo-a", "task:thread-2",
+  ]);
+
+  quickPick.select(["project:repo-a"]);
+  quickPick.accept();
+  assert.equal(quickPick.title, "Select at least one Codex task");
+
+  quickPick.select(["project:repo-a", "task:thread-2"]);
+  quickPick.accept();
+  assert.deepEqual(await result, { projectKey: "repo-a", threadIds: ["thread-2"] });
 });
 
 test("review picker copy makes cross-project selection explicit", async () => {

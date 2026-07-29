@@ -1,6 +1,8 @@
 # Python-generated files
 __pycache__/
 .pytest_cache/
+.ruff_cache/
+.uv-cache/
 *.py[oc]
 build/
 dist/
@@ -11,6 +13,7 @@ wheels/
 # Virtual environments
 .venv
 .worktrees/
+.superpowers/
 
 # Local secrets and environment overrides
 .env
