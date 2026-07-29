@@ -4,6 +4,8 @@ Status: Accepted
 
 Date: 2026-07-23
 
+Amended: 2026-07-29
+
 ## Context
 
 Task Transfer allowed one Import or Export selection to span several Codex
@@ -18,12 +20,17 @@ computers and operating systems.
 ## Decision
 
 Constrain every Import and Export operation to exactly one Codex project and any
-nonempty subset of its eligible tasks. Start with every eligible task in the
-chosen project selected and allow individual deselection.
+nonempty subset of its eligible tasks.
 
-Keep project choice and task choice in one visible picker flow. State the
-one-project rule in the picker title or helper text, name the project in
-destination, progress, and result copy, and reject cross-project selections
+Use a two-stage picker flow. First choose one project from a project-only,
+single-select screen. Then choose tasks from a task-only, multi-select screen.
+Start the task screen with no tasks selected. The project is transfer context,
+not a selected item, and never contributes to the task-selection count.
+
+Provide native Back navigation from task selection to project selection. Going
+Back discards the current task selection, and entering any project starts with
+no tasks selected. State the one-project rule in picker copy, name the project
+in destination, progress, and result copy, and reject cross-project selections
 before any write.
 
 Keep the transfer folder multi-project across separate operations. Export changes
@@ -36,7 +43,12 @@ read-only.
 - Restrict only Import while allowing multi-project Export.
 - Restrict each transfer folder permanently to one project.
 - Silently use the first selected project and discard tasks from other projects.
-- Replace the combined picker with unrelated project and task dialogs.
+- Retain the combined project/task multi-select picker and add a clear-all
+  action.
+- Preselect every task after project choice and rely on users to deselect the
+  tasks they do not want.
+- Keep the project in the selected-items collection but exclude it only from the
+  displayed count.
 
 ## Consequences
 
@@ -45,14 +57,18 @@ destination directory. Moving several projects requires several explicit
 operations, while the same transfer folder can continue accumulating their
 tasks.
 
-The picker needs active-project state and must reset task selection visibly when
-the user switches projects. Both the extension and Python core enforce the
-one-project boundary.
+The picker needs explicit navigation state and task-selection state. Moving
+between project and task screens resets task selection visibly. Both the
+extension and Python core enforce the one-project boundary.
 
 ## Guardrails
 
 - Use **project** in user-facing copy; preserve support for non-Git projects.
-- Start all eligible tasks in the active project selected.
+- Show projects and tasks on separate picker screens.
+- Never count or represent the project as a selected task.
+- Start every task-selection screen with zero selected tasks.
+- Search only within the rows shown by the current screen.
+- Back navigation clears task selection before returning to project choice.
 - Never silently combine or discard selections from different projects.
 - Require every selected task id to resolve from the local or transfer
   inventory before accepting the declared project.
