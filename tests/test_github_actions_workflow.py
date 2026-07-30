@@ -100,7 +100,7 @@ def test_release_workflow_keeps_only_supported_platform_targets() -> None:
     assert "linux-x64" not in workflow
 
 
-def test_release_metadata_versions_are_0_1_39():
+def test_release_metadata_versions_are_0_1_40():
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension_package = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -109,11 +109,11 @@ def test_release_metadata_versions_are_0_1_39():
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "0.1.39"
-    assert codex_usage_lock["version"] == "0.1.39"
-    assert extension_package["version"] == "0.1.39"
-    assert extension_lock["version"] == "0.1.39"
-    assert extension_lock["packages"][""]["version"] == "0.1.39"
+    assert pyproject["project"]["version"] == "0.1.40"
+    assert codex_usage_lock["version"] == "0.1.40"
+    assert extension_package["version"] == "0.1.40"
+    assert extension_lock["version"] == "0.1.40"
+    assert extension_lock["packages"][""]["version"] == "0.1.40"
 
 
 @pytest.mark.parametrize(
@@ -129,8 +129,11 @@ def test_task_transfer_documentation_describes_current_release_contract(readme: 
 
     assert "import tasks" in transfer and "export tasks" in transfer
     assert "each import or export handles one codex project" in transfer
-    assert "all eligible tasks in it start selected" in transfer
-    assert "deselect any tasks" in transfer
+    assert "first choose one project" in transfer
+    assert "no tasks are selected by default" in transfer
+    assert "search" in transfer and "chosen project" in transfer
+    assert "back" in transfer and "different project" in transfer
+    assert "repeat" in transfer and "another project" in transfer
     assert "review transfer status remains cross-project and does not copy files" in transfer
     assert "desktop app is not required" in transfer
     assert "open vs code workspace folders" in transfer

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.40 - 2026-07-29 - Two-Stage Task Transfer Selection
+
+- Split Import and Export into a project-only screen followed by a task-only screen.
+- Started every task screen with zero selected tasks and removed projects from the selected count.
+- Added Back navigation that clears task choices before returning to project selection.
+- Limited task search to the chosen project while preserving cross-project Review Transfer Status.
+
 ## 0.1.39 - 2026-07-29 - Stable Windows Task Selection
 
 - Fixed the Windows Task Transfer picker so VS Code's delayed selection refresh cannot undo task choices or make the selected count oscillate.
