@@ -343,23 +343,18 @@ test("sync has no automatic focus activation or file watcher trigger", () => {
   assert.doesNotMatch(extensionSource, /syncOnFocus|configureSyncWatcher|auto sync/);
 });
 
-test("task picker adapter renders canonical project-aware selections and settles once", () => {
+test("task picker adapter renders staged scoped transfers and settles once", () => {
   const pickerSource = fs.readFileSync(
     path.join(__dirname, "../src/taskTransferVscodePicker.ts"),
     "utf8",
   );
 
   assert.match(pickerSource, /createQuickPick<TaskQuickPickItem>\(\)/);
-  assert.match(pickerSource, /canSelectMany = true/);
-  assert.match(pickerSource, /TRANSFER_PICKER_COPY/);
+  assert.match(pickerSource, /quickPick\.canSelectMany = isTaskStep/);
+  assert.match(pickerSource, /QuickInputButtons\.Back/);
   assert.match(pickerSource, /visibleTaskPickerItems\(rows, state, operation\)/);
-  assert.match(pickerSource, /Selected project/);
-  assert.ok(
-    pickerSource.indexOf("for (const rowId of removed)") <
-      pickerSource.indexOf("for (const rowId of added)"),
-  );
-  assert.match(pickerSource, /selectedTaskPickerItemIds\(rows, state, operation\)/);
-  assert.match(pickerSource, /Select at least one Codex task/);
+  assert.match(pickerSource, /Select at least one Codex task to import/);
+  assert.match(pickerSource, /Select at least one Codex task to export/);
   assert.match(pickerSource, /let settled = false/);
 });
 

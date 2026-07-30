@@ -221,13 +221,16 @@ test("picker source gives every operation its approved project-aware title", () 
     "utf8",
   );
   for (const title of [
-    "Import Tasks: Choose One Project",
-    "Export Tasks: Choose One Project",
+    "Import Tasks: Choose a Project",
+    "Export Tasks: Choose a Project",
     "Review Tasks Across Projects",
   ]) {
     assert.match(source, new RegExp(title));
   }
-  assert.doesNotMatch(source, /Select tasks for Task Transfer/);
+  assert.match(source, /QuickInputButtons\.Back/);
+  assert.match(source, /Select Tasks for/);
+  assert.match(source, /Select Tasks from/);
+  assert.doesNotMatch(source, /All tasks start selected|Selected project/);
 });
 
 test("port transports workspace roots and maps import progress to user-facing transient status", async () => {

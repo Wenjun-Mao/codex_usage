@@ -10,6 +10,9 @@ class FakeQuickPick extends EventEmitter {
     super();
     this._items = [];
     this._selectedItems = [];
+    this.activeItems = [];
+    this.buttons = [];
+    this.value = "";
     this.deferProgrammaticSelectionEvents = deferNextQuickPickSelectionEvents;
     deferNextQuickPickSelectionEvents = false;
     this.queuedSelectionEvents = [];
@@ -31,6 +34,11 @@ class FakeQuickPick extends EventEmitter {
   onDidHide(listener) {
     this.on("hide", listener);
     return { dispose: () => this.off("hide", listener) };
+  }
+
+  onDidTriggerButton(listener) {
+    this.on("button", listener);
+    return { dispose: () => this.off("button", listener) };
   }
 
   show() {
@@ -64,6 +72,14 @@ class FakeQuickPick extends EventEmitter {
   select(ids) {
     this._selectedItems = this.items.filter((item) => ids.includes(item.task?.id));
     this.emit("selection", this._selectedItems);
+  }
+
+  focus(id) {
+    this.activeItems = this.items.filter((item) => item.task?.id === id);
+  }
+
+  triggerBack() {
+    this.emit("button", fakeVscode.QuickInputButtons.Back);
   }
 
   emitProgrammaticSelection(items) {
@@ -107,6 +123,7 @@ class FakeQuickPick extends EventEmitter {
 const quickPicks = [];
 const fakeVscode = {
   QuickPickItemKind: { Separator: -1 },
+  QuickInputButtons: { Back: { id: "back" } },
   window: {
     createQuickPick() {
       const quickPick = new FakeQuickPick();
@@ -173,81 +190,93 @@ function inventory() {
   };
 }
 
-test("import picker accepts a nonempty partial project subset", async () => {
+test("import uses separate project and task screens with an empty task selection", async () => {
   quickPicks.length = 0;
   const result = showTaskTransferPicker("import", buildTaskPickerItems(inventory(), "import"));
   const quickPick = quickPicks.at(-1);
 
-  assert.equal(quickPick.title, "Import Tasks: Choose One Project");
-  assert.equal(quickPick.placeholder, "One project per import. All tasks start selected.");
-  assert.deepEqual(quickPick.items.map((item) => item.task?.id), ["project:repo-a", "project:repo-b"]);
-
-  quickPick.select(["project:repo-a"]);
+  assert.equal(quickPick.title, "Import Tasks: Choose a Project");
+  assert.equal(quickPick.placeholder, "Choose one project to import tasks into.");
+  assert.equal(quickPick.canSelectMany, false);
   assert.deepEqual(quickPick.items.map((item) => item.task?.id), [
-    "project:repo-a", "task:thread-2", "task:thread-4", "project:repo-b",
-  ]);
-  assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), [
-    "project:repo-a", "task:thread-2", "task:thread-4",
-  ]);
-  assert.equal(quickPick.items[0].description, "Selected project");
-
-  quickPick.select(["project:repo-a", "task:thread-4"]);
-  assert.equal(quickPick.items[0].description, "Selected project");
-  assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), [
-    "project:repo-a", "task:thread-4",
+    "project:repo-a",
+    "project:repo-b",
   ]);
 
-  let settlementCount = 0;
-  result.then(() => { settlementCount += 1; });
-  quickPick.queueHide();
+  quickPick.focus("project:repo-a");
   quickPick.accept();
-  quickPick.runQueuedHide();
+
+  assert.equal(quickPick.title, "Import Tasks: Select Tasks for Repo A");
+  assert.equal(quickPick.placeholder, "Search tasks in Repo A.");
+  assert.equal(quickPick.canSelectMany, true);
+  assert.deepEqual(quickPick.items.map((item) => item.task?.id), [
+    "task:thread-2",
+    "task:thread-4",
+  ]);
+  assert.deepEqual(quickPick.selectedItems, []);
+
+  quickPick.select(["task:thread-4"]);
+  quickPick.accept();
   assert.deepEqual(await result, { projectKey: "repo-a", threadIds: ["thread-4"] });
-  assert.equal(settlementCount, 1);
 });
 
-test("switching projects discards every retained task id from the previous project", async () => {
+test("back returns to the project screen and clears task state", async () => {
   quickPicks.length = 0;
   const result = showTaskTransferPicker("import", buildTaskPickerItems(inventory(), "import"));
   const quickPick = quickPicks.at(-1);
 
-  quickPick.select(["project:repo-a"]);
-  quickPick.select(["project:repo-a", "task:thread-4"]);
-  quickPick.select(["project:repo-a", "task:thread-4", "project:repo-b"]);
+  quickPick.focus("project:repo-a");
+  quickPick.accept();
+  quickPick.select(["task:thread-4"]);
+  quickPick.value = "follow-up";
+  quickPick.triggerBack();
+
+  assert.equal(quickPick.title, "Import Tasks: Choose a Project");
+  assert.equal(quickPick.canSelectMany, false);
+  assert.equal(quickPick.value, "");
+  assert.deepEqual(quickPick.selectedItems, []);
   assert.deepEqual(quickPick.items.map((item) => item.task?.id), [
-    "project:repo-a", "project:repo-b", "task:thread-3",
-  ]);
-  assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), [
-    "project:repo-b", "task:thread-3",
+    "project:repo-a",
+    "project:repo-b",
   ]);
 
+  quickPick.focus("project:repo-a");
   quickPick.accept();
-  const selection = await result;
-  assert.deepEqual(selection, { projectKey: "repo-b", threadIds: ["thread-3"] });
-  assert.equal(selection.threadIds.includes("thread-2"), false);
-  assert.equal(selection.threadIds.includes("thread-4"), false);
+  assert.deepEqual(quickPick.selectedItems, []);
+
+  quickPick.select(["task:thread-2"]);
+  quickPick.accept();
+  assert.deepEqual(await result, { projectKey: "repo-a", threadIds: ["thread-2"] });
 });
 
-test("programmatic list refresh events cannot undo a project task selection", async () => {
+test("task screen rejects an empty selection", async () => {
   quickPicks.length = 0;
-  deferNextQuickPickSelectionEvents = true;
+  const result = showTaskTransferPicker("import", buildTaskPickerItems(inventory(), "import"));
+  const quickPick = quickPicks.at(-1);
+
+  quickPick.focus("project:repo-a");
+  quickPick.accept();
+  quickPick.accept();
+
+  assert.equal(quickPick.title, "Select at least one Codex task to import");
+
+  quickPick.select(["task:thread-2"]);
+  quickPick.accept();
+  assert.deepEqual(await result, { projectKey: "repo-a", threadIds: ["thread-2"] });
+});
+
+test("a delayed empty selection event cannot undo the accepted task selection", async () => {
+  quickPicks.length = 0;
   const result = showTaskTransferPicker("export", buildTaskPickerItems(inventory(), "export"));
   const quickPick = quickPicks.at(-1);
 
-  quickPick.select(["project:repo-a"]);
-  const refresh = quickPick.flushProgrammaticSelectionEvents();
-
-  assert.equal(refresh.drained, true);
-  assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), [
-    "project:repo-a", "task:thread-2",
-  ]);
-
-  quickPick.select(["project:repo-a"]);
+  quickPick.focus("project:repo-a");
   quickPick.accept();
-  assert.equal(quickPick.title, "Select at least one Codex task");
-
-  quickPick.select(["project:repo-a", "task:thread-2"]);
+  quickPick.select(["task:thread-2"]);
+  quickPick.emit("selection", []);
   quickPick.accept();
+
+  assert.equal(quickPick.disposed, true);
   assert.deepEqual(await result, { projectKey: "repo-a", threadIds: ["thread-2"] });
 });
 

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  activateTaskPickerProject,
   initialTaskPickerSelection,
   reduceTaskSelection,
   reduceTransferTaskSelection,
@@ -12,50 +13,151 @@ import {
 import type { TransferOperation } from "./transferPresentation";
 
 type TaskQuickPickItem = vscode.QuickPickItem & { task?: TaskPickerItem };
+type ScopedTransferOperation = Exclude<TransferOperation, "review">;
 
-export const TRANSFER_PICKER_COPY = {
+const SCOPED_TRANSFER_PICKER_COPY = {
   import: {
-    title: "Import Tasks: Choose One Project",
-    placeholder: "One project per import. All tasks start selected.",
+    projectTitle: "Import Tasks: Choose a Project",
+    projectPlaceholder: "Choose one project to import tasks into.",
+    taskTitle: (projectLabel: string) => `Import Tasks: Select Tasks for ${projectLabel}`,
+    taskPlaceholder: (projectLabel: string) => `Search tasks in ${projectLabel}.`,
+    emptyTitle: "Select at least one Codex task to import",
   },
   export: {
-    title: "Export Tasks: Choose One Project",
-    placeholder: "One project per export. All tasks start selected.",
+    projectTitle: "Export Tasks: Choose a Project",
+    projectPlaceholder: "Choose one project to export tasks from.",
+    taskTitle: (projectLabel: string) => `Export Tasks: Select Tasks from ${projectLabel}`,
+    taskPlaceholder: (projectLabel: string) => `Search tasks in ${projectLabel}.`,
+    emptyTitle: "Select at least one Codex task to export",
   },
-  review: {
-    title: "Review Tasks Across Projects",
-    placeholder: "Select any tasks to compare without copying files.",
-  },
+} as const;
+
+const REVIEW_PICKER_COPY = {
+  title: "Review Tasks Across Projects",
+  placeholder: "Select any tasks to compare without copying files.",
 } as const;
 
 export function showTaskTransferPicker(
   operation: TransferOperation,
   rows: TaskPickerItem[],
 ): Promise<TaskPickerSelection | undefined> {
+  return operation === "review"
+    ? showReviewTaskPicker(rows)
+    : showScopedTaskTransferPicker(operation, rows);
+}
+
+function showScopedTaskTransferPicker(
+  operation: ScopedTransferOperation,
+  rows: TaskPickerItem[],
+): Promise<TaskPickerSelection | undefined> {
   const quickPick = vscode.window.createQuickPick<TaskQuickPickItem>();
   let state = initialTaskPickerSelection(operation);
+  let settled = false;
+
+  quickPick.matchOnDescription = true;
+  quickPick.matchOnDetail = true;
+
+  const render = (): void => {
+    const isTaskStep = state.activeProjectKey !== undefined;
+    const activeProject = rows.find(
+      (row) => row.kind === "project" && row.projectKey === state.activeProjectKey,
+    );
+    const copy = SCOPED_TRANSFER_PICKER_COPY[operation];
+
+    quickPick.canSelectMany = isTaskStep;
+    quickPick.buttons = isTaskStep ? [vscode.QuickInputButtons.Back] : [];
+    quickPick.title = activeProject
+      ? copy.taskTitle(activeProject.label)
+      : copy.projectTitle;
+    quickPick.placeholder = activeProject
+      ? copy.taskPlaceholder(activeProject.label)
+      : copy.projectPlaceholder;
+    quickPick.value = "";
+    quickPick.items = visibleTaskPickerItems(rows, state, operation).map(toQuickPickItem);
+    quickPick.activeItems = [];
+    quickPick.selectedItems = [];
+  };
+
+  return new Promise((resolve) => {
+    const disposables: vscode.Disposable[] = [];
+    const finish = (selection: TaskPickerSelection | undefined): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      for (const disposable of disposables) {
+        disposable.dispose();
+      }
+      quickPick.dispose();
+      resolve(selection);
+    };
+
+    disposables.push(
+      quickPick.onDidAccept(() => {
+        if (state.activeProjectKey === undefined) {
+          const activeRow = quickPick.activeItems[0]?.task;
+          if (activeRow?.kind !== "project" || activeRow.projectKey === undefined) {
+            return;
+          }
+          state = activateTaskPickerProject(rows, activeRow.projectKey);
+          render();
+          return;
+        }
+
+        let acceptedState: TaskPickerSelectionState = {
+          activeProjectKey: state.activeProjectKey,
+          selectedThreadIds: [],
+        };
+        for (const item of quickPick.selectedItems) {
+          if (item.task?.kind === "task") {
+            acceptedState = reduceTransferTaskSelection(acceptedState, item.task, true);
+          }
+        }
+        if (acceptedState.selectedThreadIds.length === 0) {
+          quickPick.title = SCOPED_TRANSFER_PICKER_COPY[operation].emptyTitle;
+          return;
+        }
+        finish({
+          projectKey: state.activeProjectKey,
+          threadIds: [...acceptedState.selectedThreadIds],
+        });
+      }),
+      quickPick.onDidTriggerButton((button) => {
+        if (button !== vscode.QuickInputButtons.Back) {
+          return;
+        }
+        state = initialTaskPickerSelection(operation);
+        render();
+      }),
+      quickPick.onDidHide(() => finish(undefined)),
+    );
+    render();
+    quickPick.show();
+  });
+}
+
+function showReviewTaskPicker(
+  rows: TaskPickerItem[],
+): Promise<TaskPickerSelection | undefined> {
+  const quickPick = vscode.window.createQuickPick<TaskQuickPickItem>();
+  let state = initialTaskPickerSelection("review");
   let canonicalSelectionIds = new Set<string>();
   let pickerItemsById = new Map<string, TaskQuickPickItem>();
   let pendingCanonicalSelectionIds: ReadonlySet<string> | undefined;
   let settled = false;
 
-  quickPick.title = TRANSFER_PICKER_COPY[operation].title;
-  quickPick.placeholder = TRANSFER_PICKER_COPY[operation].placeholder;
+  quickPick.title = REVIEW_PICKER_COPY.title;
+  quickPick.placeholder = REVIEW_PICKER_COPY.placeholder;
   quickPick.canSelectMany = true;
   quickPick.matchOnDescription = true;
   quickPick.matchOnDetail = true;
 
   const render = (): void => {
-    const pickerItems = visibleTaskPickerItems(rows, state, operation).map((row) => ({
-      label: row.label,
-      description: activeProjectDescription(row, state, operation),
-      detail: row.detail,
-      task: row,
-    }));
+    const pickerItems = visibleTaskPickerItems(rows, state, "review").map(toQuickPickItem);
     pickerItemsById = new Map(
       pickerItems.flatMap((item) => (item.task ? [[item.task.id, item] as const] : [])),
     );
-    canonicalSelectionIds = new Set(selectedTaskPickerItemIds(rows, state, operation));
+    canonicalSelectionIds = new Set(selectedTaskPickerItemIds(rows, state, "review"));
     pendingCanonicalSelectionIds = canonicalSelectionIds.size > 0
       ? new Set(canonicalSelectionIds)
       : undefined;
@@ -97,40 +199,36 @@ export function showTaskTransferPicker(
         if (sameItemIds(selectedRowIds, canonicalSelectionIds)) {
           return;
         }
-        const previousActiveProjectKey = state.activeProjectKey;
         const removed = [...canonicalSelectionIds].filter((id) => !selectedRowIds.has(id));
         const added = [...selectedRowIds].filter((id) => !canonicalSelectionIds.has(id));
         for (const rowId of removed) {
           const row = rows.find((candidate) => candidate.id === rowId);
           if (row) {
-            state = reducePickerSelection(state, row, false, operation);
+            state = {
+              selectedThreadIds: reduceTaskSelection(state.selectedThreadIds, row, false),
+            };
           }
         }
         for (const rowId of added) {
           const row = rows.find((candidate) => candidate.id === rowId);
           if (row) {
-            state = reducePickerSelection(state, row, true, operation);
+            state = {
+              selectedThreadIds: reduceTaskSelection(state.selectedThreadIds, row, true),
+            };
           }
         }
-        if (state.activeProjectKey !== previousActiveProjectKey) {
-          render();
-          return;
-        }
-        canonicalSelectionIds = new Set(selectedTaskPickerItemIds(rows, state, operation));
+        canonicalSelectionIds = new Set(selectedTaskPickerItemIds(rows, state, "review"));
         if (!sameItemIds(selectedRowIds, canonicalSelectionIds)) {
           pendingCanonicalSelectionIds = new Set(canonicalSelectionIds);
           quickPick.selectedItems = pickerItemsForIds(canonicalSelectionIds, pickerItemsById);
         }
       }),
       quickPick.onDidAccept(() => {
-        if (!hasValidPickerSelection(state, operation)) {
+        if (state.selectedThreadIds.length === 0) {
           quickPick.title = "Select at least one Codex task";
           return;
         }
-        finish({
-          ...(operation === "review" ? {} : { projectKey: state.activeProjectKey }),
-          threadIds: [...state.selectedThreadIds],
-        });
+        finish({ threadIds: [...state.selectedThreadIds] });
       }),
       quickPick.onDidHide(() => finish(undefined)),
     );
@@ -139,35 +237,13 @@ export function showTaskTransferPicker(
   });
 }
 
-function reducePickerSelection(
-  state: TaskPickerSelectionState,
-  row: TaskPickerItem,
-  selected: boolean,
-  operation: TransferOperation,
-): TaskPickerSelectionState {
-  if (operation !== "review") {
-    return reduceTransferTaskSelection(state, row, selected);
-  }
+function toQuickPickItem(row: TaskPickerItem): TaskQuickPickItem {
   return {
-    selectedThreadIds: reduceTaskSelection(state.selectedThreadIds, row, selected),
+    label: row.label,
+    description: row.description,
+    detail: row.detail,
+    task: row,
   };
-}
-
-function activeProjectDescription(
-  row: TaskPickerItem,
-  state: TaskPickerSelectionState,
-  operation: TransferOperation,
-): string {
-  return operation !== "review" && row.kind === "project" && row.projectKey === state.activeProjectKey
-    ? "Selected project"
-    : row.description;
-}
-
-function hasValidPickerSelection(
-  state: TaskPickerSelectionState,
-  operation: TransferOperation,
-): boolean {
-  return state.selectedThreadIds.length > 0 && (operation === "review" || state.activeProjectKey !== undefined);
 }
 
 function pickerItemsForIds(
