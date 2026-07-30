@@ -78,10 +78,9 @@ export function activateTaskPickerProject(
   const project = rows.find(
     (row) => row.kind === "project" && row.projectKey === projectKey,
   );
-  return {
-    activeProjectKey: projectKey,
-    selectedThreadIds: project ? Array.from(project.childThreadIds) : [],
-  };
+  return project
+    ? { activeProjectKey: projectKey, selectedThreadIds: [] }
+    : { activeProjectKey: undefined, selectedThreadIds: [] };
 }
 
 export function visibleTaskPickerItems(
@@ -92,8 +91,11 @@ export function visibleTaskPickerItems(
   if (operation === "review") {
     return rows;
   }
+  if (state.activeProjectKey === undefined) {
+    return rows.filter((row) => row.kind === "project");
+  }
   return rows.filter(
-    (row) => row.kind === "project" || row.projectKey === state.activeProjectKey,
+    (row) => row.kind === "task" && row.projectKey === state.activeProjectKey,
   );
 }
 
@@ -105,7 +107,7 @@ export function reduceTransferTaskSelection(
   const selectedThreadIds = normalizeThreadIds(state.selectedThreadIds);
   if (changedItem.kind === "project") {
     return selected && changedItem.projectKey
-      ? activateTaskPickerProjectForRow(changedItem)
+      ? activateTaskPickerProject([changedItem], changedItem.projectKey)
       : { activeProjectKey: state.activeProjectKey, selectedThreadIds };
   }
   if (
@@ -132,12 +134,11 @@ export function selectedTaskPickerItemIds(
     return selectedPickerItemIds(rows, state.selectedThreadIds);
   }
   const selected = new Set(state.selectedThreadIds);
-  return visibleTaskPickerItems(rows, state, operation).flatMap((row) => {
-    if (row.kind === "project") {
-      return row.projectKey === state.activeProjectKey ? [row.id] : [];
-    }
-    return row.kind === "task" && row.threadId && selected.has(row.threadId) ? [row.id] : [];
-  });
+  return visibleTaskPickerItems(rows, state, operation).flatMap((row) =>
+    row.kind === "task" && row.threadId && selected.has(row.threadId)
+      ? [row.id]
+      : [],
+  );
 }
 
 export function reduceTaskSelection(
@@ -165,13 +166,6 @@ export function reduceTaskSelection(
     return normalizeThreadIds([...current, changedItem.threadId]);
   }
   return current.filter((threadId) => threadId !== changedItem.threadId);
-}
-
-function activateTaskPickerProjectForRow(project: TaskPickerItem): TaskPickerSelectionState {
-  return {
-    activeProjectKey: project.projectKey,
-    selectedThreadIds: Array.from(project.childThreadIds),
-  };
 }
 
 export function selectedPickerItemIds(items: TaskPickerItem[], selectedThreadIds: unknown): string[] {

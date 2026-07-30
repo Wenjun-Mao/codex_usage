@@ -9,6 +9,7 @@ const {
   reduceTaskSelection,
   reduceTransferTaskSelection,
   selectedPickerItemIds,
+  selectedTaskPickerItemIds,
   visibleTaskPickerItems,
 } = require("../out/syncTaskPicker");
 
@@ -76,34 +77,56 @@ test("import lists transfer-folder tasks", () => {
   assert.deepEqual(taskIds(items), ["thread-2", "thread-3"]);
 });
 
-test("activating an import project selects all eligible tasks in that project", () => {
+test("transfer starts with project rows only and activating a project selects no tasks", () => {
   const rows = buildTaskPickerItems(inventory(), "import");
-  const state = activateTaskPickerProject(rows, "repo-a");
+  const initial = initialTaskPickerSelection("import");
 
-  assert.deepEqual(state, {
+  assert.deepEqual(
+    visibleTaskPickerItems(rows, initial, "import").map((item) => item.id),
+    ["project:repo-a", "project:repo-b"],
+  );
+
+  const active = activateTaskPickerProject(rows, "repo-a");
+  assert.deepEqual(active, {
     activeProjectKey: "repo-a",
-    selectedThreadIds: ["thread-2"],
+    selectedThreadIds: [],
   });
   assert.deepEqual(
-    visibleTaskPickerItems(rows, state, "import").map((item) => item.id),
-    ["project:repo-a", "task:thread-2", "project:repo-b"],
+    visibleTaskPickerItems(rows, active, "import").map((item) => item.id),
+    ["task:thread-2"],
   );
+  assert.deepEqual(selectedTaskPickerItemIds(rows, active, "import"), []);
 });
 
-test("switching projects discards the old subset and selects the new project", () => {
+test("switching projects discards task state and never selects the project row", () => {
   const rows = buildTaskPickerItems(inventory(), "review");
-  const first = reduceTransferTaskSelection(
-    activateTaskPickerProject(rows, "repo-a"),
+  const repoA = activateTaskPickerProject(rows, "repo-a");
+  const selectedRepoA = reduceTransferTaskSelection(
+    repoA,
     rows.find((row) => row.id === "task:thread-1"),
-    false,
+    true,
   );
-  const second = activateTaskPickerProject(rows, "repo-b");
+  const repoB = activateTaskPickerProject(rows, "repo-b");
 
-  assert.deepEqual(first.selectedThreadIds, ["thread-2"]);
-  assert.deepEqual(second, {
+  assert.deepEqual(selectedRepoA.selectedThreadIds, ["thread-1"]);
+  assert.deepEqual(selectedTaskPickerItemIds(rows, selectedRepoA, "export"), [
+    "task:thread-1",
+  ]);
+  assert.deepEqual(repoB, {
     activeProjectKey: "repo-b",
-    selectedThreadIds: ["thread-3"],
+    selectedThreadIds: [],
   });
+});
+
+test("a task outside the active project cannot enter transfer selection", () => {
+  const rows = buildTaskPickerItems(inventory(), "review");
+  const active = activateTaskPickerProject(rows, "repo-a");
+  const foreignTask = rows.find((row) => row.id === "task:thread-3");
+
+  assert.deepEqual(
+    reduceTransferTaskSelection(active, foreignTask, true),
+    active,
+  );
 });
 
 test("review retains fresh cross-project selection", () => {
