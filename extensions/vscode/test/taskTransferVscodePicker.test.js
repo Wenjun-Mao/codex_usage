@@ -16,6 +16,7 @@ class FakeQuickPick extends EventEmitter {
     this.deferProgrammaticSelectionEvents = deferNextQuickPickSelectionEvents;
     deferNextQuickPickSelectionEvents = false;
     this.queuedSelectionEvents = [];
+    this.disposeCount = 0;
     this.disposed = false;
     this.queuedHideListeners = [];
     this.shown = false;
@@ -46,6 +47,7 @@ class FakeQuickPick extends EventEmitter {
   }
 
   dispose() {
+    this.disposeCount += 1;
     this.disposed = true;
   }
 
@@ -291,4 +293,37 @@ test("review picker copy makes cross-project selection explicit", async () => {
   quickPick.accept();
 
   assert.deepEqual(await result, { threadIds: ["thread-2", "thread-3"] });
+});
+
+test("review project shortcut settles once when deferred events and hide arrive late", async () => {
+  quickPicks.length = 0;
+  deferNextQuickPickSelectionEvents = true;
+  const result = showTaskTransferPicker("review", buildTaskPickerItems(inventory(), "review"));
+  const quickPick = quickPicks.at(-1);
+  let settlementCount = 0;
+  let settledSelection;
+  result.then((selection) => {
+    settlementCount += 1;
+    settledSelection = selection;
+  });
+
+  quickPick.select(["project:repo-a"]);
+  assert.deepEqual(quickPick.selectedItems.map((item) => item.task?.id), [
+    "project:repo-a",
+    "task:thread-2",
+    "task:thread-4",
+  ]);
+  assert.equal(quickPick.queuedSelectionEvents.length, 1);
+
+  quickPick.queueHide();
+  quickPick.accept();
+  const deferredEvents = quickPick.flushProgrammaticSelectionEvents();
+  quickPick.runQueuedHide();
+
+  const selection = await result;
+  assert.deepEqual(selection, { threadIds: ["thread-2", "thread-4"] });
+  assert.deepEqual(settledSelection, selection);
+  assert.equal(settlementCount, 1);
+  assert.deepEqual(deferredEvents, { delivered: 1, drained: true });
+  assert.equal(quickPick.disposeCount, 1);
 });
