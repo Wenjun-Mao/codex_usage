@@ -20,6 +20,7 @@ CURRENT_TASK_TRANSFER_FIXTURES = (
 )
 
 ROOT_RELEASE_DATES = {
+    "0.1.40": "2026-07-29",
     "0.1.39": "2026-07-29",
     "0.1.38": "2026-07-23",
     "0.1.37": "2026-07-21",
@@ -59,6 +60,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "0.1.40",
     "0.1.39",
     "0.1.38",
     "0.1.37",
@@ -172,8 +174,11 @@ def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:
         assert "does not clone" in section or "never clones" in section
         assert "destination checkout must already exist" in section
         assert "each import or export handles one codex project" in section
-        assert "all eligible tasks in it start selected" in section
-        assert "deselect any tasks you do not want to transfer" in section
+        assert "first choose one project" in section
+        assert "no tasks are selected by default" in section
+        assert "search on the task screen is limited to the chosen project" in section
+        assert "use back" in section and "choose a different project" in section
+        assert "repeat the operation" in section and "another project" in section
         assert "transfer folder can retain tasks from many projects across separate operations" in section
         assert "review transfer status remains cross-project and does not copy files" in section
         assert "task selections" in section and "project mappings" in section
