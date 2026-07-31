@@ -75,8 +75,8 @@ class RemoteStore:
         with self.transaction():
             return self._load_inventory_locked()
 
-    def probe_inventory(self) -> RemoteInventory:
-        return probe_remote_inventory(self.root)
+    def probe_inventory(self, *, metadata_only: bool = False) -> RemoteInventory:
+        return probe_remote_inventory(self.root, metadata_only=metadata_only)
 
     def materialize_probed(
         self,

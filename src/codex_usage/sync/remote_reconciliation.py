@@ -9,10 +9,12 @@ from pathlib import Path
 from codex_usage.models import SessionMetadata
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_identity import resolve_project_identity
-from codex_usage.session_files import timestamp_key
+from codex_usage.session_files import read_session_metadata, timestamp_key
 from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
+from codex_usage.sync.constants import LEGACY_REMOTE_TRANSFER_FORMAT_VERSION
+from codex_usage.sync.format_migration_layout import guard_legacy_file, guard_task_file
 from codex_usage.sync.identity import is_canonical_thread_id
-from codex_usage.sync.io import read_bytes_with_snapshot
+from codex_usage.sync.io import metadata_snapshot, read_bytes_with_snapshot
 from codex_usage.sync.models import (
     LocalInventory,
     RemoteIndex,
@@ -37,6 +39,7 @@ def reconcile_remote_discovery(
     *,
     directory_name: str,
     format_version: int,
+    metadata_only: bool = False,
     propagate_io_errors: bool = False,
 ) -> RemoteInventory:
     """Reconcile cheap indexed discovery with one-pass unindexed reconstruction."""
@@ -66,13 +69,27 @@ def reconcile_remote_discovery(
                 )
             )
             continue
-        snapshot, metadata = materialize_remote_task(
-            path,
-            path_guard,
-            propagate_io_errors=propagate_io_errors,
-        )
+        if metadata_only:
+            path_guard(path)
+            metadata = read_session_metadata(path)
+            try:
+                snapshot = metadata_snapshot(path)
+            except OSError:
+                if propagate_io_errors:
+                    raise
+                snapshot = SyncFileSnapshot(path=path, exists=True)
+            if metadata is not None and not is_canonical_thread_id(metadata.session_id):
+                metadata = None
+        else:
+            snapshot, metadata = materialize_remote_task(
+                path,
+                path_guard,
+                propagate_io_errors=propagate_io_errors,
+            )
         if metadata is None:
             issues.append(_unreadable_issue(relative_path))
+            continue
+        if metadata_only and metadata.is_subagent:
             continue
         reconstruction_candidates.setdefault(metadata.session_id, []).append(
             (relative_path, snapshot, metadata)
@@ -173,6 +190,15 @@ def materialize_selected_remote(
                 )
             )
             continue
+        if metadata.is_subagent:
+            issues.append(
+                SyncIssue(
+                    "subagent_not_transferable",
+                    f"Remote task {entry.file} is a structured subagent and cannot be transferred",
+                    thread_id,
+                )
+            )
+            continue
         if (entry.sha256, entry.size_bytes) != (snapshot.sha256, snapshot.size_bytes):
             effective_threads[thread_id] = replace(
                 entry,
@@ -187,6 +213,40 @@ def materialize_selected_remote(
         index=replace(inventory.index, threads=effective_threads),
         files=files,
         repaired_thread_ids=tuple(repaired_thread_ids),
+        issues=tuple(issues),
+    )
+
+
+def materialize_remote_metadata_for_selection(
+    root: Path,
+    inventory: RemoteInventory,
+) -> RemoteInventory:
+    files = dict(inventory.files)
+    threads = dict(inventory.index.threads)
+    issues = list(inventory.issues)
+    for thread_id, entry in tuple(threads.items()):
+        snapshot = files.get(thread_id)
+        if snapshot is not None and not snapshot.exists:
+            continue
+        path = snapshot.path if snapshot is not None else root / entry.file
+        if path is None:
+            continue
+        _guard_for_format(root, inventory.index.format_version, path)
+        metadata = read_session_metadata(path)
+        if metadata is not None and metadata.is_subagent:
+            threads.pop(thread_id, None)
+            files.pop(thread_id, None)
+            continue
+        if metadata is None or metadata.session_id != thread_id:
+            files.pop(thread_id, None)
+            issues.append(_indexed_metadata_issue(entry, metadata))
+            continue
+        if snapshot is None:
+            files[thread_id] = metadata_snapshot(path)
+    return replace(
+        inventory,
+        index=replace(inventory.index, threads=threads),
+        files=files,
         issues=tuple(issues),
     )
 
@@ -356,6 +416,27 @@ def _unreadable_issue(relative_path: str) -> SyncIssue:
         "unindexed_unreadable",
         f"Remote task {relative_path} has no readable session_meta identity and was left untouched",
     )
+
+
+def _indexed_metadata_issue(
+    entry: RemoteThreadEntry,
+    metadata: SessionMetadata | None,
+) -> SyncIssue:
+    if metadata is None:
+        message = f"Remote task {entry.file} has no readable session_meta identity"
+    else:
+        message = (
+            f"Remote task {entry.file} contains thread id {metadata.session_id!r}, "
+            f"not indexed id {entry.thread_id!r}"
+        )
+    return SyncIssue("unindexed_unreadable", message, entry.thread_id)
+
+
+def _guard_for_format(root: Path, format_version: int, path: Path) -> None:
+    if format_version == LEGACY_REMOTE_TRANSFER_FORMAT_VERSION:
+        guard_legacy_file(root, path)
+    else:
+        guard_task_file(root, path)
 
 
 def _has_issue(issues: list[SyncIssue], code: str, thread_id: str) -> bool:

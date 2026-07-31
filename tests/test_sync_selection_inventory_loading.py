@@ -25,6 +25,10 @@ from codex_usage.sync.models import (
     RemoteThreadEntry,
     SyncFileSnapshot,
 )
+from codex_usage.sync.remote_inventory_probe import probe_remote_inventory
+from codex_usage.sync.remote_reconciliation import (
+    materialize_remote_metadata_for_selection,
+)
 from codex_usage.sync.selection_inventory import load_sync_selection_inventory
 
 
@@ -91,7 +95,12 @@ def _cached_local_task_data(session_dir: Path, thread_id: str) -> CachedSessionD
     )
 
 
-def _session_jsonl(thread_id: str) -> bytes:
+def _session_jsonl(
+    thread_id: str,
+    *,
+    source: object = "cli",
+    trailing_bytes: int = 0,
+) -> bytes:
     event = {
         "timestamp": "2026-07-14T12:00:00Z",
         "type": "session_meta",
@@ -100,9 +109,12 @@ def _session_jsonl(thread_id: str) -> bytes:
             "timestamp": "2026-07-14T12:00:00Z",
             "cwd": "/repo/a",
             "git": {"repository_url": "https://github.com/example/repo-a.git"},
+            "source": source,
         },
     }
-    return (json.dumps(event, separators=(",", ":")) + "\n").encode()
+    return (
+        json.dumps(event, separators=(",", ":")) + "\n" + ("x" * trailing_bytes)
+    ).encode()
 
 
 def _write_indexed_remote_task(
@@ -292,7 +304,7 @@ def test_load_inventory_propagates_v2_materialization_read_error(
     assert _snapshot_tree(tmp_path) == before
 
 
-def test_load_inventory_keeps_v3_materialization_read_error_as_issue(
+def test_metadata_browse_keeps_v3_materialization_read_error_as_issue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -302,30 +314,83 @@ def test_load_inventory_keeps_v3_materialization_read_error_as_issue(
         _session_jsonl("thread-1"),
         format_version=3,
     )
+    monkeypatch.setattr(
+        remote_reconciliation,
+        "read_session_metadata",
+        lambda path: None if path == task_path else pytest.fail(f"Unexpected path: {path}"),
+        raising=False,
+    )
+
+    result = materialize_remote_metadata_for_selection(
+        sync_dir,
+        probe_remote_inventory(sync_dir, metadata_only=True),
+    )
+
+    assert result.files == {}
+    assert len(result.issues) == 1
+    assert result.issues[0].code == "unindexed_unreadable"
+    assert result.issues[0].thread_id == "thread-1"
+
+
+def test_metadata_browse_reads_indexed_v3_task_without_full_content_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sync_dir = tmp_path / "sync"
+    task_path = _write_indexed_remote_task(
+        sync_dir,
+        _session_jsonl("thread-1", trailing_bytes=2_000_000),
+        format_version=3,
+    )
+    original_snapshot = sync_io.snapshot_file
     original_read = remote_reconciliation.read_bytes_with_snapshot
 
-    def deny_task_read(path: Path) -> tuple[bytes | None, SyncFileSnapshot]:
+    def deny_task_snapshot(path: Path | None) -> SyncFileSnapshot:
         if path == task_path:
-            raise PermissionError(f"Cannot read {path}")
+            raise AssertionError(f"Browse hashed complete task {path}")
+        return original_snapshot(path)
+
+    def deny_task_read(path: Path | None) -> tuple[bytes | None, SyncFileSnapshot]:
+        if path == task_path:
+            raise AssertionError(f"Browse read complete task {path}")
         return original_read(path)
 
+    monkeypatch.setattr(sync_io, "snapshot_file", deny_task_snapshot)
     monkeypatch.setattr(
         remote_reconciliation,
         "read_bytes_with_snapshot",
         deny_task_read,
     )
 
-    result = load_sync_selection_inventory(
-        build_local_inventory(
-            _empty_cached_data(tmp_path / "empty-codex-home" / "sessions")
-        ),
+    result = materialize_remote_metadata_for_selection(
         sync_dir,
+        probe_remote_inventory(sync_dir, metadata_only=True),
     )
 
-    assert result.projects == ()
-    assert len(result.issues) == 1
-    assert result.issues[0].code == "unindexed_unreadable"
-    assert result.issues[0].thread_id == "thread-1"
+    assert list(result.index.threads) == ["thread-1"]
+    assert result.files["thread-1"].sha256 == ""
+    assert result.issues == ()
+
+
+def test_metadata_browse_silently_omits_indexed_v3_subagent(tmp_path: Path) -> None:
+    sync_dir = tmp_path / "sync"
+    _write_indexed_remote_task(
+        sync_dir,
+        _session_jsonl(
+            "thread-1",
+            source={"subagent": {"other": "guardian"}},
+        ),
+        format_version=3,
+    )
+
+    result = materialize_remote_metadata_for_selection(
+        sync_dir,
+        probe_remote_inventory(sync_dir, metadata_only=True),
+    )
+
+    assert result.index.threads == {}
+    assert result.files == {}
+    assert result.issues == ()
 
 
 def test_load_inventory_rejects_duplicate_v2_task_identity_without_mutation(

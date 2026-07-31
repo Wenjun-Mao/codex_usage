@@ -55,8 +55,21 @@ def _is_transient_filesystem_error(error: BaseException) -> bool:
 
 
 def snapshot_file(path: Path | None) -> SyncFileSnapshot:
-    _, snapshot = read_bytes_with_snapshot(path)
-    return snapshot
+    return read_bytes_with_snapshot(path)[1]
+
+
+@retry(
+    retry=retry_if_exception(_is_transient_filesystem_error),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
+    stop=stop_after_attempt(4), reraise=True,
+)
+def metadata_snapshot(path: Path | None) -> SyncFileSnapshot:
+    if path is None:
+        return SyncFileSnapshot(path=None, exists=False)
+    try:
+        return SyncFileSnapshot(path=path, exists=True, size_bytes=path.stat().st_size)
+    except (FileNotFoundError, IsADirectoryError):
+        return SyncFileSnapshot(path=path, exists=False)
 
 
 def read_bytes_with_snapshot(path: Path | None) -> tuple[bytes | None, SyncFileSnapshot]:
@@ -70,8 +83,7 @@ def read_bytes_with_snapshot(path: Path | None) -> tuple[bytes | None, SyncFileS
 
 
 def read_json_object(path: Path) -> dict[str, Any] | None:
-    value, _ = read_json_object_with_snapshot(path)
-    return value
+    return read_json_object_with_snapshot(path)[0]
 
 
 def read_json_object_with_snapshot(path: Path) -> tuple[dict[str, Any] | None, SyncFileSnapshot]:

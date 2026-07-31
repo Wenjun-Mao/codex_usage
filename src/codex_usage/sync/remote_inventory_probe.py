@@ -33,7 +33,11 @@ from codex_usage.sync.remote_reconciliation import (
 )
 
 
-def probe_remote_inventory(root: Path) -> RemoteInventory:
+def probe_remote_inventory(
+    root: Path,
+    *,
+    metadata_only: bool = False,
+) -> RemoteInventory:
     """Read either supported transfer layout without locking or migrating it."""
     layout = scan_layout(root)
     index_value, index_snapshot = read_remote_index_value(root)
@@ -50,6 +54,7 @@ def probe_remote_inventory(root: Path) -> RemoteInventory:
             index_snapshot,
             _v3_jsonl_files(layout.task_files),
             TRANSFER_TASKS_DIRNAME,
+            metadata_only=metadata_only,
         )
 
     format_version = remote_format_version(index_value)
@@ -70,6 +75,7 @@ def probe_remote_inventory(root: Path) -> RemoteInventory:
                 LEGACY_TRANSFER_CONVERSATIONS_DIRNAME,
             ),
             LEGACY_TRANSFER_CONVERSATIONS_DIRNAME,
+            metadata_only=metadata_only,
         )
     if format_version == REMOTE_TRANSFER_FORMAT_VERSION:
         persisted = parse_remote_index(index_value, REMOTE_TRANSFER_FORMAT_VERSION)
@@ -80,6 +86,7 @@ def probe_remote_inventory(root: Path) -> RemoteInventory:
             index_snapshot,
             _v3_jsonl_files(layout.task_files),
             TRANSFER_TASKS_DIRNAME,
+            metadata_only=metadata_only,
         )
     raise MalformedSyncIndexError(
         f"Unsupported remote transfer format version {format_version}"
@@ -181,6 +188,8 @@ def _reconcile(
     index_snapshot: SyncFileSnapshot,
     discovered_files: dict[str, Path],
     directory_name: str,
+    *,
+    metadata_only: bool,
 ) -> RemoteInventory:
     guard = (
         (lambda path: guard_legacy_file(root, path))
@@ -195,6 +204,10 @@ def _reconcile(
         guard,
         directory_name=directory_name,
         format_version=persisted.format_version,
+        metadata_only=(
+            metadata_only
+            and persisted.format_version != LEGACY_REMOTE_TRANSFER_FORMAT_VERSION
+        ),
         propagate_io_errors=(
             persisted.format_version
             == LEGACY_REMOTE_TRANSFER_FORMAT_VERSION
