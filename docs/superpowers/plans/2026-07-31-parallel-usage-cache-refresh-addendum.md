@@ -2,88 +2,69 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make cold and invalidated usage-cache refreshes complete reliably by parsing independent whole session files and extracting transition observations in a bounded process pool while preserving every existing usage and cache semantic.
+**Goal:** Make cold and invalidated usage-cache refreshes complete reliably with bounded whole-file process workers and recoverable parent-only cache commits while preserving exact usage, transition, aggregation, and report semantics.
 
-**Architecture:** Keep discovery, cache classification, SQLite access, record finalization, transition inference, and deterministic ordering in the parent process. Spawn at most four read-only workers for complete-file parsing and JSONL transition scanning, return typed pickle-safe results, and replace complete file generations in fixed eight-file parent transactions so an interruption preserves earlier committed generations.
+**Architecture:** The parent discovers and orders files, owns every SQLite operation, verifies all repository paths through one global ordered cache, finalizes records, infers transitions, and commits fixed eight-file batches. Spawned workers perform read-only complete-file parsing or raw transition-candidate extraction and return pickle-safe results with PID/timing evidence; process infrastructure failure may switch to observable serial fallback, while ordinary per-file errors remain data results and never restart a completed batch.
 
-**Tech Stack:** Python 3.13, `concurrent.futures.ProcessPoolExecutor` with a `spawn` multiprocessing context, frozen dataclasses, tenacity, SQLite, pytest, PyInstaller 6.16+, uv, PowerShell, Bash, and GitHub Actions.
+**Tech Stack:** Python 3.13, `os.process_cpu_count()`, `concurrent.futures.ProcessPoolExecutor`, `multiprocessing.get_context("spawn")`, frozen dataclasses, tenacity, SQLite, pytest, uv, PyInstaller 6.16+, Bash, PowerShell, and GitHub Actions.
 
 ## Global Constraints
 
-- This addendum begins after the measured failure in Task 3 of `docs/superpowers/plans/2026-07-31-usage-parser-performance-and-0-1-42-release.md`; original Tasks 1 and 2 and commits `b08eebb` and `c9b8d0f` remain accepted.
-- Preserve exact parser, pricing, token-delta, aggregation, fork, parent-inheritance, subagent-inclusion, project-transition, and report outputs.
-- Keep `CACHE_SCHEMA_VERSION = 3`, `PARSER_CACHE_VERSION = 2`, and `PROJECT_TRANSITION_CACHE_VERSION = 1`; add no table, column, index, trigger, or persisted generation field.
-- Do not add range-based file pruning. A bounded report range is still applied only after complete current and retained cache records are loaded.
-- Do not add within-file byte offsets, tail buffers, partial-line state, cumulative-token baselines, parser checkpoints, or append-only cache rows.
-- Every selected generation is parsed by the unchanged `parse_session_file(path: Path) -> list[UsageRecord]` from byte zero through EOF.
-- Workers may read session JSONL files and repository metadata only. Every SQLite open, read, transaction, replacement, transition write, and commit remains in the parent process, including `state_5.sqlite` reads.
-- Use a deterministic default cap of four workers, further bounded by task count and available CPUs. One task, one available CPU, or process-pool failure uses the same top-level worker callable serially.
-- Use fixed contiguous cache commit batches of eight inventory-ordered files. Do not hold a SQLite write transaction open while workers parse.
-- Retain old successful usage and metadata rows until the full replacement tuple for that file has returned and its parent transaction commits.
-- Exhausted worker file-read failures must retain the existing `"{ExceptionType}: {message}"` per-file cache error contract and must not delete prior successful rows.
-- The supported frozen targets are macOS Apple Silicon (`darwin-arm64`) and Windows x64 (`win32-x64`). Both native package workflows must execute the parallel-cache smoke.
-- No new dependency is required. Use the existing `tenacity` dependency for bounded retries of read-only session-file I/O, with `reraise=True` so final error text remains unchanged.
-- Every Python source or test file created or modified by this addendum must end below 500 lines. Split the modified 767-line `session_cache.py`; do not add tests to a file that would reach 500 lines.
-- Use `uv` for Python commands. Run focused tests at every RED/GREEN boundary and `uv run pytest -q` after the complete implementation.
-- Version `0.1.42`, release date `2026-07-31`, Marketplace Preview status, and the original two-platform release gate remain unchanged.
+- This addendum starts after the measured failure in Task 3 of `docs/superpowers/plans/2026-07-31-usage-parser-performance-and-0-1-42-release.md`. Original Tasks 1-2 and commits `b08eebb` and `c9b8d0f` remain accepted; commit `1fbe7de` is the pre-parser-gate equivalence oracle.
+- Preserve exact parser records, pricing, token deltas, fork replay handling, parent identity inheritance, subagent inclusion, aggregation, transition inference, terminal/JSON/CSV/HTML output, and Task Transfer behavior.
+- Keep `CACHE_SCHEMA_VERSION = 3`, `PARSER_CACHE_VERSION = 2`, and `PROJECT_TRANSITION_CACHE_VERSION = 1`. Add no table, column, index, trigger, persisted worker field, or persisted generation field.
+- Do not prune files by report range, session start, filesystem mtime, cached timestamps, or inferred upper bounds. Range filtering remains after complete cache load and transition application.
+- Do not persist a byte offset, tail buffer, partial line, token baseline, parser state, in-progress row, or within-file checkpoint. Every selected file is parsed by the unchanged `parse_session_file(path: Path) -> list[UsageRecord]` from byte zero through EOF.
+- All cache SQLite and `state_5.sqlite` opens, reads, writes, transactions, and commits occur in the parent process. Worker import graphs must not reach parent SQLite modules.
+- Default process capacity is `min(task_count, 4, max(1, os.process_cpu_count() or 1))`. Tests may force `max_workers=1`; production callers omit the override.
+- Process startup, submission, pickling, broken-pool, or result-transport infrastructure failure may switch the unresolved read-only batch to serial execution. It must set `used_serial_fallback=True`, retain the infrastructure error, and emit one observable warning.
+- An ordinary usage parse error or exhausted transition JSONL read error is returned by that worker as `"{ExceptionType}: {message}"`. It does not trigger pool fallback, does not restart successful work, and follows the existing per-file retain-or-skip behavior.
+- Parse requests are contiguous inventory-ordered groups of eight. Workers run before `BEGIN IMMEDIATE`; the parent validates a complete result group, applies whole-file replacements/errors, marks transitions dirty, and commits once. An exception rolls back only the current group.
+- Old successful `usage_records` and `session_metadata` rows remain until a complete replacement is present and its parent transaction commits. A failed replacement leaves old rows reusable as fallback but keeps an error marker so the file retries.
+- Worker completion order cannot affect cache records, summaries, errors, retained-missing state, raw candidates, verified observations, inferred transitions, aggregation rows, payloads, or rendered reports.
+- Normal CLI stdout/stderr and payload schemas stay unchanged. An explicit suppressed `--parallel-audit PATH` test/release diagnostic may write aggregate worker evidence without paths, task IDs, project names, or event text.
+- Source acceptance runs from an importable guarded file, never `python -` or stdin. It fails unless resolved worker count is greater than one, at least two child PIDs execute, observed worker spans overlap, the parent PID is absent, and no serial fallback occurs.
+- Frozen targets are exactly macOS Apple Silicon (`darwin-arm64`) and Windows x64 (`win32-x64`). Native build scripts reject any other OS/process architecture before packaging.
+- A local developer proves only the native package matching the current host. After merged code is pushed and before a release tag is created, a non-publishing manual workflow run must prove both native jobs. Tagging/publishing remains blocked until that run succeeds.
+- Use the existing `tenacity` dependency for explicitly listed read-only retries with `reraise=True`. Do not retry an ambiguous SQLite commit; roll back and retry the file generation on the next load.
+- Every Python source/test/script file created or modified by this addendum must remain below 500 lines. Split cache, transition, test-support, equivalence, and smoke responsibilities into the files listed below.
+- No task commit may leave the branch broken. Before each commit run that task's focused suite, `tests/test_python_source_size.py`, and `uv run pytest -q`; commit only after all pass.
+- Release remains Marketplace Preview version `0.1.42`, dated `2026-07-31`. Stable `1.0.0` remains blocked by hands-on packaged validation on both supported platforms.
 
 ---
 
-## Root Cause And Scope
+## Root Cause And Revision Basis
 
-The failed acceptance stopped in cache refresh, before range filtering, aggregation, transition scanning, or rendering. The measured inventory contained 2,275 current files totaling about 69.65 GB, and all 2,275 failed the reuse predicate: 1,921 were new, 346 retained an error marker, seven had content-metadata changes, and one had moved. The optimized parser handled a representative 2.25 GB file in 6.228 seconds, but a serial refresh still had to traverse every selected byte. The single transaction committed only after the complete inventory loop, so interruption at 171 seconds rolled back every completed file.
+The failed command stopped before range filtering, aggregation, transition scanning, or rendering. The measured inventory had 2,275 current files totaling about 69.65 GB, with zero reusable entries: 1,921 new, 346 error-marked, seven metadata-changed, and one moved. A representative 2.25 GB file parsed in 6.228 seconds, but the serial refresh still traversed every selected byte. One transaction surrounded the complete inventory loop, so interruption at 171 seconds rolled back every completed file.
 
-Downstream cached-row materialization, range filtering, aggregation, and rendering were collectively small relative to the scan. Read-only prototypes over the four largest files reduced usage parsing from 21.49 seconds to 6.66 seconds and transition extraction from 9.65 seconds to 3.12 seconds with four processes; four threads did not improve the parser. These aggregate measurements locate the failure at serial whole-corpus traversal plus all-or-nothing transaction granularity. They do not justify changing usage semantics, trusting mtimes as timestamp upper bounds, or adding a new cache schema.
+Cached-row materialization, range filtering, aggregation, and rendering were small relative to traversal. Read-only prototypes over the four largest files improved usage parsing from 21.49 to 6.66 seconds and transition extraction from 9.65 to 3.12 seconds with four processes; four threads did not improve parsing. This aggregate evidence supports bounded whole-file processes and smaller complete-generation transactions. It does not support range pruning, schema changes, within-file append checkpoints, or semantic changes.
 
-## Durable Contract
+The architecture review identified four proof gaps in the first addendum: stdin is not importable under spawn; temporary baselines can disappear; verifying paths independently in workers breaks the existing shared verification cache; and parent monkeypatches do not enter spawned children. The revised contracts below close those gaps and make worker identity, overlap, fallback, architecture, SQLite isolation, oracle equivalence, and release ordering executable gates.
 
-### Pickle-Safe Worker Interfaces
+## Exact Interfaces
 
-Create these top-level contracts. They contain only standard-library values and existing frozen dataclasses, have no connection, lock, closure, callback, or exception object, and must round-trip through `pickle.dumps`/`pickle.loads` under the `spawn` context.
+All interfaces below are top-level and fully typed. `Path`, `datetime`, frozen dataclasses, tuples, strings, integers, and booleans are pickle-safe. No request/result contains a connection, exception object, closure, callback, lock, generator, or mutable cache.
 
-```text
-@dataclass(frozen=True, slots=True)
-class UsageParseRequest:
-    ordinal: int
-    file_key: str
-    path: Path
-    size_bytes: int
-    mtime_ns: int
-
-
-@dataclass(frozen=True, slots=True)
-class UsageParseResult:
-    request: UsageParseRequest
-    records: tuple[UsageRecord, ...] = ()
-    error: str = ""
-
-
-parse_usage_request(request: UsageParseRequest) -> UsageParseResult
-
-
-@dataclass(frozen=True, slots=True)
-class TransitionScanRequest:
-    ordinal: int
-    path: Path
-
-
-@dataclass(frozen=True, slots=True)
-class TransitionScanResult:
-    request: TransitionScanRequest
-    observations: tuple[RepoPathObservation, ...]
-
-
-scan_transition_request(request: TransitionScanRequest) -> TransitionScanResult
-```
-
-`UsageParseResult.error` and `records` are mutually exclusive. `parse_usage_request` catches `Exception` only after bounded read retries and returns the existing formatted error; `KeyboardInterrupt`, `SystemExit`, and other `BaseException` values propagate. Expected transition per-file open/read failures continue to produce no observations, while an unexpected transition worker exception is retried serially by the process mapper and then propagates if it is reproducible.
-
-### Bounded Execution Interface
+### Execution Types
 
 ```text
-DEFAULT_MAX_WORKERS = 4
-SERIAL_FALLBACK_WARNING = "process pool unavailable; continuing with serial whole-file workers"
+DEFAULT_MAX_WORKERS: Final[int] = 4
+SERIAL_FALLBACK_WARNING: Final[str] = "process pool infrastructure failed; continuing serially"
 
+WorkerSpan(pid: int, started_ns: int, finished_ns: int)
+
+ParallelRunReport(
+    resolved_worker_count: int,
+    worker_spans: tuple[WorkerSpan, ...],
+    used_serial_fallback: bool,
+    infrastructure_error: str,
+    file_error_count: int,
+)
+EMPTY_PARALLEL_RUN_REPORT: Final[ParallelRunReport]
+ParallelRunReport.worker_pids -> tuple[int, ...]
+ParallelRunReport.max_concurrency -> int
+ParallelRunReport.actually_parallel(parent_pid: int) -> bool
+ParallelRunReport.to_dict() -> dict[str, object]
 
 resolve_worker_count(
     task_count: int,
@@ -92,340 +73,45 @@ resolve_worker_count(
     max_workers: int = DEFAULT_MAX_WORKERS,
 ) -> int
 
-
-OrderedProcessMapper[RequestT, ResultT]
-    __init__(
-        self,
-        worker: Callable[[RequestT], ResultT],
-        *,
-        task_count: int,
-        max_workers: int = DEFAULT_MAX_WORKERS,
-    ) -> None
-
-    @property
-    worker_count: int
-
-    @property
-    used_serial_fallback: bool
-
-    __enter__(self) -> OrderedProcessMapper[RequestT, ResultT]
-
-    map_batch(self, requests: Sequence[RequestT]) -> list[ResultT]
-
-    __exit__(self, exc_type: object, exc: object, traceback: object) -> None
-```
-
-`resolve_worker_count` returns zero for zero tasks and otherwise `min(task_count, max_workers, max(1, available_cpus or os.cpu_count() or 1))`. `OrderedProcessMapper` uses `multiprocessing.get_context("spawn")`. It submits one bounded caller-provided batch, collects futures in any completion order, and returns results in request order. If executor construction, submission, pickling, or result transport raises an `Exception`, it discards that read-only batch, shuts down the broken executor, emits `SERIAL_FALLBACK_WARNING` once, reruns the whole batch through the same top-level callable in the parent, and remains serial for later batches. It never catches `BaseException`.
-
-### Parent Transaction And Ordering Contract
-
-`collect_session_file_inventory` remains the ordering authority. The parent assigns each parse request its inventory ordinal and processes contiguous slices of eight. Worker activity occurs with no SQLite transaction open. After one complete result slice returns, the parent validates one result per request, sorts by ordinal defensively, begins `IMMEDIATE`, applies each complete success or per-file error, marks transitions dirty, and commits. Any insertion, validation, interruption, or commit-path exception rolls back the whole current slice; previous slices stay committed.
-
-A successful replacement deletes and recreates that file's `usage_records` and `session_metadata` only inside this transaction, then updates its existing `files` row with the request's path, size, mtime, and a cleared error. A failed result calls the existing error behavior: update `last_seen_at` and `error` for an existing file without deleting its old child rows, or insert only an errored `files` row when no successful generation exists. Because the cached size and mtime come from the original inventory request, a file that grows during or after parsing mismatches the next inventory and is reparsed.
-
-Final usage order remains inventory order plus sorted retained-missing keys, with each file in `record_index` order before unchanged `finalize_session_records`. Transition JSONL results are flattened by request ordinal, parent-only `state_5.sqlite` observations are appended, and the existing total observation dedupe/sort and `infer_project_transitions` sort run unchanged. Worker completion order therefore cannot affect records, transitions, evidence, or output digests.
-
-### Why This Is Not An Incremental Append Checkpoint
-
-The persisted unit is still one complete file generation. A worker always opens the selected path at byte zero and returns only after `parse_session_file` reaches EOF; the parent persists no offset, prior cumulative counter, partial line, tail hash, in-progress row, or worker state. An interruption leaves each file in exactly one of three existing states: the prior complete successful generation, a newly committed complete generation, or an errored file with any prior successful generation retained. Committing several complete-file replacements together changes transaction recovery granularity, not parser position or append semantics, so it does not violate the original plan's checkpoint prohibition.
-
-## File And Function Map
-
-| Path | Existing ownership | Planned ownership |
-| --- | --- | --- |
-| `src/codex_usage/parser.py` | `parse_session_file`, `finalize_session_records`, fork and parent identity rules | Read only; workers call these unchanged. |
-| `src/codex_usage/session_inventory.py` | `collect_session_file_inventory`, path ordering, size/mtime generation | Read only; remains the parent request source. |
-| `src/codex_usage/session_cache.py` | Public cache models plus schema, refresh, persistence, transitions, and loading | Shrink to the public facade and `load_cached_session_data`; re-export existing public names. |
-| `src/codex_usage/session_cache_models.py` | New | `CacheStats`, `CachedFileSummary`, `CachedSessionData`, `CachedRowsSnapshot`. |
-| `src/codex_usage/session_cache_schema.py` | New | Existing schema constants, create/match/rebuild/snapshot/restore functions; no schema edits. |
-| `src/codex_usage/session_cache_store.py` | New | Parent-only SQLite generation replacement, error retention, row loading, summary loading, dirty flag, and atomic transition replacement. |
-| `src/codex_usage/session_cache_refresh.py` | New | Reuse classification, parse requests, eight-file result transactions, and `CacheStats`. |
-| `src/codex_usage/parallel/__init__.py` | New | Clean exports for process execution and worker contracts. |
-| `src/codex_usage/parallel/execution.py` | New | Four-worker cap, spawn mapper, deterministic ordered results, serial fallback. |
-| `src/codex_usage/parallel/usage.py` | New | `UsageParseRequest`, `UsageParseResult`, retry wrapper, top-level parse worker. |
-| `src/codex_usage/project_transition_evidence.py` | Path extraction, JSONL scan, `state_5.sqlite` scan, dedupe | Keep path and JSONL evidence extraction; expose one-file scan and dedupe. Remove SQLite access. |
-| `src/codex_usage/project_transition_state.py` | New | Parent-only read-only `state_5.sqlite` observation extraction. |
-| `src/codex_usage/parallel/transitions.py` | New | Transition request/result and top-level one-file JSONL worker. |
-| `src/codex_usage/project_transition_collection.py` | New | Ordered parallel JSONL orchestration plus parent state observations and final dedupe. |
-| `src/codex_usage/project_transitions.py` | Transition inference/application and evidence re-export | Keep inference/application unchanged; re-export collection from the new module. |
-| `src/codex_usage/cli.py` | Cache-first loader, direct-parse fallback, range filtering | Read only; `_load_session_data` and `_load_context` call order stays unchanged. |
-| `src/codex_usage/__main__.py` | Frozen/source module entrypoint | Call `multiprocessing.freeze_support()` before importing CLI code. |
-| `scripts/build-macos-arm64-exe.sh` | macOS PyInstaller build and packaged transfer smoke | Also run packaged parallel-cache smoke. |
-| `scripts/build-windows-exe.ps1` | Windows PyInstaller build and packaged transfer smoke | Also run packaged parallel-cache smoke. |
-| `.github/workflows/package-vsix.yml` | Native tests and package jobs on `macos-26`/`windows-2025` | Behavior unchanged; contract tests prove both package commands invoke the new smoke through build scripts. |
-
----
-
-### Task 1: Spawn-Safe Bounded Process Mapper
-
-**Files:**
-- Create: `src/codex_usage/parallel/__init__.py`
-- Create: `src/codex_usage/parallel/execution.py`
-- Create: `tests/test_parallel_execution.py`
-
-**Interfaces:**
-- Produces: `resolve_worker_count(task_count, available_cpus, max_workers) -> int` and `OrderedProcessMapper[RequestT, ResultT]` exactly as specified above.
-- Guarantees: at most four spawn workers, bounded caller batches, ordered return values, one warning and permanent serial mode after infrastructure failure, and no interception of `BaseException`.
-
-- [ ] **Step 1: Write failing worker-count, ordering, overlap, fallback, and interruption tests**
-
-Create top-level frozen probe request/result dataclasses and top-level probe workers in `tests/test_parallel_execution.py`. Cover these exact cases:
-
-```python
-def test_worker_count_is_bounded_and_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(os, "cpu_count", lambda: 64)
-    assert resolve_worker_count(0) == 0
-    assert resolve_worker_count(1) == 1
-    assert resolve_worker_count(100) == 4
-    assert resolve_worker_count(100, available_cpus=2) == 2
-    assert resolve_worker_count(100, available_cpus=1) == 1
-
-
-def test_process_mapper_returns_submission_order_after_reverse_completion() -> None:
-    requests = [_ProbeRequest(ordinal=value, delay_rank=3 - value) for value in range(4)]
-    with OrderedProcessMapper(_probe_worker, task_count=4, max_workers=2) as mapper:
-        results = mapper.map_batch(requests)
-    assert [result.ordinal for result in results] == [0, 1, 2, 3]
-
-
-def test_process_mapper_overlaps_two_workers_without_elapsed_time_threshold() -> None:
-    with multiprocessing.Manager() as manager:
-        barrier = manager.Barrier(2)
-        active = manager.Value("i", 0)
-        peak = manager.Value("i", 0)
-        lock = manager.Lock()
-        requests = [_OverlapRequest(index, barrier, active, peak, lock) for index in range(2)]
-        with OrderedProcessMapper(_overlap_worker, task_count=2, max_workers=2) as mapper:
-            results = mapper.map_batch(requests)
-        assert peak.value == 2
-        assert len({result.pid for result in results}) == 2
-
-
-def test_pool_bootstrap_failure_warns_once_and_stays_serial(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(execution_module, "ProcessPoolExecutor", _FailingExecutor)
-    with pytest.warns(RuntimeWarning, match=SERIAL_FALLBACK_WARNING) as warnings:
-        with OrderedProcessMapper(_probe_worker, task_count=2, max_workers=2) as mapper:
-            first = mapper.map_batch([_ProbeRequest(0, 0)])
-            second = mapper.map_batch([_ProbeRequest(1, 0)])
-            assert mapper.used_serial_fallback is True
-    assert [result.ordinal for result in [*first, *second]] == [0, 1]
-    assert len(warnings) == 1
-
-
-def test_keyboard_interrupt_is_not_converted_to_serial_fallback() -> None:
-    mapper = _mapper_with_interrupting_future()
-    with pytest.raises(KeyboardInterrupt):
-        mapper.map_batch([_ProbeRequest(0, 0)])
-    assert mapper.used_serial_fallback is False
-    assert mapper.serial_calls == 0
-```
-
-The overlap test uses synchronization counts, PIDs, and a barrier timeout only as deadlock protection; it contains no assertion that work finishes within a performance duration.
-
-- [ ] **Step 2: Run the new tests and verify RED**
-
-Run: `uv run pytest tests/test_parallel_execution.py -q`
-
-Expected: collection fails with `ModuleNotFoundError: No module named 'codex_usage.parallel'`.
-
-- [ ] **Step 3: Implement the mapper with the exact default and fallback rules**
-
-Use `ProcessPoolExecutor(max_workers=worker_count, mp_context=multiprocessing.get_context("spawn"))`, `submit`, and `as_completed`. Build a result list indexed by submission position. On an `Exception`, cancel pending futures, call `shutdown(wait=False, cancel_futures=True)`, set the executor to `None`, set `used_serial_fallback`, warn once, and recompute the complete current batch serially. On normal exit, call `shutdown(wait=True, cancel_futures=False)`; on a caller `BaseException`, cancel futures without converting it to fallback.
-
-- [ ] **Step 4: Run focused tests and verify GREEN**
-
-Run: `uv run pytest tests/test_parallel_execution.py -q`
-
-Expected: PASS; the overlap assertion observes two active worker PIDs and the fallback test observes exactly one warning.
-
-All probe dataclasses, workers, fake executors, fake futures, and mapper doubles named in this task live at module top level in `tests/test_parallel_execution.py`. Give them the exact fields used by the snippets (`ordinal`, `delay_rank`, `pid`, and the manager proxies), and do not add a production-only test hook.
-
-- [ ] **Step 5: Commit the process mapper**
-
-```bash
-git add src/codex_usage/parallel/__init__.py src/codex_usage/parallel/execution.py tests/test_parallel_execution.py
-git commit -m "feat: add bounded process worker runner"
-```
-
-### Task 2: Split Cache Models, Schema, And Parent Store
-
-**Files:**
-- Create: `src/codex_usage/session_cache_models.py`
-- Create: `src/codex_usage/session_cache_schema.py`
-- Create: `src/codex_usage/session_cache_store.py`
-- Modify: `src/codex_usage/session_cache.py:1-767`
-- Modify: `tests/test_session_cache.py:1-386`
-- Modify: `tests/test_cli_transitions.py:1-265`
-- Modify: `tests/test_python_source_size.py:9-15`
-
-**Interfaces:**
-- Preserves: imports of `CACHE_DB_NAME`, `CACHE_SCHEMA_VERSION`, `CacheStats`, `CachedFileSummary`, `CachedSessionData`, `load_cached_session_data`, `resolve_cache_dir`, and `uncached_session_data` from `codex_usage.session_cache`.
-- Produces: parent-only `replace_file_generation(connection, session_dirs, entry, records)`, `record_file_error(connection, session_dirs, entry, error)`, cache row loaders, transition dirty helpers, and schema helpers with unchanged SQL.
-- Constrains: `session_cache.py` and every new/modified Python file to fewer than 500 lines.
-
-- [ ] **Step 1: Make the source-size contract fail for the cache facade**
-
-Remove `"src/codex_usage/session_cache.py"` from `LEGACY_OVERSIZED_FILES` in `tests/test_python_source_size.py` and add this direct guard so RED does not depend on merge-base changed-file discovery:
-
-```python
-def test_session_cache_facade_stays_under_500_lines() -> None:
-    path = REPOSITORY_ROOT / "src" / "codex_usage" / "session_cache.py"
-    assert _line_count(path) < 500
-```
-
-Do not alter the exemptions for unrelated pre-existing oversized test modules.
-
-- [ ] **Step 2: Run the size and cache suites and verify RED is structural only**
-
-Run:
-
-```bash
-uv run pytest tests/test_python_source_size.py tests/test_session_cache.py tests/test_cli_transitions.py -q
-```
-
-Expected: `test_session_cache_facade_stays_under_500_lines` fails because `session_cache.py` has 767 lines; all cache and transition behavior tests pass.
-
-- [ ] **Step 3: Move code without changing behavior or SQL**
-
-Move the four frozen cache dataclasses to `session_cache_models.py`. Move constants and existing `_ensure_schema`, table creation/matching/drop, snapshot, restore, compatible-column insertion, and table-column helpers to `session_cache_schema.py`. Move existing record insertion/loading, summary insertion/loading, error retention, missing-file loading, transition dirty state, transition replacement, and transition loading to `session_cache_store.py`.
-
-Expose these parent-store write signatures for Task 3:
-
-```text
-replace_file_generation(
-    connection: sqlite3.Connection,
-    session_dirs: list[Path],
-    entry: SessionFileInventoryEntry,
-    records: tuple[UsageRecord, ...],
-) -> None
-
-
-record_file_error(
-    connection: sqlite3.Connection,
-    session_dirs: list[Path],
-    entry: SessionFileInventoryEntry,
-    error: str,
-) -> None
-```
-
-`replace_file_generation` must perform the existing delete/insert/summary/file-row operations without committing. `record_file_error` must preserve existing child rows and must not commit. Keep the five existing tables and every SQL column byte-for-byte equivalent; do not increment any version constant.
-
-Keep `session_cache.py` as the facade that opens the one cache connection, calls schema/refresh/store functions, finalizes records, and returns `CachedSessionData`. Re-export the existing names so downstream sync imports do not change. Update tests that monkeypatch moved private helpers to patch `session_cache_schema` or `session_cache_store`, including schema restore failure, transition inference failure, and transition replacement interruption.
-
-- [ ] **Step 4: Run cache, transition, sync-import, and size tests and verify GREEN**
-
-Run:
-
-```bash
-uv run pytest tests/test_python_source_size.py tests/test_session_cache.py tests/test_cli_transitions.py tests/test_sync_inventory.py tests/test_sync_selection_inventory_loading.py -q
-```
-
-Expected: PASS; `wc -l` reports fewer than 500 lines for all four modified/created cache modules, and schema-rebuild rollback tests still preserve child rows.
-
-- [ ] **Step 5: Commit the behavior-preserving split**
-
-```bash
-git add src/codex_usage/session_cache.py src/codex_usage/session_cache_models.py src/codex_usage/session_cache_schema.py src/codex_usage/session_cache_store.py tests/test_session_cache.py tests/test_cli_transitions.py tests/test_python_source_size.py
-git commit -m "refactor: split usage cache persistence"
-```
-
-### Task 3: Parallel Whole-File Parse And Atomic Batch Refresh
-
-**Files:**
-- Create: `src/codex_usage/parallel/usage.py`
-- Create: `src/codex_usage/session_cache_refresh.py`
-- Modify: `src/codex_usage/parallel/__init__.py`
-- Modify: `src/codex_usage/session_cache.py`
-- Create: `tests/test_parallel_usage_workers.py`
-- Create: `tests/test_session_cache_parallel.py`
-- Modify: `tests/test_session_cache.py:34-385`
-
-**Interfaces:**
-- Consumes: `OrderedProcessMapper`, unchanged `parse_session_file`, inventory entries, and parent-only store functions from Tasks 1-2.
-- Produces: `UsageParseRequest`, `UsageParseResult`, `parse_usage_request`, `CACHE_COMMIT_BATCH_SIZE = 8`, and `refresh_files(connection, session_dirs, inventory, rebuilt, max_workers) -> CacheStats`.
-- Preserves: the cache reuse predicate, stats meanings, error text, old-row fallback, missing retention, transition dirty behavior, record order, and schema.
-
-- [ ] **Step 1: Write failing pickle, semantic-equivalence, worker-error, recovery, and invalidation tests**
-
-In `tests/test_parallel_usage_workers.py`, create mixed fixtures containing normal usage, parent/subagent inheritance, fork replay, malformed candidates, Unicode-escaped relevant event names, an empty valid file, and invalid UTF-8. Assert:
-
-```python
-def test_usage_worker_contract_round_trips_through_pickle(tmp_path: Path) -> None:
-    request = UsageParseRequest(0, "thread-1", path, path.stat().st_size, path.stat().st_mtime_ns)
-    assert pickle.loads(pickle.dumps(request)) == request
-    result = parse_usage_request(request)
-    assert pickle.loads(pickle.dumps(result)) == result
-
-
-def test_parallel_file_results_finalize_exactly_like_serial_parser(tmp_path: Path) -> None:
-    serial_by_file = [parse_session_file(path) for path in ordered_valid_paths]
-    parallel_by_file = [list(result.records) for result in ordered_worker_results]
-    assert parallel_by_file == serial_by_file
-    assert finalize_session_records(parallel_by_file) == finalize_session_records(serial_by_file)
-
-
-def test_worker_exception_uses_existing_per_file_error_text(tmp_path: Path) -> None:
-    result = parse_usage_request(invalid_utf8_request)
-    assert result.records == ()
-    assert result.error.startswith("UnicodeDecodeError: ")
-```
-
-In `tests/test_session_cache_parallel.py`, add these exact behavioral tests:
-
-- `test_reverse_worker_completion_keeps_inventory_and_record_order`
-- `test_worker_failure_retains_previous_complete_generation_and_retries`
-- `test_insertion_failure_rolls_back_complete_eight_file_batch`
-- `test_interruption_after_first_batch_reuses_eight_committed_generations`
-- `test_file_growth_after_worker_parse_invalidates_next_inventory`
-- `test_parallel_refresh_keeps_schema_versions_and_columns_unchanged`
-- `test_workers_never_receive_a_sqlite_connection`
-
-The interruption test creates nine cold files, returns the first eight complete results, raises `KeyboardInterrupt` before the second batch, then reopens the cache and asserts `files_reused == 8`, `files_parsed == 1`, exact totals for all nine files, and no duplicate rows. The insertion-failure test raises after a child-row delete inside one batch and asserts rollback restores every old generation in that batch.
-
-Define `_write_parallel_usage_fixture(tmp_path: Path) -> tuple[list[Path], Path]` in `tests/test_parallel_usage_workers.py`; it returns inventory-ordered valid paths plus the invalid UTF-8 path. Keep every cache transaction fixture in `tests/test_session_cache_parallel.py` so neither test module imports a private helper from another test module.
-
-- [ ] **Step 2: Run the new tests and verify RED**
-
-Run:
-
-```bash
-uv run pytest tests/test_parallel_usage_workers.py tests/test_session_cache_parallel.py -q
-```
-
-Expected: collection fails because `codex_usage.parallel.usage` and `codex_usage.session_cache_refresh` do not exist.
-
-- [ ] **Step 3: Implement the pickle-safe worker with bounded read retry**
-
-Use this retry boundary and final exception mapping:
-
-```python
-@retry(
-    retry=retry_if_exception_type(OSError),
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.2),
-    reraise=True,
+OrderedProcessMapper[RequestT, ResultT](
+    worker: Callable[[RequestT], ResultT],
+    *,
+    task_count: int,
+    max_workers: int = DEFAULT_MAX_WORKERS,
 )
-def _parse_session_file_with_retry(path: Path) -> list[UsageRecord]:
-    return parse_session_file(path)
-
-
-def parse_usage_request(request: UsageParseRequest) -> UsageParseResult:
-    try:
-        records = _parse_session_file_with_retry(request.path)
-    except Exception as exc:
-        return UsageParseResult(request=request, error=f"{type(exc).__name__}: {exc}")
-    return UsageParseResult(request=request, records=tuple(records))
+OrderedProcessMapper.worker_count -> int
+OrderedProcessMapper.used_serial_fallback -> bool
+OrderedProcessMapper.infrastructure_error -> str
+OrderedProcessMapper.map_batch(requests: Sequence[RequestT]) -> list[ResultT]
+OrderedProcessMapper.__enter__() -> Self
+OrderedProcessMapper.__exit__(exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None
 ```
 
-Reject an invalid `UsageParseResult` containing both records and an error in `__post_init__`. Do not catch `BaseException` and do not import `sqlite3` in `parallel/usage.py`.
+`resolve_worker_count` uses the explicit `available_cpus` test value when provided; otherwise it calls `os.process_cpu_count()` exactly once. It returns zero for zero tasks and rejects negative task counts or `max_workers < 1` with `ValueError`.
 
-- [ ] **Step 4: Implement parent classification and complete-file batch commits**
+`WorkerSpan` validates `pid > 0` and `finished_ns >= started_ns`. `ParallelRunReport.worker_pids` is first-seen PID order with duplicates removed. `max_concurrency` performs a deterministic sweep over worker intervals, processing a finish before a start at an equal timestamp so touching spans are not counted as overlap. `actually_parallel(parent_pid)` requires resolved count greater than one, no fallback, two or more non-parent PIDs, and `max_concurrency >= 2`.
 
-Use this exact signature:
+`EMPTY_PARALLEL_RUN_REPORT` is exactly `ParallelRunReport(0, (), False, "", 0)`. `OrderedProcessMapper` uses a persistent `ProcessPoolExecutor` with the spawn context. It catches only pool infrastructure failures: constructor/submission `OSError`/`RuntimeError`, `pickle.PicklingError`, and `BrokenProcessPool` raised while submitting or retrieving a result. A normal exception raised by a worker future propagates and is not relabeled as infrastructure. Expected per-file failures never raise from a future because worker wrappers return typed error results. The parent supplies `file_error_count` when assembling a report; the mapper does not infer application errors.
+
+### Usage Worker Types
 
 ```text
-CACHE_COMMIT_BATCH_SIZE = 8
+UsageParseRequest(
+    ordinal: int,
+    file_key: str,
+    path: Path,
+    size_bytes: int,
+    mtime_ns: int,
+)
 
+UsageParseResult(
+    request: UsageParseRequest,
+    records: tuple[UsageRecord, ...],
+    error: str,
+    span: WorkerSpan,
+)
+
+parse_usage_request(request: UsageParseRequest) -> UsageParseResult
 
 refresh_files(
     connection: sqlite3.Connection,
@@ -433,511 +119,1645 @@ refresh_files(
     inventory: list[SessionFileInventoryEntry],
     *,
     rebuilt: bool,
-    max_workers: int = DEFAULT_MAX_WORKERS,
-) -> CacheStats
+    max_workers: int | None = None,
+) -> tuple[CacheStats, ParallelRunReport]
+
+load_cached_session_data(
+    session_dirs: list[Path],
+    *,
+    cache_dir: Path | None = None,
+    auto_transitions: bool = True,
+    max_workers: int | None = None,
+) -> CachedSessionData
 ```
 
-Perform one short parent preflight transaction to mark missing rows, touch reusable rows, and set transition dirty for rebuild/missing changes. Build requests only for entries that fail the exact existing path/size/mtime/missing/error predicate. Open one `OrderedProcessMapper(parse_usage_request, task_count=len(requests), max_workers=max_workers)`, pass contiguous `itertools.batched(requests, 8)` slices to `map_batch`, validate and ordinal-sort each complete result slice, then open one `BEGIN IMMEDIATE` transaction per slice.
+`UsageParseResult` rejects records plus error. The worker starts its span before read retry and finishes it in both success and error results. It retries `OSError` up to three attempts using `wait_exponential(multiplier=0.05, min=0.05, max=0.2)`, `stop_after_attempt(3)`, `retry_if_exception_type(OSError)`, and `reraise=True`; the exhausted exception becomes the existing formatted per-file error.
 
-Inside a slice transaction, call `replace_file_generation` for success or `record_file_error` for failure, set transition dirty, and commit. Catch `BaseException`, roll back, and re-raise. Increment returned stats only for committed slices; `files_parsed` continues to count attempted files including per-file errors. The public `load_cached_session_data` calls `refresh_files` without overriding `max_workers`.
+`CacheStats` remains field-for-field unchanged so serial/parallel stats compare exactly. `CachedSessionData` gains non-persisted `usage_run: ParallelRunReport` and `transition_run: ParallelRunReport` fields with an empty-report default; no existing output serializer consumes them.
 
-- [ ] **Step 5: Run focused cache and semantic suites and verify GREEN**
-
-Run:
-
-```bash
-uv run pytest tests/test_parallel_execution.py tests/test_parallel_usage_workers.py tests/test_session_cache_parallel.py tests/test_session_cache.py tests/test_parser_aggregation.py tests/test_parser_relevance_gate.py tests/test_session_provenance.py tests/test_token_usage.py tests/test_pricing.py -q
-```
-
-Expected: PASS with serial/parallel equality, eight committed files reusable after interruption, old records retained on error, and unchanged fork/subagent/pricing totals.
-
-- [ ] **Step 6: Commit parallel cache refresh**
-
-```bash
-git add src/codex_usage/parallel/__init__.py src/codex_usage/parallel/usage.py src/codex_usage/session_cache.py src/codex_usage/session_cache_refresh.py tests/test_parallel_usage_workers.py tests/test_session_cache_parallel.py tests/test_session_cache.py
-git commit -m "perf: refresh usage cache in parallel batches"
-```
-
-### Task 4: Parallel Transition Observation Extraction With Parent SQLite
-
-**Files:**
-- Modify: `src/codex_usage/project_transition_evidence.py:1-417`
-- Create: `src/codex_usage/project_transition_state.py`
-- Create: `src/codex_usage/parallel/transitions.py`
-- Create: `src/codex_usage/project_transition_collection.py`
-- Modify: `src/codex_usage/project_transitions.py:7-11`
-- Modify: `src/codex_usage/parallel/__init__.py`
-- Create: `tests/test_parallel_project_transition_evidence.py`
-- Modify: `tests/test_project_transition_evidence.py:1-335`
-
-**Interfaces:**
-- Produces: `collect_jsonl_file_observations(path: Path) -> list[RepoPathObservation]`, `dedupe_repo_path_observations(observations) -> list[RepoPathObservation]`, `collect_state_repo_path_observations(session_dirs)`, transition worker contracts, and unchanged public `collect_repo_path_observations(session_dirs, session_files)`.
-- Guarantees: workers scan JSONL only; parent reads `state_5.sqlite`; final observations and inferred transitions equal serial extraction exactly.
-
-- [ ] **Step 1: Write failing transition pickle, ordering, parent-SQLite, and equivalence tests**
-
-Create fixtures spanning multiple files, duplicate paths, malformed JSON, invalid UTF-8, Windows/POSIX paths, function-call arguments, user-message decoys, and one `state_5.sqlite` row. Define `_write_parallel_transition_fixture(tmp_path: Path) -> tuple[list[Path], list[Path], list[UsageRecord], list[RepoPathObservation], list[ProjectTransition]]` in the same test module. Define `ReverseResultMapper` there as a context manager whose `map_batch` calls `scan_transition_request` for every request and returns the complete results in reverse order; this is a parent-side ordering double, not a production hook. Add:
-
-```python
-def test_transition_worker_contract_round_trips_through_pickle(tmp_path: Path) -> None:
-    path = tmp_path / "thread.jsonl"
-    path.write_text("", encoding="utf-8")
-    request = TransitionScanRequest(ordinal=0, path=path)
-    assert pickle.loads(pickle.dumps(request)) == request
-    result = scan_transition_request(request)
-    assert pickle.loads(pickle.dumps(result)) == result
-
-
-def test_parallel_and_serial_transition_observations_are_exactly_equal(tmp_path: Path) -> None:
-    expected_jsonl = [
-        observation
-        for path in session_files
-        for observation in collect_jsonl_file_observations(path)
-    ]
-    expected = dedupe_repo_path_observations(
-        [*expected_jsonl, *collect_state_repo_path_observations(session_dirs)]
-    )
-    assert collect_repo_path_observations(session_dirs, session_files) == expected
-
-
-def test_reverse_transition_worker_completion_keeps_observation_and_inference_order(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session_dirs, session_files, records, serial_observations, serial_transitions = (
-        _write_parallel_transition_fixture(tmp_path)
-    )
-    monkeypatch.setattr(collection_module, "OrderedProcessMapper", ReverseResultMapper)
-    actual = collect_repo_path_observations(session_dirs, session_files)
-    assert actual == serial_observations
-    assert infer_project_transitions(records, actual) == serial_transitions
-
-
-def test_state_sqlite_is_opened_only_in_parent(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session_dirs, session_files, _records, _observations, _transitions = (
-        _write_parallel_transition_fixture(tmp_path)
-    )
-    parent_pid = os.getpid()
-    connect_pids: list[int] = []
-    original_connect = state_module.sqlite3.connect
-    monkeypatch.setattr(
-        state_module.sqlite3,
-        "connect",
-        lambda *args, **kwargs: (connect_pids.append(os.getpid()), original_connect(*args, **kwargs))[1],
-    )
-    collection_module._collect_repo_path_observations(
-        session_dirs,
-        session_files,
-        max_workers=2,
-    )
-    assert connect_pids
-    assert set(connect_pids) == {parent_pid}
-```
-
-- [ ] **Step 2: Run transition tests and verify RED**
-
-Run: `uv run pytest tests/test_parallel_project_transition_evidence.py -q`
-
-Expected: collection fails because the new state, collection, and worker modules do not exist.
-
-- [ ] **Step 3: Separate JSONL evidence from state SQLite and add the worker**
-
-Move all `state_5.sqlite` functions to `project_transition_state.py`; retain read-only URI mode and existing missing/schema/error behavior. Wrap transient `sqlite3.OperationalError` reads with three tenacity attempts and `reraise=True`, then preserve the existing final empty-observation behavior. The module is imported and called only by the parent collection module.
-
-Refactor the current JSONL loop into `collect_jsonl_file_observations(path)`, retaining `errors="ignore"`, source filtering, path verification, and file-local verification caching. `scan_transition_request` calls only that function and returns a tuple. It imports neither `sqlite3` nor the state module.
-
-- [ ] **Step 4: Implement deterministic collection and unchanged inference input**
-
-Use `TRANSITION_SCAN_BATCH_SIZE = 16`. Assign ordinals from the existing `session_files` order, reuse one bounded mapper, flatten ordinal-sorted result batches, append parent state observations, and call the extracted existing dedupe/sort once. Keep this public signature unchanged:
+### Transition Candidate And Parent Verification Types
 
 ```text
+RawRepoPathCandidate(
+    raw_path: str,
+    timestamp: datetime,
+    thread_id: str,
+    source: str,
+)
+
+TransitionScanRequest(ordinal: int, path: Path)
+
+TransitionScanResult(
+    request: TransitionScanRequest,
+    candidates: tuple[RawRepoPathCandidate, ...],
+    error: str,
+    span: WorkerSpan,
+)
+
+scan_transition_request(request: TransitionScanRequest) -> TransitionScanResult
+
+VerificationCache = dict[str, tuple[str, str, str] | None]
+
+collect_jsonl_repo_path_candidates(path: Path) -> list[RawRepoPathCandidate]
+
+read_jsonl_repo_path_candidates_once(path: Path) -> list[RawRepoPathCandidate]
+
+verify_repo_path_candidates(
+    candidates: Sequence[RawRepoPathCandidate],
+    *,
+    verification_cache: VerificationCache,
+) -> list[RepoPathObservation]
+
+collect_state_repo_path_observations(
+    session_dirs: list[Path],
+    *,
+    verification_cache: VerificationCache,
+) -> list[RepoPathObservation]
+
 collect_repo_path_observations(
     session_dirs: list[Path],
     session_files: list[Path],
 ) -> list[RepoPathObservation]
+
+collect_repo_path_observations_with_report(
+    session_dirs: list[Path],
+    session_files: list[Path],
+    *,
+    max_workers: int | None = None,
+) -> tuple[list[RepoPathObservation], ParallelRunReport]
 ```
 
-Keep a private `_collect_repo_path_observations(session_dirs, session_files, *, max_workers: int)` entry for deterministic serial/parallel tests. Re-export the public function from `project_transitions.py`; do not change `infer_project_transitions` or `_observation_sort_key`.
+Workers decode JSONL and extract ordered raw candidates only. They never call `Path.exists`, `Path.resolve`, `normalize_project_key`, Git config readers, or SQLite. `read_jsonl_repo_path_candidates_once` opens and completely reads one file while preserving the current `errors="ignore"`, line order, thread-ID updates, event selection, path order, and malformed-line skip behavior. `collect_jsonl_repo_path_candidates` is the tenacity-decorated wrapper with `retry=retry_if_exception_type((OSError, UnicodeDecodeError))`, `stop=stop_after_attempt(3)`, `wait=wait_exponential(multiplier=0.05, min=0.05, max=0.2)`, and `reraise=True`. After retries are exhausted, `scan_transition_request` catches only `(OSError, UnicodeDecodeError)` and returns `TransitionScanResult(request, (), f"{type(error).__name__}: {error}", span)`; parent collection skips that file exactly as the current serial scanner does. Other exceptions propagate and do not trigger per-file tolerance or process-pool fallback.
 
-- [ ] **Step 5: Run transition, cache, and CLI equivalence suites and verify GREEN**
+The parent sorts complete scan results by request ordinal, preserving line/candidate order within each result. It creates one `VerificationCache`, verifies every JSONL candidate in that order, then passes the same cache object to fully typed `collect_state_repo_path_observations`. State rows retain current session-dir, query-row, field, and candidate order. One unchanged dedupe/sort runs after both sources. This preserves the current globally shared path-verification semantics across files and across JSONL/state evidence.
 
-Run:
+### Audit And Acceptance Types
 
-```bash
-uv run pytest tests/test_parallel_project_transition_evidence.py tests/test_project_transition_evidence.py tests/test_project_transition_detection.py tests/test_project_transitions.py tests/test_cli_transitions.py tests/test_session_cache_parallel.py -q
+```text
+write_parallel_audit(
+    path: Path,
+    *,
+    parent_pid: int,
+    usage_run: ParallelRunReport,
+    transition_run: ParallelRunReport,
+) -> Path
+
+require_actual_parallel(
+    report: ParallelRunReport,
+    *,
+    parent_pid: int,
+    label: str,
+) -> None
+
+validate_target_architecture(
+    expected_target: Literal["darwin-arm64", "win32-x64"],
+    *,
+    sys_platform: str,
+    machine: str,
+) -> None
+
+scripts.parallel_cache_acceptance.main(argv: list[str] | None = None) -> int
+scripts.packaged_parallel_cache_smoke.main(argv: list[str] | None = None) -> int
+scripts.parser_equivalence_check.main(argv: list[str] | None = None) -> int
 ```
 
-Expected: PASS; parallel and serial observations and `ProjectTransition` objects compare exactly, and tracked SQLite opens all use the parent PID.
+Audit JSON version 1 has exactly `version`, `parent_pid`, `sys_platform`, `machine`, `usage_run`, and `transition_run`. Each run object has exactly `resolved_worker_count`, `worker_pids`, `max_concurrency`, `used_serial_fallback`, `infrastructure_error`, `span_count`, and `file_error_count`. It contains no source path, session/thread ID, project identity, timestamp, token count, or event content. `require_actual_parallel` raises `RuntimeError(f"{label}: actual process parallelism not observed")` unless `report.actually_parallel(parent_pid)` is true. `validate_target_architecture` applies the exact platform/machine sets in Task 6 and raises `RuntimeError` on mismatch. The explicit audit option does not alter normal stdout payloads.
 
-- [ ] **Step 6: Commit parallel transition scanning**
+## Transaction And No-Checkpoint Contract
 
-```bash
-git add src/codex_usage/project_transition_evidence.py src/codex_usage/project_transition_state.py src/codex_usage/project_transition_collection.py src/codex_usage/project_transitions.py src/codex_usage/parallel/__init__.py src/codex_usage/parallel/transitions.py tests/test_parallel_project_transition_evidence.py tests/test_project_transition_evidence.py
-git commit -m "perf: scan project transitions in parallel"
-```
+The parent commits missing/reuse metadata in a short preflight transaction. It then builds parse requests in exact inventory order and passes contiguous groups of eight to one persistent mapper. No write transaction is open while a group executes. When all eight or the final smaller group return, the parent verifies request equality and unique ordinals, sorts defensively, begins `IMMEDIATE`, applies each complete success/error, marks transitions dirty, and commits. Validation, insertion, interruption, or commit-path failure rolls back that complete group; earlier groups stay committed.
 
-### Task 5: PyInstaller Freeze Support And Native No-Recursion Smoke
+A successful replacement deletes old child rows only after its full `tuple[UsageRecord, ...]` is in the parent transaction. A worker error updates the existing file's error/last-seen fields without deleting old child rows, or inserts only an errored file row when no prior success exists. Size/mtime persisted from the request make growth during or after parsing invalidate the next inventory.
+
+This is not an incremental append checkpoint. Workers reopen at byte zero and persist no offset, partial line, token baseline, tail digest, or parser state. After interruption, a file has its old complete generation, a committed new complete generation, or an error retaining its old complete generation. Eight-file transactions change recovery granularity only.
+
+## File Map
+
+| Path | Planned responsibility |
+| --- | --- |
+| `src/codex_usage/parser.py` | Read only: unchanged parser/finalizer and usage semantics. |
+| `src/codex_usage/session_inventory.py` | Read only: inventory generation and ordering authority. |
+| `src/codex_usage/parallel/__init__.py` | Re-export fully typed public internal parallel contracts. |
+| `src/codex_usage/parallel/execution.py` | Worker span/report, worker count, spawn mapper, infrastructure-only fallback. |
+| `src/codex_usage/parallel/usage.py` | Pickle-safe usage request/result and retrying top-level worker. |
+| `src/codex_usage/parallel/transitions.py` | Pickle-safe transition request/result and retrying raw-candidate worker. |
+| `src/codex_usage/session_cache_models.py` | Cache dataclasses and non-persisted run reports. |
+| `src/codex_usage/session_cache_schema.py` | Existing schema constants/SQL/rebuild/snapshot unchanged. |
+| `src/codex_usage/session_cache_store.py` | Parent-only cache row replacement/error/load and transition persistence. |
+| `src/codex_usage/session_cache_refresh.py` | Reuse classification, eight-file parse groups, parent transactions/stats/report. |
+| `src/codex_usage/session_cache.py` | Under-500 public facade, connection owner, finalization, transition orchestration. |
+| `src/codex_usage/project_transition_evidence.py` | Existing path extraction/verification/dedupe plus parent candidate verification. |
+| `src/codex_usage/project_transition_candidates.py` | JSONL-only raw candidate extraction; no SQLite/path verification. |
+| `src/codex_usage/project_transition_state.py` | Parent-only fully typed `state_5.sqlite` observations using supplied global cache. |
+| `src/codex_usage/project_transition_collection.py` | Parallel candidate ordering, shared parent cache, state append, final dedupe/report. |
+| `src/codex_usage/project_transitions.py` | Unchanged inference/application; re-export collection facade. |
+| `src/codex_usage/parallel_audit.py` | Aggregate audit JSON validation and atomic write. |
+| `src/codex_usage/cli.py` | Existing command/payload behavior plus suppressed explicit audit path. |
+| `src/codex_usage/__main__.py` | Call `freeze_support()` before CLI import. |
+| `scripts/parallel_cache_acceptance.py` | Importable guarded source cold/warm acceptance. |
+| `scripts/packaged_parallel_cache_smoke.py` | Importable guarded frozen CLI/audit/architecture smoke. |
+| `scripts/parser_equivalence_check.py` | Fresh bounded fixture capture and detached-package digest/compare tool. |
+| `scripts/build-macos-arm64-exe.sh` | macOS/arm64 guard, PyInstaller, parallel and transfer smokes. |
+| `scripts/build-windows-exe.ps1` | Windows/x64 process guard, PyInstaller, parallel and transfer smokes. |
+| `tests/parallel_cache_test_support.py` | Shared deterministic cache/report corpus builder below 500 lines. |
+| `tests/spawn_worker_test_support.py` | Importable child-local SQLite guards and overlap workers below 500 lines. |
+| `tests/project_transition_serial_oracle.py` | Frozen copy of the current shared-cache serial collector used only as oracle. |
+| `tests/parallel_transition_test_support.py` | Deterministic JSONL/state/repository corpus builder below 500 lines. |
+| `tests/test_parallel_execution.py` | Worker-count, span, concurrency, fallback classification, pickle tests. |
+| `tests/test_parallel_cache_recovery.py` | Batch atomicity/interruption/error/growth tests. |
+| `tests/test_parallel_cache_equivalence.py` | Full stats/summary/error/missing/schema equivalence. |
+| `tests/test_parallel_report_equivalence.py` | Aggregation/payload/HTML/range equivalence. |
+| `tests/test_parallel_transition_equivalence.py` | Serial-oracle equality, global cache order, retry/error tests. |
+| `tests/test_spawn_sqlite_isolation.py` | Real spawn child guard and static dependency scans. |
+| `tests/test_parallel_acceptance_scripts.py` | Importability/guards/audit/PID/architecture tests. |
+| `tests/test_parser_equivalence_tool.py` | Self-contained capture/digest/compare CLI tests below 500 lines. |
+
+---
+
+### Task 1: Bounded Spawn Runtime And Observable Fallback
 
 **Files:**
-- Modify: `src/codex_usage/__main__.py:1-7`
-- Create: `scripts/smoke-test-packaged-parallel-cache.py`
-- Modify: `scripts/build-macos-arm64-exe.sh:7-38`
-- Modify: `scripts/build-windows-exe.ps1:6-43`
-- Create: `tests/test_packaged_parallel_cache_smoke.py`
-- Modify: `tests/test_github_actions_workflow.py:17-93`
+- Create: `src/codex_usage/parallel/__init__.py`
+- Create: `src/codex_usage/parallel/execution.py`
+- Create: `tests/spawn_worker_test_support.py`
+- Create: `tests/test_parallel_execution.py`
 
 **Interfaces:**
-- Produces: early `freeze_support()` dispatch and one native executable smoke used by both package scripts.
-- Verifies: a frozen parallel cold refresh and transition scan complete without recursive CLI startup or serial-fallback warning on macOS arm64 and Windows x64.
+- Produces all Execution Types exactly as declared above.
+- Leaves application parsing, cache, transitions, CLI, and outputs unchanged.
 
-- [ ] **Step 1: Write failing entrypoint and workflow contract tests**
+- [ ] **Step 1: Write exact failing runtime tests**
 
-Assert the entrypoint contains `freeze_support()` inside the `__main__` guard before `from codex_usage.cli import main`. Assert each native build script invokes both `smoke-test-packaged-sync.py` and `smoke-test-packaged-parallel-cache.py`. Assert the `windows-2025` and `macos-26` workflow jobs run their package command, which reaches the corresponding build script.
+`tests/spawn_worker_test_support.py` defines these importable top-level types/functions; use `Any` only for `SyncManager` proxy fields because their runtime proxy classes are private:
 
-In `tests/test_packaged_parallel_cache_smoke.py`, import the smoke module and test its fixture creation and payload validator with a subprocess double. Require nine session files, exact total tokens, at least one inferred transition, a nonempty cache, and rejection of stderr containing `SERIAL_FALLBACK_WARNING`.
+```python
+@dataclass(frozen=True, slots=True)
+class OverlapRequest:
+    ordinal: int
+    barrier: Any
+    active: Any
+    peak: Any
+    lock: Any
 
-- [ ] **Step 2: Run static/package-smoke tests and verify RED**
+
+@dataclass(frozen=True, slots=True)
+class OverlapResult:
+    ordinal: int
+    span: WorkerSpan
+
+
+def overlap_worker(request: OverlapRequest) -> OverlapResult:
+    started = time.monotonic_ns()
+    pid = os.getpid()
+    with request.lock:
+        request.active.value += 1
+        request.peak.value = max(request.peak.value, request.active.value)
+    request.barrier.wait(timeout=20)
+    with request.lock:
+        request.active.value -= 1
+    return OverlapResult(
+        ordinal=request.ordinal,
+        span=WorkerSpan(pid=pid, started_ns=started, finished_ns=time.monotonic_ns()),
+    )
+```
+
+`tests/test_parallel_execution.py` contains complete tests with no local worker callable:
+
+```python
+def test_resolve_worker_count_uses_process_cpu_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def process_cpu_count() -> int:
+        nonlocal calls
+        calls += 1
+        return 64
+
+    monkeypatch.setattr(os, "process_cpu_count", process_cpu_count)
+    assert resolve_worker_count(0) == 0
+    assert resolve_worker_count(1) == 1
+    assert resolve_worker_count(100) == 4
+    assert calls == 2
+    assert resolve_worker_count(100, available_cpus=2) == 2
+    assert calls == 2
+
+
+def test_spawn_mapper_proves_two_overlapping_child_pids() -> None:
+    parent_pid = os.getpid()
+    with multiprocessing.Manager() as manager:
+        barrier = manager.Barrier(2)
+        active = manager.Value("i", 0)
+        peak = manager.Value("i", 0)
+        lock = manager.Lock()
+        requests = [OverlapRequest(index, barrier, active, peak, lock) for index in range(2)]
+        with OrderedProcessMapper(overlap_worker, task_count=2, max_workers=2) as mapper:
+            results = mapper.map_batch(requests)
+        peak_value = peak.value
+    report = ParallelRunReport(
+        resolved_worker_count=mapper.worker_count,
+        worker_spans=tuple(result.span for result in results),
+        used_serial_fallback=mapper.used_serial_fallback,
+        infrastructure_error=mapper.infrastructure_error,
+        file_error_count=0,
+    )
+    assert peak_value == 2
+    assert report.worker_pids == tuple(result.span.pid for result in results)
+    assert parent_pid not in report.worker_pids
+    assert report.max_concurrency == 2
+    assert report.actually_parallel(parent_pid) is True
+```
+
+The same test module defines the following top-level spawn-safe callables and executor double. Production exposes no test-only hook; tests replace the module-owned `ProcessPoolExecutor`/`as_completed` names.
+
+```python
+from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import Future
+from concurrent.futures.process import BrokenProcessPool
+from multiprocessing.context import BaseContext
+from typing import ClassVar, Never
+
+
+WORKER_CALLS: list[int] = []
+
+
+def recording_worker(value: int) -> int:
+    WORKER_CALLS.append(value)
+    return value * 10
+
+
+def value_error_worker(value: int) -> int:
+    raise ValueError(f"bad worker value {value}")
+
+
+def interrupt_worker(value: int) -> int:
+    raise KeyboardInterrupt(value)
+
+
+class StubExecutor:
+    fail_on: ClassVar[int | None] = None
+
+    def __init__(self, *, max_workers: int, mp_context: BaseContext) -> None:
+        self.max_workers = max_workers
+        self.mp_context = mp_context
+        self.futures: list[Future[int]] = []
+        self.shutdown_calls: list[tuple[bool, bool]] = []
+
+    def submit(self, worker: Callable[[int], int], request: int) -> Future[int]:
+        future: Future[int] = Future()
+        if request == self.fail_on:
+            future.set_exception(BrokenProcessPool(f"transport failed for {request}"))
+        else:
+            future.set_result(worker(request))
+        self.futures.append(future)
+        return future
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        self.shutdown_calls.append((wait, cancel_futures))
+
+
+def reversed_completed(futures: Iterable[Future[int]]) -> Iterator[Future[int]]:
+    return iter(reversed(list(futures)))
+
+
+def raising_executor(*args: object, **kwargs: object) -> Never:
+    raise OSError("spawn unavailable")
+
+
+@pytest.fixture(autouse=True)
+def reset_executor_double() -> Iterator[None]:
+    WORKER_CALLS.clear()
+    StubExecutor.fail_on = None
+    yield
+    WORKER_CALLS.clear()
+    StubExecutor.fail_on = None
+```
+
+Add these exact bodies:
+
+```python
+def test_reverse_future_completion_keeps_request_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(execution_module, "ProcessPoolExecutor", StubExecutor)
+    monkeypatch.setattr(execution_module, "as_completed", reversed_completed)
+    with OrderedProcessMapper(recording_worker, task_count=3, max_workers=3) as mapper:
+        assert mapper.map_batch([1, 2, 3]) == [10, 20, 30]
+    assert mapper.used_serial_fallback is False
+
+
+def test_constructor_oserror_falls_back_once_and_is_observable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(execution_module, "ProcessPoolExecutor", raising_executor)
+    with pytest.warns(RuntimeWarning, match=re.escape(SERIAL_FALLBACK_WARNING)) as caught:
+        with OrderedProcessMapper(recording_worker, task_count=2, max_workers=2) as mapper:
+            assert mapper.map_batch([1, 2]) == [10, 20]
+    assert len(caught) == 1
+    assert mapper.used_serial_fallback is True
+    assert mapper.infrastructure_error == "OSError: spawn unavailable"
+
+
+def test_broken_pool_reruns_current_group_but_not_committed_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    StubExecutor.fail_on = 3
+    monkeypatch.setattr(execution_module, "ProcessPoolExecutor", StubExecutor)
+    with pytest.warns(RuntimeWarning, match=re.escape(SERIAL_FALLBACK_WARNING)) as caught:
+        with OrderedProcessMapper(recording_worker, task_count=3, max_workers=2) as mapper:
+            assert mapper.map_batch([1]) == [10]
+            assert mapper.map_batch([2, 3]) == [20, 30]
+    assert len(caught) == 1
+    assert WORKER_CALLS == [1, 2, 2, 3]
+    assert mapper.used_serial_fallback is True
+    assert mapper.infrastructure_error == "BrokenProcessPool: transport failed for 3"
+
+
+def test_worker_value_error_is_not_pool_fallback() -> None:
+    with OrderedProcessMapper(value_error_worker, task_count=1, max_workers=1) as mapper:
+        with pytest.raises(ValueError, match="bad worker value 7"):
+            mapper.map_batch([7])
+    assert mapper.used_serial_fallback is False
+    assert mapper.infrastructure_error == ""
+
+
+def test_keyboard_interrupt_is_never_caught() -> None:
+    with OrderedProcessMapper(interrupt_worker, task_count=1, max_workers=1) as mapper:
+        with pytest.raises(KeyboardInterrupt):
+            mapper.map_batch([7])
+    assert mapper.used_serial_fallback is False
+
+
+@pytest.mark.parametrize(("task_count", "max_workers"), [(-1, 1), (1, 0)])
+def test_invalid_worker_counts_raise(task_count: int, max_workers: int) -> None:
+    with pytest.raises(ValueError):
+        resolve_worker_count(task_count, available_cpus=8, max_workers=max_workers)
+```
+
+- [ ] **Step 2: Verify RED**
+
+Run: `uv run pytest tests/test_parallel_execution.py -q`
+
+Expected: import fails because `codex_usage.parallel.execution` does not exist.
+
+- [ ] **Step 3: Implement exact runtime contracts**
+
+Implement the declared types and validation. Use `as_completed` to fill a position-indexed list. Catch infrastructure errors only at executor construction/submission/result transport; ordinary future exceptions propagate. On infrastructure fallback, discard the current group's read-only values, close/cancel the pool, warn once, run that group serially, and remain serial for later groups. Never catch `BaseException`.
+
+- [ ] **Step 4: Verify GREEN and branch integrity**
 
 Run:
 
 ```bash
-uv run pytest tests/test_packaged_parallel_cache_smoke.py tests/test_github_actions_workflow.py -q
+uv run pytest tests/test_parallel_execution.py tests/test_python_source_size.py -q
+uv run pytest -q
 ```
 
-Expected: FAIL because `freeze_support` and the packaged parallel-cache smoke are absent.
+Expected: PASS; real spawn observes two overlapping non-parent PIDs and all existing tests remain green.
 
-- [ ] **Step 3: Make the frozen entrypoint dispatch multiprocessing first**
+- [ ] **Step 5: Commit**
 
-Implement exactly:
+```bash
+git add src/codex_usage/parallel/__init__.py src/codex_usage/parallel/execution.py tests/spawn_worker_test_support.py tests/test_parallel_execution.py
+git commit -m "feat: add observable process worker runtime"
+```
+
+### Task 2: Split Cache Ownership Without Behavioral Change
+
+**Files:**
+- Create: `src/codex_usage/session_cache_models.py`
+- Create: `src/codex_usage/session_cache_schema.py`
+- Create: `src/codex_usage/session_cache_store.py`
+- Modify: `src/codex_usage/session_cache.py`
+- Modify: `tests/test_session_cache.py`
+- Modify: `tests/test_cli_transitions.py`
+- Modify: `tests/test_python_source_size.py`
+
+**Interfaces:**
+- Preserves every existing import from `codex_usage.session_cache` through re-exports.
+- Produces parent-only `replace_file_generation(connection: sqlite3.Connection, session_dirs: list[Path], entry: SessionFileInventoryEntry, records: tuple[UsageRecord, ...]) -> None` and `record_file_error(connection: sqlite3.Connection, session_dirs: list[Path], entry: SessionFileInventoryEntry, error: str) -> None`, neither of which commits.
+- Makes `session_cache.py` and all new modules shorter than 500 lines.
+
+- [ ] **Step 1: Add a deterministic RED size guard**
+
+Remove `src/codex_usage/session_cache.py` from `LEGACY_OVERSIZED_FILES` and add:
 
 ```python
-from __future__ import annotations
+def test_session_cache_facade_stays_under_500_lines() -> None:
+    path = REPOSITORY_ROOT / "src" / "codex_usage" / "session_cache.py"
+    assert _line_count(path) < 500
+```
 
-from multiprocessing import freeze_support
+Run: `uv run pytest tests/test_python_source_size.py tests/test_session_cache.py tests/test_cli_transitions.py -q`
+
+Expected: only the direct facade-size test fails at the current 767 lines.
+
+- [ ] **Step 2: Move existing code with SQL text unchanged**
+
+Move cache dataclasses to models; schema constants/create/match/rebuild/snapshot/restore to schema; row replacement/error/load, summaries, dirty state, and atomic transition replacement/load to store. Preserve table statement strings and public re-exports exactly. Keep the connection open only in `session_cache.py`.
+
+Update moved-private-helper monkeypatches to their owning modules. Do not yet parallelize. Add empty `usage_run`/`transition_run` fields only after Task 3 introduces the report into cache models.
+
+- [ ] **Step 3: Verify branch integrity**
+
+Run:
+
+```bash
+uv run pytest tests/test_session_cache.py tests/test_cli_transitions.py tests/test_sync_inventory.py tests/test_sync_selection_inventory_loading.py tests/test_python_source_size.py -q
+uv run pytest -q
+```
+
+Expected: PASS; `git diff` shows moved behavior and no SQL/version edit.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/codex_usage/session_cache.py src/codex_usage/session_cache_models.py src/codex_usage/session_cache_schema.py src/codex_usage/session_cache_store.py tests/test_session_cache.py tests/test_cli_transitions.py tests/test_python_source_size.py
+git commit -m "refactor: separate usage cache ownership"
+```
+
+### Task 3: Parallel Whole-File Parse And Eight-File Parent Commits
+
+**Files:**
+- Create: `src/codex_usage/parallel/usage.py`
+- Create: `src/codex_usage/session_cache_refresh.py`
+- Modify: `src/codex_usage/parallel/__init__.py`
+- Modify: `src/codex_usage/session_cache_models.py`
+- Modify: `src/codex_usage/session_cache.py`
+- Create: `tests/parallel_cache_test_support.py`
+- Create: `tests/test_parallel_cache_recovery.py`
+- Modify: `tests/test_session_cache.py`
+- Modify: `tests/test_sync_runner_validation.py`
+
+**Interfaces:**
+- Produces all Usage Worker Types and transaction behavior declared above.
+- Keeps `CacheStats` exact and adds only non-persisted run reports to `CachedSessionData`.
+
+- [ ] **Step 1: Create importable deterministic corpus support**
+
+`tests/parallel_cache_test_support.py` defines a frozen `UsageCorpus` with fully typed `sessions: Path`, `ordered_paths: tuple[Path, ...]`, `corrupt_path: Path`, `missing_path: Path`, and `recent_old_metadata_path: Path`. `write_usage_corpus(root: Path) -> UsageCorpus` writes nine files in sortable names: normal, parent, structured subagent, fork replay, Unicode-escaped event names, empty valid, future-missing, old-start/old-mtime with a current token event, and invalid UTF-8. Use fixed token totals and current UTC only for the recent event; return every path explicitly. The module also provides:
+
+```text
+load_serial(corpus: UsageCorpus, cache_dir: Path, *, auto_transitions: bool) -> CachedSessionData
+load_parallel(corpus: UsageCorpus, cache_dir: Path, *, auto_transitions: bool) -> CachedSessionData
+```
+
+`load_serial` calls `load_cached_session_data(..., max_workers=1)`; `load_parallel` calls `max_workers=4`. No pytest fixture or closure crosses spawn.
+
+The same module defines every recovery-test dependency explicitly:
+
+```text
+GenerationSnapshot = tuple[tuple[object, ...], ...]
+
+write_valid_usage_set(root: Path, *, count: int) -> tuple[Path, tuple[Path, ...]]
+append_cumulative_token_total(path: Path, *, total_tokens: int, timestamp: str) -> None
+complete_generation_snapshot(cache_dir: Path) -> GenerationSnapshot
+
+SerialTestMapper[RequestT, ResultT](worker: Callable[[RequestT], ResultT], *, task_count: int, max_workers: int)
+SerialTestMapper.worker_count -> int
+SerialTestMapper.used_serial_fallback -> bool
+SerialTestMapper.infrastructure_error -> str
+SerialTestMapper.map_batch(requests: Sequence[RequestT]) -> list[ResultT]
+SerialTestMapper.__enter__() -> Self
+SerialTestMapper.__exit__(exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None
+
+ReverseResultMapper[RequestT, ResultT](SerialTestMapper[RequestT, ResultT])
+InterruptAfterFirstBatchMapper[RequestT, ResultT](SerialTestMapper[RequestT, ResultT])
+```
+
+`write_valid_usage_set` rejects counts below one and writes sortable `000.jsonl` through `{count - 1:03d}.jsonl`, each with one `session_meta` and one cumulative `token_count` at a fixed UTC timestamp; file `i` totals `100 + i`. `append_cumulative_token_total` appends one valid event. `complete_generation_snapshot` reads the cache read-only and returns ordered tuples from `files` excluding `last_seen_at`, followed by all ordered `usage_records` and `session_metadata`; it therefore compares every persisted complete-generation field without a volatile observation timestamp. `SerialTestMapper` executes the supplied top-level worker in request order, reports the resolved deterministic worker count but no fallback, and implements the declared context manager. `ReverseResultMapper.map_batch` returns those results reversed. `InterruptAfterFirstBatchMapper.map_batch` delegates its first call and raises `KeyboardInterrupt("after first committed batch")` before evaluating its second call. These doubles remain test-only and below 500 lines.
+
+- [ ] **Step 2: Write exact failing worker and recovery tests**
+
+`tests/test_parallel_cache_recovery.py` includes full-body tests that construct their corpus locally:
+
+```python
+def test_usage_request_and_result_are_pickle_safe(tmp_path: Path) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    path = corpus.ordered_paths[0]
+    stat = path.stat()
+    request = UsageParseRequest(0, path.stem, path, stat.st_size, stat.st_mtime_ns)
+    assert pickle.loads(pickle.dumps(request)) == request
+    result = parse_usage_request(request)
+    assert result.error == ""
+    assert result.records
+    assert result.span.pid == os.getpid()
+    assert pickle.loads(pickle.dumps(result)) == result
 
 
+def test_usage_file_error_is_data_not_pool_fallback(tmp_path: Path) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    path = corpus.corrupt_path
+    stat = path.stat()
+    request = UsageParseRequest(0, path.stem, path, stat.st_size, stat.st_mtime_ns)
+    with OrderedProcessMapper(parse_usage_request, task_count=1, max_workers=1) as mapper:
+        result = mapper.map_batch([request])[0]
+    assert result.records == ()
+    assert result.error.startswith("UnicodeDecodeError: ")
+    assert mapper.used_serial_fallback is False
+    assert mapper.infrastructure_error == ""
+```
+
+Add these full bodies. Every monkeypatch affects parent-owned orchestration and every load under a monkeypatch is forced through an importable serial test mapper; no test expects a patch to enter a spawned child.
+
+```python
+def test_reverse_completion_preserves_inventory_record_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions, paths = write_valid_usage_set(tmp_path / "codex", count=9)
+    monkeypatch.setattr(refresh_module, "OrderedProcessMapper", ReverseResultMapper)
+    data = load_cached_session_data(
+        [sessions], cache_dir=tmp_path / "cache", auto_transitions=False, max_workers=4
+    )
+    assert data.files == list(paths)
+    assert [record.file_path for record in data.records] == list(paths)
+    assert [record.usage.total_tokens for record in data.records] == list(range(100, 109))
+
+
+def test_worker_error_retains_old_complete_rows_and_retries(tmp_path: Path) -> None:
+    sessions, (path,) = write_valid_usage_set(tmp_path / "codex", count=1)
+    cache_dir = tmp_path / "cache"
+    initial = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    old_snapshot = complete_generation_snapshot(cache_dir)
+    path.write_bytes(b"\xff\xfe")
+
+    failed = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert failed.stats.file_errors == 1
+    assert failed.stats.files_parsed == 1
+    assert failed.records == initial.records
+    assert failed.file_errors[str(path)].startswith("UnicodeDecodeError: ")
+    assert complete_generation_snapshot(cache_dir) != old_snapshot
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        assert connection.execute("select count(*) from usage_records").fetchone() == (1,)
+        assert connection.execute("select count(*) from session_metadata").fetchone() == (1,)
+
+    write_valid_usage_set(tmp_path / "replacement", count=1)[1][0].replace(path)
+    recovered = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert recovered.stats.files_parsed == 1
+    assert recovered.stats.file_errors == 0
+    assert recovered.file_errors == {}
+    assert [record.usage.total_tokens for record in recovered.records] == [100]
+
+
+def test_insert_failure_rolls_back_all_eight_replacements(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions, paths = write_valid_usage_set(tmp_path / "codex", count=8)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1)
+    before = complete_generation_snapshot(cache_dir)
+    for index, path in enumerate(paths):
+        append_cumulative_token_total(
+            path, total_tokens=200 + index, timestamp=f"2026-07-31T12:{index:02d}:00Z"
+        )
+
+    calls = 0
+    original = refresh_module.replace_file_generation
+
+    def fail_second_replacement(
+        connection: sqlite3.Connection,
+        session_dirs: list[Path],
+        entry: SessionFileInventoryEntry,
+        records: tuple[UsageRecord, ...],
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise sqlite3.IntegrityError("injected second replacement failure")
+        original(connection, session_dirs, entry, records)
+
+    monkeypatch.setattr(refresh_module, "replace_file_generation", fail_second_replacement)
+    with pytest.raises(sqlite3.IntegrityError, match="injected second replacement failure"):
+        load_cached_session_data(
+            [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+        )
+    assert calls == 2
+    assert complete_generation_snapshot(cache_dir) == before
+
+
+def test_interrupt_after_first_group_reuses_exactly_eight_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions, paths = write_valid_usage_set(tmp_path / "codex", count=9)
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(refresh_module, "OrderedProcessMapper", InterruptAfterFirstBatchMapper)
+    with pytest.raises(KeyboardInterrupt, match="after first committed batch"):
+        load_cached_session_data(
+            [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=4
+        )
+    monkeypatch.undo()
+
+    resumed = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert resumed.stats.files_reused == 8
+    assert resumed.stats.files_parsed == 1
+    assert [record.file_path for record in resumed.records] == list(paths)
+    assert sum(record.usage.total_tokens for record in resumed.records) == sum(range(100, 109))
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        assert connection.execute(
+            "select count(*) from (select file_key, record_index from usage_records "
+            "group by file_key, record_index having count(*) = 1)"
+        ).fetchone() == (9,)
+        assert tuple(connection.execute(
+            "select key, value from schema_meta where key in "
+            "('schema_version','parser_version','project_transition_version') order by key"
+        )) == (
+            ("parser_version", "2"),
+            ("project_transition_version", "1"),
+            ("schema_version", "3"),
+        )
+
+
+def test_growth_after_parse_forces_next_load_reparse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions, (path,) = write_valid_usage_set(tmp_path / "codex", count=1)
+    cache_dir = tmp_path / "cache"
+    original = refresh_module.parse_usage_request
+    grew = False
+
+    def parse_then_grow(request: UsageParseRequest) -> UsageParseResult:
+        nonlocal grew
+        result = original(request)
+        if not grew:
+            append_cumulative_token_total(
+                path, total_tokens=160, timestamp="2026-07-31T12:30:00Z"
+            )
+            grew = True
+        return result
+
+    monkeypatch.setattr(refresh_module, "parse_usage_request", parse_then_grow)
+    first = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    monkeypatch.undo()
+    second = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert [record.usage.total_tokens for record in first.records] == [100]
+    assert second.stats.files_parsed == 1
+    assert [record.usage.total_tokens for record in second.records] == [100, 60]
+```
+
+- [ ] **Step 3: Verify RED**
+
+Run: `uv run pytest tests/test_parallel_cache_recovery.py -q`
+
+Expected: import fails because usage worker/refresh modules do not exist.
+
+- [ ] **Step 4: Implement worker and parent refresh**
+
+Implement the exact retry/result/span contract. In `refresh_files`, commit missing/reuse preflight separately, build inventory-ordinal requests, reuse one mapper, process `itertools.batched(requests, 8)`, validate all result requests before `BEGIN IMMEDIATE`, and commit/rollback as specified. Assemble one `ParallelRunReport` from all spans and mapper flags. Per-file errors count in `CacheStats.files_parsed`/`file_errors` and never trigger mapper fallback.
+
+Add keyword-only `max_workers` to `load_cached_session_data`. Existing monkeypatch-based cache tests must pass `max_workers=1` and patch `codex_usage.parallel.usage.parse_session_file` or the new owning parent helper. Explicitly update every existing test that expects an in-process monkeypatch; do not rely on fork inheritance.
+
+- [ ] **Step 5: Verify branch integrity**
+
+Run:
+
+```bash
+uv run pytest tests/test_parallel_execution.py tests/test_parallel_cache_recovery.py tests/test_session_cache.py tests/test_parser_aggregation.py tests/test_parser_relevance_gate.py tests/test_session_provenance.py tests/test_token_usage.py tests/test_pricing.py tests/test_python_source_size.py -q
+uv run pytest -q
+```
+
+Expected: PASS with exact usage semantics and all changed files below 500 lines.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/codex_usage/parallel/__init__.py src/codex_usage/parallel/usage.py src/codex_usage/session_cache.py src/codex_usage/session_cache_models.py src/codex_usage/session_cache_refresh.py tests/parallel_cache_test_support.py tests/test_parallel_cache_recovery.py tests/test_session_cache.py tests/test_sync_runner_validation.py
+git commit -m "perf: commit parallel whole-file cache groups"
+```
+
+### Task 4: Raw Transition Workers And One Parent Verification Cache
+
+**Files:**
+- Create: `src/codex_usage/project_transition_candidates.py`
+- Create: `src/codex_usage/project_transition_state.py`
+- Create: `src/codex_usage/project_transition_collection.py`
+- Create: `src/codex_usage/parallel/transitions.py`
+- Modify: `src/codex_usage/project_transition_evidence.py`
+- Modify: `src/codex_usage/project_transitions.py`
+- Modify: `src/codex_usage/session_cache.py`
+- Modify: `src/codex_usage/parallel/__init__.py`
+- Create: `tests/project_transition_serial_oracle.py`
+- Create: `tests/parallel_transition_test_support.py`
+- Create: `tests/test_parallel_transition_equivalence.py`
+- Create: `tests/test_spawn_sqlite_isolation.py`
+- Modify: `tests/spawn_worker_test_support.py`
+- Modify: `tests/test_project_transition_evidence.py`
+- Modify: `tests/test_cli_transitions.py`
+
+**Interfaces:**
+- Produces all Transition Candidate And Parent Verification Types exactly as declared.
+- Preserves the current serial collector as an independent test oracle with one shared verification cache.
+- Proves worker SQLite isolation dynamically inside spawned children and statically by import/dependency scan.
+
+- [ ] **Step 1: Freeze the untouched serial oracle before production refactor**
+
+Copy `collect_repo_path_observations`, its JSONL loop, state loop, shared `_VerificationCache`, cached verification helper, and final dedupe ordering directly from `git show 1fbe7de:src/codex_usage/project_transition_evidence.py` into `tests/project_transition_serial_oracle.py`. Change imports only so the oracle calls the public extraction/normalization types that were already present at `1fbe7de`. Add a source header `Frozen from 1fbe7de; do not refactor with production collectors` and a test asserting the oracle passes one cache object through JSONL and state collection. Do not modify this oracle in later steps and never build expected observations with a newly extracted production helper.
+
+Create `tests/parallel_transition_test_support.py` with no pytest fixtures and these exact contracts:
+
+```text
+TransitionCorpus(
+    session_dirs: tuple[Path, ...],
+    session_files: tuple[Path, ...],
+    repeated_repo: Path,
+)
+
+write_transition_corpus(root: Path, *, repeat_same_path: bool = False) -> TransitionCorpus
+```
+
+The builder creates two repositories with literal `.git/config` origin URLs `https://github.com/example/alpha.git` and `https://github.com/example/beta.git`; two ordered JSONLs containing session metadata, valid function-call workdirs, a malformed JSON line, ignored user/output paths, and invalid UTF-8 bytes; and `<codex-home>/state_5.sqlite` with the current minimal `threads(id, cwd, updated_at)` schema. Timestamps and thread IDs are fixed. With `repeat_same_path=True`, the alpha path appears in both JSONLs and the state row, so a single shared cache must resolve it once. The returned tuples are already in serial inventory order.
+
+- [ ] **Step 2: Write exact failing candidate/oracle/retry tests**
+
+`tests/test_parallel_transition_equivalence.py` writes its files and repositories inside each test; no undefined fixture is referenced. Include these complete bodies:
+
+```python
+def test_parallel_collection_equals_frozen_serial_oracle(tmp_path: Path) -> None:
+    corpus = write_transition_corpus(tmp_path)
+    session_dirs = list(corpus.session_dirs)
+    session_files = list(corpus.session_files)
+    expected = serial_oracle.collect_repo_path_observations(session_dirs, session_files)
+    actual, report = collect_repo_path_observations_with_report(
+        session_dirs,
+        session_files,
+        max_workers=2,
+    )
+    assert actual == expected
+    assert report.resolved_worker_count == 2
+    assert report.used_serial_fallback is False
+
+
+def test_parent_uses_one_cache_across_jsonl_files_and_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    corpus = write_transition_corpus(tmp_path, repeat_same_path=True)
+    session_dirs = list(corpus.session_dirs)
+    session_files = list(corpus.session_files)
+    seen_cache_ids: list[int] = []
+    resolutions: list[str] = []
+    original_verify = evidence_module.verify_repo_path_candidates
+    original_state = state_module.collect_state_repo_path_observations
+    original_resolve = evidence_module.verified_repo_observation_from_path
+
+    def track_verify(candidates: Sequence[RawRepoPathCandidate], *, verification_cache: VerificationCache) -> list[RepoPathObservation]:
+        seen_cache_ids.append(id(verification_cache))
+        return original_verify(candidates, verification_cache=verification_cache)
+
+    def track_state(session_dirs: list[Path], *, verification_cache: VerificationCache) -> list[RepoPathObservation]:
+        seen_cache_ids.append(id(verification_cache))
+        return original_state(session_dirs, verification_cache=verification_cache)
+
+    def track_resolution(
+        raw_path: str | Path,
+        timestamp: datetime,
+        thread_id: str,
+        source: str,
+    ) -> RepoPathObservation | None:
+        resolutions.append(str(raw_path))
+        return original_resolve(raw_path, timestamp, thread_id, source)
+
+    monkeypatch.setattr(evidence_module, "verify_repo_path_candidates", track_verify)
+    monkeypatch.setattr(state_module, "collect_state_repo_path_observations", track_state)
+    monkeypatch.setattr(evidence_module, "verified_repo_observation_from_path", track_resolution)
+    collect_repo_path_observations_with_report(session_dirs, session_files, max_workers=1)
+    assert len(seen_cache_ids) == len(session_files) + 1
+    assert len(set(seen_cache_ids)) == 1
+    assert resolutions.count(str(corpus.repeated_repo)) == 1
+
+
+def test_transition_request_result_pickle_and_reverse_order_match_oracle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = write_transition_corpus(tmp_path)
+    requests = tuple(
+        TransitionScanRequest(ordinal, path)
+        for ordinal, path in enumerate(corpus.session_files)
+    )
+    assert pickle.loads(pickle.dumps(requests)) == requests
+    direct = scan_transition_request(requests[0])
+    assert pickle.loads(pickle.dumps(direct)) == direct
+
+    expected = serial_oracle.collect_repo_path_observations(
+        list(corpus.session_dirs), list(corpus.session_files)
+    )
+    monkeypatch.setattr(collection_module, "OrderedProcessMapper", ReverseResultMapper)
+    actual, report = collect_repo_path_observations_with_report(
+        list(corpus.session_dirs), list(corpus.session_files), max_workers=2
+    )
+    assert actual == expected
+    assert report.used_serial_fallback is False
+    assert report.file_error_count == 0
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OSError("transition read unavailable"),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+    ],
+    ids=["oserror", "unicode"],
+)
+def test_transition_read_exhaustion_is_three_attempt_error_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: OSError | UnicodeDecodeError,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    path.write_text("{}\n", encoding="utf-8")
+    calls = 0
+
+    def fail_once(_path: Path) -> list[RawRepoPathCandidate]:
+        nonlocal calls
+        calls += 1
+        raise failure
+
+    monkeypatch.setattr(candidate_module, "read_jsonl_repo_path_candidates_once", fail_once)
+    request = TransitionScanRequest(0, path)
+    with OrderedProcessMapper(scan_transition_request, task_count=1, max_workers=1) as mapper:
+        result = mapper.map_batch([request])[0]
+    assert calls == 3
+    assert result.request == request
+    assert result.candidates == ()
+    assert result.error == f"{type(failure).__name__}: {failure}"
+    assert mapper.used_serial_fallback is False
+    assert mapper.infrastructure_error == ""
+
+
+def test_transition_non_io_error_propagates_without_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    path.write_text("{}\n", encoding="utf-8")
+
+    def fail_once(_path: Path) -> list[RawRepoPathCandidate]:
+        raise ValueError("candidate contract violated")
+
+    monkeypatch.setattr(candidate_module, "read_jsonl_repo_path_candidates_once", fail_once)
+    with OrderedProcessMapper(scan_transition_request, task_count=1, max_workers=1) as mapper:
+        with pytest.raises(ValueError, match="candidate contract violated"):
+            mapper.map_batch([TransitionScanRequest(0, path)])
+    assert mapper.used_serial_fallback is False
+    assert mapper.infrastructure_error == ""
+```
+
+- [ ] **Step 3: Add child-local SQLite guards and static scans**
+
+Extend `tests/spawn_worker_test_support.py` with these exact top-level child callables. The assignment occurs after spawn import inside each child, so it does not rely on a parent monkeypatch:
+
+```python
+def reject_sqlite_connect(*args: object, **kwargs: object) -> Never:
+    raise AssertionError("worker attempted SQLite")
+
+
+def guarded_usage_worker(request: UsageParseRequest) -> UsageParseResult:
+    original = sqlite3.connect
+    sqlite3.connect = reject_sqlite_connect
+    try:
+        return parse_usage_request(request)
+    finally:
+        sqlite3.connect = original
+
+
+def guarded_transition_worker(request: TransitionScanRequest) -> TransitionScanResult:
+    original = sqlite3.connect
+    sqlite3.connect = reject_sqlite_connect
+    try:
+        return scan_transition_request(request)
+    finally:
+        sqlite3.connect = original
+```
+
+`tests/test_spawn_sqlite_isolation.py` defines `local_import_closure(entry_modules: tuple[str, ...]) -> dict[str, tuple[str, ...]]` using `ast.Import`/`ast.ImportFrom` and package paths below `src/codex_usage`; it recursively visits every local import from the worker entry modules, rejects `ast.Call` to `__import__` or `importlib.import_module`, and returns sorted imports per module. Add these complete tests:
+
+```python
+def test_spawned_usage_and_transition_workers_cannot_open_sqlite(tmp_path: Path) -> None:
+    usage_corpus = write_usage_corpus(tmp_path / "usage")
+    usage_requests = []
+    for ordinal, path in enumerate(usage_corpus.ordered_paths[:2]):
+        stat = path.stat()
+        usage_requests.append(
+            UsageParseRequest(ordinal, path.stem, path, stat.st_size, stat.st_mtime_ns)
+        )
+    transition_corpus = write_transition_corpus(tmp_path / "transition")
+    transition_requests = [
+        TransitionScanRequest(ordinal, path)
+        for ordinal, path in enumerate(transition_corpus.session_files)
+    ]
+
+    with OrderedProcessMapper(guarded_usage_worker, task_count=2, max_workers=2) as usage_mapper:
+        usage_results = usage_mapper.map_batch(usage_requests)
+    with OrderedProcessMapper(
+        guarded_transition_worker, task_count=2, max_workers=2
+    ) as transition_mapper:
+        transition_results = transition_mapper.map_batch(transition_requests)
+
+    parent_pid = os.getpid()
+    assert all(result.span.pid != parent_pid and result.error == "" for result in usage_results)
+    assert all(result.records for result in usage_results)
+    assert all(result.span.pid != parent_pid and result.error == "" for result in transition_results)
+    assert all(result.candidates for result in transition_results)
+    assert usage_mapper.used_serial_fallback is False
+    assert transition_mapper.used_serial_fallback is False
+
+
+def test_worker_import_closure_has_no_sqlite_or_parent_store_dependency() -> None:
+    closure = local_import_closure(
+        (
+            "codex_usage.parallel.usage",
+            "codex_usage.parallel.transitions",
+            "codex_usage.project_transition_candidates",
+        )
+    )
+    forbidden = {
+        "sqlite3",
+        "codex_usage.project_transition_state",
+        "codex_usage.project_transition_collection",
+        "codex_usage.session_cache",
+        "codex_usage.session_cache_schema",
+        "codex_usage.session_cache_store",
+        "codex_usage.session_cache_refresh",
+    }
+    imported = {name for names in closure.values() for name in names}
+    assert imported.isdisjoint(forbidden)
+    assert "codex_usage.project_transition_state" not in closure
+    collection_imports = local_import_closure(("codex_usage.project_transition_collection",))[
+        "codex_usage.project_transition_collection"
+    ]
+    assert "codex_usage.project_transition_state" in collection_imports
+```
+
+- [ ] **Step 4: Verify RED**
+
+Run:
+
+```bash
+uv run pytest tests/test_parallel_transition_equivalence.py tests/test_spawn_sqlite_isolation.py -q
+```
+
+Expected: imports fail because candidate/state/collection/transition-worker modules do not exist.
+
+- [ ] **Step 5: Implement raw candidates, parent verification, and reports**
+
+Move JSONL decoding/text selection into the candidate module and return `RawRepoPathCandidate` in line/path order. Apply the exact three-attempt retry in the worker. Keep path existence/resolve/Git normalization and dedupe in evidence. Move `state_5.sqlite` reads into the fully typed state function and require the caller's cache. The state module and collection module import their owning modules, not copied function aliases, so parent monkeypatch tests observe the calls. Build collection results in request order, call `evidence_module.verify_repo_path_candidates` once per ordered JSONL result with one parent cache, pass that same cache to `state_module.collect_state_repo_path_observations`, then use the unchanged dedupe sort. Cache refresh consumes the report; public two-argument collection returns observations only.
+
+Update existing transition monkeypatch tests to use private collection with `max_workers=1` and patch owning modules. Do not expect parent monkeypatches to affect real spawned workers.
+
+- [ ] **Step 6: Verify branch integrity**
+
+Run:
+
+```bash
+uv run pytest tests/test_parallel_transition_equivalence.py tests/test_spawn_sqlite_isolation.py tests/test_project_transition_evidence.py tests/test_project_transition_detection.py tests/test_project_transitions.py tests/test_cli_transitions.py tests/test_session_cache.py tests/test_python_source_size.py -q
+uv run pytest -q
+```
+
+Expected: PASS; oracle equality is exact, one parent cache ID is observed, and child-local guards see no SQLite call.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/codex_usage/project_transition_candidates.py src/codex_usage/project_transition_state.py src/codex_usage/project_transition_collection.py src/codex_usage/project_transition_evidence.py src/codex_usage/project_transitions.py src/codex_usage/parallel/__init__.py src/codex_usage/parallel/transitions.py src/codex_usage/session_cache.py tests/project_transition_serial_oracle.py tests/parallel_transition_test_support.py tests/spawn_worker_test_support.py tests/test_parallel_transition_equivalence.py tests/test_spawn_sqlite_isolation.py tests/test_project_transition_evidence.py tests/test_cli_transitions.py
+git commit -m "perf: extract transition evidence in worker processes"
+```
+
+### Task 5: Full Serial/Parallel Semantic And Schema Equivalence
+
+**Files:**
+- Create: `tests/test_parallel_cache_equivalence.py`
+- Create: `tests/test_parallel_report_equivalence.py`
+- Modify: `tests/parallel_cache_test_support.py`
+
+**Interfaces:**
+- Verifies full returned cache state, exact normalized schema text/version, aggregation/payload/HTML equivalence, and no range pruning.
+- Adds no production behavior.
+
+- [ ] **Step 1: Add an exact schema snapshot helper**
+
+In test support define:
+
+```python
+def normalized_schema(connection: sqlite3.Connection) -> tuple[tuple[str, str], ...]:
+    rows = connection.execute(
+        "select name, sql from sqlite_master "
+        "where type = 'table' and name not like 'sqlite_%' order by name"
+    ).fetchall()
+    return tuple((str(name), " ".join(str(sql).split())) for name, sql in rows)
+```
+
+Define the expected constants literally; do not derive expected SQL from production at test runtime:
+
+```python
+EXPECTED_SCHEMA_META = (
+    ("parser_version", "2"),
+    ("project_transition_version", "1"),
+    ("schema_version", "3"),
+)
+EXPECTED_NORMALIZED_SCHEMA = (
+    ("files", "create table files ( file_key text primary key, path text not null, "
+     "session_dir text not null, storage_state text not null, size_bytes integer not null, "
+     "mtime_ns integer not null, parsed_at text not null, last_seen_at text not null, "
+     "missing_since text, is_missing integer not null, session_id text, error text )"),
+    ("project_transitions", "create table project_transitions ( source_key text not null, "
+     "source_label text not null, target_key text not null, target_label text not null, "
+     "effective_from text not null, confidence integer not null, evidence_json text not null, "
+     "thread_ids_json text not null )"),
+    ("schema_meta", "create table schema_meta (key text primary key, value text not null)"),
+    ("session_metadata", "create table session_metadata ( file_key text primary key, "
+     "file_path text not null, session_dir text not null, storage_state text not null, "
+     "is_missing integer not null, session_id text not null, cwd text, project_key text, "
+     "project_label text, project_aliases_json text not null, git_repository_url text, "
+     "git_branch text, memory_mode text, has_base_instructions integer not null, "
+     "session_bytes integer not null, estimated_sync_bytes integer not null )"),
+    ("usage_records", "create table usage_records ( file_key text not null, file_path text not null, "
+     "record_index integer not null, timestamp text not null, session_id text not null, "
+     "turn_id text, model text not null, effort text, collaboration_mode text, "
+     "project_key text not null, project_label text not null, project_aliases_json text not null, "
+     "cwd text, git_repository_url text, git_branch text, parent_thread_id text, "
+     "input_tokens integer not null, cached_input_tokens integer not null, "
+     "cache_write_input_tokens integer not null default 0, output_tokens integer not null, "
+     "reasoning_output_tokens integer not null, total_tokens integer not null, "
+     "primary key (file_key, record_index) )"),
+)
+```
+
+- [ ] **Step 2: Write executable full-state tests**
+
+`tests/test_parallel_cache_equivalence.py` contains complete bodies:
+
+```python
+def test_serial_and_parallel_cache_state_are_exactly_equal(tmp_path: Path) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    serial_cache = tmp_path / "serial-cache"
+    parallel_cache = tmp_path / "parallel-cache"
+    serial = load_serial(corpus, serial_cache, auto_transitions=False)
+    parallel = load_parallel(corpus, parallel_cache, auto_transitions=False)
+
+    assert parallel.stats == serial.stats
+    assert parallel.files == serial.files
+    assert parallel.records == serial.records
+    assert parallel.file_summaries == serial.file_summaries
+    assert parallel.file_errors == serial.file_errors
+    assert parallel.retained_missing_files == serial.retained_missing_files
+    assert parallel.project_transitions == serial.project_transitions == []
+    assert parallel.usage_run.resolved_worker_count > 1
+    assert parallel.usage_run.used_serial_fallback is False
+
+    for cache_dir in (serial_cache, parallel_cache):
+        with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+            assert normalized_schema(connection) == EXPECTED_NORMALIZED_SCHEMA
+            metadata = tuple(connection.execute(
+                "select key, value from schema_meta "
+                "where key in ('schema_version','parser_version','project_transition_version') "
+                "order by key"
+            ))
+            assert metadata == EXPECTED_SCHEMA_META
+
+
+def test_serial_and_parallel_errors_and_retained_missing_are_equal(tmp_path: Path) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    serial_cache = tmp_path / "serial-cache"
+    parallel_cache = tmp_path / "parallel-cache"
+    load_serial(corpus, serial_cache, auto_transitions=False)
+    load_parallel(corpus, parallel_cache, auto_transitions=False)
+    corpus.missing_path.unlink()
+
+    serial = load_serial(corpus, serial_cache, auto_transitions=False)
+    parallel = load_parallel(corpus, parallel_cache, auto_transitions=False)
+    assert parallel.stats == serial.stats
+    assert parallel.records == serial.records
+    assert parallel.file_summaries == serial.file_summaries
+    assert parallel.file_errors == serial.file_errors
+    assert parallel.retained_missing_files == serial.retained_missing_files == [corpus.missing_path]
+```
+
+Add `attach_transition_evidence(corpus: UsageCorpus) -> None` to test support. It appends fixed post-usage function-call evidence to one valid session, creates a target repository with origin `https://github.com/example/moved-project.git`, and creates one fixed `state_5.sqlite` thread row for that same target without changing any usage event. Then add this body, which derives expected observations only from the frozen oracle:
+
+```python
+def test_serial_and_parallel_transition_enabled_state_is_exactly_equal(tmp_path: Path) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    attach_transition_evidence(corpus)
+    expected_observations = serial_oracle.collect_repo_path_observations(
+        [corpus.sessions], list(corpus.ordered_paths)
+    )
+    raw = load_serial(corpus, tmp_path / "raw-cache", auto_transitions=False)
+    expected_transitions = infer_project_transitions(raw.records, expected_observations)
+    assert expected_observations
+    assert expected_transitions
+
+    serial = load_serial(corpus, tmp_path / "serial-cache", auto_transitions=True)
+    parallel = load_parallel(corpus, tmp_path / "parallel-cache", auto_transitions=True)
+    actual_observations, transition_run = collect_repo_path_observations_with_report(
+        [corpus.sessions], list(corpus.ordered_paths), max_workers=4
+    )
+    assert actual_observations == expected_observations
+    assert serial.project_transitions == parallel.project_transitions == expected_transitions
+    assert parallel.records == serial.records
+    assert parallel.file_summaries == serial.file_summaries
+    assert parallel.stats == serial.stats
+    assert parallel.file_errors == serial.file_errors
+    assert parallel.retained_missing_files == serial.retained_missing_files
+    assert transition_run.resolved_worker_count > 1
+    assert transition_run.used_serial_fallback is False
+```
+
+- [ ] **Step 3: Write executable aggregation, payload, report, and old-mtime tests**
+
+`tests/test_parallel_report_equivalence.py` uses one fixed `generated_at` and output path per rendering pass:
+
+```python
+def test_serial_parallel_aggregation_payload_and_html_are_identical(tmp_path: Path) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    serial = load_serial(corpus, tmp_path / "serial-cache", auto_transitions=True)
+    parallel = load_parallel(corpus, tmp_path / "parallel-cache", auto_transitions=True)
+    timezone = resolve_timezone("UTC")
+    generated_at = datetime(2026, 7, 31, 12, 0, tzinfo=UTC)
+    serial_rows = {group: aggregate_records(serial.records, group, timezone) for group in GROUP_CHOICES}
+    parallel_rows = {group: aggregate_records(parallel.records, group, timezone) for group in GROUP_CHOICES}
+    assert parallel_rows == serial_rows
+    assert summarize_records(parallel.records) == summarize_records(serial.records)
+
+    serial_payload = summary_payload(
+        rows=serial_rows["day"], total=summarize_records(serial.records),
+        generated_at=generated_at, range_name="all", group_by="day",
+        sessions_dirs=serial.session_dirs, files_scanned=len(serial.files),
+        storage_roots=[str(path) for path in serial.session_dirs],
+        files_archived=serial.stats.files_archived,
+        files_retained_missing=serial.stats.files_missing_retained,
+        project_keys=[], project_transitions=[item.to_dict() for item in serial.project_transitions],
+    )
+    parallel_payload = summary_payload(
+        rows=parallel_rows["day"], total=summarize_records(parallel.records),
+        generated_at=generated_at, range_name="all", group_by="day",
+        sessions_dirs=parallel.session_dirs, files_scanned=len(parallel.files),
+        storage_roots=[str(path) for path in parallel.session_dirs],
+        files_archived=parallel.stats.files_archived,
+        files_retained_missing=parallel.stats.files_missing_retained,
+        project_keys=[], project_transitions=[item.to_dict() for item in parallel.project_transitions],
+    )
+    assert parallel_payload == serial_payload
+    assert render_report_text(parallel, generated_at, tmp_path / "parallel.html") == render_report_text(
+        serial, generated_at, tmp_path / "serial.html"
+    )
+
+
+def test_old_start_and_old_mtime_do_not_prune_recent_usage(tmp_path: Path) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    old = datetime.now(UTC) - timedelta(days=30)
+    os.utime(corpus.recent_old_metadata_path, (old.timestamp(), old.timestamp()))
+    data = load_parallel(corpus, tmp_path / "cache", auto_transitions=False)
+    ranged = filter_records_by_range(data.records, "7d", resolve_timezone("UTC"))
+    assert any(record.file_path == corpus.recent_old_metadata_path for record in ranged)
+    assert data.stats.files_parsed == data.stats.files_current
+```
+
+`render_report_text(data, generated_at, path) -> str` is fully defined in test support and calls `render_html_report` with the same summary/four aggregation inputs as `cli.handle_report`, then reads UTF-8 text. It normalizes only the caller-selected output path if that path is embedded; no totals/content are normalized.
+
+- [ ] **Step 4: Verify and commit branch-safe tests**
+
+Run:
+
+```bash
+uv run pytest tests/test_parallel_cache_equivalence.py tests/test_parallel_report_equivalence.py tests/test_parallel_cache_recovery.py tests/test_parallel_transition_equivalence.py tests/test_python_source_size.py -q
+uv run pytest -q
+git add tests/parallel_cache_test_support.py tests/test_parallel_cache_equivalence.py tests/test_parallel_report_equivalence.py
+git commit -m "test: prove parallel refresh semantic equivalence"
+```
+
+Expected: PASS; the commit contains only executable tests/support and leaves the branch green.
+
+### Task 6: Importable Acceptance, Audit, Freeze Support, And Native Smokes
+
+**Files:**
+- Create: `src/codex_usage/parallel_audit.py`
+- Modify: `src/codex_usage/cli.py`
+- Modify: `src/codex_usage/__main__.py`
+- Create: `scripts/parallel_cache_acceptance.py`
+- Create: `scripts/packaged_parallel_cache_smoke.py`
+- Modify: `scripts/build-macos-arm64-exe.sh`
+- Modify: `scripts/build-windows-exe.ps1`
+- Create: `tests/test_parallel_acceptance_scripts.py`
+- Modify: `tests/test_github_actions_workflow.py`
+
+**Interfaces:**
+- Produces Audit And Acceptance Types exactly as declared.
+- Keeps normal CLI outputs identical and adds only explicit suppressed audit output.
+- Proves target OS/architecture and actual spawned child PIDs/overlap in source and frozen workflows.
+
+- [ ] **Step 1: Write failing importability/audit/architecture tests**
+
+`tests/test_parallel_acceptance_scripts.py` defines these typed helpers: `load_script_module(path: Path) -> ModuleType` executes the file under a unique non-main module name; `assert_importable_guard(path: Path, *, requires_freeze_support: bool) -> None` parses AST and requires exactly one `if __name__ == "__main__"` block, requires `multiprocessing.freeze_support()` before `main()` for the two spawn-capable scripts, and rejects top-level cache/CLI calls; `assert_no_sensitive_audit_keys(value: object) -> None` recursively rejects case-folded key fragments `path`, `session`, `thread`, `project`, `token`, `timestamp`, and `event`; and top-level `FixedDateTime(datetime)` returns `2026-07-31T12:00:00Z` from `now`.
+
+Add these complete bodies:
+
+```python
+@pytest.mark.parametrize(
+    ("relative_path", "requires_freeze_support"),
+    [
+        ("scripts/parallel_cache_acceptance.py", True),
+        ("scripts/packaged_parallel_cache_smoke.py", True),
+        ("scripts/parser_equivalence_check.py", False),
+    ],
+)
+def test_acceptance_scripts_are_importable_and_guarded(
+    relative_path: str,
+    requires_freeze_support: bool,
+) -> None:
+    path = REPOSITORY_ROOT / relative_path
+    module = load_script_module(path)
+    assert callable(module.main)
+    assert inspect.signature(module.main).return_annotation in {"int", int}
+    assert_importable_guard(path, requires_freeze_support=requires_freeze_support)
+
+
+def test_parallel_audit_does_not_change_summary_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    codex_home = tmp_path / "codex"
+    write_usage_corpus(codex_home)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CODEX_USAGE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(cli_module, "datetime", FixedDateTime)
+    assert cli_module.main(["summary", "--range", "all", "--json"]) == 0
+    without_audit = json.loads(capsys.readouterr().out)
+    audit_path = tmp_path / "audit.json"
+    assert cli_module.main([
+        "summary", "--range", "all", "--json", "--parallel-audit", str(audit_path)
+    ]) == 0
+    with_audit = json.loads(capsys.readouterr().out)
+    assert with_audit == without_audit
+
+    audit = json.loads(audit_path.read_text(encoding="utf-8"))
+    assert tuple(audit) == (
+        "version", "parent_pid", "sys_platform", "machine", "usage_run", "transition_run"
+    )
+    for run_key in ("usage_run", "transition_run"):
+        assert tuple(audit[run_key]) == (
+            "resolved_worker_count", "worker_pids", "max_concurrency",
+            "used_serial_fallback", "infrastructure_error", "span_count", "file_error_count",
+        )
+    assert_no_sensitive_audit_keys(audit)
+
+
+def test_actual_parallel_validator_rejects_every_disguised_serial_shape() -> None:
+    parent_pid = 900
+    overlap = (WorkerSpan(901, 0, 20), WorkerSpan(902, 5, 15))
+    invalid = (
+        ParallelRunReport(1, overlap, False, "", 0),
+        ParallelRunReport(2, overlap, True, "OSError: failed", 0),
+        ParallelRunReport(2, (WorkerSpan(parent_pid, 0, 20), WorkerSpan(902, 5, 15)), False, "", 0),
+        ParallelRunReport(2, (WorkerSpan(901, 0, 20), WorkerSpan(901, 5, 15)), False, "", 0),
+        ParallelRunReport(2, (WorkerSpan(901, 0, 5), WorkerSpan(902, 5, 10)), False, "", 0),
+    )
+    for report in invalid:
+        with pytest.raises(RuntimeError, match="cold usage: actual process parallelism not observed"):
+            require_actual_parallel(report, parent_pid=parent_pid, label="cold usage")
+    require_actual_parallel(
+        ParallelRunReport(2, overlap, False, "", 0), parent_pid=parent_pid, label="cold usage"
+    )
+
+
+def test_target_architecture_validator_is_exact() -> None:
+    validate_target_architecture("darwin-arm64", sys_platform="darwin", machine="arm64")
+    validate_target_architecture("win32-x64", sys_platform="win32", machine="AMD64")
+    validate_target_architecture("win32-x64", sys_platform="win32", machine="x86_64")
+    for target, sys_platform, machine in (
+        ("darwin-arm64", "linux", "arm64"),
+        ("darwin-arm64", "darwin", "x86_64"),
+        ("win32-x64", "win32", "arm64"),
+        ("win32-x64", "darwin", "x86_64"),
+        ("linux-x64", "linux", "x86_64"),
+    ):
+        with pytest.raises(RuntimeError, match="unsupported target architecture"):
+            validate_target_architecture(cast(Any, target), sys_platform=sys_platform, machine=machine)
+```
+
+Update `tests/test_github_actions_workflow.py` with full file-content assertions: both build scripts contain `packaged_parallel_cache_smoke.py`; Windows contains `RuntimeInformation.ProcessArchitecture`, `Architecture.X64`, and `--expected-target win32-x64`; macOS contains `uname -s`, `uname -m`, and `--expected-target darwin-arm64`; and each invocation precedes its existing packaged Task Transfer smoke. These are ordinary direct `read_text` assertions with no new fixture.
+
+- [ ] **Step 2: Verify RED**
+
+Run:
+
+```bash
+uv run pytest tests/test_parallel_acceptance_scripts.py tests/test_github_actions_workflow.py -q
+```
+
+Expected: imports/files/assertions fail because audit and scripts are absent.
+
+- [ ] **Step 3: Implement audit and importable guarded source acceptance**
+
+Add suppressed common option `--parallel-audit` of type `Path`. After cache load and before range filtering, call `write_parallel_audit` to atomically write the version-1 aggregate audit when present. Do not add audit fields to normal payloads.
+
+`scripts/parallel_cache_acceptance.py` defines `main`, parses optional `--sessions-dir` and `--cache-dir`, opens a temporary cache when omitted, performs cold and warm `load_cached_session_data(auto_transitions=True)`, and calls `require_actual_parallel` for both cold usage and cold transition reports. It requires `(os.process_cpu_count() or 1) > 1`, no fallback, two child PIDs, overlap, and no parent PID. It also rejects fallback in either warm report; warm is allowed to resolve zero or one worker because reusable files are intentionally not resubmitted, so warm serial capacity cannot satisfy or replace either cold actual-parallel assertion. It verifies warm semantic digests match cold, every successful cold generation is reused, and warm retries only cold error rows. It prints one aggregate JSON object containing corpus files/bytes, elapsed values, stats/counts/digests, and run-report counts/PIDs only. Its guard is:
+
+```python
 if __name__ == "__main__":
-    freeze_support()
-    from codex_usage.cli import main
-
+    multiprocessing.freeze_support()
     raise SystemExit(main())
 ```
 
-The deferred CLI import prevents frozen worker bootstrap from recursively constructing the argument parser or opening the cache.
+- [ ] **Step 4: Implement frozen entrypoint and packaged audit smoke**
 
-- [ ] **Step 4: Implement and wire the native smoke**
+Move `freeze_support()` before CLI import in `src/codex_usage/__main__.py`. The packaged smoke creates nine multi-megabyte JSONLs plus deterministic transition evidence, runs the executable cold with `summary --range all --json --parallel-audit <path>`, validates unchanged summary totals and audit actual-parallel conditions for usage and transitions, then runs warm and compares payloads. A 120-second subprocess timeout is a recursion deadlock guard, not a performance threshold. Serial mode or fallback always fails.
 
-The smoke creates an isolated temporary `CODEX_HOME`, cache directory, source repository, and target repository; writes nine deterministic JSONLs with usage followed by function-call workdir evidence; and invokes the provided executable twice with `summary --range all --json`. Use `subprocess.run(command, env=environment, timeout=120, check=False, capture_output=True, text=True)` as a recursion deadlock guard, not a performance assertion.
+The smoke accepts exactly `--expected-target darwin-arm64|win32-x64`. For Darwin require `sys.platform == "darwin"` and `platform.machine().casefold() == "arm64"`. For Windows require `sys.platform == "win32"` and machine in `{"amd64", "x86_64"}`. Compare the packaged audit architecture too.
 
-Validate both runs return zero, parse one JSON object, report exact identical totals and transitions, and do not emit `SERIAL_FALLBACK_WARNING`. Query the isolated cache from the outer smoke process and require nine successful `files` rows, no file errors, and transition rows. The first invocation exercises spawn parsing and transition scanning; the second proves warm reuse. Keep the script below 500 lines and do not use `assert` in production smoke validation; raise `RuntimeError` with exact failed-contract messages.
+In PowerShell fail unless `[RuntimeInformation]::IsOSPlatform([OSPlatform]::Windows)` and `[RuntimeInformation]::ProcessArchitecture -eq [Architecture]::X64`. Then build and run smoke with `--expected-target win32-x64`. Keep the existing macOS OS/arm64 guard and pass `darwin-arm64`. Run the parallel smoke before the existing packaged transfer smoke.
 
-Call the script after PyInstaller creates the executable and before the existing packaged transfer smoke in both native build scripts.
-
-- [ ] **Step 5: Run source tests and the available native package workflow**
+- [ ] **Step 5: Verify branch integrity and the local matching package**
 
 Run on every host:
 
 ```bash
-uv run pytest tests/test_packaged_parallel_cache_smoke.py tests/test_github_actions_workflow.py tests/test_parallel_execution.py -q
+uv run pytest tests/test_parallel_acceptance_scripts.py tests/test_github_actions_workflow.py tests/test_parallel_execution.py tests/test_parallel_report_equivalence.py tests/test_python_source_size.py -q
+uv run pytest -q
 ```
 
-Expected: PASS.
-
-Run on macOS Apple Silicon:
+Then run exactly one matching command locally:
 
 ```bash
+# macOS Apple Silicon only
 bash scripts/build-macos-arm64-exe.sh
 ```
 
-Run on Windows x64:
-
 ```powershell
+# Windows x64 only
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-exe.ps1
 ```
 
-Expected on each supported host: PyInstaller succeeds, the packaged parallel-cache smoke completes both invocations with no fallback warning, and the existing packaged Task Transfer smoke passes. A developer host runs only its matching native command; both commands are mandatory in the `macos-26` and `windows-2025` release jobs.
+Expected: source suites pass; the matching package proves target architecture, at least two actual spawned worker PIDs with overlap for both scans, no fallback, unchanged payload, warm reuse, and packaged transfer behavior. Do not claim the other platform locally.
 
-- [ ] **Step 6: Commit frozen multiprocessing coverage**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/codex_usage/__main__.py scripts/smoke-test-packaged-parallel-cache.py scripts/build-macos-arm64-exe.sh scripts/build-windows-exe.ps1 tests/test_packaged_parallel_cache_smoke.py tests/test_github_actions_workflow.py
-git commit -m "test: cover frozen parallel cache workers"
+git add src/codex_usage/parallel_audit.py src/codex_usage/cli.py src/codex_usage/__main__.py scripts/parallel_cache_acceptance.py scripts/packaged_parallel_cache_smoke.py scripts/build-macos-arm64-exe.sh scripts/build-windows-exe.ps1 tests/test_parallel_acceptance_scripts.py tests/test_github_actions_workflow.py
+git commit -m "test: verify spawned workers in native packages"
 ```
 
-### Task 6: ADR 0019 Concurrency And Recovery Contract
+### Task 7: ADR 0019 And Durable Documentation Contract
 
 **Files:**
 - Create: `docs/adr/0019-bounded-parallel-cache-refresh.md`
-- Modify: `docs/adr/README.md:7-29`
+- Modify: `docs/adr/README.md`
 - Create: `tests/test_parallel_cache_docs.py`
 
 **Interfaces:**
-- Produces: durable rationale for worker bounds, parent SQLite ownership, complete-generation transactions, deterministic ordering, serial fallback, and the no-checkpoint distinction.
+- Records worker bounds/observability, infrastructure-only fallback, parent-global verification/SQLite, complete-generation recovery, no-checkpoint distinction, and native pre-publish gate.
 
-- [ ] **Step 1: Write the failing ADR contract test**
+- [ ] **Step 1: Write failing exact documentation assertions**
 
-Require ADR 0019 and the ADR index to contain the exact concepts `four`, `parent process`, `complete file generation`, `eight`, `serial fallback`, `deterministic`, `no byte offset`, `schema version 3`, `macOS Apple Silicon`, and `Windows x64`.
+Require ADR/index text for: `os.process_cpu_count()`, `four`, `spawn`, `raw candidates`, `one global verification cache`, `parent process`, `state_5.sqlite`, `eight`, `complete file generation`, `serial fallback`, `infrastructure`, `per-file error`, `no byte offset`, `schema version 3`, `macOS Apple Silicon`, `Windows x64`, and `pre-publish`.
 
 Run: `uv run pytest tests/test_parallel_cache_docs.py -q`
 
 Expected: FAIL because ADR 0019 does not exist.
 
-- [ ] **Step 2: Write concise ADR 0019**
+- [ ] **Step 2: Write concise ADR**
 
-Use these sections and decisions, in concise prose rather than implementation chronology:
+Use sections `Status`, `Context`, `Decision`, `Rejected Alternatives`, and `Consequences And Guardrails`. Context contains aggregate evidence only. Decision states the exact interfaces and recovery contract. Reject threads, range pruning, transition schema caching, worker path verification, and append checkpoints. Consequences require source/frozen PID-overlap proof, child SQLite guards, oracle equivalence, and manual non-publishing dual-native workflow before tag.
 
-```markdown
-# ADR 0019: Bounded Parallel Usage Cache Refresh
+Index ADRs 0018 and 0019 in `docs/adr/README.md`.
 
-## Status
-Accepted
+- [ ] **Step 3: Verify branch integrity and commit**
 
-## Context
-Record the aggregate zero-reuse 69.65 GB failure, the 171-second rollback, negligible downstream work, and the measured four-process improvement without identifying local files or projects.
-
-## Decision
-Parse complete files and scan JSONL transition evidence with at most four spawn workers. Keep discovery, all SQLite access including state_5.sqlite, deterministic ordering, finalization, inference, and writes in the parent. Commit fixed eight-file batches of complete generations, retain old successful rows until replacement commit, warn and continue serially when process startup or transport fails, and keep schema version 3.
-
-## Rejected Alternatives
-Reject threads based on measured behavior; reject range pruning because start/mtime are not timestamp upper bounds; reject transition-evidence caching because it changes schema; reject byte-offset append checkpoints because they add partial parser state.
-
-## Consequences And Guardrails
-An interruption reuses committed complete generations and retries only uncommitted/error files. Output is independent of completion order. No byte offset or partial generation is persisted. Spawn/freeze smoke is required on macOS Apple Silicon and Windows x64, and serial/parallel equivalence plus recovery tests guard the contract.
-```
-
-Replace the final standalone ADR 0018 sentence in `docs/adr/README.md` with indexed rows for ADRs 0018 and 0019.
-
-- [ ] **Step 3: Run ADR and source-size tests and verify GREEN**
-
-Run: `uv run pytest tests/test_parallel_cache_docs.py tests/test_python_source_size.py -q`
-
-Expected: PASS.
-
-- [ ] **Step 4: Commit the ADR**
+Run:
 
 ```bash
+uv run pytest tests/test_parallel_cache_docs.py tests/test_python_source_size.py -q
+uv run pytest -q
 git add docs/adr/0019-bounded-parallel-cache-refresh.md docs/adr/README.md tests/test_parallel_cache_docs.py
-git commit -m "docs: record parallel cache recovery contract"
+git commit -m "docs: record parallel refresh recovery contract"
 ```
 
-### Task 7: Full Verification And Aggregate-Only Cold-Cache Acceptance
+Expected: PASS and a docs/test-only green commit.
+
+### Task 8: Self-Contained Oracle, Aggregate Acceptance, And 0.1.42 Handoff
 
 **Files:**
-- Verify: all modified source, tests, scripts, ADRs, and workflows
-- Temporary cache: an automatically deleted directory outside normal `CODEX_HOME`
-- Record aggregate results: `.superpowers/sdd/2026-07-31-usage-parser-performance-and-0-1-42-release/parallel-cache-refresh-implementation-report.md`
+- Create: `scripts/parser_equivalence_check.py`
+- Create: `tests/test_parser_equivalence_tool.py`
+- Temporary private root: created with `mktemp -d`, deleted by trap
+- Temporary detached worktree: commit `1fbe7de`, removed by trap
+- Append aggregate results: `.superpowers/sdd/2026-07-31-usage-parser-performance-and-0-1-42-release/parallel-cache-refresh-implementation-report.md`
 
 **Interfaces:**
-- Verifies: exact source semantics, operation-count concurrency, batch recovery, source-size limits, and one real cold/warm cache cycle.
-- Records: corpus file/byte counts, worker count, elapsed observations, cache stats, record/transition counts, and digests only; no paths, IDs, project names, event text, or row contents.
+- Produces fresh bounded copies and separate oracle/current digest files in one temporary root.
+- Never depends on `/tmp/codex-usage-parser-baseline.json` or a prior task's temporary state.
+- Runs cold/warm acceptance from the guarded importable script and fails disguised serial execution.
 
-- [ ] **Step 1: Run formatting-independent repository and focused contract checks**
+- [ ] **Step 1: Write failing full-body parser tool tests**
+
+In `tests/test_parser_equivalence_tool.py`, write five valid synthetic JSONLs with distinct byte sizes and use these complete tests: `test_capture_copies_rounded_bounded_sample_without_private_paths` calls `capture(..., limit=3, max_file_bytes=10_000)`, asserts copied indexes `000`, `001`, `002`, asserts each manifest object has exactly `fixture` and `size_bytes`, asserts no source-root text occurs in serialized manifest/output, and asserts only the manifest plus three fixture files exist. `test_digest_and_compare_use_requested_package_root` captures all five, calls `digest(manifest, REPOSITORY_ROOT / "src", current)`, asserts every digest object has exactly `fixture`, `size_bytes`, and `digest`, copies it to `oracle`, asserts `compare(oracle, current) == 0`, changes one hex digest in `current`, and asserts `compare(oracle, current) == 1`. `test_digest_rejects_output_outside_manifest_evidence_root` asserts `ValueError("path must remain under evidence root")` when `output_path` is not below `manifest_path.parent`; `test_compare_requires_oracle_and_current_in_one_evidence_root` asserts the same error when the two inputs do not share one parent. `test_import_is_lazy_and_guarded` runs `runpy.run_path(script, run_name="parser_equivalence_import_test")` in a clean subprocess and asserts `codex_usage` is absent from `sys.modules`; it also calls `assert_importable_guard(script, requires_freeze_support=False)`. All test data is synthetic and deleted by `tmp_path`.
+
+- [ ] **Step 2: Implement guarded parser equivalence tool**
+
+`scripts/parser_equivalence_check.py` has subcommands and exact signatures:
+
+```text
+capture(source_root: Path, evidence_root: Path, *, limit: int, max_file_bytes: int) -> Path
+digest(manifest_path: Path, package_root: Path, output_path: Path) -> Path
+compare(oracle_path: Path, current_path: Path) -> int
+main(argv: list[str] | None = None) -> int
+```
+
+Capture sorts eligible source files by `(size_bytes, casefolded path)`, samples at most 100 evenly using the original rounded-index rule, copies each to `evidence_root/fixtures/{index:03d}.jsonl`, and writes no source path/content to the manifest. Digest starts a fresh process, inserts the requested `src` root before importing `codex_usage.parser`, hashes `repr(parse_session_file(fixture))`, and writes fixture/size/digest only. Compare requires identical ordered entries/digests. The guarded script contains no spawn/cache work.
+
+- [ ] **Step 3: Verify tooling and branch integrity, then commit**
+
+Run:
+
+```bash
+uv run pytest tests/test_parser_equivalence_tool.py tests/test_python_source_size.py -q
+uv run pytest -q
+git add scripts/parser_equivalence_check.py tests/test_parser_equivalence_tool.py
+git commit -m "test: add self-contained parser equivalence oracle"
+```
+
+Expected: PASS; script/test remain below 500 lines.
+
+- [ ] **Step 4: Run fresh detached-oracle equivalence and delete all evidence**
+
+Run from the repository root:
+
+```bash
+set -euo pipefail
+evidence_root="$(mktemp -d "${TMPDIR:-/tmp}/codex-usage-equivalence.XXXXXX")"
+oracle_worktree="$(mktemp -d "${TMPDIR:-/tmp}/codex-usage-oracle.XXXXXX")"
+cleanup() {
+  git worktree remove --force "$oracle_worktree" >/dev/null 2>&1 || true
+  rm -rf "$evidence_root" "$oracle_worktree"
+}
+trap cleanup EXIT INT TERM
+
+git worktree add --detach "$oracle_worktree" 1fbe7de
+uv run python scripts/parser_equivalence_check.py capture \
+  --source-root "$HOME/.codex/sessions" \
+  --evidence-root "$evidence_root" \
+  --limit 100 \
+  --max-file-bytes 10485760
+uv run python scripts/parser_equivalence_check.py digest \
+  --manifest "$evidence_root/manifest.json" \
+  --package-root "$oracle_worktree/src" \
+  --output "$evidence_root/oracle.json"
+uv run python scripts/parser_equivalence_check.py digest \
+  --manifest "$evidence_root/manifest.json" \
+  --package-root "$PWD/src" \
+  --output "$evidence_root/current.json"
+uv run python scripts/parser_equivalence_check.py compare \
+  --oracle "$evidence_root/oracle.json" \
+  --current "$evidence_root/current.json"
+cleanup
+trap - EXIT INT TERM
+test ! -e "$evidence_root"
+test ! -e "$oracle_worktree"
+```
+
+Expected: compare reports only aggregate fixture count/bytes and `equivalent=true`; detached worktree and every private copy/manifest/digest are absent afterward.
+
+- [ ] **Step 5: Run importable aggregate cold/warm acceptance**
+
+Quiesce session writes and run, never from stdin:
+
+```bash
+uv run python scripts/parallel_cache_acceptance.py
+```
+
+Expected: exit zero only when `(os.process_cpu_count() or 1) > 1`, cold usage and transition reports each resolve more than one worker, contain at least two overlapping non-parent child PIDs, and have no fallback. Both warm reports must also have no fallback; their worker count may be zero or one because reusable files are not submitted. Cold/warm semantic digests match; warm reuses every successful generation and retries only error rows. Output/report evidence is aggregate only. Record elapsed observations without a hard CI time assertion. If same-machine/corpus performance is not materially better than the prior 171-second interrupted run, stop and write a new aggregate diagnostic.
+
+- [ ] **Step 6: Run complete verification**
 
 Run:
 
 ```bash
 git diff --check
-uv run pytest tests/test_parallel_execution.py tests/test_parallel_usage_workers.py tests/test_session_cache_parallel.py tests/test_parallel_project_transition_evidence.py tests/test_packaged_parallel_cache_smoke.py tests/test_parallel_cache_docs.py tests/test_python_source_size.py -q
-```
-
-Expected: PASS with no whitespace errors and no changed/new Python file at or above 500 lines.
-
-- [ ] **Step 2: Run the complete Python suite**
-
-Run: `uv run pytest -q`
-
-Expected: PASS.
-
-- [ ] **Step 3: Run aggregate-only cold and warm acceptance on quiescent local sessions**
-
-Stop writes to local Codex sessions for the duration, then run this harness. It intentionally has no elapsed-time assertion:
-
-```bash
-uv run python - <<'PY'
-from __future__ import annotations
-
-import hashlib
-import json
-import tempfile
-from pathlib import Path
-from time import perf_counter
-
-from codex_usage.parallel import resolve_worker_count
-from codex_usage.session_cache import load_cached_session_data
-from codex_usage.session_inventory import collect_session_file_inventory, find_session_dirs
-
-
-def digest(value: object) -> str:
-    return hashlib.sha256(repr(value).encode("utf-8")).hexdigest()
-
-
-session_dirs = find_session_dirs()
-inventory = collect_session_file_inventory(session_dirs)
-with tempfile.TemporaryDirectory(prefix="codex-usage-parallel-cold-") as temporary:
-    cache_dir = Path(temporary)
-    started = perf_counter()
-    cold = load_cached_session_data(session_dirs, cache_dir=cache_dir, auto_transitions=True)
-    cold_seconds = perf_counter() - started
-
-    started = perf_counter()
-    warm = load_cached_session_data(session_dirs, cache_dir=cache_dir, auto_transitions=True)
-    warm_seconds = perf_counter() - started
-
-    assert cold.stats.files_reused == 0
-    assert cold.stats.files_parsed == cold.stats.files_current
-    assert warm.stats.files_parsed == cold.stats.file_errors
-    assert warm.stats.files_reused + warm.stats.files_parsed == warm.stats.files_current
-    assert warm.records == cold.records
-    assert warm.project_transitions == cold.project_transitions
-
-    print(json.dumps({
-        "corpus": {
-            "files": len(inventory),
-            "bytes": sum(entry.size_bytes for entry in inventory),
-            "workers": resolve_worker_count(len(inventory)),
-        },
-        "cold": {
-            "seconds": round(cold_seconds, 3),
-            "files_parsed": cold.stats.files_parsed,
-            "files_reused": cold.stats.files_reused,
-            "file_errors": cold.stats.file_errors,
-            "records": len(cold.records),
-            "transitions": len(cold.project_transitions),
-            "records_digest": digest(cold.records),
-            "transitions_digest": digest(cold.project_transitions),
-        },
-        "warm": {
-            "seconds": round(warm_seconds, 3),
-            "files_parsed": warm.stats.files_parsed,
-            "files_reused": warm.stats.files_reused,
-            "file_errors": warm.stats.file_errors,
-            "records_digest": digest(warm.records),
-            "transitions_digest": digest(warm.project_transitions),
-        },
-    }, sort_keys=True))
-PY
-```
-
-Expected: one aggregate JSON object; cold attempts every current file with the resolved worker count, warm reuses every successful generation and retries only cold error rows, and cold/warm digests match. Record the observed cold and warm times in the implementation report and compare them on the same machine/corpus with the prior 171-second interrupted run. Timing is a measured release judgment, not a CI assertion. If the run does not complete materially better, stop release preparation and write a new aggregate diagnostic rather than weakening this contract.
-
-- [ ] **Step 4: Verify scope and write the implementation report**
-
-Record task commits, test commands/results, both native package outcomes, aggregate cold/warm JSON, and any residual concern. Confirm `src/codex_usage/parser.py`, `aggregation.py`, `pricing.py`, `session_provenance.py`, cache schema SQL, and CLI range ordering have no semantic changes. Do not include local paths, session IDs, project labels, or event samples.
-
-No commit is created for the ignored implementation report.
-
-### Task 8: Return To Original Task 3 And Prepare 0.1.42
-
-**Files:**
-- Resume: `docs/superpowers/plans/2026-07-31-usage-parser-performance-and-0-1-42-release.md:244-568`
-- Read: `/tmp/codex-usage-parser-baseline.json`
-- Read: `/tmp/codex-usage-parser-fixtures/`
-- Temporary report: `/tmp/codex-usage-7d-performance.html`
-- Then modify only the release files listed in original Task 4.
-
-**Interfaces:**
-- Consumes: all passing addendum gates and the parser digests captured by original Task 1.
-- Produces: completed original Task 3 acceptance, then preview `0.1.42` release preparation and publication under original Tasks 4-5.
-
-- [ ] **Step 1: Re-run the original parser digest equivalence gate**
-
-Run:
-
-```bash
-uv run python - <<'PY'
-from __future__ import annotations
-
-import hashlib
-import json
-from pathlib import Path
-
-from codex_usage.parser import parse_session_file
-
-baseline = json.loads(
-    Path("/tmp/codex-usage-parser-baseline.json").read_text(encoding="utf-8")
-)
-mismatches = []
-for row in baseline:
-    path = Path(row["path"])
-    if not path.is_file():
-        mismatches.append((str(path), "missing"))
-        continue
-    actual = hashlib.sha256(repr(parse_session_file(path)).encode("utf-8")).hexdigest()
-    if actual != row["digest"]:
-        mismatches.append((str(path), actual))
-assert not mismatches, mismatches[:5]
-print(f"equivalent={len(baseline)}")
-PY
-```
-
-Expected: `equivalent=100` on the measured dataset, or the exact smaller captured count, with no mismatch.
-
-- [ ] **Step 2: Re-run the largest-file and real seven-day report observations**
-
-Run:
-
-```bash
-uv run python - <<'PY'
-from pathlib import Path
-from time import perf_counter
-
-from codex_usage.parser import parse_session_file
-
-paths = list((Path.home() / ".codex" / "sessions").rglob("*.jsonl"))
-largest = max(paths, key=lambda path: path.stat().st_size)
-started = perf_counter()
-records = parse_session_file(largest)
-elapsed = perf_counter() - started
-print({
-    "size_bytes": largest.stat().st_size,
-    "records": len(records),
-    "seconds": round(elapsed, 3),
-})
-PY
-
-/usr/bin/time -p uv run codex-usage report --range 7d --output /tmp/codex-usage-7d-performance.html
-test -s /tmp/codex-usage-7d-performance.html
-```
-
-Expected: the largest file retains the accepted parser-equivalent behavior, and the seven-day report completes with a nonempty HTML file. Record aggregate timings only.
-
-- [ ] **Step 3: Remove private temporary evidence and rerun the complete suite**
-
-Run:
-
-```bash
-rm -rf /tmp/codex-usage-parser-baseline.json /tmp/codex-usage-parser-fixtures /tmp/codex-usage-7d-performance.html
 uv run pytest -q
 ```
 
-Expected: temporary evidence is absent and the suite passes.
+Expected: PASS. Do not create another commit for ignored implementation evidence.
 
-- [ ] **Step 4: Continue with original Task 4 release preparation**
+#### Release Handoff: Return To Original Task 3, Prepare 0.1.42, And Gate Publish
 
-Execute original Task 4, `Prepare Preview Version 0.1.42`, from its RED release-contract tests through commit `chore: prepare 0.1.42 performance release`. Keep `preview: true`, set every package version to `0.1.42`, date both changelogs `2026-07-31`, and describe complete-file parallel cache refresh without claiming range pruning or append checkpoints.
+**Files:**
+- Resume original Task 3 acceptance using Task 8's fresh oracle result, largest-file observation, and real report.
+- Modify exact release files from original Task 4: `pyproject.toml`, `uv.lock`, both extension package manifests, both changelogs, both READMEs, `docs/release.md`, and release contract tests.
+- Verify `.github/workflows/package-vsix.yml` after merged code is pushed and before tagging.
 
-- [ ] **Step 5: Continue with original Task 5 verification and publication**
+**Interfaces:**
+- Completes original Task 3 without inherited temporary evidence.
+- Produces exact Preview `0.1.42` release copy/assertions.
+- Requires local matching-native evidence first, then both native CI jobs in a non-publishing pushed-main run, then tag/publication.
 
-Execute original Task 5, `Full Verification, Merge, Publish, and Stop Before Stable`. Both native jobs must include the new packaged parallel-cache smoke. Stop after Marketplace preview `0.1.42`; do not remove Preview or create `v1.0.0` before hands-on packaged validation on macOS Apple Silicon and Windows x64.
+- [ ] **Step 7: Finish original Task 3 measurements without stale baseline dependency**
 
-## Plan Completion Gate
+Task 8's detached-oracle comparison replaces original Task 3 Step 1. Time the largest active JSONL with the unchanged parser and run:
 
-The addendum is complete only when:
+```bash
+/usr/bin/time -p uv run codex-usage report --range 7d --output /tmp/codex-usage-7d-performance.html
+test -s /tmp/codex-usage-7d-performance.html
+rm -f /tmp/codex-usage-7d-performance.html
+uv run pytest -q
+```
 
-- serial and process-parallel complete-file records are exactly equal before unchanged parent finalization;
-- usage and transition request/result contracts pass pickle round trips under spawn-compatible tests;
-- worker count is deterministically bounded at four and serial fallback preserves exact results;
-- SQLite access, including `state_5.sqlite`, occurs only in the parent;
-- old successful rows survive worker and transaction failures until a complete replacement commits;
-- interruption after one eight-file batch makes those eight generations reusable on the next load;
-- file growth remains invalidated by the next size/mtime inventory;
-- completion order cannot change cache records, observations, inferred transitions, or digests;
-- schema versions and columns remain unchanged and no range-pruning or append-checkpoint state exists;
-- every addendum-created or modified Python source/test file is below 500 lines;
-- source tests, the complete suite, and aggregate cold/warm acceptance pass;
-- frozen parallel-cache smoke passes in both the macOS arm64 and Windows x64 package workflows without recursive spawn or serial-fallback warning;
-- ADR 0019 records the durable concurrency and recovery contract; and
-- control returns to original Task 3 before `0.1.42` release preparation and publication.
+Expected: report completes, output is removed, and suite passes. Record only size/record/time aggregates.
+
+- [ ] **Step 8: Write RED release assertions with exact copy**
+
+Set release tests to require version/date `0.1.42`/`2026-07-31`, `preview === true`, and these exact changelog bullets in both changelogs:
+
+```markdown
+- Listed only active user-visible root tasks in Task Transfer while keeping subagent usage in dashboard totals.
+- Deferred complete task hashing and conflict planning until after selection by replacing browse-time usage parsing and all-task hashing with metadata-only inventory.
+- Skipped JSON decoding for irrelevant Codex events without changing usage totals, pricing, cache schema, or aggregation behavior.
+- Refreshed invalidated usage caches with at most four whole-file worker processes and parent-only eight-file atomic commits, retaining complete prior generations on failure without adding offsets, range pruning, or schema changes.
+```
+
+Require both READMEs' Performance Cache sections to contain: `complete files from byte zero`, `at most four worker processes`, `SQLite remains in the parent process`, `eight complete-file replacements`, `committed batches are reusable after interruption`, and `no within-file checkpoint or range pruning`. Require `docs/release.md` to list the packaged audit's non-parent PID/overlap/no-fallback checks and the pre-publish non-publishing native workflow gate.
+
+Run:
+
+```bash
+uv run pytest tests/test_github_actions_workflow.py tests/test_task_transfer_docs.py tests/test_parallel_cache_docs.py -q
+cd extensions/vscode && npm run build && npm run typecheck:contracts && node --test --test-name-pattern='package metadata' test/core.test.js
+```
+
+Expected: FAIL only because release metadata/docs still describe `0.1.41` and lack new copy.
+
+- [ ] **Step 9: Apply exact Preview release metadata and documentation**
+
+Run `uv version 0.1.42`, `uv lock`, and `npm version 0.1.42 --no-git-tag-version`. Add heading `## 0.1.42 - 2026-07-31 - Faster Root-Task Transfer And Usage Refresh` with the exact four bullets above to both changelogs. Preserve historical Preview wording. Add exact README/release statements required by Step 2 and keep `preview: true`.
+
+Run full Python and extension suites, then commit:
+
+```bash
+uv run pytest -q
+cd extensions/vscode && npm test && npm run test:registration-smoke
+cd ../..
+git add pyproject.toml uv.lock extensions/vscode/package.json extensions/vscode/package-lock.json CHANGELOG.md extensions/vscode/CHANGELOG.md README.md extensions/vscode/README.md docs/release.md tests/test_github_actions_workflow.py tests/test_task_transfer_docs.py extensions/vscode/test/core.test.js
+git commit -m "chore: prepare 0.1.42 performance release"
+```
+
+Expected: all suites pass and release remains Preview.
+
+- [ ] **Step 10: Review, merge locally, and prove only the matching native package**
+
+Complete original Task 5 review/merge steps. On local `main`, run full Python/extension suites and only the matching Task 6 native package command. Do not claim the other native target yet.
+
+- [ ] **Step 11: Push merged main and run both native jobs without publishing**
+
+Run:
+
+```bash
+git push origin main
+gh workflow run package-vsix.yml --ref main -f publish=false
+run_id=""
+for attempt in {1..12}; do
+  run_id="$(gh run list --workflow package-vsix.yml --branch main --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+  test -n "$run_id" && break
+  sleep 5
+done
+test -n "$run_id"
+gh run watch "$run_id" --exit-status
+gh run view "$run_id" --json conclusion,jobs,url
+```
+
+Expected: Windows x64 and macOS Apple Silicon test/package jobs succeed, each packaged audit proves target architecture plus two overlapping child PIDs with no fallback, and the publish job is skipped because `publish=false`. This is the required two-platform pre-publish evidence and occurs only after the workflow changes exist on pushed `main`.
+
+- [ ] **Step 12: Tag and publish Preview only after the pre-publish gate**
+
+Run:
+
+```bash
+git tag -a v0.1.42 -m "v0.1.42 Task Transfer and usage refresh performance release"
+git push origin v0.1.42
+```
+
+Watch the tag-triggered workflow through both repeated native jobs and Marketplace publication as specified in original Task 5. Report the non-publishing gate URL, publishing URL, local matching-native result, aggregate cold/warm measurements, and manual checklist. Stop before `1.0.0` or Preview removal.
+
+## Completion Gate
+
+The revised addendum is complete only when:
+
+- all request/result/report/candidate/state/audit interfaces are fully typed, pickle-safe, and implemented at module top level;
+- `os.process_cpu_count()` resolves a deterministic cap of four and tests prove more than one actual overlapping non-parent child PID;
+- infrastructure fallback is observable and ordinary per-file errors do not fallback or restart successful work;
+- every SQLite call remains parent-only, proven by child-local spawn guards plus static import/dependency scans;
+- transition workers emit raw candidates and one parent cache verifies JSONL then state evidence in global deterministic order;
+- parallel transitions equal the frozen untouched serial oracle, not expectations built from new helpers;
+- complete-file replacements commit in parent-owned groups of eight, retain old successful rows, and preserve reusable committed groups after interruption;
+- full serial/parallel stats, summaries, errors, retained-missing state, normalized schema text/version, transitions, aggregations, payloads, and HTML are exactly equal;
+- an old-start/old-mtime file with recent usage remains included in a seven-day range;
+- source acceptance runs from a guarded importable script and fails serial/fallback/disguised execution;
+- macOS arm64 and Windows x64 package smokes reject wrong architecture and prove actual spawned PID overlap;
+- fresh bounded private fixtures compare current parser digests with detached commit `1fbe7de`, then all evidence/worktrees are deleted;
+- no source/test/script file changed by the addendum reaches 500 lines and every task commit leaves the full suite green;
+- cache schema, usage/fork/subagent/pricing/aggregation semantics, no-range-pruning, and no-within-file-checkpoint constraints remain intact;
+- ADR 0019 records the durable contract;
+- original Task 3 finishes, exact Preview `0.1.42` copy/assertions pass, pushed-main non-publishing native CI succeeds before tagging, and publication stops before stable promotion.
