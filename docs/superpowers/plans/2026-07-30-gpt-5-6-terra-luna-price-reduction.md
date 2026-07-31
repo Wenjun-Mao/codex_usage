@@ -149,8 +149,8 @@ Add tests that exercise every input category and output at the reduced rates:
         "expected_total",
     ),
     (
-        ("gpt-5.6-terra", 1.1, 0.05, 0.5, 1.2, 2.85),
-        ("gpt-5.6-luna", 0.11, 0.005, 0.05, 0.12, 0.285),
+        ("gpt-5.6-terra", 0.3, 0.0144, 0.125, 1.2, 1.6394),
+        ("gpt-5.6-luna", 0.03, 0.00144, 0.0125, 0.12, 0.16394),
     ),
 )
 def test_terra_and_luna_reduced_short_context_costs(
@@ -162,11 +162,11 @@ def test_terra_and_luna_reduced_short_context_costs(
     expected_total: float,
 ) -> None:
     usage = TokenUsage(
-        input_tokens=1_000_000,
-        cached_input_tokens=250_000,
-        cache_write_input_tokens=200_000,
+        input_tokens=272_000,
+        cached_input_tokens=72_000,
+        cache_write_input_tokens=50_000,
         output_tokens=100_000,
-        total_tokens=1_100_000,
+        total_tokens=372_000,
     )
 
     cost = estimate_cost(
