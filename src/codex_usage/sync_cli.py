@@ -10,9 +10,8 @@ from typing import Protocol
 
 from codex_usage.discovery import default_session_dir
 from codex_usage.reporting import print_json
-from codex_usage.session_cache import CachedSessionData
-from codex_usage.settings import get_settings
 from codex_usage.sync import (
+    LocalTransferProbe,
     ProjectBinding,
     ProjectResolutionRequest,
     SyncProgressEvent,
@@ -25,13 +24,8 @@ from codex_usage.sync import (
 from codex_usage.sync.inventory import normalize_selected_thread_ids
 
 
-class SessionDataLoader(Protocol):
-    def __call__(
-        self,
-        session_dirs: list[Path],
-        *,
-        auto_transitions: bool,
-    ) -> CachedSessionData: ...
+class TransferInventoryLoader(Protocol):
+    def __call__(self, session_dirs: list[Path]) -> LocalTransferProbe: ...
 
 
 class _SingleProjectKeyAction(argparse.Action):
@@ -64,11 +58,6 @@ def add_sync_common_options(parser: argparse.ArgumentParser) -> None:
         action="append",
         type=Path,
         help="Candidate local project root. Repeat as needed.",
-    )
-    parser.add_argument(
-        "--no-auto-transitions",
-        action="store_true",
-        help="Disable automatic project transition inference.",
     )
     parser.add_argument(
         "--json", action="store_true", help="Print machine-readable JSON."
@@ -107,16 +96,15 @@ def add_sync_transfer_options(parser: argparse.ArgumentParser) -> None:
 
 
 def handle_sync_inventory(
-    args: argparse.Namespace, load_session_data: SessionDataLoader
+    args: argparse.Namespace, load_inventory: TransferInventoryLoader
 ) -> int:
     project_resolution = _project_resolution_request(args)
-    data, _ = _load_sync_data(
-        args,
+    probe, _ = _load_local_transfer_probe(
         create_sessions=False,
-        load_session_data=load_session_data,
+        load_inventory=load_inventory,
     )
     payload = load_sync_selection_inventory(
-        data,
+        probe.inventory,
         args.sync_dir,
         candidate_roots=project_resolution.candidate_roots,
     ).to_dict()
@@ -128,17 +116,16 @@ def handle_sync_inventory(
 
 
 def handle_sync_pull(
-    args: argparse.Namespace, load_session_data: SessionDataLoader
+    args: argparse.Namespace, load_inventory: TransferInventoryLoader
 ) -> int:
     project_resolution = _project_resolution_request(args)
     thread_ids = _sync_thread_ids(args)
-    data, discovery_ms = _load_sync_data(
-        args,
+    probe, discovery_ms = _load_local_transfer_probe(
         create_sessions=False,
-        load_session_data=load_session_data,
+        load_inventory=load_inventory,
     )
     result = pull_sync(
-        data=data,
+        local=probe.inventory,
         sync_dir=args.sync_dir,
         thread_ids=thread_ids,
         project_resolution=project_resolution,
@@ -150,17 +137,16 @@ def handle_sync_pull(
 
 
 def handle_sync_push(
-    args: argparse.Namespace, load_session_data: SessionDataLoader
+    args: argparse.Namespace, load_inventory: TransferInventoryLoader
 ) -> int:
     project_resolution = _project_resolution_request(args)
     thread_ids = _sync_thread_ids(args)
-    data, discovery_ms = _load_sync_data(
-        args,
+    probe, discovery_ms = _load_local_transfer_probe(
         create_sessions=False,
-        load_session_data=load_session_data,
+        load_inventory=load_inventory,
     )
     result = push_sync(
-        data=data,
+        local=probe.inventory,
         sync_dir=args.sync_dir,
         thread_ids=thread_ids,
         machine_id=args.machine_id or _default_machine_id(),
@@ -183,17 +169,16 @@ def _finish_sync_execution(args: argparse.Namespace, result: SyncRunResult) -> i
 
 def handle_sync_status(
     args: argparse.Namespace,
-    load_session_data: SessionDataLoader,
+    load_inventory: TransferInventoryLoader,
 ) -> int:
     project_resolution = _project_resolution_request(args)
     thread_ids = _sync_thread_ids(args)
-    data, _ = _load_sync_data(
-        args,
+    probe, _ = _load_local_transfer_probe(
         create_sessions=False,
-        load_session_data=load_session_data,
+        load_inventory=load_inventory,
     )
     plan = sync_status(
-        data=data,
+        local=probe.inventory,
         sync_dir=args.sync_dir,
         thread_ids=thread_ids,
         project_resolution=project_resolution,
@@ -249,23 +234,16 @@ def _project_resolution_request(
     return ProjectResolutionRequest(candidate_roots, tuple(bindings))
 
 
-def _load_sync_data(
-    args: argparse.Namespace,
+def _load_local_transfer_probe(
     *,
     create_sessions: bool,
-    load_session_data: SessionDataLoader,
-) -> tuple[CachedSessionData, int]:
+    load_inventory: TransferInventoryLoader,
+) -> tuple[LocalTransferProbe, int]:
     session_dirs = _sync_session_dirs(create=create_sessions)
-    settings = get_settings()
     _emit_sync_progress(SyncProgressEvent("sync_progress", "scanning"))
     started = perf_counter()
-    data = load_session_data(
-        session_dirs,
-        auto_transitions=settings.auto_project_transitions
-        and not args.no_auto_transitions,
-    )
-    discovery_ms = max(0, int((perf_counter() - started) * 1000))
-    return data, discovery_ms
+    probe = load_inventory(session_dirs)
+    return probe, max(0, int((perf_counter() - started) * 1000))
 
 
 def _emit_sync_progress(event: SyncProgressEvent) -> None:

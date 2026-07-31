@@ -5,9 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from codex_usage.project_identity import is_git_project_key
-from codex_usage.session_cache import CachedSessionData
 from codex_usage.session_files import timestamp_key
-from codex_usage.sync.inventory import build_local_inventory
 from codex_usage.sync.models import (
     LocalInventory,
     ProjectIdentityKind,
@@ -258,12 +256,11 @@ def build_sync_selection_inventory(
 
 
 def load_sync_selection_inventory(
-    data: CachedSessionData,
+    local: LocalInventory,
     sync_dir: Path,
     *,
     candidate_roots: tuple[Path, ...] = (),
 ) -> SyncSelectionInventory:
-    local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
     remote = store.probe_inventory()
     remote = _materialize_remote_for_selection(store, remote)

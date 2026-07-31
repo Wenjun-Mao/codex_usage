@@ -19,6 +19,7 @@ from codex_usage.sync.errors import (
     MalformedSyncIndexError,
     TransferFormatMigrationError,
 )
+from codex_usage.sync.inventory import build_local_inventory
 from codex_usage.sync.models import (
     RemoteIndex,
     RemoteThreadEntry,
@@ -170,7 +171,7 @@ def test_load_inventory_is_read_only(tmp_path: Path) -> None:
     before = _snapshot_tree(tmp_path)
 
     load_sync_selection_inventory(
-        _empty_cached_data(tmp_path / "sessions"),
+        build_local_inventory(_empty_cached_data(tmp_path / "sessions")),
         sync_dir,
     )
 
@@ -185,7 +186,9 @@ def test_load_inventory_reads_v2_task_without_migration_or_lock(
     before = _snapshot_tree(tmp_path)
 
     result = load_sync_selection_inventory(
-        _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+        build_local_inventory(
+            _empty_cached_data(tmp_path / "empty-codex-home" / "sessions")
+        ),
         sync_dir,
     )
 
@@ -221,7 +224,9 @@ def test_load_inventory_rejects_mismatched_remote_index_identity_without_mutatio
 
     with pytest.raises(MalformedSyncIndexError, match=r"index_entry\.id.*match"):
         load_sync_selection_inventory(
-            _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+            build_local_inventory(
+                _empty_cached_data(tmp_path / "empty-codex-home" / "sessions")
+            ),
             sync_dir,
         )
 
@@ -249,7 +254,7 @@ def test_load_inventory_rejects_invalid_indexed_v2_task(
         local_data,
     ):
         with pytest.raises(TransferFormatMigrationError, match=issue_fragment):
-            load_sync_selection_inventory(data, sync_dir)
+            load_sync_selection_inventory(build_local_inventory(data), sync_dir)
     assert _snapshot_tree(tmp_path) == before
 
 
@@ -278,7 +283,9 @@ def test_load_inventory_propagates_v2_materialization_read_error(
 
     with pytest.raises(PermissionError, match="Cannot read"):
         load_sync_selection_inventory(
-            _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+            build_local_inventory(
+                _empty_cached_data(tmp_path / "empty-codex-home" / "sessions")
+            ),
             sync_dir,
         )
 
@@ -309,7 +316,9 @@ def test_load_inventory_keeps_v3_materialization_read_error_as_issue(
     )
 
     result = load_sync_selection_inventory(
-        _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+        build_local_inventory(
+            _empty_cached_data(tmp_path / "empty-codex-home" / "sessions")
+        ),
         sync_dir,
     )
 
@@ -334,7 +343,9 @@ def test_load_inventory_rejects_duplicate_v2_task_identity_without_mutation(
         match="multiple remote files claim thread id",
     ):
         load_sync_selection_inventory(
-            _empty_cached_data(tmp_path / "empty-codex-home" / "sessions"),
+            build_local_inventory(
+                _empty_cached_data(tmp_path / "empty-codex-home" / "sessions")
+            ),
             sync_dir,
         )
     assert _snapshot_tree(tmp_path) == before
@@ -383,7 +394,8 @@ def test_load_inventory_propagates_structural_errors_without_writes(
 
     with pytest.raises(expected_error):
         load_sync_selection_inventory(
-            _empty_cached_data(tmp_path / "sessions"), sync_dir
+            build_local_inventory(_empty_cached_data(tmp_path / "sessions")),
+            sync_dir,
         )
 
     assert _snapshot_tree(tmp_path) == before
@@ -394,7 +406,7 @@ def test_empty_remote_folder_returns_local_tasks(tmp_path: Path) -> None:
     sync_dir = tmp_path / "sync"
     sync_dir.mkdir()
 
-    result = load_sync_selection_inventory(data, sync_dir)
+    result = load_sync_selection_inventory(build_local_inventory(data), sync_dir)
 
     assert [
         (project.project_key, project.project_label) for project in result.projects

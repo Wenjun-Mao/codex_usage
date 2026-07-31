@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import codex_usage.sync.planner as planner_module
-import codex_usage.sync.runner as runner_module
 import pytest
 
+import codex_usage.sync.planner as planner_module
+import codex_usage.sync.runner as runner_module
 from codex_usage.project_identity import normalize_project_key
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.sync.constants import REMOTE_TRANSFER_FORMAT_VERSION
+from codex_usage.sync.inventory import build_local_inventory
 from codex_usage.sync.models import (
     LocalInventory,
     ProjectBinding,
@@ -148,7 +149,6 @@ def test_cross_project_transfer_stops_before_project_resolution(
     )
     resolution_calls: list[str] = []
 
-    monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
     monkeypatch.setattr(RemoteStore, "load_inventory", lambda store: remote)
     monkeypatch.setattr(
         RemoteStore,
@@ -162,7 +162,7 @@ def test_cross_project_transfer_stops_before_project_resolution(
     )
 
     result = pull_sync(
-        data=object(),
+        local=local,
         sync_dir=sync_dir,
         thread_ids=("task-a", "task-b"),
         project_resolution=ProjectResolutionRequest(),
@@ -198,7 +198,6 @@ def test_declared_project_mismatch_stops_before_directional_writes(
     )
     execution_calls: list[str] = []
 
-    monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
     monkeypatch.setattr(
         runner_module,
         "execute_pushes",
@@ -207,7 +206,7 @@ def test_declared_project_mismatch_stops_before_directional_writes(
 
     sync_dir = tmp_path / "transfer"
     result = push_sync(
-        data=object(),
+        local=local,
         sync_dir=sync_dir,
         thread_ids=("task-a",),
         machine_id="machine-a",
@@ -235,14 +234,14 @@ def test_single_project_export_preserves_unrelated_remote_project_bytes(
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
 
     push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=("task-a",),
         machine_id="machine-a",
         project_key=normalize_project_key(str(repo_a)),
     )
     push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=("task-b",),
         machine_id="machine-a",
@@ -259,7 +258,7 @@ def test_single_project_export_preserves_unrelated_remote_project_bytes(
         stream.write('{"type":"event_msg","payload":{"type":"user_message"}}\n')
     refreshed = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
     result = push_sync(
-        data=refreshed,
+        local=build_local_inventory(refreshed),
         sync_dir=sync_dir,
         thread_ids=("task-a",),
         machine_id="machine-a",

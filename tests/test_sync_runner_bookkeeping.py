@@ -331,9 +331,10 @@ def _push(
     progress: list | None = None,
 ):
     data = load_cached_session_data([sessions], cache_dir=cache_dir)
-    project_key = build_local_inventory(data).threads["thread-1"].project_key
+    local = build_local_inventory(data)
+    project_key = local.threads["thread-1"].project_key
     return push_sync(
-        data=data,
+        local=local,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id=machine_id,
@@ -349,11 +350,12 @@ def _pull(
     progress: list | None = None,
 ):
     data = load_cached_session_data([sessions], cache_dir=cache_dir)
+    local = build_local_inventory(data)
     project_key = RemoteStore(sync_dir).load_inventory().index.threads[
         "thread-1"
     ].project_key
     return pull_sync(
-        data=data,
+        local=local,
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),

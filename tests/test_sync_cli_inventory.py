@@ -7,6 +7,7 @@ import pytest
 
 import codex_usage.cli as cli_module
 import codex_usage.sync_cli as sync_cli
+from codex_usage.sync import LocalInventory, LocalTransferProbe
 
 
 def test_sync_inventory_loads_local_data_once_and_prints_json(
@@ -14,15 +15,17 @@ def test_sync_inventory_loads_local_data_once_and_prints_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    data = object()
+    local = LocalInventory((tmp_path / "sessions",), {}, {}, 0)
+    probe = LocalTransferProbe(local, ())
     calls: list[tuple[object, ...]] = []
+    browse_inputs: list[LocalInventory] = []
     expected = SimpleNamespace(
         to_dict=lambda: {"inventory_version": 1, "projects": [], "issues": []}
     )
 
-    def load(paths: list[Path], *, auto_transitions: bool) -> object:
-        calls.append((tuple(paths), auto_transitions))
-        return data
+    def load(paths: list[Path]) -> LocalTransferProbe:
+        calls.append(tuple(paths))
+        return probe
 
     monkeypatch.setattr(
         sync_cli, "_sync_session_dirs", lambda *, create: [tmp_path / "sessions"]
@@ -30,13 +33,14 @@ def test_sync_inventory_loads_local_data_once_and_prints_json(
     monkeypatch.setattr(
         sync_cli,
         "load_sync_selection_inventory",
-        lambda value, path, *, candidate_roots: expected,
+        lambda value, path, *, candidate_roots: browse_inputs.append(value) or expected,
     )
 
     exit_code = sync_cli.handle_sync_inventory(_args(tmp_path), load)
 
     assert exit_code == 0
-    assert calls == [((tmp_path / "sessions",), True)]
+    assert calls == [(tmp_path / "sessions",)]
+    assert browse_inputs == [local]
     assert json.loads(capsys.readouterr().out) == expected.to_dict()
 
 
@@ -105,7 +109,11 @@ def test_sync_inventory_prints_one_human_summary_line(
     )
 
     exit_code = sync_cli.handle_sync_inventory(
-        _args(tmp_path, json=False), lambda *args, **kwargs: object()
+        _args(tmp_path, json=False),
+        lambda paths: LocalTransferProbe(
+            LocalInventory(tuple(paths), {}, {}, 0),
+            (),
+        ),
     )
 
     assert exit_code == 0
@@ -118,7 +126,6 @@ def _args(tmp_path: Path, **overrides) -> Namespace:
         "thread_id": None,
         "machine_id": "machine-a",
         "project_key": "/repo/first",
-        "no_auto_transitions": False,
         "json": True,
     }
     values.update(overrides)

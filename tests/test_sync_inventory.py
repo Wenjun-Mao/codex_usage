@@ -95,7 +95,7 @@ def test_push_sync_rejects_padded_local_identity_before_any_sync_write(tmp_path:
 
     with pytest.raises(ValueError, match="local sync inventory.*thread_id"):
         push_sync(
-            data=data,
+            local=build_local_inventory(data),
             sync_dir=sync_dir,
             thread_ids=["task"],
             machine_id="machine-a",

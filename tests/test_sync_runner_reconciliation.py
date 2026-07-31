@@ -25,7 +25,7 @@ def test_interrupted_unindexed_jsonl_is_repaired_on_next_run(
 
     monkeypatch.setattr(RemoteStore, "commit_index", interrupt_index)
     interrupted = push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -40,7 +40,7 @@ def test_interrupted_unindexed_jsonl_is_repaired_on_next_run(
     assert not (sync_dir / "sync-index.json").exists()
 
     repaired = push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -69,7 +69,7 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
     _write_index(home, initial_entry)
     initial_data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
     push_sync(
-        data=initial_data,
+        local=build_local_inventory(initial_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -91,7 +91,7 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
 
     monkeypatch.setattr(RemoteStore, "commit_index", interrupt_index)
     interrupted = push_sync(
-        data=newer_data,
+        local=build_local_inventory(newer_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -102,7 +102,7 @@ def test_interrupted_index_commit_repairs_complete_newer_local_metadata(
     assert interrupted.pushed == ("thread-1",)
 
     repaired = push_sync(
-        data=newer_data,
+        local=build_local_inventory(newer_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -134,7 +134,7 @@ def test_matching_local_bytes_do_not_replace_newer_remote_metadata(tmp_path: Pat
     _write_index(home, local_entry)
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
     push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -152,7 +152,7 @@ def test_matching_local_bytes_do_not_replace_newer_remote_metadata(tmp_path: Pat
     index_path.write_text(json.dumps(index), encoding="utf-8")
 
     result = push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -178,7 +178,7 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
         [source_sessions], cache_dir=tmp_path / "source-cache"
     )
     push_sync(
-        data=source_data,
+        local=build_local_inventory(source_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1", "thread-2"],
         machine_id="source",
@@ -209,7 +209,7 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
     )
 
     plan = transaction_status(
-        data=target_data,
+        local=build_local_inventory(target_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
@@ -234,7 +234,7 @@ def test_push_blocks_unpulled_remote_before_committing_local_task(
         [source_sessions], cache_dir=tmp_path / "source-cache"
     )
     push_sync(
-        data=source_data,
+        local=build_local_inventory(source_data),
         sync_dir=sync_dir,
         thread_ids=["remote-thread"],
         machine_id="source",
@@ -260,7 +260,7 @@ def test_push_blocks_unpulled_remote_before_committing_local_task(
     )
 
     result = push_sync(
-        data=target_data,
+        local=build_local_inventory(target_data),
         sync_dir=sync_dir,
         thread_ids=["remote-thread", "local-thread"],
         machine_id="target",
@@ -275,7 +275,7 @@ def test_push_blocks_unpulled_remote_before_committing_local_task(
     assert {path: path.read_bytes() for path in snapshots} == snapshots
 
 
-def test_run_sync_builds_each_inventory_once_and_emits_only_push_phase(
+def test_run_sync_uses_supplied_inventory_and_emits_only_push_phase(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -286,25 +286,20 @@ def test_run_sync_builds_each_inventory_once_and_emits_only_push_phase(
             sessions, f"thread-{number}", shared_project, total=number
         )
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    calls = {"local": 0, "remote": 0}
-    original_local = runner_module.build_local_inventory
+    local = build_local_inventory(data)
+    calls = {"remote": 0}
     original_remote = RemoteStore.load_inventory
-
-    def count_local_inventory(cached_data):
-        calls["local"] += 1
-        return original_local(cached_data)
 
     def count_remote_inventory(self):
         assert self._lock.is_locked
         calls["remote"] += 1
         return original_remote(self)
 
-    monkeypatch.setattr(runner_module, "build_local_inventory", count_local_inventory)
     monkeypatch.setattr(RemoteStore, "load_inventory", count_remote_inventory)
     progress = []
 
     result = push_sync(
-        data=data,
+        local=local,
         sync_dir=tmp_path / "sync",
         thread_ids=[f"thread-{number}" for number in range(20)],
         machine_id="a",
@@ -312,43 +307,35 @@ def test_run_sync_builds_each_inventory_once_and_emits_only_push_phase(
         on_progress=progress.append,
     )
 
-    assert calls == {"local": 1, "remote": 1}
+    assert calls == {"remote": 1}
     assert result.counts.pulled == 0
     assert result.counts.pushed == 20
     assert [event.phase for event in progress] == ["pushing"]
 
 
-def test_sync_status_is_read_only_and_builds_local_inventory_once(
+def test_sync_status_is_read_only_with_supplied_local_inventory(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
-    calls = 0
-    original_local = runner_module.build_local_inventory
+    local = build_local_inventory(data)
     original_remote = RemoteStore.load_inventory
-
-    def count_local_inventory(cached_data):
-        nonlocal calls
-        calls += 1
-        return original_local(cached_data)
 
     def assert_unlocked(self):
         assert not self._lock.is_locked
         return original_remote(self)
 
-    monkeypatch.setattr(runner_module, "build_local_inventory", count_local_inventory)
     monkeypatch.setattr(RemoteStore, "load_inventory", assert_unlocked)
 
     plan = transaction_status(
-        data=data,
+        local=local,
         sync_dir=tmp_path / "sync",
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
     )
 
-    assert calls == 1
     assert plan.items[0].action == "push"
     assert not (tmp_path / "sync").exists()
 
@@ -363,7 +350,7 @@ def test_sync_status_accepts_cross_project_selection_without_writes(
     sync_dir = tmp_path / "sync"
 
     plan = transaction_status(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-a", "thread-b"],
         project_resolution=ProjectResolutionRequest(),
@@ -393,7 +380,7 @@ def test_unselected_remote_diagnostic_does_not_block_selected_push(
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
 
     result = push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",

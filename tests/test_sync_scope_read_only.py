@@ -23,11 +23,9 @@ from codex_usage.threads import ThreadInfo
 @pytest.mark.parametrize("direction", ["pull", "push"])
 def test_mismatched_scope_leaves_missing_transfer_tree_unchanged(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     direction: str,
 ) -> None:
     local = _local_inventory(_local_task(tmp_path, "task-1", "repo-a"))
-    monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
     before = _tree_snapshot(tmp_path)
 
     result = _run_direction(
@@ -35,6 +33,7 @@ def test_mismatched_scope_leaves_missing_transfer_tree_unchanged(
         sync_dir=tmp_path / "transfer",
         thread_ids=("task-1",),
         project_key="repo-b",
+        local=local,
     )
 
     assert result.outcome == "issue"
@@ -46,7 +45,6 @@ def test_mismatched_scope_leaves_missing_transfer_tree_unchanged(
 @pytest.mark.parametrize("direction", ["pull", "push"])
 def test_mismatched_scope_does_not_migrate_v2_transfer_store(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     direction: str,
 ) -> None:
     sync_dir = tmp_path / "transfer"
@@ -56,7 +54,6 @@ def test_mismatched_scope_does_not_migrate_v2_transfer_store(
         if direction == "push"
         else _local_inventory()
     )
-    monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
     before = _tree_snapshot(tmp_path)
 
     result = _run_direction(
@@ -64,6 +61,7 @@ def test_mismatched_scope_does_not_migrate_v2_transfer_store(
         sync_dir=sync_dir,
         thread_ids=("task-1",),
         project_key="repo-b",
+        local=local,
     )
 
     assert result.outcome == "issue"
@@ -76,19 +74,14 @@ def test_mismatched_scope_does_not_migrate_v2_transfer_store(
 
 def test_review_of_v2_transfer_store_is_byte_for_byte_read_only(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sync_dir = tmp_path / "transfer"
     _write_v2_store(sync_dir, "task-1", "repo-a")
-    monkeypatch.setattr(
-        runner_module,
-        "build_local_inventory",
-        lambda data: _local_inventory(),
-    )
+    local = _local_inventory()
     before = _tree_snapshot(tmp_path)
 
     plan = sync_status(
-        data=object(),
+        local=local,
         sync_dir=sync_dir,
         thread_ids=("task-1",),
         project_resolution=ProjectResolutionRequest(),
@@ -103,14 +96,12 @@ def test_review_of_v2_transfer_store_is_byte_for_byte_read_only(
 
 def test_mixed_known_and_unknown_selection_is_rejected_without_mutation(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     local = _local_inventory(_local_task(tmp_path, "known", "repo-a"))
-    monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
     before = _tree_snapshot(tmp_path)
 
     result = push_sync(
-        data=object(),
+        local=local,
         sync_dir=tmp_path / "transfer",
         thread_ids=("known", "unknown"),
         machine_id="machine-a",
@@ -163,17 +154,18 @@ def _run_direction(
     sync_dir: Path,
     thread_ids: tuple[str, ...],
     project_key: str,
+    local: LocalInventory,
 ):
     if direction == "pull":
         return pull_sync(
-            data=object(),
+            local=local,
             sync_dir=sync_dir,
             thread_ids=thread_ids,
             project_resolution=ProjectResolutionRequest(),
             project_key=project_key,
         )
     return push_sync(
-        data=object(),
+        local=local,
         sync_dir=sync_dir,
         thread_ids=thread_ids,
         machine_id="machine-a",
@@ -191,6 +183,10 @@ def _local_inventory(*tasks: ThreadInfo) -> LocalInventory:
         index_entries={},
         discovered_count=len(tasks),
     )
+
+
+def test_runner_does_not_own_usage_inventory_conversion() -> None:
+    assert "build_local_inventory" not in runner_module.__dict__
 
 
 def _local_task(root: Path, thread_id: str, project_key: str) -> ThreadInfo:
