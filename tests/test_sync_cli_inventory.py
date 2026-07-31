@@ -18,9 +18,9 @@ def test_sync_inventory_loads_local_data_once_and_prints_json(
     local = LocalInventory((tmp_path / "sessions",), {}, {}, 0)
     probe = LocalTransferProbe(local, ())
     calls: list[tuple[object, ...]] = []
-    browse_inputs: list[LocalInventory] = []
+    browse_inputs: list[LocalTransferProbe] = []
     expected = SimpleNamespace(
-        to_dict=lambda: {"inventory_version": 1, "projects": [], "issues": []}
+        to_dict=lambda: {"inventory_version": 3, "projects": [], "issues": []}
     )
 
     def load(paths: list[Path]) -> LocalTransferProbe:
@@ -40,7 +40,7 @@ def test_sync_inventory_loads_local_data_once_and_prints_json(
 
     assert exit_code == 0
     assert calls == [(tmp_path / "sessions",)]
-    assert browse_inputs == [local]
+    assert browse_inputs == [probe]
     assert json.loads(capsys.readouterr().out) == expected.to_dict()
 
 
@@ -74,13 +74,20 @@ def test_cli_sync_inventory_lists_one_local_task_from_an_empty_remote_folder(
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert payload["inventory_version"] == 2
+    assert payload["inventory_version"] == 3
     assert payload["issues"] == []
     assert len(payload["projects"]) == 1
     assert payload["projects"][0]["project_key"] == "/repo/first"
     assert payload["projects"][0]["tasks"][0]["thread_id"] == "thread-1"
     assert payload["projects"][0]["tasks"][0]["title"] == "First thread"
     assert payload["projects"][0]["tasks"][0]["availability"] == "local"
+    assert set(payload["projects"][0]["tasks"][0]) == {
+        "thread_id",
+        "title",
+        "updated_at",
+        "estimated_sync_bytes",
+        "availability",
+    }
     assert list(sync_dir.iterdir()) == []
 
 
@@ -91,7 +98,7 @@ def test_sync_inventory_prints_one_human_summary_line(
 ) -> None:
     inventory = SimpleNamespace(
         to_dict=lambda: {
-            "inventory_version": 1,
+            "inventory_version": 3,
             "projects": [
                 {"tasks": [{"thread_id": "one"}, {"thread_id": "two"}]},
                 {"tasks": [{"thread_id": "three"}]},

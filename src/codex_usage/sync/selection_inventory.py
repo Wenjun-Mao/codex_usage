@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from codex_usage.project_identity import is_git_project_key
 from codex_usage.session_files import timestamp_key
+from codex_usage.sync.constants import LEGACY_REMOTE_TRANSFER_FORMAT_VERSION
+from codex_usage.sync.local_session_probe import LocalTransferProbe
 from codex_usage.sync.models import (
     LocalInventory,
     ProjectIdentityKind,
@@ -15,12 +17,14 @@ from codex_usage.sync.models import (
     SyncFileSnapshot,
     SyncIssue,
 )
-from codex_usage.sync.planner import build_sync_plan
 from codex_usage.sync.project_roots import destination_for_project
+from codex_usage.sync.remote_reconciliation import (
+    materialize_remote_metadata_for_selection,
+)
 from codex_usage.sync.store import RemoteStore
 
 
-INVENTORY_VERSION = 2
+INVENTORY_VERSION = 3
 TaskAvailability = Literal["local", "remote", "both"]
 
 
@@ -31,8 +35,6 @@ class SyncTaskInventoryItem:
     updated_at: str
     estimated_sync_bytes: int
     availability: TaskAvailability
-    state: str
-    action: str
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -41,8 +43,6 @@ class SyncTaskInventoryItem:
             "updated_at": self.updated_at,
             "estimated_sync_bytes": self.estimated_sync_bytes,
             "availability": self.availability,
-            "state": self.state,
-            "action": self.action,
         }
 
 
@@ -91,38 +91,12 @@ def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _materialize_remote_for_selection(
-    store: RemoteStore,
-    remote: RemoteInventory,
-) -> RemoteInventory:
-    issue_offset = len(remote.issues)
-    materialized = store.materialize_probed(remote, tuple(remote.index.threads))
-    failed_validation_thread_ids = {
-        issue.thread_id
-        for issue in materialized.issues[issue_offset:]
-        if issue.code == "unindexed_unreadable"
-    }
-    if not failed_validation_thread_ids:
-        return materialized
-
-    # Earlier same-code issues can describe separate unindexed files. Only issues
-    # appended by materialization identify indexed snapshots that failed identity validation.
-    return replace(
-        materialized,
-        files={
-            thread_id: snapshot
-            for thread_id, snapshot in materialized.files.items()
-            if thread_id not in failed_validation_thread_ids
-        },
-    )
-
-
 def build_sync_selection_inventory(
     local: LocalInventory,
     remote: RemoteInventory,
-    sync_dir: Path,
     *,
     candidate_roots: tuple[Path, ...] = (),
+    local_issues: tuple[SyncIssue, ...] = (),
 ) -> SyncSelectionInventory:
     remote_entries: dict[str, tuple[RemoteThreadEntry, SyncFileSnapshot]] = {}
     for thread_id, entry in remote.index.threads.items():
@@ -131,20 +105,11 @@ def build_sync_selection_inventory(
             remote_entries[thread_id] = (entry, snapshot)
 
     selected_thread_ids = tuple(sorted(local.threads.keys() | remote_entries.keys()))
-    selection_plan = build_sync_plan(
-        local,
-        remote,
-        selected_thread_ids,
-        sync_dir,
-        project_resolution=None,
-    )
-    plan_items = {item.thread_id: item for item in selection_plan.items}
 
     grouped: dict[str, list[_TaskCandidate]] = {}
     for thread_id in selected_thread_ids:
         local_task = local.threads.get(thread_id)
         remote_pair = remote_entries.get(thread_id)
-        plan_item = plan_items[thread_id]
         if local_task is not None:
             availability: TaskAvailability = "both" if remote_pair is not None else "local"
             project_key = local_task.project_key
@@ -173,8 +138,6 @@ def build_sync_selection_inventory(
                     updated_at=local_task.updated_at,
                     estimated_sync_bytes=local_task.estimated_sync_bytes,
                     availability=availability,
-                    state=plan_item.state,
-                    action=plan_item.action,
                 ),
             )
         else:
@@ -201,8 +164,6 @@ def build_sync_selection_inventory(
                     ),
                     estimated_sync_bytes=snapshot.size_bytes,
                     availability="remote",
-                    state=plan_item.state,
-                    action=plan_item.action,
                 ),
             )
         grouped.setdefault(project_key, []).append(candidate)
@@ -251,22 +212,25 @@ def build_sync_selection_inventory(
     return SyncSelectionInventory(
         INVENTORY_VERSION,
         tuple(projects),
-        selection_plan.issues,
+        (*local_issues, *remote.issues),
     )
 
 
 def load_sync_selection_inventory(
-    local: LocalInventory,
+    local_probe: LocalTransferProbe,
     sync_dir: Path,
     *,
     candidate_roots: tuple[Path, ...] = (),
 ) -> SyncSelectionInventory:
     store = RemoteStore(sync_dir)
-    remote = store.probe_inventory()
-    remote = _materialize_remote_for_selection(store, remote)
+    remote = store.probe_inventory(metadata_only=True)
+    if remote.index.format_version == LEGACY_REMOTE_TRANSFER_FORMAT_VERSION:
+        remote = store.materialize_probed(remote, tuple(remote.index.threads))
+    else:
+        remote = materialize_remote_metadata_for_selection(sync_dir, remote)
     return build_sync_selection_inventory(
-        local,
+        local_probe.inventory,
         remote,
-        sync_dir,
         candidate_roots=candidate_roots,
+        local_issues=local_probe.issues,
     )

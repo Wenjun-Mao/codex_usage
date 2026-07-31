@@ -104,7 +104,7 @@ def handle_sync_inventory(
         load_inventory=load_inventory,
     )
     payload = load_sync_selection_inventory(
-        probe.inventory,
+        probe,
         args.sync_dir,
         candidate_roots=project_resolution.candidate_roots,
     ).to_dict()
