@@ -28,6 +28,7 @@
 
 **Files:**
 - Modify: `tests/test_pricing.py`
+- Create: `tests/test_pricing_gpt_5_6_reduction.py`
 - Modify: `src/codex_usage/pricing.py`
 
 **Interfaces:**
@@ -37,7 +38,26 @@
 
 - [ ] **Step 1: Add boundary and latest-rate regression tests**
 
-In `tests/test_pricing.py`, keep `GPT_5_6_RATE_CASES` and its June 26 tests unchanged. Add these constants and tests after the existing GPT-5.6 effective-date coverage:
+Keep `GPT_5_6_RATE_CASES` and its June 26 tests in `tests/test_pricing.py`
+unchanged. Create `tests/test_pricing_gpt_5_6_reduction.py` for the July 31
+boundary and reduced-rate coverage, beginning with:
+
+```python
+from datetime import UTC, datetime
+
+import pytest
+
+import codex_usage.pricing as pricing
+from codex_usage.models import TokenUsage
+from codex_usage.pricing import (
+    ModelRate,
+    credit_rate_for_model,
+    estimate_cost,
+    rate_for_model,
+)
+```
+
+Add these constants and tests to the new focused module:
 
 ```python
 GPT_5_6_TERRA_LUNA_API_REDUCTION_AT = datetime(2026, 7, 31, tzinfo=UTC)
@@ -229,7 +249,8 @@ def test_terra_and_luna_reduced_long_context_costs(
 
 - [ ] **Step 3: Update the pricing-table date assertion**
 
-Change the existing date test to:
+Add the pricing-table date assertion to
+`tests/test_pricing_gpt_5_6_reduction.py`:
 
 ```python
 def test_pricing_table_date_covers_terra_and_luna_reduction() -> None:
@@ -242,11 +263,11 @@ Run:
 
 ```bash
 uv run pytest \
-  tests/test_pricing.py::test_terra_and_luna_api_reduction_uses_exact_effective_boundary \
-  tests/test_pricing.py::test_terra_and_luna_reduction_does_not_change_sol_or_codex_credit_rates \
-  tests/test_pricing.py::test_terra_and_luna_reduced_short_context_costs \
-  tests/test_pricing.py::test_terra_and_luna_reduced_long_context_costs \
-  tests/test_pricing.py::test_pricing_table_date_covers_terra_and_luna_reduction -v
+  tests/test_pricing_gpt_5_6_reduction.py::test_terra_and_luna_api_reduction_uses_exact_effective_boundary \
+  tests/test_pricing_gpt_5_6_reduction.py::test_terra_and_luna_reduction_does_not_change_sol_or_codex_credit_rates \
+  tests/test_pricing_gpt_5_6_reduction.py::test_terra_and_luna_reduced_short_context_costs \
+  tests/test_pricing_gpt_5_6_reduction.py::test_terra_and_luna_reduced_long_context_costs \
+  tests/test_pricing_gpt_5_6_reduction.py::test_pricing_table_date_covers_terra_and_luna_reduction -v
 ```
 
 Expected: the boundary, reduced-cost, and pricing-date assertions fail because the current latest Terra and Luna rows still contain the June 26 rates and `PRICING_AS_OF` is still `2026-07-21`; the Sol and credit assertions pass.
@@ -299,7 +320,7 @@ Do not modify `_schedule_entry_for_model`, `GPT_5_6_API_LONG_CONTEXT_PRICING`, o
 Run:
 
 ```bash
-uv run pytest tests/test_pricing.py -v
+uv run pytest tests/test_pricing.py tests/test_pricing_gpt_5_6_reduction.py -v
 ```
 
 Expected: all pricing tests pass, including the June 26 historical-rate tests and the July 31 boundary tests.
@@ -310,8 +331,14 @@ Run:
 
 ```bash
 git diff --check
-git diff -- src/codex_usage/pricing.py tests/test_pricing.py
-git add src/codex_usage/pricing.py tests/test_pricing.py
+git diff -- \
+  src/codex_usage/pricing.py \
+  tests/test_pricing.py \
+  tests/test_pricing_gpt_5_6_reduction.py
+git add \
+  src/codex_usage/pricing.py \
+  tests/test_pricing.py \
+  tests/test_pricing_gpt_5_6_reduction.py
 git commit -m "fix: update Terra and Luna API pricing"
 ```
 
