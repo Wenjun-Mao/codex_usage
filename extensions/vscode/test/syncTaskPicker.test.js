@@ -15,7 +15,7 @@ const {
 
 function inventory() {
   return {
-    inventoryVersion: 2,
+    inventoryVersion: 3,
     projects: [
       {
         projectKey: "repo-a",
@@ -29,8 +29,6 @@ function inventory() {
             updatedAt: "2026-07-14T12:00:00Z",
             estimatedSyncBytes: 1536,
             availability: "local",
-            state: "local_only",
-            action: "push",
           },
           {
             threadId: "thread-2",
@@ -38,8 +36,6 @@ function inventory() {
             updatedAt: "2026-07-13T12:00:00Z",
             estimatedSyncBytes: 2048,
             availability: "both",
-            state: "synced",
-            action: "none",
           },
         ],
       },
@@ -55,8 +51,6 @@ function inventory() {
             updatedAt: "2026-07-12T12:00:00Z",
             estimatedSyncBytes: 512,
             availability: "remote",
-            state: "remote_only",
-            action: "pull",
           },
         ],
       },
@@ -96,6 +90,21 @@ test("transfer starts with project rows only and activating a project selects no
     ["task:thread-2"],
   );
   assert.deepEqual(selectedTaskPickerItemIds(rows, active, "import"), []);
+});
+
+test("export starts empty and searches only the active project's tasks", () => {
+  const rows = buildTaskPickerItems(inventory(), "export");
+  const initial = initialTaskPickerSelection("export");
+  const active = activateTaskPickerProject(rows, "repo-a");
+
+  assert.deepEqual(initial, {
+    activeProjectKey: undefined,
+    selectedThreadIds: [],
+  });
+  assert.deepEqual(
+    visibleTaskPickerItems(rows, active, "export").map((row) => row.kind),
+    ["task", "task"],
+  );
 });
 
 test("switching projects discards task state and never selects the project row", () => {
@@ -177,14 +186,18 @@ test("project deselection removes only visible operation tasks", () => {
   );
 });
 
-test("task rows show state availability Task ID and transfer size", () => {
-  const task = buildTaskPickerItems(inventory(), "review")
-    .find((item) => item.id === "task:thread-3");
+test("task rows show availability Task ID and transfer size", () => {
+  const rows = buildTaskPickerItems(inventory(), "review");
+  const local = rows.find((row) => row.id === "task:thread-1");
+  const both = rows.find((row) => row.id === "task:thread-2");
+  const remote = rows.find((row) => row.id === "task:thread-3");
 
-  assert.equal(task.description, "Ready to import | In transfer folder");
-  assert.match(task.detail, /Task ID: thread-3/);
-  assert.match(task.detail, /estimated task transfer size/i);
-  assert.doesNotMatch(task.detail, /Thread ID|sync size/i);
+  assert.equal(local.description, "On this computer");
+  assert.equal(remote.description, "In transfer folder");
+  assert.equal(both.description, "On both");
+  assert.match(remote.detail, /Task ID: thread-3/);
+  assert.match(remote.detail, /estimated task transfer size/i);
+  assert.doesNotMatch(remote.detail, /Thread ID|sync size/i);
 });
 
 test("rows preserve stable snapshot hierarchy and operation filtering", () => {

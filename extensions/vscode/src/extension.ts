@@ -80,10 +80,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       updateStatusItem(readSettings(context));
     },
   });
-  const taskTransfer = new TaskTransferController(
-    taskTransferPort,
-    () => readSettings(context).projectTransitions.autoDetect,
-  );
+  const taskTransfer = new TaskTransferController(taskTransferPort);
 
   const commands = [
     vscode.commands.registerCommand("codexUsage.openDashboard", () => openOrRefreshDashboard(context)),

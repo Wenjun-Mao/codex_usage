@@ -2,7 +2,6 @@ import { filterInventoryForOperation, type SyncInventory } from "./syncInventory
 import {
   taskAvailabilityLabel,
   taskPickerDetail,
-  taskStateLabel,
   type TransferOperation,
 } from "./transferPresentation";
 
@@ -51,7 +50,7 @@ export function buildTaskPickerItems(
         id: `task:${task.threadId}`,
         kind: "task",
         label: task.title,
-        description: `${taskStateLabel(task.action, task.state)} | ${taskAvailabilityLabel(task.availability)}`,
+        description: taskAvailabilityLabel(task.availability),
         detail: taskPickerDetail(task.threadId, formatBytes(task.estimatedSyncBytes)),
         projectKey: project.projectKey,
         threadId: task.threadId,
