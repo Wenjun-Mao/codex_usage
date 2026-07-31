@@ -6,15 +6,21 @@ from dataclasses import replace
 from datetime import UTC
 from pathlib import Path
 
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
 from codex_usage.models import SessionMetadata
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_identity import resolve_project_identity
-from codex_usage.session_files import read_session_metadata, timestamp_key
+from codex_usage.session_files import timestamp_key
 from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
 from codex_usage.sync.constants import LEGACY_REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.format_migration_layout import guard_legacy_file, guard_task_file
 from codex_usage.sync.identity import is_canonical_thread_id
-from codex_usage.sync.io import metadata_snapshot, read_bytes_with_snapshot
+from codex_usage.sync.io import (
+    _is_transient_filesystem_error,
+    metadata_snapshot,
+    read_bytes_with_snapshot,
+)
 from codex_usage.sync.models import (
     LocalInventory,
     RemoteIndex,
@@ -151,7 +157,7 @@ def materialize_selected_remote(
     *,
     propagate_io_errors: bool = False,
 ) -> RemoteInventory:
-    """Read and validate selected indexed files without rereading reconstructed files."""
+    """Read selected indexed files and recheck reconstructed provenance without rehashing."""
     effective_threads = dict(inventory.index.threads)
     files = dict(inventory.files)
     repaired_thread_ids = list(inventory.repaired_thread_ids)
@@ -159,7 +165,21 @@ def materialize_selected_remote(
 
     for thread_id in dict.fromkeys(selected_thread_ids):
         entry = effective_threads.get(thread_id)
-        if entry is None or thread_id in files:
+        if entry is None:
+            continue
+        if thread_id in files:
+            snapshot = files[thread_id]
+            if not snapshot.exists:
+                continue
+            path = snapshot.path if snapshot.path is not None else root / entry.file
+            path_guard(path)
+            metadata = read_session_metadata(path)
+            if metadata is not None and metadata.is_subagent and not _has_issue(
+                issues,
+                "subagent_not_transferable",
+                thread_id,
+            ):
+                issues.append(_subagent_issue(entry))
             continue
         snapshot, metadata = materialize_remote_task(
             root / entry.file,
@@ -191,13 +211,7 @@ def materialize_selected_remote(
             )
             continue
         if metadata.is_subagent:
-            issues.append(
-                SyncIssue(
-                    "subagent_not_transferable",
-                    f"Remote task {entry.file} is a structured subagent and cannot be transferred",
-                    thread_id,
-                )
-            )
+            issues.append(_subagent_issue(entry))
             continue
         if (entry.sha256, entry.size_bytes) != (snapshot.sha256, snapshot.size_bytes):
             effective_threads[thread_id] = replace(
@@ -313,8 +327,31 @@ def materialize_remote_task(
     return snapshot, _session_metadata_from_bytes(path, contents)
 
 
+@retry(
+    retry=retry_if_exception(_is_transient_filesystem_error),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+def read_session_metadata(path: Path) -> SessionMetadata | None:
+    try:
+        with path.open("rb") as handle:
+            return _session_metadata_from_lines(path, handle)
+    except OSError as error:
+        if _is_transient_filesystem_error(error):
+            raise
+        return None
+
+
 def _session_metadata_from_bytes(path: Path, contents: bytes) -> SessionMetadata | None:
-    for raw_line in contents.splitlines():
+    return _session_metadata_from_lines(path, contents.splitlines())
+
+
+def _session_metadata_from_lines(
+    path: Path,
+    raw_lines: Iterable[bytes],
+) -> SessionMetadata | None:
+    for raw_line in raw_lines:
         try:
             value = json.loads(raw_line)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -415,6 +452,14 @@ def _unreadable_issue(relative_path: str) -> SyncIssue:
     return SyncIssue(
         "unindexed_unreadable",
         f"Remote task {relative_path} has no readable session_meta identity and was left untouched",
+    )
+
+
+def _subagent_issue(entry: RemoteThreadEntry) -> SyncIssue:
+    return SyncIssue(
+        "subagent_not_transferable",
+        f"Remote task {entry.file} is a structured subagent and cannot be transferred",
+        entry.thread_id,
     )
 
 
