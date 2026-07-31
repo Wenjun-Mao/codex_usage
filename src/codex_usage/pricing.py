@@ -6,11 +6,17 @@ from datetime import UTC, datetime
 from codex_usage.models import TokenUsage
 
 
-PRICING_AS_OF = "2026-07-21"
+PRICING_AS_OF = "2026-07-31"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
 GPT_5_6_CREDIT_EFFECTIVE_FROM = datetime(2026, 7, 9, tzinfo=UTC)
+GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM = datetime(
+    2026,
+    7,
+    31,
+    tzinfo=UTC,
+)
 
 
 @dataclass(frozen=True)
@@ -195,6 +201,24 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         output_per_1m=6.00,
         cache_write_input_per_1m=1.25,
         effective_from=GPT_5_6_API_EFFECTIVE_FROM,
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
+    _effective_rate(
+        "gpt-5.6-terra",
+        input_per_1m=2.00,
+        cached_input_per_1m=0.20,
+        output_per_1m=12.00,
+        cache_write_input_per_1m=2.50,
+        effective_from=GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM,
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
+    _effective_rate(
+        "gpt-5.6-luna",
+        input_per_1m=0.20,
+        cached_input_per_1m=0.02,
+        output_per_1m=1.20,
+        cache_write_input_per_1m=0.25,
+        effective_from=GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM,
         request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
     ),
     _effective_rate("gpt-5.5", input_per_1m=5.00, cached_input_per_1m=0.50, output_per_1m=30.00),
