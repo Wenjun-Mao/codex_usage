@@ -10,6 +10,7 @@ from codex_usage.models import SessionMetadata
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_files import timestamp_key
+from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
 from codex_usage.sync.identity import is_canonical_thread_id
 from codex_usage.sync.io import read_bytes_with_snapshot
 from codex_usage.sync.models import (
@@ -274,6 +275,8 @@ def _session_metadata_from_bytes(path: Path, contents: bytes) -> SessionMetadata
             or parse_timestamp(value.get("timestamp")),
             cwd=str(payload.get("cwd") or ""),
             git_repository_url=str(git.get("repository_url") or ""),
+            parent_thread_id=parent_thread_id_from_source(payload),
+            is_subagent=is_structured_subagent(payload),
         )
     return None
 

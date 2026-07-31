@@ -95,6 +95,7 @@ class SessionMetadata:
     git_repository_url: str = ""
     git_branch: str = ""
     git_commit_hash: str = ""
+    is_subagent: bool = False
 
 
 @dataclass(frozen=True)

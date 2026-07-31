@@ -7,6 +7,7 @@ from typing import Any
 
 from codex_usage.models import SessionMetadata
 from codex_usage.parser import parse_timestamp
+from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
 
 
 def read_session_metadata(path: Path) -> SessionMetadata | None:
@@ -28,12 +29,13 @@ def read_session_metadata(path: Path) -> SessionMetadata | None:
                     cli_version=str(payload.get("cli_version") or ""),
                     model_provider=str(payload.get("model_provider") or ""),
                     forked_from_id=str(payload.get("forked_from_id") or ""),
-                    parent_thread_id=_extract_parent_thread_id(payload),
+                    parent_thread_id=parent_thread_id_from_source(payload),
                     memory_mode=str(payload.get("memory_mode") or ""),
                     has_base_instructions=payload.get("base_instructions") is not None,
                     git_repository_url=str(git.get("repository_url") or ""),
                     git_branch=str(git.get("branch") or ""),
                     git_commit_hash=str(git.get("commit_hash") or ""),
+                    is_subagent=is_structured_subagent(payload),
                 )
     except (OSError, UnicodeDecodeError):
         return None
@@ -106,16 +108,3 @@ def _parse_json_line(line: str) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return value if isinstance(value, dict) else None
-
-
-def _extract_parent_thread_id(payload: dict[str, Any]) -> str:
-    source = payload.get("source")
-    if not isinstance(source, dict):
-        return ""
-    subagent = source.get("subagent")
-    if not isinstance(subagent, dict):
-        return ""
-    thread_spawn = subagent.get("thread_spawn")
-    if not isinstance(thread_spawn, dict):
-        return ""
-    return str(thread_spawn.get("parent_thread_id") or "")
