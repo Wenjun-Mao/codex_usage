@@ -1,13 +1,57 @@
 from __future__ import annotations
 
+import errno
 import json
 from pathlib import Path
+from typing import Any, Self
 
 import pytest
 
 import codex_usage.parser as parser_module
 import codex_usage.sync.io as sync_io
 from codex_usage.sync import load_local_transfer_probe
+
+_TRANSFER_METADATA_HEADER_READ_LIMIT = 1024 * 1024
+
+
+class _ReadBudgetFile:
+    def __init__(self, handle: Any, limit: int, observed: list[int]) -> None:
+        self._handle = handle
+        self._limit = limit
+        self._observed = observed
+
+    def __enter__(self) -> Self:
+        self._handle.__enter__()
+        return self
+
+    def __exit__(self, *args: object) -> object:
+        return self._handle.__exit__(*args)
+
+    def __iter__(self) -> _ReadBudgetFile:
+        return self
+
+    def __next__(self) -> Any:
+        line = self.readline()
+        if line == b"" or line == "":
+            raise StopIteration
+        return line
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._handle, name)
+
+    def read(self, size: int = -1) -> Any:
+        return self._record(self._handle.read(size))
+
+    def readline(self, size: int = -1) -> Any:
+        return self._record(self._handle.readline(size))
+
+    def _record(self, value: Any) -> Any:
+        self._observed[0] += len(value)
+        if self._observed[0] > self._limit:
+            raise AssertionError(
+                "Task Transfer metadata read exceeded its header budget"
+            )
+        return value
 
 
 def _write_meta(
@@ -92,6 +136,105 @@ def test_local_probe_never_calls_usage_parser_or_hasher(
         lambda path: pytest.fail("full hash called"),
     )
     assert list(load_local_transfer_probe([sessions]).inventory.threads) == ["root"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"cwd": "/repo/demo", "source": "cli"},
+        {"id": " padded ", "cwd": "/repo/demo", "source": "cli"},
+        ["not", "an", "object"],
+    ],
+    ids=["missing-id", "noncanonical-id", "non-object-payload"],
+)
+def test_local_probe_requires_object_payload_with_explicit_canonical_id(
+    tmp_path: Path,
+    payload: object,
+) -> None:
+    sessions = tmp_path / ".codex" / "sessions"
+    sessions.mkdir(parents=True)
+    path = sessions / "fallback-id.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-07-31T12:00:00Z",
+                "type": "session_meta",
+                "payload": payload,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    probe = load_local_transfer_probe([sessions])
+
+    assert probe.inventory.threads == {}
+    assert [issue.code for issue in probe.issues] == [
+        "local_session_metadata_unreadable"
+    ]
+
+
+def test_local_probe_bounds_large_metadata_free_file_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tmp_path / ".codex" / "sessions"
+    sessions.mkdir(parents=True)
+    path = sessions / "large-metadata-free.jsonl"
+    path.write_bytes(
+        b'{"type":"event_msg","payload":{}}\n'
+        + b"x" * (_TRANSFER_METADATA_HEADER_READ_LIMIT * 4)
+    )
+    original_open = Path.open
+    observed = [0]
+
+    def budgeted_open(candidate: Path, *args: object, **kwargs: object) -> Any:
+        handle = original_open(candidate, *args, **kwargs)
+        if candidate == path:
+            return _ReadBudgetFile(
+                handle,
+                _TRANSFER_METADATA_HEADER_READ_LIMIT,
+                observed,
+            )
+        return handle
+
+    monkeypatch.setattr(Path, "open", budgeted_open)
+
+    probe = load_local_transfer_probe([sessions])
+
+    assert probe.inventory.threads == {}
+    assert [issue.code for issue in probe.issues] == [
+        "local_session_metadata_unreadable"
+    ]
+    assert observed[0] <= _TRANSFER_METADATA_HEADER_READ_LIMIT
+
+
+def test_local_probe_retries_transient_metadata_open_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tmp_path / ".codex" / "sessions"
+    sessions.mkdir(parents=True)
+    path = sessions / "root.jsonl"
+    _write_meta(path, "root")
+    original_open = Path.open
+    attempts = 0
+
+    def flaky_open(candidate: Path, *args: object, **kwargs: object) -> Any:
+        nonlocal attempts
+        if candidate == path:
+            attempts += 1
+            if attempts < 3:
+                raise OSError(errno.EBUSY, "local metadata is busy")
+        return original_open(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", flaky_open)
+
+    probe = load_local_transfer_probe([sessions])
+
+    assert attempts == 3
+    assert list(probe.inventory.threads) == ["root"]
+    assert probe.issues == ()
 
 
 def _sessions_with_root(tmp_path: Path, thread_id: str, *, cwd: str) -> Path:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from codex_usage.session_files import codex_home_from_session_dir, owning_session_dir
@@ -78,6 +79,8 @@ def build_sync_plan(
     sync_dir: Path,
     *,
     project_resolution: ProjectResolutionRequest | None,
+    local_snapshots: Mapping[str, SyncFileSnapshot] | None = None,
+    local_issues: tuple[SyncIssue, ...] = (),
 ) -> SyncPlan:
     selected_ids = tuple(dict.fromkeys(selected_thread_ids))
     unmaterialized = [
@@ -90,8 +93,9 @@ def build_sync_plan(
         raise ValueError(
             f"Selected remote entries must be materialized before planning: {thread_ids}"
         )
-    issues = list(remote.issues)
+    issues = [*remote.issues, *local_issues]
     items: list[SyncPlanItem] = []
+    selected_local_snapshots = local_snapshots or {}
     session_dirs = {
         thread_id: _session_dir_for_thread(local, local.threads.get(thread_id))
         for thread_id in selected_ids
@@ -103,7 +107,11 @@ def build_sync_plan(
         effective_entry = remote.index.threads.get(thread_id)
         persisted_entry = remote.persisted_index.threads.get(thread_id)
         session_dir = session_dirs[thread_id]
-        item_issues = [issue for issue in remote.issues if issue.thread_id == thread_id]
+        item_issues = [
+            issue
+            for issue in (*remote.issues, *local_issues)
+            if issue.thread_id == thread_id
+        ]
 
         local_path, path_issue = _local_path(
             session_dir,
@@ -115,7 +123,14 @@ def build_sync_plan(
             issues.append(path_issue)
             item_issues.append(path_issue)
 
-        local_snapshot = snapshot_file(local_path)
+        materialized_local = selected_local_snapshots.get(thread_id)
+        local_snapshot = (
+            materialized_local
+            if local_path is not None
+            and materialized_local is not None
+            and materialized_local.path == local_path
+            else snapshot_file(local_path)
+        )
         remote_snapshot = _remote_snapshot(sync_dir, thread_id, effective_entry, remote)
         state_record = LocalStateStore(session_dir, sync_dir).read(thread_id) if session_dir else None
         base_sha256 = state_record.base_sha256 if state_record is not None else ""

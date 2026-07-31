@@ -20,6 +20,8 @@ from codex_usage.sync.remote_reconciliation import (
     materialize_selected_remote,
 )
 
+_TRANSFER_METADATA_HEADER_READ_LIMIT = 1024 * 1024
+
 
 def _write_session_meta(
     path: Path,
@@ -196,6 +198,38 @@ def test_unindexed_metadata_probe_rejects_missing_explicit_id(tmp_path: Path) ->
     assert browse.files == {}
     assert len(browse.issues) == 1
     assert browse.issues[0].code == "unindexed_unreadable"
+
+
+def test_remote_metadata_browse_does_not_scan_past_bounded_header(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "sync"
+    path = root / "tasks" / "late-metadata.jsonl"
+    path.parent.mkdir(parents=True)
+    late_metadata = json.dumps(
+        {
+            "timestamp": "2026-07-31T12:00:00Z",
+            "type": "session_meta",
+            "payload": {
+                "id": "late-metadata",
+                "cwd": "/repo/demo",
+                "source": "cli",
+            },
+        }
+    ).encode()
+    path.write_bytes(
+        b'{"type":"event_msg","payload":{}}\n'
+        + b"x" * (_TRANSFER_METADATA_HEADER_READ_LIMIT + 1)
+        + b"\n"
+        + late_metadata
+        + b"\n"
+    )
+
+    browse = probe_remote_inventory(root, metadata_only=True)
+
+    assert browse.index.threads == {}
+    assert browse.files == {}
+    assert [issue.code for issue in browse.issues] == ["unindexed_unreadable"]
 
 
 def test_unindexed_v3_metadata_probe_skips_hash_but_execution_probe_hashes(

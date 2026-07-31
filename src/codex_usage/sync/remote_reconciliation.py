@@ -1,23 +1,16 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 from datetime import UTC
 from pathlib import Path
 
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
-
 from codex_usage.models import SessionMetadata
-from codex_usage.parser import parse_timestamp
 from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_files import timestamp_key
-from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
 from codex_usage.sync.constants import LEGACY_REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.format_migration_layout import guard_legacy_file, guard_task_file
-from codex_usage.sync.identity import is_canonical_thread_id
 from codex_usage.sync.io import (
-    _is_transient_filesystem_error,
     metadata_snapshot,
     read_bytes_with_snapshot,
 )
@@ -31,7 +24,12 @@ from codex_usage.sync.models import (
     SyncPlan,
 )
 from codex_usage.sync.paths import is_direct_task_path, portable_thread_filename
+from codex_usage.sync.transfer_metadata import (
+    parse_transfer_metadata_bytes,
+    read_transfer_metadata,
+)
 
+read_session_metadata = read_transfer_metadata
 
 PathGuard = Callable[[Path], None]
 
@@ -84,8 +82,6 @@ def reconcile_remote_discovery(
                 if propagate_io_errors:
                     raise
                 snapshot = SyncFileSnapshot(path=path, exists=True)
-            if metadata is not None and not is_canonical_thread_id(metadata.session_id):
-                metadata = None
         else:
             snapshot, metadata = materialize_remote_task(
                 path,
@@ -324,58 +320,7 @@ def materialize_remote_task(
         return SyncFileSnapshot(path=path, exists=True), None
     if contents is None:
         return snapshot, None
-    return snapshot, _session_metadata_from_bytes(path, contents)
-
-
-@retry(
-    retry=retry_if_exception(_is_transient_filesystem_error),
-    wait=wait_exponential(multiplier=0.05, min=0.05, max=0.5),
-    stop=stop_after_attempt(4),
-    reraise=True,
-)
-def read_session_metadata(path: Path) -> SessionMetadata | None:
-    try:
-        with path.open("rb") as handle:
-            return _session_metadata_from_lines(path, handle)
-    except OSError as error:
-        if _is_transient_filesystem_error(error):
-            raise
-        return None
-
-
-def _session_metadata_from_bytes(path: Path, contents: bytes) -> SessionMetadata | None:
-    return _session_metadata_from_lines(path, contents.splitlines())
-
-
-def _session_metadata_from_lines(
-    path: Path,
-    raw_lines: Iterable[bytes],
-) -> SessionMetadata | None:
-    for raw_line in raw_lines:
-        try:
-            value = json.loads(raw_line)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            continue
-        if not isinstance(value, dict) or value.get("type") != "session_meta":
-            continue
-        payload = value.get("payload")
-        if not isinstance(payload, dict):
-            return None
-        thread_id = payload.get("id")
-        if not is_canonical_thread_id(thread_id):
-            return None
-        git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
-        return SessionMetadata(
-            session_id=thread_id,
-            file_path=path,
-            timestamp=parse_timestamp(payload.get("timestamp"))
-            or parse_timestamp(value.get("timestamp")),
-            cwd=str(payload.get("cwd") or ""),
-            git_repository_url=str(git.get("repository_url") or ""),
-            parent_thread_id=parent_thread_id_from_source(payload),
-            is_subagent=is_structured_subagent(payload),
-        )
-    return None
+    return snapshot, parse_transfer_metadata_bytes(path, contents)
 
 
 def _reconstruct_entry(

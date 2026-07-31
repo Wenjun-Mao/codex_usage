@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal
 
 from codex_usage.sync.inventory import normalize_selected_thread_ids
+from codex_usage.sync.local_selection import materialize_selected_local
 from codex_usage.sync.models import (
     LocalInventory,
     ProjectResolutionRequest,
@@ -14,7 +15,6 @@ from codex_usage.sync.planner import build_sync_plan
 from codex_usage.sync.project_scope import transfer_project_scope_issues
 from codex_usage.sync.remote_reconciliation import promote_matching_local_metadata
 from codex_usage.sync.store import RemoteStore
-
 
 Direction = Literal["pull", "push"]
 
@@ -40,14 +40,23 @@ def prepare_direction_plan(
     selected = normalize_selected_thread_ids(thread_ids)
     remote = store.materialize_selected(remote, selected)
     scope_issues = transfer_project_scope_issues(local, remote, selected, project_key)
+    selected_local = (
+        materialize_selected_local(local, selected) if not scope_issues else None
+    )
+    preflight_issues = scope_issues or (
+        selected_local.issues if selected_local is not None else ()
+    )
     plan = build_sync_plan(
         local,
         remote,
         selected,
         sync_dir,
-        project_resolution=None if scope_issues else project_resolution,
+        project_resolution=None if preflight_issues else project_resolution,
+        local_snapshots=(
+            selected_local.snapshots if selected_local is not None else None
+        ),
     )
-    return promote_matching_local_metadata(remote, local, plan), plan, scope_issues
+    return promote_matching_local_metadata(remote, local, plan), plan, preflight_issues
 
 
 def probe_direction_scope(
@@ -61,14 +70,23 @@ def probe_direction_scope(
     remote = store.probe_inventory()
     remote = store.materialize_probed(remote, selected)
     scope_issues = transfer_project_scope_issues(local, remote, selected, project_key)
+    selected_local = (
+        materialize_selected_local(local, selected) if not scope_issues else None
+    )
+    preflight_issues = scope_issues or (
+        selected_local.issues if selected_local is not None else ()
+    )
     plan = build_sync_plan(
         local,
         remote,
         selected,
         sync_dir,
         project_resolution=None,
+        local_snapshots=(
+            selected_local.snapshots if selected_local is not None else None
+        ),
     )
-    return remote, plan, scope_issues
+    return remote, plan, preflight_issues
 
 
 def prepare_status_plan(
@@ -79,6 +97,7 @@ def prepare_status_plan(
     project_resolution: ProjectResolutionRequest,
 ) -> tuple[RemoteInventory, SyncPlan]:
     selected = normalize_selected_thread_ids(thread_ids)
+    selected_local = materialize_selected_local(local, selected)
     remote = store.probe_inventory()
     remote = store.materialize_probed(remote, selected)
     plan = build_sync_plan(
@@ -87,6 +106,8 @@ def prepare_status_plan(
         selected,
         sync_dir,
         project_resolution=project_resolution,
+        local_snapshots=selected_local.snapshots,
+        local_issues=selected_local.issues,
     )
     return promote_matching_local_metadata(remote, local, plan), plan
 

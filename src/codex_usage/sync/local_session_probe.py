@@ -8,12 +8,12 @@ from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_files import (
     file_size,
     load_all_index_entries,
-    read_session_metadata,
     session_updated_at,
 )
 from codex_usage.session_inventory import storage_state_for_session_dir
 from codex_usage.sync.models import LocalInventory, SyncIssue
 from codex_usage.sync.project_roots import discover_project_roots
+from codex_usage.sync.transfer_metadata import read_transfer_metadata
 from codex_usage.threads import ThreadInfo
 
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
@@ -36,7 +36,7 @@ def load_local_transfer_probe(session_dirs: list[Path]) -> LocalTransferProbe:
         for path in sorted(session_dir.rglob("*.jsonl"), key=lambda item: str(item).casefold()):
             if not path.is_file():
                 continue
-            metadata = read_session_metadata(path)
+            metadata = read_transfer_metadata(path)
             if metadata is None:
                 issues.append(
                     SyncIssue(
