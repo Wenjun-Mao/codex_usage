@@ -1,4 +1,8 @@
 from codex_usage.sync.directional_preflight import Direction, directional_blockers
+from codex_usage.sync.local_session_probe import (
+    LocalTransferProbe,
+    load_local_transfer_probe,
+)
 from codex_usage.sync.models import (
     LocalInventory,
     LocalSyncState,
@@ -31,6 +35,7 @@ __all__ = [
     "Direction",
     "LocalInventory",
     "LocalSyncState",
+    "LocalTransferProbe",
     "ProjectBinding",
     "ProjectDestination",
     "ProjectIdentityKind",
@@ -51,6 +56,7 @@ __all__ = [
     "SyncTimings",
     "build_sync_selection_inventory",
     "directional_blockers",
+    "load_local_transfer_probe",
     "load_sync_selection_inventory",
     "pull_sync",
     "push_sync",
