@@ -21,7 +21,11 @@ _USAGE_EVENT_MARKERS = (
 
 
 def _line_may_affect_usage(raw_line: str) -> bool:
-    return any(marker in raw_line for marker in _USAGE_EVENT_MARKERS)
+    return (
+        any(marker in raw_line for marker in _USAGE_EVENT_MARKERS)
+        or r"\u" in raw_line
+        or r"\U" in raw_line
+    )
 
 
 def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:

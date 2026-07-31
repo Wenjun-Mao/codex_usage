@@ -71,3 +71,33 @@ def test_irrelevant_marker_text_cannot_create_usage(tmp_path: Path) -> None:
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
     assert parse_session_file(path) == []
+
+
+def test_parser_accepts_unicode_escaped_relevant_event_labels(tmp_path: Path) -> None:
+    path = tmp_path / "unicode.jsonl"
+    rows = [
+        {"timestamp": "2026-07-31T12:00:00Z", "type": "session_meta", "payload": {"id": "escaped-session"}},
+        {"timestamp": "2026-07-31T12:00:01Z", "type": "turn_context", "payload": {"model": "gpt-5.6-sol"}},
+        {"timestamp": "2026-07-31T12:00:02Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "escaped-turn", "collaboration_mode_kind": "default"}},
+        _token_count(),
+    ]
+    escaped_labels = (
+        ("session_meta", r"\u0073ession_meta"),
+        ("turn_context", r"\u0074urn_context"),
+        ("task_started", r"\u0074ask_started"),
+        ("token_count", r"\u0074oken_count"),
+    )
+    lines = [
+        json.dumps(row).replace(f'"{label}"', f'"{escaped_label}"')
+        for row, (label, escaped_label) in zip(rows, escaped_labels, strict=True)
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    records = parse_session_file(path)
+
+    assert len(records) == 1
+    assert records[0].session_id == "escaped-session"
+    assert records[0].model == "gpt-5.6-sol"
+    assert records[0].turn_id == "escaped-turn"
+    assert records[0].collaboration_mode == "default"
+    assert records[0].usage.total_tokens == 100
