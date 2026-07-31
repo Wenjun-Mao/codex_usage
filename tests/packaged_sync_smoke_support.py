@@ -38,13 +38,8 @@ def inventory_payload(
     estimated_sync_bytes: int = 498,
     candidate_roots: list[str] | None = None,
 ) -> dict[str, object]:
-    state, action = {
-        "local": ("local_only", "push"),
-        "remote": ("remote_only", "pull"),
-        "both": ("synced", "none"),
-    }[availability]
     return {
-        "inventory_version": 2,
+        "inventory_version": 3,
         "projects": [
             {
                 "project_key": "https://github.com/example/packaged-sync-smoke",
@@ -58,8 +53,6 @@ def inventory_payload(
                         "updated_at": "2026-04-29T10:00:02Z",
                         "estimated_sync_bytes": estimated_sync_bytes,
                         "availability": availability,
-                        "state": state,
-                        "action": action,
                     }
                 ],
             }
@@ -84,7 +77,7 @@ def sync_result(
         "counts": {
             "discovered": 1 if pushing else 0,
             "selected": 1,
-            "remote": 0 if pushing else 1,
+            "remote": 0 if pushing else 2,
             "pulled": 0 if pushing else 1,
             "pushed": 1 if pushing else 0,
             "unchanged": 0,
