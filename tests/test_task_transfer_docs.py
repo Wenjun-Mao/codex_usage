@@ -3,8 +3,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
+EXTENSION_ROOT = ROOT / "extensions" / "vscode"
 CURRENT_DOCS = (ROOT / "README.md", ROOT / "extensions/vscode/README.md")
 CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 ADR_0014 = ROOT / "docs/adr/0014-manual-task-transfer.md"
@@ -20,6 +23,7 @@ CURRENT_TASK_TRANSFER_FIXTURES = (
 )
 
 ROOT_RELEASE_DATES = {
+    "0.1.41": "2026-07-30",
     "0.1.40": "2026-07-29",
     "0.1.39": "2026-07-29",
     "0.1.38": "2026-07-23",
@@ -60,6 +64,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "0.1.41",
     "0.1.40",
     "0.1.39",
     "0.1.38",
@@ -114,10 +119,17 @@ def test_current_docs_describe_observed_cache_write_accounting() -> None:
 def test_current_docs_define_gpt_5_6_cache_write_pricing_contract() -> None:
     for path in CURRENT_DOCS:
         prose = normalized_prose(path.read_text(encoding="utf-8"))
-        assert "standard cache-write rates per 1m tokens are: sol $6.25, terra $3.125, luna $1.25" in prose
+        assert (
+            "standard cache-write rates per 1m tokens are: "
+            "sol $6.25, terra $2.50, luna $0.25"
+        ) in prose
+        assert (
+            "reduced terra and luna api rates apply from july 31, 2026; "
+            "earlier usage keeps the original effective-dated rates"
+        ) in prose
         assert "sol ordinary input $10, cache read (cached input) $1, cache write $12.50, output $45" in prose
-        assert "terra ordinary input $5, cache read (cached input) $0.50, cache write $6.25, output $22.50" in prose
-        assert "luna ordinary input $2, cache read (cached input) $0.20, cache write $2.50, output $9" in prose
+        assert "terra ordinary input $4, cache read (cached input) $0.40, cache write $5, output $18" in prose
+        assert "luna ordinary input $0.40, cache read (cached input) $0.04, cache write $0.50, output $1.80" in prose
         assert "exactly 272,000 input tokens is short-context pricing" in prose
         assert "more than 272,000 input tokens, including 272,001" in prose
         assert "codex credits do not use long-context or api cache-write categories" in prose
@@ -345,6 +357,27 @@ def test_changelogs_use_exact_historical_release_dates() -> None:
     assert release_dates(CHANGELOGS[1]) == {
         version: ROOT_RELEASE_DATES[version] for version in EXTENSION_RELEASE_VERSIONS
     }
+
+
+@pytest.mark.parametrize(
+    "changelog",
+    (ROOT / "CHANGELOG.md", EXTENSION_ROOT / "CHANGELOG.md"),
+    ids=("repository", "extension"),
+)
+def test_0_1_41_changelog_describes_effective_dated_price_reduction(
+    changelog: Path,
+) -> None:
+    section = normalized_prose(
+        markdown_section(
+            changelog,
+            "## 0.1.41 - 2026-07-30 - Reduced Terra And Luna API Pricing",
+        )
+    )
+
+    assert "july 31, 2026" in section
+    assert "historical" in section and "original rates" in section
+    assert "sol" in section and "unchanged" in section
+    assert "codex credit" in section and "unchanged" in section
 
 
 def test_adr_0014_supersedes_the_correct_selection_and_transfer_contracts() -> None:

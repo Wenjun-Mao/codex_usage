@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.41 - 2026-07-30 - Reduced Terra And Luna API Pricing
+
+- Applied OpenAI's reduced Standard API rates for GPT-5.6 Terra and Luna from July 31, 2026.
+- Preserved historical estimates by retaining the original rates for earlier usage.
+- Kept GPT-5.6 Sol API pricing and Terra, Luna, and Sol Codex credit rates unchanged.
+
 ## 0.1.40 - 2026-07-29 - Two-Stage Task Transfer Selection
 
 - Split Import and Export into a project-only screen followed by a task-only screen.
