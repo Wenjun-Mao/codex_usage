@@ -218,7 +218,7 @@ export class TaskTransferController {
       this.port.notify("info", formatReviewStatus(summary));
     } catch (error) {
       this.reportFailure(error, stage === "review" ? "review" : "selection");
-      hasTransientStatus = !(error instanceof TransferFolderUnavailableError);
+      hasTransientStatus ||= !(error instanceof TransferFolderUnavailableError);
     } finally {
       if (hasTransientStatus) {
         this.port.setTransientStatus(undefined);
@@ -309,7 +309,7 @@ export class TaskTransferController {
       this.port.notify(formatted.kind, formatted.message);
     } catch (error) {
       this.reportFailure(error, stage, operation);
-      hasTransientStatus = !(error instanceof TransferFolderUnavailableError);
+      hasTransientStatus ||= !(error instanceof TransferFolderUnavailableError);
     } finally {
       if (hasTransientStatus) {
         this.port.setTransientStatus(undefined);

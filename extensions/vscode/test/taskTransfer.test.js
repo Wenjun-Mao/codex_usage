@@ -370,6 +370,32 @@ test("remembered unavailable folders get an actionable error and are not rewritt
   assert.deepEqual(port.statuses, []);
 });
 
+test("folder unavailability during transfer clears the checking status", async () => {
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project({ candidateRoots: ["/workspace"] })]),
+    selection: transferSelection(["remote-task"]),
+    executionError: new TransferFolderUnavailableError("/transfer"),
+  });
+
+  await new TaskTransferController(port).importTasks();
+
+  assert.deepEqual(port.statuses, ["checking", undefined]);
+});
+
+test("folder unavailability during review clears the checking status", async () => {
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project()]),
+    selection: { threadIds: ["remote-task"] },
+    reviewError: new TransferFolderUnavailableError("/transfer"),
+  });
+
+  await new TaskTransferController(port).reviewStatus();
+
+  assert.deepEqual(port.statuses, ["checking", undefined]);
+});
+
 test("opening an unavailable remembered folder reports the same error without status leakage", async () => {
   const port = fakePort({
     folder: "/offline-transfer",
