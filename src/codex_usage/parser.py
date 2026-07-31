@@ -12,6 +12,18 @@ from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
 
 
+_USAGE_EVENT_MARKERS = (
+    '"session_meta"',
+    '"turn_context"',
+    '"token_count"',
+    '"task_started"',
+)
+
+
+def _line_may_affect_usage(raw_line: str) -> bool:
+    return any(marker in raw_line for marker in _USAGE_EVENT_MARKERS)
+
+
 def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
     return finalize_session_records([parse_session_file(path) for path in paths])
 
@@ -49,6 +61,8 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
 
     with path.open("r", encoding="utf-8") as handle:
         for raw_line in handle:
+            if not _line_may_affect_usage(raw_line):
+                continue
             obj = _parse_json_line(raw_line)
             if obj is None:
                 continue
