@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-import codex_usage.session_cache as cache_module
+import codex_usage.session_cache_schema as cache_schema_module
+import codex_usage.session_cache_store as cache_store_module
 from codex_usage.models import UsageRecord
 from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
 
@@ -196,7 +197,7 @@ def test_version_match_tolerates_transition_dirty_metadata(tmp_path: Path) -> No
             "insert or replace into schema_meta (key, value) values (?, '0')",
             (_TRANSITIONS_DIRTY_KEY,),
         )
-        assert cache_module._schema_matches(connection) is True
+        assert cache_schema_module._schema_matches(connection) is True
 
 
 def test_failed_transition_inference_leaves_dirty_for_retry(
@@ -208,17 +209,17 @@ def test_failed_transition_inference_leaves_dirty_for_retry(
     load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
     db_path = cache_dir / CACHE_DB_NAME
 
-    original_infer = cache_module.infer_project_transitions
+    original_infer = cache_store_module.infer_project_transitions
 
     def fail_inference(*_args, **_kwargs):
         raise RuntimeError("transition inference interrupted")
 
-    monkeypatch.setattr(cache_module, "infer_project_transitions", fail_inference)
+    monkeypatch.setattr(cache_store_module, "infer_project_transitions", fail_inference)
     with pytest.raises(RuntimeError, match="transition inference interrupted"):
         load_cached_session_data([sessions], cache_dir=cache_dir)
     assert _transition_dirty_value(db_path) == "1"
 
-    monkeypatch.setattr(cache_module, "infer_project_transitions", original_infer)
+    monkeypatch.setattr(cache_store_module, "infer_project_transitions", original_infer)
     recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
 
     assert recovered.stats.files_reused == 1
@@ -241,14 +242,14 @@ def test_failed_transition_replacement_rolls_back_and_leaves_dirty(
     _write_transition_session(session_path, "thread-1", tmp_path / "signoz-stack", replacement_repo)
     load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
-    original_set_dirty = cache_module._set_project_transitions_dirty
+    original_set_dirty = cache_store_module._set_project_transitions_dirty
 
     def interrupt_clean(connection: sqlite3.Connection, *, dirty: bool) -> None:
         if not dirty:
             raise RuntimeError("transition replacement interrupted")
         original_set_dirty(connection, dirty=dirty)
 
-    monkeypatch.setattr(cache_module, "_set_project_transitions_dirty", interrupt_clean)
+    monkeypatch.setattr(cache_store_module, "_set_project_transitions_dirty", interrupt_clean)
     with pytest.raises(RuntimeError, match="transition replacement interrupted"):
         load_cached_session_data([sessions], cache_dir=cache_dir)
 
@@ -258,7 +259,7 @@ def test_failed_transition_replacement_rolls_back_and_leaves_dirty(
         targets = connection.execute("select target_key from project_transitions").fetchall()
     assert targets == [(initial_target_key,)]
 
-    monkeypatch.setattr(cache_module, "_set_project_transitions_dirty", original_set_dirty)
+    monkeypatch.setattr(cache_store_module, "_set_project_transitions_dirty", original_set_dirty)
     recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
 
     assert [transition.target_key for transition in recovered.project_transitions] == [replacement_target_key]

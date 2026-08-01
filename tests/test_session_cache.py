@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 import codex_usage.session_cache as cache_module
+import codex_usage.session_cache_schema as cache_schema_module
+import codex_usage.session_cache_store as cache_store_module
 from codex_usage.session_cache import (
     CACHE_DB_NAME,
     CACHE_SCHEMA_VERSION,
@@ -40,7 +42,7 @@ def test_unchanged_file_is_reused_without_reparse(tmp_path: Path, monkeypatch: p
     def fail_parse(_path: Path):
         raise AssertionError("unchanged file should be loaded from cache")
 
-    monkeypatch.setattr(cache_module, "parse_session_file", fail_parse)
+    monkeypatch.setattr(cache_store_module, "parse_session_file", fail_parse)
     data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
     assert data.stats.files_reused == 1
@@ -194,15 +196,15 @@ def test_restore_duplicate_rolls_back_entire_schema_rebuild(
     with sqlite3.connect(db_path) as connection:
         connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
 
-    original_restore = cache_module._restore_cached_rows
+    original_restore = cache_schema_module._restore_cached_rows
 
     def restore_with_duplicate(
         connection: sqlite3.Connection, snapshot: cache_module.CachedRowsSnapshot
     ) -> None:
         original_restore(connection, snapshot)
-        cache_module._insert_dict_rows(connection, "usage_records", [snapshot.usage_records[0]])
+        cache_schema_module._insert_dict_rows(connection, "usage_records", [snapshot.usage_records[0]])
 
-    monkeypatch.setattr(cache_module, "_restore_cached_rows", restore_with_duplicate)
+    monkeypatch.setattr(cache_schema_module, "_restore_cached_rows", restore_with_duplicate)
 
     with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
         load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
@@ -232,16 +234,16 @@ def test_interrupted_schema_rebuild_reparses_active_file_on_next_load(
         connection.execute("update usage_records set cache_write_input_tokens = 0")
         connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
 
-    original_refresh = cache_module._refresh_files
+    original_refresh = cache_store_module._refresh_files
 
     def interrupt_refresh(*_args, **_kwargs):
         raise RuntimeError("interrupted after schema restore")
 
-    monkeypatch.setattr(cache_module, "_refresh_files", interrupt_refresh)
+    monkeypatch.setattr(cache_store_module, "_refresh_files", interrupt_refresh)
     with pytest.raises(RuntimeError, match="interrupted after schema restore"):
         load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
-    monkeypatch.setattr(cache_module, "_refresh_files", original_refresh)
+    monkeypatch.setattr(cache_store_module, "_refresh_files", original_refresh)
     recovered = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
     assert recovered.files == [session_path]
@@ -262,7 +264,7 @@ def test_snapshot_cached_rows_avoids_per_file_sql_parameters(tmp_path: Path) -> 
         connection.row_factory = sqlite3.Row
         previous_limit = connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 1)
         try:
-            snapshot = cache_module._snapshot_cached_rows(connection)
+            snapshot = cache_schema_module._snapshot_cached_rows(connection)
         finally:
             connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, previous_limit)
 
@@ -281,7 +283,7 @@ def test_snapshot_cached_rows_raises_on_child_table_read_error(tmp_path: Path) -
         connection.row_factory = sqlite3.Row
         connection.execute("drop table session_metadata")
         with pytest.raises(sqlite3.DatabaseError, match="incomplete cache history.*session_metadata"):
-            cache_module._snapshot_cached_rows(connection)
+            cache_schema_module._snapshot_cached_rows(connection)
 
 
 def test_schema_rebuild_keeps_active_fallback_and_retries_parse_error(
@@ -302,12 +304,12 @@ def test_schema_rebuild_keeps_active_fallback_and_retries_parse_error(
     with sqlite3.connect(db_path) as connection:
         connection.execute("update schema_meta set value = ? where key = 'parser_version'", ("old",))
 
-    original_parser = cache_module.parse_session_file
+    original_parser = cache_store_module.parse_session_file
 
     def fail_parse(_path: Path):
         raise OSError("transient rebuild failure")
 
-    monkeypatch.setattr(cache_module, "parse_session_file", fail_parse)
+    monkeypatch.setattr(cache_store_module, "parse_session_file", fail_parse)
     failed = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
     assert failed.stats.rebuilt is True
@@ -316,7 +318,7 @@ def test_schema_rebuild_keeps_active_fallback_and_retries_parse_error(
     assert [record.usage.total_tokens for record in failed.records] == [100]
     assert failed.file_summaries[session_path].project_key == "/repo/demo"
 
-    monkeypatch.setattr(cache_module, "parse_session_file", original_parser)
+    monkeypatch.setattr(cache_store_module, "parse_session_file", original_parser)
     recovered = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
     assert recovered.stats.files_parsed == 1
@@ -332,17 +334,17 @@ def test_parse_error_without_prior_success_retries_unchanged_file(
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", "/repo/demo", 100)
     cache_dir = tmp_path / "cache"
-    original_parser = cache_module.parse_session_file
+    original_parser = cache_store_module.parse_session_file
 
     def fail_parse(_path: Path):
         raise OSError("transient first-read failure")
 
-    monkeypatch.setattr(cache_module, "parse_session_file", fail_parse)
+    monkeypatch.setattr(cache_store_module, "parse_session_file", fail_parse)
     failed = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
     assert failed.stats.file_errors == 1
     assert failed.records == []
 
-    monkeypatch.setattr(cache_module, "parse_session_file", original_parser)
+    monkeypatch.setattr(cache_store_module, "parse_session_file", original_parser)
     recovered = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
     assert recovered.stats.files_parsed == 1
@@ -376,7 +378,7 @@ def test_parse_failure_keeps_previous_cached_records(tmp_path: Path, monkeypatch
     def fail_parse(_path: Path):
         raise OSError("transient read failure")
 
-    monkeypatch.setattr(cache_module, "parse_session_file", fail_parse)
+    monkeypatch.setattr(cache_store_module, "parse_session_file", fail_parse)
 
     data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
