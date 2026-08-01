@@ -5,6 +5,8 @@ import importlib.util
 import signal
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from types import ModuleType
 
@@ -33,6 +35,18 @@ class RecordingStream:
 
     def close(self) -> None:
         self.closed = True
+
+
+class BlockingStream(RecordingStream):
+    def __init__(self, release: threading.Event) -> None:
+        super().__init__()
+        self.release = release
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
+        self.release.wait()
+        super().close()
 
 
 class TimedOutProcess:
@@ -79,9 +93,14 @@ def assert_cleanup_error(caught: pytest.ExceptionInfo[RuntimeError]) -> None:
     assert type(caught.value).__name__ == "ProcessTreeCleanupError"
 
 
-def assert_only_bounded_timeouts(timeouts: list[float | None]) -> None:
-    assert timeouts
-    assert all(timeout is not None and timeout > 0 for timeout in timeouts)
+def assert_bounded_cleanup_timeouts(process: TimedOutProcess) -> None:
+    assert process.communicate_timeouts[0] == 120
+    cleanup_timeouts = [
+        *process.communicate_timeouts[1:],
+        *process.wait_timeouts,
+    ]
+    assert cleanup_timeouts
+    assert all(timeout is not None and 0 < timeout <= 2 for timeout in cleanup_timeouts)
 
 
 def test_packaged_summary_invokes_120_second_process_tree_guard(
@@ -145,8 +164,7 @@ def test_posix_process_tree_timeout_uses_session_killpg_and_reaps(
     assert launch["start_new_session"] is True
     assert "creationflags" not in launch
     assert killpg_calls == [(process.pid, signal.SIGKILL)]
-    assert process.communicate_timeouts[0] == 120
-    assert_only_bounded_timeouts(process.communicate_timeouts)
+    assert_bounded_cleanup_timeouts(process)
     assert process.kill_calls == 0
 
 
@@ -192,9 +210,8 @@ def test_windows_process_tree_timeout_uses_taskkill_and_reaps(
         "/F",
     ]
     assert taskkill_calls[0][1]["check"] is False
-    assert taskkill_calls[0][1]["timeout"] <= 5
-    assert process.communicate_timeouts[0] == 120
-    assert_only_bounded_timeouts(process.communicate_timeouts)
+    assert 0 < taskkill_calls[0][1]["timeout"] <= 5
+    assert_bounded_cleanup_timeouts(process)
     assert process.kill_calls == 0
 
 
@@ -243,10 +260,9 @@ def test_windows_tree_termination_failure_is_bounded_and_specific(
         )
 
     assert_cleanup_error(caught)
-    assert taskkill_calls[0][1]["timeout"] <= 5
+    assert 0 < taskkill_calls[0][1]["timeout"] <= 5
     assert process.kill_calls == 1
-    assert process.communicate_timeouts[0] == 120
-    assert_only_bounded_timeouts(process.communicate_timeouts)
+    assert_bounded_cleanup_timeouts(process)
 
 
 def test_posix_killpg_failure_is_bounded_and_specific(
@@ -279,8 +295,7 @@ def test_posix_killpg_failure_is_bounded_and_specific(
     assert_cleanup_error(caught)
     assert killpg_calls == [(process.pid, signal.SIGKILL)]
     assert process.kill_calls == 1
-    assert process.communicate_timeouts[0] == 120
-    assert_only_bounded_timeouts(process.communicate_timeouts)
+    assert_bounded_cleanup_timeouts(process)
 
 
 def test_cleanup_escalates_after_first_bounded_drain_timeout(
@@ -305,7 +320,7 @@ def test_cleanup_escalates_after_first_bounded_drain_timeout(
         )
 
     assert len(process.communicate_timeouts) == 3
-    assert_only_bounded_timeouts(process.communicate_timeouts)
+    assert_bounded_cleanup_timeouts(process)
     assert process.kill_calls == 1
     assert process.wait_timeouts == []
 
@@ -333,11 +348,101 @@ def test_second_bounded_drain_timeout_raises_cleanup_failure_and_reaps(
 
     assert_cleanup_error(caught)
     assert len(process.communicate_timeouts) == 3
-    assert_only_bounded_timeouts(process.communicate_timeouts)
+    assert_bounded_cleanup_timeouts(process)
     assert process.kill_calls == 1
     assert process.stdout.closed is True
     assert process.stderr.closed is True
-    assert_only_bounded_timeouts(process.wait_timeouts)
+
+
+def test_windows_repeated_drain_timeout_never_closes_reader_streams(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_usage import process_tree
+
+    release = threading.Event()
+    process = TimedOutProcess(cleanup_communicate_timeouts=2)
+    process.stdout = BlockingStream(release)
+    process.stderr = BlockingStream(release)
+    monkeypatch.setattr(
+        process_tree.subprocess, "Popen", lambda *args, **kwargs: process
+    )
+    monkeypatch.setattr(
+        process_tree.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0),
+    )
+    errors: list[BaseException] = []
+
+    def invoke() -> None:
+        try:
+            process_tree.run_process_tree(
+                ["codex-usage.exe", "summary"],
+                environment={"CODEX_HOME": str(tmp_path)},
+                cwd=tmp_path,
+                timeout_seconds=120,
+                platform_name="nt",
+            )
+        except (RuntimeError, subprocess.SubprocessError, OSError) as error:
+            errors.append(error)
+
+    cleanup_thread = threading.Thread(target=invoke, daemon=True)
+    started = time.monotonic()
+    cleanup_thread.start()
+    cleanup_thread.join(timeout=1.0)
+    completed_within_outer_deadline = not cleanup_thread.is_alive()
+    elapsed = time.monotonic() - started
+    release.set()
+    cleanup_thread.join(timeout=1.0)
+
+    assert completed_within_outer_deadline
+    assert elapsed < 1.5
+    assert not cleanup_thread.is_alive()
+    assert len(errors) == 1
+    assert type(errors[0]).__name__ == "ProcessTreeCleanupError"
+    assert "output collection incomplete" in str(errors[0])
+    assert process.stdout.close_calls == 0
+    assert process.stderr.close_calls == 0
+    assert_bounded_cleanup_timeouts(process)
+
+
+def test_windows_cleanup_stops_at_shared_monotonic_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_usage import process_tree
+
+    process = TimedOutProcess(cleanup_communicate_timeouts=1)
+    taskkill_calls: list[dict[str, object]] = []
+    monotonic_values = iter((100.0, 100.0, 109.0, 110.0, 110.0))
+    monkeypatch.setattr(
+        process_tree.subprocess, "Popen", lambda *args, **kwargs: process
+    )
+    monkeypatch.setattr(process_tree.time, "monotonic", lambda: next(monotonic_values))
+
+    def taskkill(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        taskkill_calls.append(kwargs)
+        return subprocess.CompletedProcess(args[0], 0)
+
+    monkeypatch.setattr(process_tree.subprocess, "run", taskkill)
+
+    with pytest.raises(RuntimeError, match="cleanup deadline expired") as caught:
+        process_tree.run_process_tree(
+            ["codex-usage.exe", "summary"],
+            environment={"CODEX_HOME": str(tmp_path)},
+            cwd=tmp_path,
+            timeout_seconds=120,
+            platform_name="nt",
+        )
+
+    assert_cleanup_error(caught)
+    assert taskkill_calls[0]["timeout"] == 5
+    assert process.communicate_timeouts == [120, 1]
+    assert process.wait_timeouts == []
+    assert process.stdout.closed is False
+    assert process.stderr.closed is False
+    assert "output collection incomplete" in str(caught.value)
+    assert_bounded_cleanup_timeouts(process)
 
 
 def test_process_tree_source_has_no_unbounded_drain_or_wait_call() -> None:

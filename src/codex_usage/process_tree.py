@@ -79,7 +79,13 @@ def _cleanup_timed_out_process(
         direct_kill_failure = _kill_direct_process(process)
         if direct_kill_failure is not None:
             failures.append(direct_kill_failure)
-    failures.extend(_drain_and_reap_process(process, deadline=deadline))
+    failures.extend(
+        _drain_and_reap_process(
+            process,
+            platform_name=platform_name,
+            deadline=deadline,
+        )
+    )
     if failures:
         raise ProcessTreeCleanupError(failures)
 
@@ -122,6 +128,7 @@ def _terminate_process_tree(
 def _drain_and_reap_process(
     process: subprocess.Popen[str],
     *,
+    platform_name: str,
     deadline: float,
 ) -> list[str]:
     timeout = _stage_timeout(deadline, _DIRECT_DRAIN_TIMEOUT_SECONDS)
@@ -130,16 +137,27 @@ def _drain_and_reap_process(
         direct_kill_failure = _kill_direct_process(process)
         if direct_kill_failure is not None:
             failures.append(direct_kill_failure)
-        failures.extend(_close_streams_and_reap(process, deadline=deadline))
+        failures.extend(
+            _finish_failed_output_collection(
+                process,
+                platform_name=platform_name,
+                deadline=deadline,
+            )
+        )
         return failures
 
     try:
         process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _escalate_direct_process(process, deadline=deadline)
+        return _escalate_direct_process(
+            process,
+            platform_name=platform_name,
+            deadline=deadline,
+        )
     except (OSError, ValueError):
         return _escalate_direct_process(
             process,
+            platform_name=platform_name,
             deadline=deadline,
             initial_failure="output drain failed",
         )
@@ -149,6 +167,7 @@ def _drain_and_reap_process(
 def _escalate_direct_process(
     process: subprocess.Popen[str],
     *,
+    platform_name: str,
     deadline: float,
     initial_failure: str | None = None,
 ) -> list[str]:
@@ -160,16 +179,34 @@ def _escalate_direct_process(
     timeout = _stage_timeout(deadline, _DIRECT_DRAIN_TIMEOUT_SECONDS)
     if timeout is None:
         failures.append("second output drain skipped because cleanup deadline expired")
-        failures.extend(_close_streams_and_reap(process, deadline=deadline))
+        failures.extend(
+            _finish_failed_output_collection(
+                process,
+                platform_name=platform_name,
+                deadline=deadline,
+            )
+        )
         return failures
     try:
         process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         failures.append("output drain timed out after direct kill")
-        failures.extend(_close_streams_and_reap(process, deadline=deadline))
+        failures.extend(
+            _finish_failed_output_collection(
+                process,
+                platform_name=platform_name,
+                deadline=deadline,
+            )
+        )
     except (OSError, ValueError):
         failures.append("output drain failed after direct kill")
-        failures.extend(_close_streams_and_reap(process, deadline=deadline))
+        failures.extend(
+            _finish_failed_output_collection(
+                process,
+                platform_name=platform_name,
+                deadline=deadline,
+            )
+        )
     return failures
 
 
@@ -184,20 +221,34 @@ def _kill_direct_process(process: subprocess.Popen[str]) -> str | None:
     return None
 
 
-def _close_streams_and_reap(
+def _finish_failed_output_collection(
+    process: subprocess.Popen[str],
+    *,
+    platform_name: str,
+    deadline: float,
+) -> list[str]:
+    failures: list[str] = []
+    if platform_name == "nt":
+        failures.append("output collection incomplete")
+    else:
+        for stream in (process.stdout, process.stderr):
+            if stream is None:
+                continue
+            try:
+                stream.close()
+            except OSError:
+                failures.append("output stream close failed")
+
+    failures.extend(_reap_direct_process(process, deadline=deadline))
+    return failures
+
+
+def _reap_direct_process(
     process: subprocess.Popen[str],
     *,
     deadline: float,
 ) -> list[str]:
     failures: list[str] = []
-    for stream in (process.stdout, process.stderr):
-        if stream is None:
-            continue
-        try:
-            stream.close()
-        except OSError:
-            failures.append("output stream close failed")
-
     timeout = _stage_timeout(deadline, _DIRECT_REAP_TIMEOUT_SECONDS)
     if timeout is None:
         failures.append("direct child reap skipped because cleanup deadline expired")
