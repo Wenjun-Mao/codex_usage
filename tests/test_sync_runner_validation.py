@@ -1,6 +1,7 @@
 import inspect
 import json
 import shutil
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -18,11 +19,13 @@ from codex_usage.sync.inventory import build_local_inventory
 from codex_usage.sync.runner import sync_status as transaction_status
 from codex_usage.sync.store import RemoteStore
 
+_load_in_process = partial(load_cached_session_data, max_workers=1)
+
 
 def test_runner_public_interfaces_are_keyword_only(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    data = _load_in_process([sessions], cache_dir=tmp_path / "cache")
     local = build_local_inventory(data)
 
     with pytest.raises(TypeError):
@@ -52,7 +55,7 @@ def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> 
         "updated_at": "2026-04-29T10:05:00Z",
     }
     _write_index(home, original_index)
-    initial = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    initial = _load_in_process([sessions], cache_dir=tmp_path / "cache")
     push_sync(
         local=build_local_inventory(initial),
         sync_dir=sync_dir,
@@ -63,7 +66,7 @@ def test_pull_backs_up_local_and_merges_remote_session_index(tmp_path: Path) -> 
     remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     _append_token_event(remote_path, "2026-07-13T12:02:00Z", 240)
     before_pull = local_path.read_bytes()
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    data = _load_in_process([sessions], cache_dir=tmp_path / "cache")
 
     result = pull_sync(
         local=build_local_inventory(data),
@@ -106,7 +109,7 @@ def test_pull_rejects_mismatched_remote_index_identity_before_local_writes(
         project,
         total=120,
     )
-    source_data = load_cached_session_data(
+    source_data = _load_in_process(
         [source_sessions], cache_dir=tmp_path / "source-cache"
     )
     push_sync(
@@ -116,7 +119,7 @@ def test_pull_rejects_mismatched_remote_index_identity_before_local_writes(
         machine_id="source",
         project_key=normalize_project_key(str(project)),
     )
-    target_data = load_cached_session_data(
+    target_data = _load_in_process(
         [target_sessions], cache_dir=tmp_path / "target-cache"
     )
     original_validate = RemoteStore.validate_selected
@@ -171,7 +174,7 @@ def test_pull_preflights_all_remote_identities_before_batch_writes(
         )
         for thread_id in ("task-a", "task-b")
     }
-    source_data = load_cached_session_data(
+    source_data = _load_in_process(
         [source_sessions], cache_dir=tmp_path / "source-cache"
     )
     push_sync(
@@ -181,7 +184,7 @@ def test_pull_preflights_all_remote_identities_before_batch_writes(
         machine_id="source",
         project_key=normalize_project_key(str(project)),
     )
-    target_data = load_cached_session_data(
+    target_data = _load_in_process(
         [target_sessions], cache_dir=tmp_path / "target-cache"
     )
     original_validate = RemoteStore.validate_selected
@@ -243,7 +246,7 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
     selected = list(source_paths)
     first_push = push_sync(
         local=build_local_inventory(
-            load_cached_session_data(
+            _load_in_process(
                 [source_home / "sessions"],
                 cache_dir=tmp_path / "source-cache",
             )
@@ -257,7 +260,7 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
 
     initial_pull = pull_sync(
         local=build_local_inventory(
-            load_cached_session_data(
+            _load_in_process(
                 [target_home / "sessions"],
                 cache_dir=tmp_path / "target-cache",
             )
@@ -279,7 +282,7 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
         )
     second_push = push_sync(
         local=build_local_inventory(
-            load_cached_session_data(
+            _load_in_process(
                 [source_home / "sessions"],
                 cache_dir=tmp_path / "source-cache",
             )
@@ -311,7 +314,7 @@ def test_stale_existing_cwd_blocks_complete_selected_pull_batch(
 
     result = pull_sync(
         local=build_local_inventory(
-            load_cached_session_data(
+            _load_in_process(
                 [target_home / "sessions"],
                 cache_dir=tmp_path / "target-cache",
             )
@@ -340,7 +343,7 @@ def test_run_sync_returns_typed_issue_when_local_changes_after_planning(
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
     local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    data = _load_in_process([sessions], cache_dir=tmp_path / "cache")
     original_validate = RemoteStore.validate_selected
 
     def change_local_after_planning(self, expected_entries, expected_files) -> None:
@@ -370,7 +373,7 @@ def test_run_sync_returns_typed_issue_for_visible_remote_change(
     sessions = tmp_path / "codex" / "sessions"
     local_path = _write_session(sessions, "thread-1", tmp_path / "repo", total=120)
     sync_dir = tmp_path / "sync"
-    initial = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    initial = _load_in_process([sessions], cache_dir=tmp_path / "cache")
     push_sync(
         local=build_local_inventory(initial),
         sync_dir=sync_dir,
@@ -379,7 +382,7 @@ def test_run_sync_returns_typed_issue_for_visible_remote_change(
         project_key=normalize_project_key(str(tmp_path / "repo")),
     )
     _append_token_event(local_path, "2026-07-13T12:03:00Z", 180)
-    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
+    data = _load_in_process([sessions], cache_dir=tmp_path / "cache")
     remote_path = sync_dir / "tasks" / "thread-1.jsonl"
     original_validate = runner_module.validate_local_selected
 

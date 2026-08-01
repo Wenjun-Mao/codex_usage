@@ -7,6 +7,11 @@ from codex_usage.parallel.execution import (
     WorkerSpan,
     resolve_worker_count,
 )
+from codex_usage.parallel.usage import (
+    UsageParseRequest,
+    UsageParseResult,
+    parse_usage_request,
+)
 
 __all__ = [
     "DEFAULT_MAX_WORKERS",
@@ -14,6 +19,9 @@ __all__ = [
     "SERIAL_FALLBACK_WARNING",
     "OrderedProcessMapper",
     "ParallelRunReport",
+    "UsageParseRequest",
+    "UsageParseResult",
     "WorkerSpan",
+    "parse_usage_request",
     "resolve_worker_count",
 ]

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import codex_usage.session_cache_schema as _schema
+import codex_usage.session_cache_refresh as _refresh
 import codex_usage.session_cache_store as _store
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.parser import finalize_session_records, parse_session_file, parse_timestamp
@@ -72,6 +73,7 @@ def load_cached_session_data(
     *,
     cache_dir: Path | None = None,
     auto_transitions: bool = True,
+    max_workers: int | None = None,
 ) -> CachedSessionData:
     resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
     resolved_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -80,7 +82,13 @@ def load_cached_session_data(
     with sqlite3.connect(resolved_cache_dir / CACHE_DB_NAME) as connection:
         connection.row_factory = sqlite3.Row
         rebuilt = _schema._ensure_schema(connection)
-        stats = _store._refresh_files(connection, session_dirs, inventory, rebuilt=rebuilt)
+        stats, usage_run = _refresh.refresh_files(
+            connection,
+            session_dirs,
+            inventory,
+            rebuilt=rebuilt,
+            max_workers=max_workers,
+        )
         current_keys = {entry.file_key for entry in inventory}
         missing_keys = _store._missing_file_keys(connection)
         records_by_file_key = _store._load_records_by_file_key(connection, current_keys | missing_keys)
@@ -107,4 +115,5 @@ def load_cached_session_data(
         stats=stats,
         file_errors=errors,
         retained_missing_files=retained_missing_files,
+        usage_run=usage_run,
     )

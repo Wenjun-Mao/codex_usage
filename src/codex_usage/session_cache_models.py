@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from codex_usage.models import UsageRecord
+from codex_usage.parallel.execution import (
+    EMPTY_PARALLEL_RUN_REPORT,
+    ParallelRunReport,
+)
 from codex_usage.project_transitions import ProjectTransition
 
 
@@ -51,6 +55,8 @@ class CachedSessionData:
     stats: CacheStats
     file_errors: dict[str, str]
     retained_missing_files: list[Path] = field(default_factory=list)
+    usage_run: ParallelRunReport = EMPTY_PARALLEL_RUN_REPORT
+    transition_run: ParallelRunReport = EMPTY_PARALLEL_RUN_REPORT
 
 
 @dataclass(frozen=True)
