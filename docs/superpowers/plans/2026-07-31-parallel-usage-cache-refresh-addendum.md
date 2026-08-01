@@ -191,7 +191,7 @@ collect_repo_path_observations_with_report(
 ) -> tuple[list[RepoPathObservation], ParallelRunReport]
 ```
 
-Workers decode JSONL and extract ordered raw candidates only. They never call `Path.exists`, `Path.resolve`, `normalize_project_key`, Git config readers, or SQLite. `read_jsonl_repo_path_candidates_once` opens and reads one file while preserving the current `errors="ignore"`, line order, thread-ID updates, event selection, path order, malformed-line skip behavior, and partial-evidence behavior. If an `OSError` or `UnicodeDecodeError` occurs after valid candidates were read, it raises `PartialTransitionReadError` carrying those candidates and the original cause. `collect_jsonl_repo_path_candidates` is the tenacity-decorated wrapper with `retry=retry_if_exception_type(PartialTransitionReadError)`, `stop=stop_after_attempt(3)`, `wait=wait_exponential(multiplier=0.05, min=0.05, max=0.2)`, and `reraise=True`. After retries are exhausted, `scan_transition_request` catches only `PartialTransitionReadError` and returns the candidates from the final complete attempt prefix plus `f"{type(error.cause).__name__}: {error.cause}"`. Thus a persistent late read failure preserves the same valid prefix as the frozen collector, while a transient failure can recover on retry. Other exceptions propagate and do not trigger per-file tolerance or process-pool fallback.
+Workers decode JSONL and extract ordered raw candidates only. They never call `Path.exists`, `Path.resolve`, `normalize_project_key`, Git config readers, or SQLite. `read_jsonl_repo_path_candidates_once` opens and reads one file while preserving the current `errors="ignore"`, line order, thread-ID updates, event selection, path order, malformed-line skip behavior, and partial-evidence behavior. It catches every `OSError` or `UnicodeDecodeError` from opening or iterating the file and raises `PartialTransitionReadError` carrying the candidates accumulated by that attempt, including an empty tuple for open/early-read failure, plus the original cause. `collect_jsonl_repo_path_candidates` is the tenacity-decorated wrapper with `retry=retry_if_exception_type(PartialTransitionReadError)`, `stop=stop_after_attempt(3)`, `wait=wait_exponential(multiplier=0.05, min=0.05, max=0.2)`, and `reraise=True`. After retries are exhausted, `scan_transition_request` catches only `PartialTransitionReadError` and returns the candidates from the final attempt prefix plus `f"{type(error.cause).__name__}: {error.cause}"`. Thus open and early failures remain retryable per-file error data, a persistent late read failure preserves the same valid prefix as the frozen collector, and a transient failure can recover on retry. Other exceptions propagate and do not trigger per-file tolerance or process-pool fallback.
 
 The parent sorts complete scan results by request ordinal, preserving line/candidate order within each result. It creates one `VerificationCache`, verifies every JSONL candidate in that order, then passes the same cache object to fully typed `collect_state_repo_path_observations`. State rows retain current session-dir, query-row, field, and candidate order. One unchanged dedupe/sort runs after both sources. This preserves the current globally shared path-verification semantics across files and across JSONL/state evidence.
 
@@ -1085,7 +1085,7 @@ This is a parent-orchestration double and does not claim spawned execution.
 
 - [ ] **Step 2: Write exact failing candidate/oracle/retry tests**
 
-`tests/test_parallel_transition_equivalence.py` imports `UTC` and `datetime` from `datetime`, `Iterator` and `Sequence` from `collections.abc`, and writes its files and repositories inside each test; no undefined fixture is referenced. Include these complete bodies:
+`tests/test_parallel_transition_equivalence.py` imports `json`, `UTC` and `datetime` from `datetime`, `Iterator` and `Sequence` from `collections.abc`, and `Never` from `typing`; it writes its files and repositories inside each test, so no undefined fixture is referenced. Include these complete bodies:
 
 ```python
 def test_parallel_collection_equals_frozen_serial_oracle(tmp_path: Path) -> None:
@@ -1226,9 +1226,28 @@ def test_once_reader_wraps_a_late_read_error_with_the_valid_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = tmp_path / "session.jsonl"
-    first_line = (
-        '{"timestamp":"2026-07-31T12:00:00Z","type":"session_meta",'
-        '"payload":{"id":"thread-prefix","cwd":"/repo/already-read"}}\n'
+    valid_lines = (
+        json.dumps(
+            {
+                "timestamp": "2026-07-31T12:00:00Z",
+                "type": "session_meta",
+                "payload": {"id": "thread-prefix"},
+            }
+        )
+        + "\n",
+        json.dumps(
+            {
+                "timestamp": "2026-07-31T12:00:01Z",
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "arguments": json.dumps(
+                        {"workdir": "/repo/already-read", "command": "Get-Location"}
+                    ),
+                },
+            }
+        )
+        + "\n",
     )
 
     class LateFailingHandle:
@@ -1239,7 +1258,7 @@ def test_once_reader_wraps_a_late_read_error_with_the_valid_prefix(
             return None
 
         def __iter__(self) -> Iterator[str]:
-            yield first_line
+            yield from valid_lines
             raise OSError("late transition read failure")
 
     monkeypatch.setattr(Path, "open", lambda *_args, **_kwargs: LateFailingHandle())
@@ -1249,6 +1268,23 @@ def test_once_reader_wraps_a_late_read_error_with_the_valid_prefix(
     assert caught.value.candidates[0].thread_id == "thread-prefix"
     assert isinstance(caught.value.cause, OSError)
     assert str(caught.value.cause) == "late transition read failure"
+
+
+def test_once_reader_wraps_an_open_error_with_an_empty_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "session.jsonl"
+
+    def fail_open(*_args: object, **_kwargs: object) -> Never:
+        raise OSError("transition open failure")
+
+    monkeypatch.setattr(Path, "open", fail_open)
+    with pytest.raises(PartialTransitionReadError) as caught:
+        read_jsonl_repo_path_candidates_once(path)
+    assert caught.value.candidates == ()
+    assert isinstance(caught.value.cause, OSError)
+    assert str(caught.value.cause) == "transition open failure"
 
 
 def test_transition_non_io_error_propagates_without_fallback(
