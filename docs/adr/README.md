@@ -27,3 +27,4 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 | [0017](0017-one-project-per-transfer-operation.md) | Constrain each Import and Export to one Codex project while keeping the transfer folder multi-project. |
 
 The current Task Transfer inventory contract is recorded in [ADR 0018](0018-user-visible-task-transfer-inventory.md).
+The bounded parallel cache refresh recovery contract is recorded in [ADR 0019](0019-bounded-parallel-cache-refresh.md).
