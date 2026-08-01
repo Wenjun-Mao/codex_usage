@@ -89,6 +89,29 @@ class TimedOutProcess:
         return self.returncode
 
 
+class RecordingWindowsJob:
+    def __init__(
+        self,
+        *,
+        terminate_error: bool = False,
+        close_error: bool = False,
+    ) -> None:
+        self.terminate_error = terminate_error
+        self.close_error = close_error
+        self.terminate_calls = 0
+        self.close_calls = 0
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        if self.terminate_error:
+            raise OSError("termination failed")
+
+    def close(self) -> None:
+        self.close_calls += 1
+        if self.close_error:
+            raise OSError("close failed")
+
+
 def assert_cleanup_error(caught: pytest.ExceptionInfo[RuntimeError]) -> None:
     assert type(caught.value).__name__ == "ProcessTreeCleanupError"
 
@@ -168,28 +191,19 @@ def test_posix_process_tree_timeout_uses_session_killpg_and_reaps(
     assert process.kill_calls == 0
 
 
-def test_windows_process_tree_timeout_uses_taskkill_and_reaps(
+def test_windows_process_tree_timeout_terminates_owned_job_and_reaps(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from codex_usage import process_tree
 
     process = TimedOutProcess()
-    launch: dict[str, object] = {}
-    taskkill_calls: list[tuple[list[str], dict[str, object]]] = []
-
-    def popen(command: list[str], **kwargs: object) -> TimedOutProcess:
-        launch.update(command=command, **kwargs)
-        return process
-
-    def taskkill(
-        command: list[str], **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
-        taskkill_calls.append((command, kwargs))
-        return subprocess.CompletedProcess(command, 0)
-
-    monkeypatch.setattr(process_tree.subprocess, "Popen", popen)
-    monkeypatch.setattr(process_tree.subprocess, "run", taskkill)
+    job = RecordingWindowsJob()
+    monkeypatch.setattr(
+        process_tree,
+        "_launch_owned_process",
+        lambda *args, **kwargs: (process, job),
+    )
 
     with pytest.raises(subprocess.TimeoutExpired):
         process_tree.run_process_tree(
@@ -200,31 +214,21 @@ def test_windows_process_tree_timeout_uses_taskkill_and_reaps(
             platform_name="nt",
         )
 
-    assert launch["creationflags"] == process_tree.WINDOWS_CREATE_NEW_PROCESS_GROUP
-    assert "start_new_session" not in launch
-    assert taskkill_calls[0][0] == [
-        "taskkill",
-        "/PID",
-        str(process.pid),
-        "/T",
-        "/F",
-    ]
-    assert taskkill_calls[0][1]["check"] is False
-    assert 0 < taskkill_calls[0][1]["timeout"] <= 5
+    assert job.terminate_calls == 1
+    assert job.close_calls == 1
     assert_bounded_cleanup_timeouts(process)
     assert process.kill_calls == 0
 
 
 @pytest.mark.parametrize(
-    ("outcome", "message"),
+    ("failure", "message"),
     [
-        ("nonzero", "taskkill exited with code 1"),
-        ("oserror", "taskkill could not start"),
-        ("timeout", "taskkill timed out"),
+        ("terminate", "Windows Job Object termination failed"),
+        ("close", "Windows Job Object handle close failed"),
     ],
 )
 def test_windows_tree_termination_failure_is_bounded_and_specific(
-    outcome: str,
+    failure: str,
     message: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -232,23 +236,15 @@ def test_windows_tree_termination_failure_is_bounded_and_specific(
     from codex_usage import process_tree
 
     process = TimedOutProcess()
-    taskkill_calls: list[tuple[list[str], dict[str, object]]] = []
-
-    monkeypatch.setattr(
-        process_tree.subprocess, "Popen", lambda *args, **kwargs: process
+    job = RecordingWindowsJob(
+        terminate_error=failure == "terminate",
+        close_error=failure == "close",
     )
-
-    def taskkill(
-        command: list[str], **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
-        taskkill_calls.append((command, kwargs))
-        if outcome == "oserror":
-            raise OSError("taskkill unavailable")
-        if outcome == "timeout":
-            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-        return subprocess.CompletedProcess(command, 1)
-
-    monkeypatch.setattr(process_tree.subprocess, "run", taskkill)
+    monkeypatch.setattr(
+        process_tree,
+        "_launch_owned_process",
+        lambda *args, **kwargs: (process, job),
+    )
 
     with pytest.raises(RuntimeError, match=message) as caught:
         process_tree.run_process_tree(
@@ -260,7 +256,8 @@ def test_windows_tree_termination_failure_is_bounded_and_specific(
         )
 
     assert_cleanup_error(caught)
-    assert 0 < taskkill_calls[0][1]["timeout"] <= 5
+    assert job.terminate_calls == 1
+    assert job.close_calls == 1
     assert process.kill_calls == 1
     assert_bounded_cleanup_timeouts(process)
 
@@ -364,13 +361,11 @@ def test_windows_repeated_drain_timeout_never_closes_reader_streams(
     process = TimedOutProcess(cleanup_communicate_timeouts=2)
     process.stdout = BlockingStream(release)
     process.stderr = BlockingStream(release)
+    job = RecordingWindowsJob()
     monkeypatch.setattr(
-        process_tree.subprocess, "Popen", lambda *args, **kwargs: process
-    )
-    monkeypatch.setattr(
-        process_tree.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0),
+        process_tree,
+        "_launch_owned_process",
+        lambda *args, **kwargs: (process, job),
     )
     errors: list[BaseException] = []
 
@@ -413,18 +408,14 @@ def test_windows_cleanup_stops_at_shared_monotonic_deadline(
     from codex_usage import process_tree
 
     process = TimedOutProcess(cleanup_communicate_timeouts=1)
-    taskkill_calls: list[dict[str, object]] = []
-    monotonic_values = iter((100.0, 100.0, 109.0, 110.0, 110.0))
+    job = RecordingWindowsJob()
+    monotonic_values = iter((100.0, 109.0, 110.0, 110.0))
     monkeypatch.setattr(
-        process_tree.subprocess, "Popen", lambda *args, **kwargs: process
+        process_tree,
+        "_launch_owned_process",
+        lambda *args, **kwargs: (process, job),
     )
     monkeypatch.setattr(process_tree.time, "monotonic", lambda: next(monotonic_values))
-
-    def taskkill(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        taskkill_calls.append(kwargs)
-        return subprocess.CompletedProcess(args[0], 0)
-
-    monkeypatch.setattr(process_tree.subprocess, "run", taskkill)
 
     with pytest.raises(RuntimeError, match="cleanup deadline expired") as caught:
         process_tree.run_process_tree(
@@ -436,7 +427,8 @@ def test_windows_cleanup_stops_at_shared_monotonic_deadline(
         )
 
     assert_cleanup_error(caught)
-    assert taskkill_calls[0]["timeout"] == 5
+    assert job.terminate_calls == 1
+    assert job.close_calls == 1
     assert process.communicate_timeouts == [120, 1]
     assert process.wait_timeouts == []
     assert process.stdout.closed is False

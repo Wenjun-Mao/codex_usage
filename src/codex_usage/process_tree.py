@@ -3,21 +3,27 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Final
 
-WINDOWS_CREATE_NEW_PROCESS_GROUP: Final[int] = 0x00000200
+from codex_usage.windows_job import WindowsJob, WindowsJobError
+
 _CLEANUP_TIMEOUT_SECONDS: Final[float] = 10.0
-_TREE_TERMINATION_TIMEOUT_SECONDS: Final[float] = 5.0
 _DIRECT_DRAIN_TIMEOUT_SECONDS: Final[float] = 2.0
 _DIRECT_REAP_TIMEOUT_SECONDS: Final[float] = 2.0
+_WINDOWS_CONTROLLER_MODULE: Final[str] = "codex_usage.windows_job_controller"
 
 
 class ProcessTreeCleanupError(RuntimeError):
     def __init__(self, failures: list[str]) -> None:
         self.failures = tuple(failures)
-        super().__init__("timed-out process cleanup failed: " + "; ".join(failures))
+        super().__init__("process tree cleanup failed: " + "; ".join(failures))
+
+
+class ProcessTreeLaunchError(RuntimeError):
+    pass
 
 
 def run_process_tree(
@@ -29,53 +35,168 @@ def run_process_tree(
     platform_name: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     target_platform = os.name if platform_name is None else platform_name
-    launch_options = _launch_options(target_platform)
-    process = subprocess.Popen(
+    process, windows_job = _launch_owned_process(
         command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        env=environment,
+        environment=environment,
         cwd=cwd,
-        **launch_options,
+        platform_name=target_platform,
     )
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired as timeout_error:
         try:
-            _cleanup_timed_out_process(process, platform_name=target_platform)
+            _cleanup_timed_out_process(
+                process,
+                platform_name=target_platform,
+                windows_job=windows_job,
+            )
         except ProcessTreeCleanupError as cleanup_error:
             raise cleanup_error from timeout_error
         raise
+    except BaseException as error:
+        failures = _close_windows_job(windows_job)
+        if failures:
+            raise ProcessTreeCleanupError(failures) from error
+        raise
 
+    failures = _close_windows_job(windows_job)
+    if failures:
+        raise ProcessTreeCleanupError(failures)
     if process.returncode is None:
         raise RuntimeError("completed process has no return code")
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
-def _launch_options(platform_name: str) -> dict[str, object]:
+def _launch_owned_process(
+    command: list[str],
+    *,
+    environment: dict[str, str],
+    cwd: Path,
+    platform_name: str,
+) -> tuple[subprocess.Popen[str], WindowsJob | None]:
     if platform_name == "posix":
-        return {"start_new_session": True}
+        return (
+            subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                env=environment,
+                cwd=cwd,
+                start_new_session=True,
+            ),
+            None,
+        )
     if platform_name == "nt":
-        return {"creationflags": WINDOWS_CREATE_NEW_PROCESS_GROUP}
+        return _launch_windows_controller(
+            command,
+            environment=environment,
+            cwd=cwd,
+        )
     raise ValueError(f"unsupported process platform: {platform_name}")
+
+
+def _launch_windows_controller(
+    command: list[str],
+    *,
+    environment: dict[str, str],
+    cwd: Path,
+) -> tuple[subprocess.Popen[str], WindowsJob]:
+    try:
+        job = WindowsJob()
+    except Exception as error:
+        raise ProcessTreeLaunchError(
+            "Windows process ownership setup failed"
+        ) from error
+    controller_command = [
+        sys.executable,
+        "-m",
+        _WINDOWS_CONTROLLER_MODULE,
+        "--",
+        *command,
+    ]
+    try:
+        process = subprocess.Popen(
+            controller_command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=environment,
+            cwd=cwd,
+        )
+    except (OSError, ValueError) as error:
+        _close_windows_job(job)
+        raise ProcessTreeLaunchError(
+            "Windows process ownership setup failed"
+        ) from error
+
+    assigned = False
+    try:
+        job.assign(process.pid)
+        assigned = True
+        _release_windows_controller(process)
+    except Exception as error:
+        _abort_windows_controller(process, job, assigned=assigned)
+        raise ProcessTreeLaunchError(
+            "Windows process ownership setup failed"
+        ) from error
+    return process, job
+
+
+def _release_windows_controller(process: subprocess.Popen[str]) -> None:
+    gate = process.stdin
+    if gate is None:
+        raise RuntimeError("Windows process controller gate is unavailable")
+    gate.write("1")
+    gate.flush()
+    gate.close()
+    process.stdin = None
+
+
+def _abort_windows_controller(
+    process: subprocess.Popen[str],
+    job: WindowsJob,
+    *,
+    assigned: bool,
+) -> None:
+    if assigned:
+        try:
+            job.terminate()
+        except (OSError, WindowsJobError):
+            pass
+    gate = process.stdin
+    if gate is not None:
+        try:
+            gate.close()
+        except (OSError, ValueError):
+            pass
+        process.stdin = None
+    _kill_direct_process(process)
+    try:
+        process.communicate(timeout=_DIRECT_DRAIN_TIMEOUT_SECONDS)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    _close_windows_job(job)
 
 
 def _cleanup_timed_out_process(
     process: subprocess.Popen[str],
     *,
     platform_name: str,
+    windows_job: WindowsJob | None,
 ) -> None:
     deadline = time.monotonic() + _CLEANUP_TIMEOUT_SECONDS
     failures: list[str] = []
-    tree_failure = _terminate_process_tree(
+    tree_failures = _terminate_process_tree(
         process,
         platform_name=platform_name,
-        deadline=deadline,
+        windows_job=windows_job,
     )
-    if tree_failure is not None:
-        failures.append(tree_failure)
+    if tree_failures:
+        failures.extend(tree_failures)
         direct_kill_failure = _kill_direct_process(process)
         if direct_kill_failure is not None:
             failures.append(direct_kill_failure)
@@ -94,35 +215,36 @@ def _terminate_process_tree(
     process: subprocess.Popen[str],
     *,
     platform_name: str,
-    deadline: float,
-) -> str | None:
+    windows_job: WindowsJob | None,
+) -> list[str]:
     if platform_name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
-            return None
+            return []
         except OSError:
-            return "killpg failed"
-        return None
+            return ["killpg failed"]
+        return []
 
-    timeout = _stage_timeout(deadline, _TREE_TERMINATION_TIMEOUT_SECONDS)
-    if timeout is None:
-        return "taskkill skipped because cleanup deadline expired"
+    if windows_job is None:
+        return ["Windows Job Object ownership is missing"]
+    failures: list[str] = []
     try:
-        result = subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return "taskkill timed out"
-    except OSError:
-        return "taskkill could not start"
-    if result.returncode != 0:
-        return f"taskkill exited with code {result.returncode}"
-    return None
+        windows_job.terminate()
+    except (OSError, WindowsJobError):
+        failures.append("Windows Job Object termination failed")
+    failures.extend(_close_windows_job(windows_job))
+    return failures
+
+
+def _close_windows_job(windows_job: WindowsJob | None) -> list[str]:
+    if windows_job is None:
+        return []
+    try:
+        windows_job.close()
+    except (OSError, WindowsJobError):
+        return ["Windows Job Object handle close failed"]
+    return []
 
 
 def _drain_and_reap_process(

@@ -6,7 +6,11 @@ from datetime import UTC
 from pathlib import Path
 
 from codex_usage.models import SessionMetadata
-from codex_usage.project_identity import resolve_project_identity
+from codex_usage.project_identity import (
+    ProjectIdentity,
+    normalize_declared_project_key,
+    resolve_project_identity,
+)
 from codex_usage.session_files import timestamp_key
 from codex_usage.sync.constants import LEGACY_REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.format_migration_layout import guard_legacy_file, guard_task_file
@@ -153,7 +157,7 @@ def materialize_selected_remote(
     *,
     propagate_io_errors: bool = False,
 ) -> RemoteInventory:
-    """Read selected indexed files and recheck reconstructed provenance without rehashing."""
+    """Read and hash selected files, then validate their indexed provenance."""
     effective_threads = dict(inventory.index.threads)
     files = dict(inventory.files)
     repaired_thread_ids = list(inventory.repaired_thread_ids)
@@ -163,22 +167,16 @@ def materialize_selected_remote(
         entry = effective_threads.get(thread_id)
         if entry is None:
             continue
-        if thread_id in files:
-            snapshot = files[thread_id]
-            if not snapshot.exists:
-                continue
-            path = snapshot.path if snapshot.path is not None else root / entry.file
-            path_guard(path)
-            metadata = read_session_metadata(path)
-            if metadata is not None and metadata.is_subagent and not _has_issue(
-                issues,
-                "subagent_not_transferable",
-                thread_id,
-            ):
-                issues.append(_subagent_issue(entry))
+        visible_snapshot = files.get(thread_id)
+        if visible_snapshot is not None and not visible_snapshot.exists:
             continue
+        path = (
+            visible_snapshot.path
+            if visible_snapshot is not None and visible_snapshot.path is not None
+            else root / entry.file
+        )
         snapshot, metadata = materialize_remote_task(
-            root / entry.file,
+            path,
             path_guard,
             propagate_io_errors=propagate_io_errors,
         )
@@ -209,6 +207,11 @@ def materialize_selected_remote(
         if metadata.is_subagent:
             issues.append(_subagent_issue(entry))
             continue
+        if inventory.index.format_version != LEGACY_REMOTE_TRANSFER_FORMAT_VERSION:
+            actual_identity = resolve_project_identity(metadata)
+            if not _project_identity_matches(entry, actual_identity):
+                issues.append(_project_identity_issue(entry))
+                continue
         if (entry.sha256, entry.size_bytes) != (snapshot.sha256, snapshot.size_bytes):
             effective_threads[thread_id] = replace(
                 entry,
@@ -405,6 +408,40 @@ def _subagent_issue(entry: RemoteThreadEntry) -> SyncIssue:
         "subagent_not_transferable",
         f"Remote task {entry.file} is a structured subagent and cannot be transferred",
         entry.thread_id,
+    )
+
+
+def _project_identity_issue(entry: RemoteThreadEntry) -> SyncIssue:
+    return SyncIssue(
+        "remote_project_identity_mismatch",
+        (
+            f"Remote task {entry.file} does not match its indexed project identity. "
+            "Re-export the task from its source project before retrying."
+        ),
+        entry.thread_id,
+    )
+
+
+def _project_identity_matches(
+    entry: RemoteThreadEntry,
+    actual: ProjectIdentity,
+) -> bool:
+    indexed_identities = _normalized_project_identities(
+        entry.project_key,
+        entry.project_aliases,
+    )
+    actual_identities = _normalized_project_identities(actual.key, actual.aliases)
+    return bool(indexed_identities.intersection(actual_identities))
+
+
+def _normalized_project_identities(
+    key: str,
+    aliases: tuple[str, ...],
+) -> frozenset[str]:
+    return frozenset(
+        normalized
+        for value in (key, *aliases)
+        if (normalized := normalize_declared_project_key(value))
     )
 
 

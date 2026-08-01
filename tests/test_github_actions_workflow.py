@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "package-vsix.yml"
 PYPROJECT = ROOT / "pyproject.toml"
@@ -18,6 +17,7 @@ NATIVE_BUILD_SCRIPTS = (
     ROOT / "scripts" / "build-macos-arm64-exe.sh",
     ROOT / "scripts" / "build-windows-exe.ps1",
 )
+WINDOWS_PROCESS_TREE_SMOKE = ROOT / "scripts" / "packaged_windows_process_tree_smoke.py"
 
 
 def read_workflow() -> str:
@@ -112,6 +112,30 @@ def test_native_build_scripts_run_parallel_smoke_before_transfer_smoke() -> None
     assert macos.index("packaged_parallel_cache_smoke.py") < macos.index(
         "smoke-test-packaged-sync.py"
     )
+
+
+def test_windows_build_runs_native_descendant_lifetime_proof() -> None:
+    build = (ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
+
+    assert WINDOWS_PROCESS_TREE_SMOKE.is_file()
+    smoke = WINDOWS_PROCESS_TREE_SMOKE.read_text(encoding="utf-8")
+    assert "--root" in smoke and "--child" in smoke
+    assert "root_exited_before_timeout" in smoke
+    assert "descendant_exited" in smoke
+    assert "run_process_tree" in smoke
+    assert "packaged_windows_process_tree_smoke.py" in build
+    smoke_call = "uv run python $processTreeSmokeScript --executable $exePath"
+    assert smoke_call in build
+    assert build.index("& $exePath --help") < build.index(smoke_call)
+    parallel_call = "uv run python $parallelSmokeScript --executable $exePath"
+    assert build.index(smoke_call) < build.index(parallel_call)
+
+
+def test_release_document_uses_current_tag_example() -> None:
+    release_document = (ROOT / "docs/release.md").read_text(encoding="utf-8")
+
+    assert "such as `v0.1.42`" in release_document
+    assert "`v0.1.32`" not in release_document
 
 
 def test_release_workflow_keeps_only_supported_platform_targets() -> None:

@@ -36,7 +36,7 @@ def prepare_direction_plan(
     )
     if scope_issues:
         return probed_remote, probed_plan, scope_issues
-    remote = store.load_inventory()
+    remote = store.load_inventory(metadata_only=True)
     selected = normalize_selected_thread_ids(thread_ids)
     remote = store.materialize_selected(remote, selected)
     scope_issues = transfer_project_scope_issues(local, remote, selected, project_key)
@@ -67,7 +67,7 @@ def probe_direction_scope(
     project_key: str,
 ) -> tuple[RemoteInventory, SyncPlan, tuple[SyncIssue, ...]]:
     selected = normalize_selected_thread_ids(thread_ids)
-    remote = store.probe_inventory()
+    remote = store.probe_inventory(metadata_only=True)
     remote = store.materialize_probed(remote, selected)
     scope_issues = transfer_project_scope_issues(local, remote, selected, project_key)
     selected_local = (
@@ -98,7 +98,7 @@ def prepare_status_plan(
 ) -> tuple[RemoteInventory, SyncPlan]:
     selected = normalize_selected_thread_ids(thread_ids)
     selected_local = materialize_selected_local(local, selected)
-    remote = store.probe_inventory()
+    remote = store.probe_inventory(metadata_only=True)
     remote = store.materialize_probed(remote, selected)
     plan = build_sync_plan(
         local,

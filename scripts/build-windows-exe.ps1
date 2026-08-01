@@ -14,6 +14,7 @@ $distDir = Join-Path $repoRoot "extensions\vscode\bin\win32-x64"
 $workDir = Join-Path $repoRoot "build\pyinstaller"
 $entryPoint = Join-Path $repoRoot "src\codex_usage\__main__.py"
 $exePath = Join-Path $distDir "codex-usage.exe"
+$processTreeSmokeScript = Join-Path $repoRoot "scripts\packaged_windows_process_tree_smoke.py"
 $parallelSmokeScript = Join-Path $repoRoot "scripts\packaged_parallel_cache_smoke.py"
 $smokeScript = Join-Path $repoRoot "scripts\smoke-test-packaged-sync.py"
 
@@ -45,6 +46,11 @@ try {
     & $exePath --help | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Packaged executable --help exited with code $LASTEXITCODE"
+    }
+
+    uv run python $processTreeSmokeScript --executable $exePath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged Windows process-tree smoke test exited with code $LASTEXITCODE"
     }
 
     uv run python $parallelSmokeScript --executable $exePath --expected-target win32-x64

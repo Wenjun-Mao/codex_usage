@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from codex_usage.session_files import read_session_metadata
 
-
 ACTIVE_SESSION_DIR_NAME = "sessions"
 ARCHIVED_SESSION_DIR_NAME = "archived_sessions"
+_FALLBACK_FILE_KEY_NAMESPACE = "codex-usage:fallback:path:"
 
 
 @dataclass(frozen=True)
@@ -69,7 +70,7 @@ def default_session_dir() -> Path:
 
 
 def collect_session_file_inventory(session_dirs: list[Path]) -> list[SessionFileInventoryEntry]:
-    selected: dict[str, SessionFileInventoryEntry] = {}
+    candidates: list[SessionFileInventoryEntry] = []
     for session_dir in session_dirs:
         for path in sorted(session_dir.rglob("*.jsonl"), key=lambda item: str(item).casefold()):
             if not path.is_file():
@@ -85,9 +86,13 @@ def collect_session_file_inventory(session_dirs: list[Path]) -> list[SessionFile
                 mtime_ns=stat.st_mtime_ns,
                 file_key_is_fallback=file_key_is_fallback,
             )
-            existing = selected.get(entry.file_key)
-            if existing is None or _inventory_priority(entry) < _inventory_priority(existing):
-                selected[entry.file_key] = entry
+            candidates.append(entry)
+
+    selected: dict[str, SessionFileInventoryEntry] = {}
+    for entry in _reserve_fallback_file_keys(candidates):
+        existing = selected.get(entry.file_key)
+        if existing is None or _inventory_priority(entry) < _inventory_priority(existing):
+            selected[entry.file_key] = entry
     return sorted(selected.values(), key=lambda entry: str(entry.path).casefold())
 
 
@@ -103,7 +108,67 @@ def _session_file_key_with_provenance(path: Path) -> tuple[str, bool]:
     metadata = read_session_metadata(path)
     if metadata and metadata.session_id:
         return metadata.session_id, False
-    return path.stem, True
+    return _path_fallback_file_key(path), True
+
+
+def _reserve_fallback_file_keys(
+    entries: list[SessionFileInventoryEntry],
+) -> list[SessionFileInventoryEntry]:
+    reserved = {
+        entry.file_key
+        for entry in entries
+        if not entry.file_key_is_fallback
+    }
+    keys_by_path: dict[str, str] = {}
+    fallback_paths = sorted(
+        {
+            _normalized_absolute_path(entry.path)
+            for entry in entries
+            if entry.file_key_is_fallback
+        }
+    )
+    for normalized_path in fallback_paths:
+        nonce = 0
+        candidate = _path_fallback_file_key_from_normalized(normalized_path, nonce)
+        while candidate in reserved:
+            nonce += 1
+            candidate = _path_fallback_file_key_from_normalized(
+                normalized_path,
+                nonce,
+            )
+        keys_by_path[normalized_path] = candidate
+        reserved.add(candidate)
+
+    return [
+        replace(
+            entry,
+            file_key=keys_by_path[_normalized_absolute_path(entry.path)],
+        )
+        if entry.file_key_is_fallback
+        else entry
+        for entry in entries
+    ]
+
+
+def _path_fallback_file_key(path: Path) -> str:
+    return _path_fallback_file_key_from_normalized(
+        _normalized_absolute_path(path),
+        0,
+    )
+
+
+def _path_fallback_file_key_from_normalized(
+    normalized_path: str,
+    nonce: int,
+) -> str:
+    material = normalized_path if nonce == 0 else f"{normalized_path}\0{nonce}"
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return f"{_FALLBACK_FILE_KEY_NAMESPACE}{digest}"
+
+
+def _normalized_absolute_path(path: Path) -> str:
+    absolute = os.path.abspath(os.path.expanduser(path))
+    return os.path.normcase(os.path.normpath(absolute)).replace("\\", "/")
 
 
 def storage_state_for_session_dir(session_dir: Path) -> str:

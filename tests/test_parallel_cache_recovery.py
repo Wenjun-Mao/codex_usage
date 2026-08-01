@@ -187,7 +187,6 @@ def test_unreadable_fallback_key_reuses_stable_metadata_identity(
     )
     valid_bytes = path.read_bytes()
     cache_dir = tmp_path / "cache"
-
     initial_inventory = collect_session_file_inventory([sessions])
     assert [(entry.file_key, entry.file_key_is_fallback) for entry in initial_inventory] == [
         (stable_key, False)
@@ -202,9 +201,10 @@ def test_unreadable_fallback_key_reuses_stable_metadata_identity(
 
     path.write_bytes(b"\xff\xfe")
     corrupt_inventory = collect_session_file_inventory([sessions])
-    assert [(entry.file_key, entry.file_key_is_fallback) for entry in corrupt_inventory] == [
-        (path.stem, True)
-    ]
+    (fallback_entry,) = corrupt_inventory
+    fallback_key = fallback_entry.file_key
+    assert fallback_entry.file_key_is_fallback is True
+    assert fallback_key.startswith("codex-usage:fallback:path:") and fallback_key != stable_key
     failed = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
     )
@@ -329,10 +329,10 @@ def test_fallback_reconciliation_preserves_current_metadata_key_owner(
         for entry in inventory
     }
     assert [entry.path for entry in inventory] == sorted(paths)
-    assert inventory_by_path == {
-        valid_path: (shared_key, False),
-        unreadable_path: (unreadable_path.stem, True),
-    }
+    assert inventory_by_path[valid_path] == (shared_key, False)
+    fallback_key, is_fallback = inventory_by_path[unreadable_path]
+    assert is_fallback is True and fallback_key.startswith("codex-usage:fallback:path:")
+    assert fallback_key != shared_key
 
     loaded = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
@@ -362,10 +362,10 @@ def test_fallback_reconciliation_preserves_current_metadata_key_owner(
         assert connection.execute(
             "select file_key, file_path, session_id from session_metadata"
         ).fetchall() == [(shared_key, str(valid_path), shared_key)]
-    assert set(file_rows) == {shared_key, unreadable_path.stem}
+    assert set(file_rows) == {shared_key, fallback_key}
     assert file_rows[shared_key] == (str(valid_path), 0, "")
-    assert file_rows[unreadable_path.stem][:2] == (str(unreadable_path), 0)
-    assert file_rows[unreadable_path.stem][2].startswith("UnicodeDecodeError: ")
+    assert file_rows[fallback_key][:2] == (str(unreadable_path), 0)
+    assert file_rows[fallback_key][2].startswith("UnicodeDecodeError: ")
 
 
 def test_insert_failure_rolls_back_all_eight_replacements(

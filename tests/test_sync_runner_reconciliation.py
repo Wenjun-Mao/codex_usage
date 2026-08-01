@@ -165,7 +165,7 @@ def test_matching_local_bytes_do_not_replace_newer_remote_metadata(tmp_path: Pat
     assert retained["session_updated_at"] == "2026-07-13T13:00:00Z"
 
 
-def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads_unindexed_once(
+def test_selected_remote_materialization_leaves_unrelated_remote_bytes_metadata_only(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -216,7 +216,7 @@ def test_selected_remote_materialization_skips_unrelated_indexed_bytes_and_reads
     )
 
     assert plan.items[0].action == "pull"
-    assert read_counts == {selected_path: 1, unrelated_path: 0, unindexed_path: 1}
+    assert read_counts == {selected_path: 1, unrelated_path: 0, unindexed_path: 0}
 
 
 def test_push_blocks_unpulled_remote_before_committing_local_task(
@@ -290,10 +290,11 @@ def test_run_sync_uses_supplied_inventory_and_emits_only_push_phase(
     calls = {"remote": 0}
     original_remote = RemoteStore.load_inventory
 
-    def count_remote_inventory(self):
+    def count_remote_inventory(self, *, metadata_only=False):
         assert self._lock.is_locked
+        assert metadata_only is True
         calls["remote"] += 1
-        return original_remote(self)
+        return original_remote(self, metadata_only=metadata_only)
 
     monkeypatch.setattr(RemoteStore, "load_inventory", count_remote_inventory)
     progress = []

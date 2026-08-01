@@ -38,10 +38,24 @@ current and remaining work.
 There is no byte offset checkpoint. The recovery unit is a complete file
 generation: after interruption, committed generations are reused and the
 unfinished generation is reparsed. Preserve schema version 3 and the existing
-cache identity and ordering contracts. Validate the native acceptance contract
-with source/frozen PID-overlap proof, child SQLite guards, oracle equivalence,
-and a manual non-publishing dual-native workflow before tag as a pre-publish
-gate on macOS Apple Silicon and Windows x64.
+cache identity and ordering contracts. Canonical session IDs are authoritative
+cache keys. Files whose metadata cannot be read use deterministic SHA-256 keys
+in an explicit path-fallback namespace; allocate those keys against all
+canonical and fallback keys in the inventory so neither mtimes nor discovery
+order can hide a valid session or an unreadable-file error.
+
+Native packaged-smoke commands use durable process-tree ownership. POSIX uses
+a new session and process-group termination. Windows creates a Job Object with
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, starts a controller blocked on a launch
+gate, assigns that controller to the Job, and only then releases it to spawn
+the target. The target and descendants inherit Job membership, while the
+parent retains the Job handle after the target root exits. Timeout cleanup
+terminates and closes the Job before bounded output drain and reap.
+
+Validate the native acceptance contract with source/frozen PID-overlap proof,
+child SQLite guards, oracle equivalence, a Windows root-exits/child-survives
+Job-ownership smoke, and a manual non-publishing dual-native workflow before
+tag as a pre-publish gate on macOS Apple Silicon and Windows x64.
 
 ## Rejected Alternatives
 
@@ -55,6 +69,9 @@ gate on macOS Apple Silicon and Windows x64.
   parent-owned one global verification cache contract.
 - Append checkpoints would expose partial generations and make interruption
   recovery mix old and new file records.
+- Windows console process groups plus `taskkill` do not retain ownership after
+  a target root exits. Assigning the target after `Popen` also leaves a race in
+  which it can spawn an unowned descendant before Job assignment.
 
 ## Consequences And Guardrails
 
@@ -71,5 +88,7 @@ Complete file generation replacement preserves the last known-good rows, and
 schema version 3 remains the recovery compatibility marker. Source/frozen
 PID-overlap proof must show real spawned overlap without the parent PID;
 oracle equivalence must show the same aggregate result as the serial path.
-The manual non-publishing dual-native workflow before tag is required as the
-pre-publish gate for macOS Apple Silicon and Windows x64.
+Windows CI must additionally prove that a root can exit while a pipe-inheriting
+child remains alive, then that timeout returns within its bound and the child
+is gone. The manual non-publishing dual-native workflow before tag is required
+as the pre-publish gate for macOS Apple Silicon and Windows x64.

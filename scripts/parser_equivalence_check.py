@@ -12,8 +12,12 @@ import shutil
 import sys
 from pathlib import Path
 
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
-
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 _PATH_ERROR = "path must remain under evidence root"
 
@@ -34,6 +38,8 @@ def capture(
         raise ValueError("source root must be a directory")
 
     candidates = _eligible_source_files(resolved_source_root, max_file_bytes)
+    if not candidates:
+        raise ValueError("no eligible fixtures")
     selected_count = min(limit, len(candidates))
     selected = [candidates[index] for index in _sample_indexes(len(candidates), selected_count)]
 
@@ -221,7 +227,9 @@ def _read_payload(path: Path, *, require_digest: bool) -> dict[str, object]:
         raise ValueError("invalid evidence payload")
     if type(payload["version"]) is not int or payload["version"] != 1:
         raise ValueError("invalid evidence payload")
-    if not isinstance(payload["fixtures"], list) or len(payload["fixtures"]) > 100:
+    if not isinstance(payload["fixtures"], list) or not 1 <= len(
+        payload["fixtures"]
+    ) <= 100:
         raise ValueError("invalid evidence payload")
     expected_row_keys = (
         {"fixture", "size_bytes", "digest"}
