@@ -119,6 +119,7 @@ def _reconcile_fallback_file_keys(
     inventory: list[SessionFileInventoryEntry],
     cached_rows: dict[str, sqlite3.Row],
 ) -> None:
+    owned_current_keys = {entry.file_key for entry in inventory}
     cached_keys_by_path: dict[str, list[str]] = {}
     for file_key, row in cached_rows.items():
         cached_keys_by_path.setdefault(str(row["path"]), []).append(file_key)
@@ -127,8 +128,13 @@ def _reconcile_fallback_file_keys(
         if not entry.file_key_is_fallback:
             continue
         matching_keys = cached_keys_by_path.get(str(entry.path), [])
-        if len(matching_keys) == 1:
-            inventory[index] = replace(entry, file_key=matching_keys[0])
+        if len(matching_keys) != 1:
+            continue
+        replacement_key = matching_keys[0]
+        if replacement_key != entry.file_key and replacement_key in owned_current_keys:
+            continue
+        inventory[index] = replace(entry, file_key=replacement_key)
+        owned_current_keys.add(replacement_key)
 
 
 def _commit_preflight(

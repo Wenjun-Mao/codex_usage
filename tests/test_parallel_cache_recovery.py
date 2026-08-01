@@ -292,6 +292,82 @@ def test_valid_new_metadata_identity_replaces_same_path_alias_generation(
         ).fetchall() == [("new-thread", "new-thread")]
 
 
+@pytest.mark.parametrize(
+    "valid_index", [0, 1], ids=("valid-first", "fallback-first")
+)
+def test_fallback_reconciliation_preserves_current_metadata_key_owner(
+    tmp_path: Path, valid_index: int,
+) -> None:
+    sessions, paths = write_valid_usage_set(tmp_path / "codex", count=2)
+    valid_path = paths[valid_index]
+    unreadable_path = paths[1 - valid_index]
+    shared_key = "shared-session"
+    cache_dir = tmp_path / "cache"
+
+    for path, total_tokens in ((valid_path, 200), (unreadable_path, 100)):
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        rows[0]["payload"]["id"] = shared_key
+        usage = rows[1]["payload"]["info"]["total_token_usage"]
+        usage["input_tokens"] = total_tokens
+        usage["total_tokens"] = total_tokens
+        path.write_text(
+            "".join(json.dumps(row) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
+    valid_bytes = valid_path.read_bytes()
+    valid_path.unlink()
+    load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+
+    valid_path.write_bytes(valid_bytes)
+    unreadable_path.write_bytes(b"\xff\xfe")
+    inventory = collect_session_file_inventory([sessions])
+    inventory_by_path = {
+        entry.path: (entry.file_key, entry.file_key_is_fallback)
+        for entry in inventory
+    }
+    assert [entry.path for entry in inventory] == sorted(paths)
+    assert inventory_by_path == {
+        valid_path: (shared_key, False),
+        unreadable_path: (unreadable_path.stem, True),
+    }
+
+    loaded = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert loaded.stats.files_parsed == 2
+    assert loaded.stats.files_removed == 0
+    assert loaded.stats.files_missing_retained == 0
+    assert loaded.stats.file_errors == 1
+    assert loaded.retained_missing_files == []
+    assert [
+        (record.file_path, record.session_id, record.usage.total_tokens)
+        for record in loaded.records
+    ] == [(valid_path, shared_key, 200)]
+    assert list(loaded.file_errors) == [str(unreadable_path)]
+    assert loaded.file_errors[str(unreadable_path)].startswith("UnicodeDecodeError: ")
+
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        file_rows = {
+            row[0]: row[1:]
+            for row in connection.execute(
+                "select file_key, path, is_missing, error from files"
+            )
+        }
+        assert connection.execute(
+            "select file_key, file_path, session_id, total_tokens from usage_records"
+        ).fetchall() == [(shared_key, str(valid_path), shared_key, 200)]
+        assert connection.execute(
+            "select file_key, file_path, session_id from session_metadata"
+        ).fetchall() == [(shared_key, str(valid_path), shared_key)]
+    assert set(file_rows) == {shared_key, unreadable_path.stem}
+    assert file_rows[shared_key] == (str(valid_path), 0, "")
+    assert file_rows[unreadable_path.stem][:2] == (str(unreadable_path), 0)
+    assert file_rows[unreadable_path.stem][2].startswith("UnicodeDecodeError: ")
+
+
 def test_insert_failure_rolls_back_all_eight_replacements(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
