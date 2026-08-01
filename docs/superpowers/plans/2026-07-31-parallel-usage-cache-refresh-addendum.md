@@ -16,7 +16,7 @@
 - Do not prune files by report range, session start, filesystem mtime, cached timestamps, or inferred upper bounds. Range filtering remains after complete cache load and transition application.
 - Do not persist a byte offset, tail buffer, partial line, token baseline, parser state, in-progress row, or within-file checkpoint. Every selected file is parsed by the unchanged `parse_session_file(path: Path) -> list[UsageRecord]` from byte zero through EOF.
 - All cache SQLite and `state_5.sqlite` opens, reads, writes, transactions, and commits occur in the parent process. Worker import graphs must not reach parent SQLite modules.
-- Default process capacity is `min(task_count, 4, max(1, os.process_cpu_count() or 1))`. Tests may force `max_workers=1`; production callers omit the override.
+- Default process capacity is `min(task_count, 4, max(1, os.process_cpu_count() or 1))`. `max_workers=1` is an intentional deterministic in-process mode: it creates no executor, emits no fallback warning, records parent-PID spans, and leaves `used_serial_fallback=False`. A resolved count of at least two is the only path that creates a spawn-context process pool. Tests that claim spawned execution must request at least two workers and assert non-parent worker PIDs; tests that depend on parent monkeypatches must force `max_workers=1`.
 - Process startup, submission, pickling, broken-pool, or result-transport infrastructure failure may switch the unresolved read-only batch to serial execution. It must set `used_serial_fallback=True`, retain the infrastructure error, and emit one observable warning.
 - An ordinary usage parse error or exhausted transition JSONL read error is returned by that worker as `"{ExceptionType}: {message}"`. It does not trigger pool fallback, does not restart successful work, and follows the existing per-file retain-or-skip behavior.
 - Parse requests are contiguous inventory-ordered groups of eight. Workers run before `BEGIN IMMEDIATE`; the parent validates a complete result group, applies whole-file replacements/errors, marks transitions dirty, and commits once. An exception rolls back only the current group.
@@ -91,7 +91,7 @@ OrderedProcessMapper.__exit__(exc_type: type[BaseException] | None, exc: BaseExc
 
 `WorkerSpan` validates `pid > 0` and `finished_ns >= started_ns`. `ParallelRunReport.worker_pids` is first-seen PID order with duplicates removed. `max_concurrency` performs a deterministic sweep over worker intervals, processing a finish before a start at an equal timestamp so touching spans are not counted as overlap. `actually_parallel(parent_pid)` requires resolved count greater than one, no fallback, two or more non-parent PIDs, and `max_concurrency >= 2`.
 
-`EMPTY_PARALLEL_RUN_REPORT` is exactly `ParallelRunReport(0, (), False, "", 0)`. `OrderedProcessMapper` uses a persistent `ProcessPoolExecutor` with the spawn context. It catches only pool infrastructure failures: constructor/submission `OSError`/`RuntimeError`, `pickle.PicklingError`, and `BrokenProcessPool` raised while submitting or retrieving a result. A normal exception raised by a worker future propagates and is not relabeled as infrastructure. Expected per-file failures never raise from a future because worker wrappers return typed error results. The parent supplies `file_error_count` when assembling a report; the mapper does not infer application errors.
+`EMPTY_PARALLEL_RUN_REPORT` is exactly `ParallelRunReport(0, (), False, "", 0)`. For zero tasks, `OrderedProcessMapper.map_batch(())` returns `[]` without invoking the worker. For a resolved count of one, `map_batch` calls the top-level worker directly in request order in the parent process; this is selected execution, not fallback. For a resolved count of at least two, `OrderedProcessMapper` owns one persistent `ProcessPoolExecutor` created with `multiprocessing.get_context("spawn")`. It catches only pool infrastructure failures: constructor/submission `OSError`/`RuntimeError`, `pickle.PicklingError`, and `BrokenProcessPool` raised while submitting or retrieving a result. A normal exception raised by a worker future propagates and is not relabeled as infrastructure. Expected per-file failures never raise from a future because worker wrappers return typed error results. The parent supplies `file_error_count` when assembling a report; the mapper does not infer application errors.
 
 ### Usage Worker Types
 
@@ -374,14 +374,21 @@ from concurrent.futures import Future
 from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.context import BaseContext
 from typing import ClassVar, Never
+import random
 
 
 WORKER_CALLS: list[int] = []
+COMPLETION_SEED = 0
+COMPLETION_ORDERS: list[tuple[int, ...]] = []
 
 
 def recording_worker(value: int) -> int:
     WORKER_CALLS.append(value)
     return value * 10
+
+
+def pid_worker(value: int) -> tuple[int, int]:
+    return value, os.getpid()
 
 
 def value_error_worker(value: int) -> int:
@@ -414,32 +421,63 @@ class StubExecutor:
         self.shutdown_calls.append((wait, cancel_futures))
 
 
-def reversed_completed(futures: Iterable[Future[int]]) -> Iterator[Future[int]]:
-    return iter(reversed(list(futures)))
+def shuffled_completed(futures: Iterable[Future[int]]) -> Iterator[Future[int]]:
+    ordered = list(futures)
+    random.Random(COMPLETION_SEED).shuffle(ordered)
+    COMPLETION_ORDERS.append(tuple(future.result() for future in ordered))
+    return iter(ordered)
 
 
 def raising_executor(*args: object, **kwargs: object) -> Never:
     raise OSError("spawn unavailable")
 
 
+def forbidden_executor(*args: object, **kwargs: object) -> Never:
+    raise AssertionError("max_workers=1 must not create a process executor")
+
+
 @pytest.fixture(autouse=True)
 def reset_executor_double() -> Iterator[None]:
+    global COMPLETION_SEED
     WORKER_CALLS.clear()
+    COMPLETION_ORDERS.clear()
+    COMPLETION_SEED = 0
     StubExecutor.fail_on = None
     yield
     WORKER_CALLS.clear()
+    COMPLETION_ORDERS.clear()
+    COMPLETION_SEED = 0
     StubExecutor.fail_on = None
 ```
 
 Add these exact bodies:
 
 ```python
-def test_reverse_future_completion_keeps_request_order(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_varied_shuffled_future_completion_keeps_request_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global COMPLETION_SEED
     monkeypatch.setattr(execution_module, "ProcessPoolExecutor", StubExecutor)
-    monkeypatch.setattr(execution_module, "as_completed", reversed_completed)
-    with OrderedProcessMapper(recording_worker, task_count=3, max_workers=3) as mapper:
-        assert mapper.map_batch([1, 2, 3]) == [10, 20, 30]
+    monkeypatch.setattr(execution_module, "as_completed", shuffled_completed)
+    for seed in range(16):
+        COMPLETION_SEED = seed
+        with OrderedProcessMapper(recording_worker, task_count=4, max_workers=4) as mapper:
+            assert mapper.map_batch([1, 2, 3, 4]) == [10, 20, 30, 40]
+        assert mapper.used_serial_fallback is False
+    assert len(set(COMPLETION_ORDERS)) >= 4
+
+
+def test_max_workers_one_is_intentional_in_process_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent_pid = os.getpid()
+    monkeypatch.setattr(execution_module, "ProcessPoolExecutor", forbidden_executor)
+    with OrderedProcessMapper(pid_worker, task_count=3, max_workers=1) as mapper:
+        results = mapper.map_batch([1, 2, 3])
+    assert results == [(1, parent_pid), (2, parent_pid), (3, parent_pid)]
+    assert mapper.worker_count == 1
     assert mapper.used_serial_fallback is False
+    assert mapper.infrastructure_error == ""
 
 
 def test_constructor_oserror_falls_back_once_and_is_observable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -494,7 +532,7 @@ Expected: import fails because `codex_usage.parallel.execution` does not exist.
 
 - [ ] **Step 3: Implement exact runtime contracts**
 
-Implement the declared types and validation. Use `as_completed` to fill a position-indexed list. Catch infrastructure errors only at executor construction/submission/result transport; ordinary future exceptions propagate. On infrastructure fallback, discard the current group's read-only values, close/cancel the pool, warn once, run that group serially, and remain serial for later groups. Never catch `BaseException`.
+Implement the declared types and validation. When `worker_count == 0`, return no results; when `worker_count == 1`, invoke the worker directly in request order and never instantiate `ProcessPoolExecutor`; only `worker_count >= 2` creates the spawn executor. In the spawn branch, use `as_completed` to fill a position-indexed list. Catch infrastructure errors only at executor construction/submission/result transport; ordinary future exceptions propagate. On infrastructure fallback, discard the current group's read-only values, close/cancel the pool, warn once, run that group serially, and remain serial for later groups. Never catch `BaseException`.
 
 - [ ] **Step 4: Verify GREEN and branch integrity**
 
@@ -587,14 +625,14 @@ git commit -m "refactor: separate usage cache ownership"
 
 - [ ] **Step 1: Create importable deterministic corpus support**
 
-`tests/parallel_cache_test_support.py` defines a frozen `UsageCorpus` with fully typed `sessions: Path`, `ordered_paths: tuple[Path, ...]`, `corrupt_path: Path`, `missing_path: Path`, and `recent_old_metadata_path: Path`. `write_usage_corpus(root: Path) -> UsageCorpus` writes nine files in sortable names: normal, parent, structured subagent, fork replay, Unicode-escaped event names, empty valid, future-missing, old-start/old-mtime with a current token event, and invalid UTF-8. Use fixed token totals and current UTC only for the recent event; return every path explicitly. The module also provides:
+`tests/parallel_cache_test_support.py` defines a frozen `UsageCorpus` with fully typed `sessions: Path`, `ordered_paths: tuple[Path, ...]`, `corrupt_path: Path`, `malformed_json_path: Path`, `missing_path: Path`, and `recent_old_metadata_path: Path`. `write_usage_corpus(root: Path) -> UsageCorpus` writes ten files in sortable names: normal, parent, structured subagent, fork replay, Unicode-escaped event names, empty valid, future-missing, old-start/old-mtime with a current token event, invalid UTF-8, and malformed JSON between a valid `session_meta` and a valid cumulative token event totaling exactly 211 tokens. The malformed line is exactly `{not-json}\n`; it must be skipped without suppressing the later valid event. Use fixed token totals and current UTC only for the recent event; return every path explicitly in inventory order.
 
 ```text
 load_serial(corpus: UsageCorpus, cache_dir: Path, *, auto_transitions: bool) -> CachedSessionData
 load_parallel(corpus: UsageCorpus, cache_dir: Path, *, auto_transitions: bool) -> CachedSessionData
 ```
 
-`load_serial` calls `load_cached_session_data(..., max_workers=1)`; `load_parallel` calls `max_workers=4`. No pytest fixture or closure crosses spawn.
+`load_serial` calls `load_cached_session_data(..., max_workers=1)` and therefore runs all selected workers in-process with parent-PID spans, no executor, and no fallback flag. `load_parallel` calls `max_workers=4` and, for this ten-file corpus, must resolve at least two workers and return only non-parent worker PIDs. No pytest fixture or closure crosses spawn.
 
 The same module defines every recovery-test dependency explicitly:
 
@@ -605,19 +643,100 @@ write_valid_usage_set(root: Path, *, count: int) -> tuple[Path, tuple[Path, ...]
 append_cumulative_token_total(path: Path, *, total_tokens: int, timestamp: str) -> None
 complete_generation_snapshot(cache_dir: Path) -> GenerationSnapshot
 
-SerialTestMapper[RequestT, ResultT](worker: Callable[[RequestT], ResultT], *, task_count: int, max_workers: int)
-SerialTestMapper.worker_count -> int
-SerialTestMapper.used_serial_fallback -> bool
-SerialTestMapper.infrastructure_error -> str
-SerialTestMapper.map_batch(requests: Sequence[RequestT]) -> list[ResultT]
-SerialTestMapper.__enter__() -> Self
-SerialTestMapper.__exit__(exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None
+SerialUsageTestMapper(
+    worker: Callable[[UsageParseRequest], UsageParseResult],
+    *,
+    task_count: int,
+    max_workers: int,
+)
+SerialUsageTestMapper.worker_count -> int
+SerialUsageTestMapper.used_serial_fallback -> bool
+SerialUsageTestMapper.infrastructure_error -> str
+SerialUsageTestMapper.map_batch(requests: Sequence[UsageParseRequest]) -> list[UsageParseResult]
+SerialUsageTestMapper.__enter__() -> Self
+SerialUsageTestMapper.__exit__(exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None
 
-ReverseResultMapper[RequestT, ResultT](SerialTestMapper[RequestT, ResultT])
-InterruptAfterFirstBatchMapper[RequestT, ResultT](SerialTestMapper[RequestT, ResultT])
+ShuffledUsageResultMapper(SerialUsageTestMapper)
+InterruptAfterFirstBatchMapper(SerialUsageTestMapper)
 ```
 
-`write_valid_usage_set` rejects counts below one and writes sortable `000.jsonl` through `{count - 1:03d}.jsonl`, each with one `session_meta` and one cumulative `token_count` at a fixed UTC timestamp; file `i` totals `100 + i`. `append_cumulative_token_total` appends one valid event. `complete_generation_snapshot` reads the cache read-only and returns ordered tuples from `files` excluding `last_seen_at`, followed by all ordered `usage_records` and `session_metadata`; it therefore compares every persisted complete-generation field without a volatile observation timestamp. `SerialTestMapper` executes the supplied top-level worker in request order, reports the resolved deterministic worker count but no fallback, and implements the declared context manager. `ReverseResultMapper.map_batch` returns those results reversed. `InterruptAfterFirstBatchMapper.map_batch` delegates its first call and raises `KeyboardInterrupt("after first committed batch")` before evaluating its second call. These doubles remain test-only and below 500 lines.
+`write_valid_usage_set` rejects counts below one and writes sortable `000.jsonl` through `{count - 1:03d}.jsonl`, each with one `session_meta` and one cumulative `token_count` at a fixed UTC timestamp; file `i` totals `100 + i`. `append_cumulative_token_total` appends one valid event. `complete_generation_snapshot` reads the cache read-only and returns ordered tuples from `files` excluding `last_seen_at`, followed by all ordered `usage_records` and `session_metadata`; it therefore compares every persisted complete-generation field without a volatile observation timestamp.
+
+Define the mapper doubles in `tests/parallel_cache_test_support.py`; define the reset fixture in `tests/test_parallel_cache_recovery.py` so pytest discovers it without plugin registration:
+
+```python
+import random
+from collections.abc import Callable, Iterator, Sequence
+from types import TracebackType
+from typing import ClassVar, Self
+
+import pytest
+
+
+class SerialUsageTestMapper:
+    def __init__(
+        self,
+        worker: Callable[[UsageParseRequest], UsageParseResult],
+        *,
+        task_count: int,
+        max_workers: int,
+    ) -> None:
+        self.worker = worker
+        self.worker_count = resolve_worker_count(
+            task_count, available_cpus=64, max_workers=max_workers
+        )
+        self.used_serial_fallback = False
+        self.infrastructure_error = ""
+
+    def map_batch(self, requests: Sequence[UsageParseRequest]) -> list[UsageParseResult]:
+        return [self.worker(request) for request in requests]
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        return None
+
+
+class ShuffledUsageResultMapper(SerialUsageTestMapper):
+    seed: ClassVar[int] = 0
+    observed_orders: ClassVar[list[tuple[int, ...]]] = []
+
+    def map_batch(self, requests: Sequence[UsageParseRequest]) -> list[UsageParseResult]:
+        results = super().map_batch(requests)
+        random.Random(self.seed + len(self.observed_orders)).shuffle(results)
+        self.observed_orders.append(tuple(result.request.ordinal for result in results))
+        return results
+
+
+class InterruptAfterFirstBatchMapper(SerialUsageTestMapper):
+    calls = 0
+
+    def map_batch(self, requests: Sequence[UsageParseRequest]) -> list[UsageParseResult]:
+        type(self).calls += 1
+        if type(self).calls == 2:
+            raise KeyboardInterrupt("after first committed batch")
+        return super().map_batch(requests)
+
+
+# tests/test_parallel_cache_recovery.py
+@pytest.fixture(autouse=True)
+def reset_usage_mapper_doubles() -> Iterator[None]:
+    ShuffledUsageResultMapper.seed = 0
+    ShuffledUsageResultMapper.observed_orders.clear()
+    InterruptAfterFirstBatchMapper.calls = 0
+    yield
+    ShuffledUsageResultMapper.seed = 0
+    ShuffledUsageResultMapper.observed_orders.clear()
+    InterruptAfterFirstBatchMapper.calls = 0
+```
+
+These doubles affect parent orchestration only and never claim spawned execution.
 
 - [ ] **Step 2: Write exact failing worker and recovery tests**
 
@@ -646,6 +765,8 @@ def test_usage_file_error_is_data_not_pool_fallback(tmp_path: Path) -> None:
         result = mapper.map_batch([request])[0]
     assert result.records == ()
     assert result.error.startswith("UnicodeDecodeError: ")
+    assert result.span.pid == os.getpid()
+    assert mapper.worker_count == 1
     assert mapper.used_serial_fallback is False
     assert mapper.infrastructure_error == ""
 ```
@@ -653,18 +774,34 @@ def test_usage_file_error_is_data_not_pool_fallback(tmp_path: Path) -> None:
 Add these full bodies. Every monkeypatch affects parent-owned orchestration and every load under a monkeypatch is forced through an importable serial test mapper; no test expects a patch to enter a spawned child.
 
 ```python
-def test_reverse_completion_preserves_inventory_record_order(
+def test_varied_shuffled_completion_preserves_exact_semantic_order(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sessions, paths = write_valid_usage_set(tmp_path / "codex", count=9)
-    monkeypatch.setattr(refresh_module, "OrderedProcessMapper", ReverseResultMapper)
-    data = load_cached_session_data(
-        [sessions], cache_dir=tmp_path / "cache", auto_transitions=False, max_workers=4
-    )
-    assert data.files == list(paths)
-    assert [record.file_path for record in data.records] == list(paths)
-    assert [record.usage.total_tokens for record in data.records] == list(range(100, 109))
+    corpus = write_usage_corpus(tmp_path / "codex")
+    expected = load_serial(corpus, tmp_path / "serial-cache", auto_transitions=False)
+    monkeypatch.setattr(refresh_module, "OrderedProcessMapper", ShuffledUsageResultMapper)
+    observed_orders: set[tuple[int, ...]] = set()
+    for seed in range(16):
+        ShuffledUsageResultMapper.seed = seed
+        ShuffledUsageResultMapper.observed_orders.clear()
+        actual = load_cached_session_data(
+            [corpus.sessions],
+            cache_dir=tmp_path / f"shuffled-cache-{seed}",
+            auto_transitions=False,
+            max_workers=4,
+        )
+        observed_orders.update(ShuffledUsageResultMapper.observed_orders)
+        assert actual.stats == expected.stats
+        assert actual.files == expected.files
+        assert actual.records == expected.records
+        assert actual.file_summaries == expected.file_summaries
+        assert actual.file_errors == expected.file_errors
+    assert len(observed_orders) >= 4
+    malformed = [
+        record for record in expected.records if record.file_path == corpus.malformed_json_path
+    ]
+    assert [record.usage.total_tokens for record in malformed] == [211]
 
 
 def test_worker_error_retains_old_complete_rows_and_retries(tmp_path: Path) -> None:
@@ -761,11 +898,11 @@ def test_interrupt_after_first_group_reuses_exactly_eight_files(
             "group by file_key, record_index having count(*) = 1)"
         ).fetchone() == (9,)
         assert tuple(connection.execute(
-            "select key, value from schema_meta where key in "
-            "('schema_version','parser_version','project_transition_version') order by key"
+            "select key, value from schema_meta order by key"
         )) == (
             ("parser_version", "2"),
             ("project_transition_version", "1"),
+            ("project_transitions_dirty", "1"),
             ("schema_version", "3"),
         )
 
@@ -860,7 +997,7 @@ git commit -m "perf: commit parallel whole-file cache groups"
 
 Copy `collect_repo_path_observations`, its JSONL loop, state loop, shared `_VerificationCache`, cached verification helper, and final dedupe ordering directly from `git show 1fbe7de:src/codex_usage/project_transition_evidence.py` into `tests/project_transition_serial_oracle.py`. Change imports only so the oracle calls the public extraction/normalization types that were already present at `1fbe7de`. Add a source header `Frozen from 1fbe7de; do not refactor with production collectors` and a test asserting the oracle passes one cache object through JSONL and state collection. Do not modify this oracle in later steps and never build expected observations with a newly extracted production helper.
 
-Create `tests/parallel_transition_test_support.py` with no pytest fixtures and these exact contracts:
+Create `tests/parallel_transition_test_support.py` with these exact contracts:
 
 ```text
 TransitionCorpus(
@@ -870,9 +1007,77 @@ TransitionCorpus(
 )
 
 write_transition_corpus(root: Path, *, repeat_same_path: bool = False) -> TransitionCorpus
+
+ShuffledTransitionResultMapper(
+    worker: Callable[[TransitionScanRequest], TransitionScanResult],
+    *,
+    task_count: int,
+    max_workers: int,
+)
 ```
 
 The builder creates two repositories with literal `.git/config` origin URLs `https://github.com/example/alpha.git` and `https://github.com/example/beta.git`; two ordered JSONLs containing session metadata, valid function-call workdirs, a malformed JSON line, ignored user/output paths, and invalid UTF-8 bytes; and `<codex-home>/state_5.sqlite` with the current minimal `threads(id, cwd, updated_at)` schema. Timestamps and thread IDs are fixed. With `repeat_same_path=True`, the alpha path appears in both JSONLs and the state row, so a single shared cache must resolve it once. The returned tuples are already in serial inventory order.
+
+Define the transition mapper in `tests/parallel_transition_test_support.py` and the reset fixture in `tests/test_parallel_transition_equivalence.py`:
+
+```python
+import random
+from collections.abc import Callable, Iterator, Sequence
+from types import TracebackType
+from typing import ClassVar, Self
+
+import pytest
+
+
+class ShuffledTransitionResultMapper:
+    seed: ClassVar[int] = 0
+    observed_orders: ClassVar[list[tuple[int, ...]]] = []
+
+    def __init__(
+        self,
+        worker: Callable[[TransitionScanRequest], TransitionScanResult],
+        *,
+        task_count: int,
+        max_workers: int,
+    ) -> None:
+        self.worker = worker
+        self.worker_count = resolve_worker_count(
+            task_count, available_cpus=64, max_workers=max_workers
+        )
+        self.used_serial_fallback = False
+        self.infrastructure_error = ""
+
+    def map_batch(
+        self, requests: Sequence[TransitionScanRequest]
+    ) -> list[TransitionScanResult]:
+        results = [self.worker(request) for request in requests]
+        random.Random(self.seed + len(self.observed_orders)).shuffle(results)
+        self.observed_orders.append(tuple(result.request.ordinal for result in results))
+        return results
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        return None
+
+
+# tests/test_parallel_transition_equivalence.py
+@pytest.fixture(autouse=True)
+def reset_transition_mapper_double() -> Iterator[None]:
+    ShuffledTransitionResultMapper.seed = 0
+    ShuffledTransitionResultMapper.observed_orders.clear()
+    yield
+    ShuffledTransitionResultMapper.seed = 0
+    ShuffledTransitionResultMapper.observed_orders.clear()
+```
+
+This is a parent-orchestration double and does not claim spawned execution.
 
 - [ ] **Step 2: Write exact failing candidate/oracle/retry tests**
 
@@ -891,6 +1096,8 @@ def test_parallel_collection_equals_frozen_serial_oracle(tmp_path: Path) -> None
     )
     assert actual == expected
     assert report.resolved_worker_count == 2
+    assert report.worker_pids
+    assert os.getpid() not in report.worker_pids
     assert report.used_serial_fallback is False
 
 
@@ -924,13 +1131,18 @@ def test_parent_uses_one_cache_across_jsonl_files_and_state(tmp_path: Path, monk
     monkeypatch.setattr(evidence_module, "verify_repo_path_candidates", track_verify)
     monkeypatch.setattr(state_module, "collect_state_repo_path_observations", track_state)
     monkeypatch.setattr(evidence_module, "verified_repo_observation_from_path", track_resolution)
-    collect_repo_path_observations_with_report(session_dirs, session_files, max_workers=1)
+    _observations, report = collect_repo_path_observations_with_report(
+        session_dirs, session_files, max_workers=1
+    )
     assert len(seen_cache_ids) == len(session_files) + 1
     assert len(set(seen_cache_ids)) == 1
     assert resolutions.count(str(corpus.repeated_repo)) == 1
+    assert report.resolved_worker_count == 1
+    assert report.worker_pids == (os.getpid(),)
+    assert report.used_serial_fallback is False
 
 
-def test_transition_request_result_pickle_and_reverse_order_match_oracle(
+def test_transition_request_result_pickle_and_varied_order_match_oracle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -946,13 +1158,21 @@ def test_transition_request_result_pickle_and_reverse_order_match_oracle(
     expected = serial_oracle.collect_repo_path_observations(
         list(corpus.session_dirs), list(corpus.session_files)
     )
-    monkeypatch.setattr(collection_module, "OrderedProcessMapper", ReverseResultMapper)
-    actual, report = collect_repo_path_observations_with_report(
-        list(corpus.session_dirs), list(corpus.session_files), max_workers=2
+    monkeypatch.setattr(
+        collection_module, "OrderedProcessMapper", ShuffledTransitionResultMapper
     )
-    assert actual == expected
-    assert report.used_serial_fallback is False
-    assert report.file_error_count == 0
+    observed_orders: set[tuple[int, ...]] = set()
+    for seed in range(16):
+        ShuffledTransitionResultMapper.seed = seed
+        ShuffledTransitionResultMapper.observed_orders.clear()
+        actual, report = collect_repo_path_observations_with_report(
+            list(corpus.session_dirs), list(corpus.session_files), max_workers=2
+        )
+        observed_orders.update(ShuffledTransitionResultMapper.observed_orders)
+        assert actual == expected
+        assert report.used_serial_fallback is False
+        assert report.file_error_count == 0
+    assert len(observed_orders) == 2
 
 
 @pytest.mark.parametrize(
@@ -985,6 +1205,8 @@ def test_transition_read_exhaustion_is_three_attempt_error_data(
     assert result.request == request
     assert result.candidates == ()
     assert result.error == f"{type(failure).__name__}: {failure}"
+    assert result.span.pid == os.getpid()
+    assert mapper.worker_count == 1
     assert mapper.used_serial_fallback is False
     assert mapper.infrastructure_error == ""
 
@@ -1003,6 +1225,7 @@ def test_transition_non_io_error_propagates_without_fallback(
     with OrderedProcessMapper(scan_transition_request, task_count=1, max_workers=1) as mapper:
         with pytest.raises(ValueError, match="candidate contract violated"):
             mapper.map_batch([TransitionScanRequest(0, path)])
+    assert mapper.worker_count == 1
     assert mapper.used_serial_fallback is False
     assert mapper.infrastructure_error == ""
 ```
@@ -1034,7 +1257,73 @@ def guarded_transition_worker(request: TransitionScanRequest) -> TransitionScanR
         sqlite3.connect = original
 ```
 
-`tests/test_spawn_sqlite_isolation.py` defines `local_import_closure(entry_modules: tuple[str, ...]) -> dict[str, tuple[str, ...]]` using `ast.Import`/`ast.ImportFrom` and package paths below `src/codex_usage`; it recursively visits every local import from the worker entry modules, rejects `ast.Call` to `__import__` or `importlib.import_module`, and returns sorted imports per module. Add these complete tests:
+`tests/test_spawn_sqlite_isolation.py` defines the static scanner completely; `module_path` checks both a module file and package `__init__.py`, while `local_import_closure` follows only importable local modules and retains external import names for the forbidden-set assertion:
+
+```python
+import ast
+import importlib.util
+
+
+SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
+
+
+def module_path(module_name: str) -> Path | None:
+    relative = Path(*module_name.split("."))
+    module_file = (SOURCE_ROOT / relative).with_suffix(".py")
+    package_file = SOURCE_ROOT / relative / "__init__.py"
+    if module_file.is_file():
+        return module_file
+    if package_file.is_file():
+        return package_file
+    return None
+
+
+def local_import_closure(entry_modules: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    pending = list(entry_modules)
+    visited: dict[str, tuple[str, ...]] = {}
+    while pending:
+        module_name = pending.pop()
+        if module_name in visited:
+            continue
+        path = module_path(module_name)
+        assert path is not None, module_name
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imports: set[str] = set()
+        package = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                dynamic_name = (
+                    node.func.id
+                    if isinstance(node.func, ast.Name)
+                    else f"{getattr(node.func.value, 'id', '')}.{node.func.attr}"
+                    if isinstance(node.func, ast.Attribute)
+                    else ""
+                )
+                assert dynamic_name not in {"__import__", "importlib.import_module"}, path
+            if isinstance(node, ast.Import):
+                imports.update(alias.name for alias in node.names)
+            if isinstance(node, ast.ImportFrom):
+                if node.level:
+                    target = importlib.util.resolve_name(
+                        "." * node.level + (node.module or ""), package
+                    )
+                else:
+                    target = node.module or ""
+                imports.add(target)
+                for alias in node.names:
+                    candidate = f"{target}.{alias.name}" if target else alias.name
+                    if module_path(candidate) is not None:
+                        imports.add(candidate)
+        visited[module_name] = tuple(sorted(imports))
+        pending.extend(
+            name
+            for name in imports
+            if name.startswith("codex_usage.") and module_path(name) is not None
+        )
+    return visited
+```
+
+Add these complete tests:
 
 ```python
 def test_spawned_usage_and_transition_workers_cannot_open_sqlite(tmp_path: Path) -> None:
@@ -1059,6 +1348,12 @@ def test_spawned_usage_and_transition_workers_cannot_open_sqlite(tmp_path: Path)
         transition_results = transition_mapper.map_batch(transition_requests)
 
     parent_pid = os.getpid()
+    usage_pids = {result.span.pid for result in usage_results}
+    transition_pids = {result.span.pid for result in transition_results}
+    assert usage_mapper.worker_count == 2
+    assert transition_mapper.worker_count == 2
+    assert usage_pids and parent_pid not in usage_pids
+    assert transition_pids and parent_pid not in transition_pids
     assert all(result.span.pid != parent_pid and result.error == "" for result in usage_results)
     assert all(result.records for result in usage_results)
     assert all(result.span.pid != parent_pid and result.error == "" for result in transition_results)
@@ -1135,7 +1430,7 @@ git commit -m "perf: extract transition evidence in worker processes"
 - Modify: `tests/parallel_cache_test_support.py`
 
 **Interfaces:**
-- Verifies full returned cache state, exact normalized schema text/version, aggregation/payload/HTML equivalence, and no range pruning.
+- Verifies full returned cache state, the complete normalized `sqlite_master` object set, the complete metadata key/value set, aggregation/payload/HTML equivalence, and no range pruning.
 - Adds no production behavior.
 
 - [ ] **Step 1: Add an exact schema snapshot helper**
@@ -1143,12 +1438,27 @@ git commit -m "perf: extract transition evidence in worker processes"
 In test support define:
 
 ```python
-def normalized_schema(connection: sqlite3.Connection) -> tuple[tuple[str, str], ...]:
+SchemaObject = tuple[str, str, str, str]
+
+
+def normalized_sqlite_master(connection: sqlite3.Connection) -> tuple[SchemaObject, ...]:
     rows = connection.execute(
-        "select name, sql from sqlite_master "
-        "where type = 'table' and name not like 'sqlite_%' order by name"
+        "select type, name, tbl_name, coalesce(sql, '') from sqlite_master "
+        "order by type, name, tbl_name"
     ).fetchall()
-    return tuple((str(name), " ".join(str(sql).split())) for name, sql in rows)
+    return tuple(
+        (str(object_type), str(name), str(table_name), " ".join(str(sql).split()))
+        for object_type, name, table_name, sql in rows
+    )
+
+
+def complete_schema_metadata(connection: sqlite3.Connection) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (str(key), str(value))
+        for key, value in connection.execute(
+            "select key, value from schema_meta order by key"
+        )
+    )
 ```
 
 Define the expected constants literally; do not derive expected SQL from production at test runtime:
@@ -1157,25 +1467,30 @@ Define the expected constants literally; do not derive expected SQL from product
 EXPECTED_SCHEMA_META = (
     ("parser_version", "2"),
     ("project_transition_version", "1"),
+    ("project_transitions_dirty", "1"),
     ("schema_version", "3"),
 )
-EXPECTED_NORMALIZED_SCHEMA = (
-    ("files", "create table files ( file_key text primary key, path text not null, "
+EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
+    ("index", "sqlite_autoindex_files_1", "files", ""),
+    ("index", "sqlite_autoindex_schema_meta_1", "schema_meta", ""),
+    ("index", "sqlite_autoindex_session_metadata_1", "session_metadata", ""),
+    ("index", "sqlite_autoindex_usage_records_1", "usage_records", ""),
+    ("table", "files", "files", "CREATE TABLE files ( file_key text primary key, path text not null, "
      "session_dir text not null, storage_state text not null, size_bytes integer not null, "
      "mtime_ns integer not null, parsed_at text not null, last_seen_at text not null, "
      "missing_since text, is_missing integer not null, session_id text, error text )"),
-    ("project_transitions", "create table project_transitions ( source_key text not null, "
+    ("table", "project_transitions", "project_transitions", "CREATE TABLE project_transitions ( source_key text not null, "
      "source_label text not null, target_key text not null, target_label text not null, "
      "effective_from text not null, confidence integer not null, evidence_json text not null, "
      "thread_ids_json text not null )"),
-    ("schema_meta", "create table schema_meta (key text primary key, value text not null)"),
-    ("session_metadata", "create table session_metadata ( file_key text primary key, "
+    ("table", "schema_meta", "schema_meta", "CREATE TABLE schema_meta (key text primary key, value text not null)"),
+    ("table", "session_metadata", "session_metadata", "CREATE TABLE session_metadata ( file_key text primary key, "
      "file_path text not null, session_dir text not null, storage_state text not null, "
      "is_missing integer not null, session_id text not null, cwd text, project_key text, "
      "project_label text, project_aliases_json text not null, git_repository_url text, "
      "git_branch text, memory_mode text, has_base_instructions integer not null, "
      "session_bytes integer not null, estimated_sync_bytes integer not null )"),
-    ("usage_records", "create table usage_records ( file_key text not null, file_path text not null, "
+    ("table", "usage_records", "usage_records", "CREATE TABLE usage_records ( file_key text not null, file_path text not null, "
      "record_index integer not null, timestamp text not null, session_id text not null, "
      "turn_id text, model text not null, effort text, collaboration_mode text, "
      "project_key text not null, project_label text not null, project_aliases_json text not null, "
@@ -1206,18 +1521,26 @@ def test_serial_and_parallel_cache_state_are_exactly_equal(tmp_path: Path) -> No
     assert parallel.file_errors == serial.file_errors
     assert parallel.retained_missing_files == serial.retained_missing_files
     assert parallel.project_transitions == serial.project_transitions == []
+    malformed_serial = [
+        record for record in serial.records if record.file_path == corpus.malformed_json_path
+    ]
+    malformed_parallel = [
+        record for record in parallel.records if record.file_path == corpus.malformed_json_path
+    ]
+    assert [record.usage.total_tokens for record in malformed_serial] == [211]
+    assert malformed_parallel == malformed_serial
+    assert serial.usage_run.resolved_worker_count == 1
+    assert serial.usage_run.worker_pids == (os.getpid(),)
+    assert serial.usage_run.used_serial_fallback is False
     assert parallel.usage_run.resolved_worker_count > 1
+    assert parallel.usage_run.worker_pids
+    assert os.getpid() not in parallel.usage_run.worker_pids
     assert parallel.usage_run.used_serial_fallback is False
 
     for cache_dir in (serial_cache, parallel_cache):
         with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
-            assert normalized_schema(connection) == EXPECTED_NORMALIZED_SCHEMA
-            metadata = tuple(connection.execute(
-                "select key, value from schema_meta "
-                "where key in ('schema_version','parser_version','project_transition_version') "
-                "order by key"
-            ))
-            assert metadata == EXPECTED_SCHEMA_META
+            assert normalized_sqlite_master(connection) == EXPECTED_SQLITE_MASTER
+            assert complete_schema_metadata(connection) == EXPECTED_SCHEMA_META
 
 
 def test_serial_and_parallel_errors_and_retained_missing_are_equal(tmp_path: Path) -> None:
@@ -1237,7 +1560,45 @@ def test_serial_and_parallel_errors_and_retained_missing_are_equal(tmp_path: Pat
     assert parallel.retained_missing_files == serial.retained_missing_files == [corpus.missing_path]
 ```
 
-Add `attach_transition_evidence(corpus: UsageCorpus) -> None` to test support. It appends fixed post-usage function-call evidence to one valid session, creates a target repository with origin `https://github.com/example/moved-project.git`, and creates one fixed `state_5.sqlite` thread row for that same target without changing any usage event. Then add this body, which derives expected observations only from the frozen oracle:
+The normal corpus file has session ID `normal-thread` and a usage event at `2026-07-31T10:00:01Z`. Add this complete helper to test support:
+
+```python
+def attach_transition_evidence(corpus: UsageCorpus) -> None:
+    target_repo = corpus.sessions.parent / "moved-project"
+    git_dir = target_repo / ".git"
+    git_dir.mkdir(parents=True)
+    (git_dir / "config").write_text(
+        "[remote \"origin\"]\n"
+        "    url = https://github.com/example/moved-project.git\n",
+        encoding="utf-8",
+    )
+    function_call = {
+        "timestamp": "2026-07-31T10:05:00Z",
+        "type": "response_item",
+        "payload": {
+            "type": "function_call",
+            "arguments": json.dumps({"workdir": str(target_repo)}),
+        },
+    }
+    with corpus.ordered_paths[0].open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(function_call) + "\n")
+
+    state_path = corpus.sessions.parent / "state_5.sqlite"
+    with sqlite3.connect(state_path) as connection:
+        connection.execute(
+            "create table threads (id text primary key, cwd text, updated_at integer)"
+        )
+        connection.execute(
+            "insert into threads (id, cwd, updated_at) values (?, ?, ?)",
+            (
+                "normal-thread",
+                str(target_repo),
+                int(datetime(2026, 7, 31, 10, 6, tzinfo=UTC).timestamp()),
+            ),
+        )
+```
+
+Then add this body, which derives expected observations only from the frozen oracle:
 
 ```python
 def test_serial_and_parallel_transition_enabled_state_is_exactly_equal(tmp_path: Path) -> None:
@@ -1264,6 +1625,8 @@ def test_serial_and_parallel_transition_enabled_state_is_exactly_equal(tmp_path:
     assert parallel.file_errors == serial.file_errors
     assert parallel.retained_missing_files == serial.retained_missing_files
     assert transition_run.resolved_worker_count > 1
+    assert transition_run.worker_pids
+    assert os.getpid() not in transition_run.worker_pids
     assert transition_run.used_serial_fallback is False
 ```
 
@@ -1317,7 +1680,36 @@ def test_old_start_and_old_mtime_do_not_prune_recent_usage(tmp_path: Path) -> No
     assert data.stats.files_parsed == data.stats.files_current
 ```
 
-`render_report_text(data, generated_at, path) -> str` is fully defined in test support and calls `render_html_report` with the same summary/four aggregation inputs as `cli.handle_report`, then reads UTF-8 text. It normalizes only the caller-selected output path if that path is embedded; no totals/content are normalized.
+Define the report helper completely in test support:
+
+```python
+def render_report_text(
+    data: CachedSessionData,
+    generated_at: datetime,
+    path: Path,
+) -> str:
+    timezone = resolve_timezone("UTC")
+    total = summarize_records(data.records)
+    rendered = render_html_report(
+        output_path=path,
+        generated_at=generated_at,
+        range_name="all",
+        total=total,
+        daily_rows=aggregate_records(data.records, "day", timezone),
+        hourly_rows=aggregate_records(data.records, "hour", timezone),
+        project_rows=aggregate_records(data.records, "project", timezone),
+        model_rows=aggregate_records(data.records, "model", timezone),
+        sessions_dirs=data.session_dirs,
+        files_scanned=len(data.files),
+        storage_roots=[str(item) for item in data.session_dirs],
+        files_archived=data.stats.files_archived,
+        files_retained_missing=data.stats.files_missing_retained,
+        project_keys=[],
+        project_transitions=[item.to_dict() for item in data.project_transitions],
+    )
+    text = rendered.read_text(encoding="utf-8")
+    return text.replace(str(path), "<OUTPUT_PATH>")
+```
 
 - [ ] **Step 4: Verify and commit branch-safe tests**
 
@@ -1342,6 +1734,7 @@ Expected: PASS; the commit contains only executable tests/support and leaves the
 - Create: `scripts/packaged_parallel_cache_smoke.py`
 - Modify: `scripts/build-macos-arm64-exe.sh`
 - Modify: `scripts/build-windows-exe.ps1`
+- Modify: `.github/workflows/package-vsix.yml`
 - Create: `tests/test_parallel_acceptance_scripts.py`
 - Modify: `tests/test_github_actions_workflow.py`
 
@@ -1352,7 +1745,101 @@ Expected: PASS; the commit contains only executable tests/support and leaves the
 
 - [ ] **Step 1: Write failing importability/audit/architecture tests**
 
-`tests/test_parallel_acceptance_scripts.py` defines these typed helpers: `load_script_module(path: Path) -> ModuleType` executes the file under a unique non-main module name; `assert_importable_guard(path: Path, *, requires_freeze_support: bool) -> None` parses AST and requires exactly one `if __name__ == "__main__"` block, requires `multiprocessing.freeze_support()` before `main()` for the two spawn-capable scripts, and rejects top-level cache/CLI calls; `assert_no_sensitive_audit_keys(value: object) -> None` recursively rejects case-folded key fragments `path`, `session`, `thread`, `project`, `token`, `timestamp`, and `event`; and top-level `FixedDateTime(datetime)` returns `2026-07-31T12:00:00Z` from `now`.
+`tests/test_parallel_acceptance_scripts.py` defines the helpers completely:
+
+```python
+import ast
+import importlib.util
+import sys
+from datetime import UTC, datetime, tzinfo
+from pathlib import Path
+from types import ModuleType
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SENSITIVE_AUDIT_KEY_FRAGMENTS = (
+    "path", "session", "thread", "project", "token", "timestamp", "event"
+)
+
+
+def load_script_module(path: Path) -> ModuleType:
+    module_name = f"_parallel_plan_test_{path.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(module_name, None)
+    return module
+
+
+def call_name(call: ast.Call) -> str:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name):
+        return f"{call.func.value.id}.{call.func.attr}"
+    return ""
+
+
+def assert_importable_guard(path: Path, *, requires_freeze_support: bool) -> None:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    guards = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and ast.unparse(node.test) == "__name__ == '__main__'"
+    ]
+    assert len(guards) == 1
+    guarded_calls = [
+        (node.lineno, call_name(node))
+        for node in ast.walk(guards[0])
+        if isinstance(node, ast.Call)
+    ]
+    main_lines = [line for line, name in guarded_calls if name == "main"]
+    assert len(main_lines) == 1
+    freeze_lines = [
+        line for line, name in guarded_calls if name == "multiprocessing.freeze_support"
+    ]
+    if requires_freeze_support:
+        assert len(freeze_lines) == 1
+        assert freeze_lines[0] < main_lines[0]
+    else:
+        assert freeze_lines == []
+    forbidden_top_level = {
+        "main", "load_cached_session_data", "subprocess.run", "subprocess.Popen"
+    }
+    for node in tree.body:
+        if node is guards[0] or isinstance(
+            node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef)
+        ):
+            continue
+        assert all(
+            call_name(call) not in forbidden_top_level
+            for call in ast.walk(node)
+            if isinstance(call, ast.Call)
+        )
+
+
+def assert_no_sensitive_audit_keys(value: object) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            folded = str(key).casefold()
+            assert not any(fragment in folded for fragment in SENSITIVE_AUDIT_KEY_FRAGMENTS)
+            assert_no_sensitive_audit_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            assert_no_sensitive_audit_keys(child)
+
+
+class FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> FixedDateTime:
+        value = cls(2026, 7, 31, 12, 0, tzinfo=UTC)
+        return value.replace(tzinfo=None) if tz is None else value.astimezone(tz)
+```
 
 Add these complete bodies:
 
@@ -1362,7 +1849,6 @@ Add these complete bodies:
     [
         ("scripts/parallel_cache_acceptance.py", True),
         ("scripts/packaged_parallel_cache_smoke.py", True),
-        ("scripts/parser_equivalence_check.py", False),
     ],
 )
 def test_acceptance_scripts_are_importable_and_guarded(
@@ -1440,7 +1926,30 @@ def test_target_architecture_validator_is_exact() -> None:
             validate_target_architecture(cast(Any, target), sys_platform=sys_platform, machine=machine)
 ```
 
-Update `tests/test_github_actions_workflow.py` with full file-content assertions: both build scripts contain `packaged_parallel_cache_smoke.py`; Windows contains `RuntimeInformation.ProcessArchitecture`, `Architecture.X64`, and `--expected-target win32-x64`; macOS contains `uname -s`, `uname -m`, and `--expected-target darwin-arm64`; and each invocation precedes its existing packaged Task Transfer smoke. These are ordinary direct `read_text` assertions with no new fixture.
+Update `tests/test_github_actions_workflow.py` with these complete bodies:
+
+```python
+def test_package_workflow_exposes_dispatch_input_in_run_identity() -> None:
+    text = (REPOSITORY_ROOT / ".github/workflows/package-vsix.yml").read_text(encoding="utf-8")
+    assert 'run-name: "Package VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"' in text
+
+
+def test_native_build_scripts_run_parallel_smoke_before_transfer_smoke() -> None:
+    windows = (REPOSITORY_ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
+    macos = (REPOSITORY_ROOT / "scripts/build-macos-arm64-exe.sh").read_text(encoding="utf-8")
+    assert "RuntimeInformation.ProcessArchitecture" in windows
+    assert "Architecture.X64" in windows
+    assert "--expected-target win32-x64" in windows
+    assert windows.index("packaged_parallel_cache_smoke.py") < windows.index(
+        "packaged_task_transfer_smoke.py"
+    )
+    assert "uname -s" in macos
+    assert "uname -m" in macos
+    assert "--expected-target darwin-arm64" in macos
+    assert macos.index("packaged_parallel_cache_smoke.py") < macos.index(
+        "packaged_task_transfer_smoke.py"
+    )
+```
 
 - [ ] **Step 2: Verify RED**
 
@@ -1450,7 +1959,7 @@ Run:
 uv run pytest tests/test_parallel_acceptance_scripts.py tests/test_github_actions_workflow.py -q
 ```
 
-Expected: imports/files/assertions fail because audit and scripts are absent.
+Expected: imports/files/assertions fail because the audit module, the two acceptance scripts, native smoke invocations, and workflow run identity are absent.
 
 - [ ] **Step 3: Implement audit and importable guarded source acceptance**
 
@@ -1466,7 +1975,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Implement frozen entrypoint and packaged audit smoke**
 
-Move `freeze_support()` before CLI import in `src/codex_usage/__main__.py`. The packaged smoke creates nine multi-megabyte JSONLs plus deterministic transition evidence, runs the executable cold with `summary --range all --json --parallel-audit <path>`, validates unchanged summary totals and audit actual-parallel conditions for usage and transitions, then runs warm and compares payloads. A 120-second subprocess timeout is a recursion deadlock guard, not a performance threshold. Serial mode or fallback always fails.
+Move `freeze_support()` before CLI import in `src/codex_usage/__main__.py`. Add the exact top-level workflow identity `run-name: "Package VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"` so the pre-tag gate can prove the dispatched boolean input. The packaged smoke creates ten multi-megabyte JSONLs plus deterministic transition evidence, runs the executable cold with `summary --range all --json --parallel-audit <path>`, validates unchanged summary totals and audit actual-parallel conditions for usage and transitions, then runs warm and compares payloads. A 120-second subprocess timeout is a recursion deadlock guard, not a performance threshold. Serial mode or fallback always fails.
 
 The smoke accepts exactly `--expected-target darwin-arm64|win32-x64`. For Darwin require `sys.platform == "darwin"` and `platform.machine().casefold() == "arm64"`. For Windows require `sys.platform == "win32"` and machine in `{"amd64", "x86_64"}`. Compare the packaged audit architecture too.
 
@@ -1498,7 +2007,7 @@ Expected: source suites pass; the matching package proves target architecture, a
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/codex_usage/parallel_audit.py src/codex_usage/cli.py src/codex_usage/__main__.py scripts/parallel_cache_acceptance.py scripts/packaged_parallel_cache_smoke.py scripts/build-macos-arm64-exe.sh scripts/build-windows-exe.ps1 tests/test_parallel_acceptance_scripts.py tests/test_github_actions_workflow.py
+git add src/codex_usage/parallel_audit.py src/codex_usage/cli.py src/codex_usage/__main__.py scripts/parallel_cache_acceptance.py scripts/packaged_parallel_cache_smoke.py scripts/build-macos-arm64-exe.sh scripts/build-windows-exe.ps1 .github/workflows/package-vsix.yml tests/test_parallel_acceptance_scripts.py tests/test_github_actions_workflow.py
 git commit -m "test: verify spawned workers in native packages"
 ```
 
@@ -1555,7 +2064,178 @@ Expected: PASS and a docs/test-only green commit.
 
 - [ ] **Step 1: Write failing full-body parser tool tests**
 
-In `tests/test_parser_equivalence_tool.py`, write five valid synthetic JSONLs with distinct byte sizes and use these complete tests: `test_capture_copies_rounded_bounded_sample_without_private_paths` calls `capture(..., limit=3, max_file_bytes=10_000)`, asserts copied indexes `000`, `001`, `002`, asserts each manifest object has exactly `fixture` and `size_bytes`, asserts no source-root text occurs in serialized manifest/output, and asserts only the manifest plus three fixture files exist. `test_digest_and_compare_use_requested_package_root` captures all five, calls `digest(manifest, REPOSITORY_ROOT / "src", current)`, asserts every digest object has exactly `fixture`, `size_bytes`, and `digest`, copies it to `oracle`, asserts `compare(oracle, current) == 0`, changes one hex digest in `current`, and asserts `compare(oracle, current) == 1`. `test_digest_rejects_output_outside_manifest_evidence_root` asserts `ValueError("path must remain under evidence root")` when `output_path` is not below `manifest_path.parent`; `test_compare_requires_oracle_and_current_in_one_evidence_root` asserts the same error when the two inputs do not share one parent. `test_import_is_lazy_and_guarded` runs `runpy.run_path(script, run_name="parser_equivalence_import_test")` in a clean subprocess and asserts `codex_usage` is absent from `sys.modules`; it also calls `assert_importable_guard(script, requires_freeze_support=False)`. All test data is synthetic and deleted by `tmp_path`.
+`tests/test_parser_equivalence_tool.py` defines its own paths, corpus writer, and guard; it does not import a helper created in another test module:
+
+```python
+import ast
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from scripts import parser_equivalence_check as tool_module
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_PATH = REPOSITORY_ROOT / "scripts/parser_equivalence_check.py"
+
+
+def write_parser_fixture(path: Path, *, total_tokens: int, padding: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        {
+            "timestamp": "2026-07-31T10:00:00Z",
+            "type": "session_meta",
+            "payload": {
+                "id": path.stem,
+                "timestamp": "2026-07-31T10:00:00Z",
+                "cwd": "/repo/parser-equivalence",
+            },
+        },
+        {"type": "ignored_padding", "payload": {"value": "x" * padding}},
+        {
+            "timestamp": "2026-07-31T10:00:01Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": total_tokens,
+                        "cached_input_tokens": 0,
+                        "cache_write_input_tokens": 0,
+                        "output_tokens": 0,
+                        "reasoning_output_tokens": 0,
+                        "total_tokens": total_tokens,
+                    }
+                },
+            },
+        },
+    ]
+    path.write_text("\n".join(json.dumps(line) for line in lines) + "\n", encoding="utf-8")
+
+
+def write_five_parser_fixtures(source_root: Path) -> tuple[Path, ...]:
+    paths = tuple(source_root / f"{index}.jsonl" for index in range(5))
+    for index, path in enumerate(paths):
+        write_parser_fixture(path, total_tokens=100 + index, padding=50 * index)
+    return paths
+
+
+def assert_parser_script_guard(path: Path) -> None:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    guards = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and ast.unparse(node.test) == "__name__ == '__main__'"
+    ]
+    assert len(guards) == 1
+    guarded_main_calls = [
+        node
+        for node in ast.walk(guards[0])
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "main"
+    ]
+    assert len(guarded_main_calls) == 1
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            assert all(not alias.name.startswith("codex_usage") for alias in node.names)
+        if isinstance(node, ast.ImportFrom):
+            assert not (node.module or "").startswith("codex_usage")
+```
+
+Add these complete tests:
+
+```python
+def test_capture_copies_rounded_bounded_sample_without_private_paths(tmp_path: Path) -> None:
+    source_root = tmp_path / "private-source"
+    paths = write_five_parser_fixtures(source_root)
+    sizes = tuple(path.stat().st_size for path in paths)
+    evidence_root = tmp_path / "evidence"
+    manifest_path = tool_module.capture(
+        source_root, evidence_root, limit=3, max_file_bytes=10_000
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest == {
+        "version": 1,
+        "fixtures": [
+            {"fixture": "fixtures/000.jsonl", "size_bytes": sizes[0]},
+            {"fixture": "fixtures/001.jsonl", "size_bytes": sizes[2]},
+            {"fixture": "fixtures/002.jsonl", "size_bytes": sizes[4]},
+        ],
+    }
+    serialized = json.dumps(manifest, sort_keys=True)
+    assert str(source_root) not in serialized
+    assert sorted(
+        path.relative_to(evidence_root).as_posix()
+        for path in evidence_root.rglob("*")
+        if path.is_file()
+    ) == [
+        "fixtures/000.jsonl",
+        "fixtures/001.jsonl",
+        "fixtures/002.jsonl",
+        "manifest.json",
+    ]
+
+
+def test_digest_and_compare_use_requested_package_root(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    write_five_parser_fixtures(source_root)
+    evidence_root = tmp_path / "evidence"
+    manifest = tool_module.capture(source_root, evidence_root, limit=5, max_file_bytes=10_000)
+    current = tool_module.digest(
+        manifest, REPOSITORY_ROOT / "src", evidence_root / "current.json"
+    )
+    payload = json.loads(current.read_text(encoding="utf-8"))
+    assert payload["version"] == 1
+    assert all(tuple(row) == ("fixture", "size_bytes", "digest") for row in payload["fixtures"])
+    oracle = evidence_root / "oracle.json"
+    shutil.copyfile(current, oracle)
+    assert tool_module.compare(oracle, current) == 0
+    payload["fixtures"][0]["digest"] = "0" * 64
+    current.write_text(json.dumps(payload), encoding="utf-8")
+    assert tool_module.compare(oracle, current) == 1
+
+
+def test_digest_rejects_output_outside_manifest_evidence_root(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    write_five_parser_fixtures(source_root)
+    evidence_root = tmp_path / "evidence"
+    manifest = tool_module.capture(source_root, evidence_root, limit=5, max_file_bytes=10_000)
+    with pytest.raises(ValueError, match="path must remain under evidence root"):
+        tool_module.digest(manifest, REPOSITORY_ROOT / "src", tmp_path / "outside.json")
+
+
+def test_compare_requires_oracle_and_current_in_one_evidence_root(tmp_path: Path) -> None:
+    left = tmp_path / "left" / "oracle.json"
+    right = tmp_path / "right" / "current.json"
+    left.parent.mkdir()
+    right.parent.mkdir()
+    left.write_text('{"version": 1, "fixtures": []}', encoding="utf-8")
+    right.write_text('{"version": 1, "fixtures": []}', encoding="utf-8")
+    with pytest.raises(ValueError, match="path must remain under evidence root"):
+        tool_module.compare(left, right)
+
+
+def test_import_is_lazy_and_guarded() -> None:
+    code = (
+        "import runpy,sys; "
+        "runpy.run_path(sys.argv[1], run_name='parser_equivalence_import_test'); "
+        "assert not any(name == 'codex_usage' or name.startswith('codex_usage.') "
+        "for name in sys.modules)"
+    )
+    subprocess.run([sys.executable, "-I", "-c", code, str(SCRIPT_PATH)], check=True)
+    assert_parser_script_guard(SCRIPT_PATH)
+```
+
+Run: `uv run pytest tests/test_parser_equivalence_tool.py -q`
+
+Expected RED: test collection fails with `ModuleNotFoundError` for `scripts.parser_equivalence_check`; no Task 6 test or commit references this not-yet-created script.
 
 - [ ] **Step 2: Implement guarded parser equivalence tool**
 
@@ -1568,7 +2248,12 @@ compare(oracle_path: Path, current_path: Path) -> int
 main(argv: list[str] | None = None) -> int
 ```
 
-Capture sorts eligible source files by `(size_bytes, casefolded path)`, samples at most 100 evenly using the original rounded-index rule, copies each to `evidence_root/fixtures/{index:03d}.jsonl`, and writes no source path/content to the manifest. Digest starts a fresh process, inserts the requested `src` root before importing `codex_usage.parser`, hashes `repr(parse_session_file(fixture))`, and writes fixture/size/digest only. Compare requires identical ordered entries/digests. The guarded script contains no spawn/cache work.
+Capture validates `1 <= limit <= 100` and `max_file_bytes >= 1`, sorts eligible source files by `(size_bytes, casefolded path)`, samples evenly with indexes `round(position * (count - 1) / (selected - 1))` (or index zero for one selection), copies each to `evidence_root/fixtures/{index:03d}.jsonl`, and writes exactly `{"version": 1, "fixtures": [{"fixture": relative_path, "size_bytes": integer}]}` with no source path/content. Digest requires its output below `manifest_path.parent`, inserts the requested `src` root at `sys.path[0]` before importing `codex_usage.parser`, hashes `repr(parse_session_file(fixture))`, and writes exactly version plus ordered fixture/size/digest objects. Each Task 8 CLI `digest` command is a fresh Python process, so the detached oracle and current package cannot share imported modules. Compare requires both files to have one parent evidence root and returns zero only for identical ordered entries/digests. The guarded script contains no spawn/cache work and ends with:
+
+```python
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
 
 - [ ] **Step 3: Verify tooling and branch integrity, then commit**
 
@@ -1657,20 +2342,91 @@ Expected: PASS. Do not create another commit for ignored implementation evidence
 
 - [ ] **Step 7: Finish original Task 3 measurements without stale baseline dependency**
 
-Task 8's detached-oracle comparison replaces original Task 3 Step 1. Time the largest active JSONL with the unchanged parser and run:
+Task 8's detached-oracle comparison replaces original Task 3 Step 1. Quiesce session writes, time the largest active JSONL without printing its path, then time the full report:
 
 ```bash
+uv run python - <<'PY'
+import json
+from pathlib import Path
+from time import perf_counter
+
+from codex_usage.parser import parse_session_file
+
+paths = list((Path.home() / ".codex" / "sessions").rglob("*.jsonl"))
+assert paths, "no active JSONL files"
+largest = max(paths, key=lambda path: path.stat().st_size)
+started = perf_counter()
+records = parse_session_file(largest)
+elapsed = perf_counter() - started
+print(json.dumps({
+    "size_bytes": largest.stat().st_size,
+    "records": len(records),
+    "seconds": round(elapsed, 3),
+}, sort_keys=True))
+PY
 /usr/bin/time -p uv run codex-usage report --range 7d --output /tmp/codex-usage-7d-performance.html
 test -s /tmp/codex-usage-7d-performance.html
 rm -f /tmp/codex-usage-7d-performance.html
 uv run pytest -q
 ```
 
-Expected: report completes, output is removed, and suite passes. Record only size/record/time aggregates.
+Expected: the parser command prints only size/record/time aggregates; the report completes, output is removed, and the suite passes. Record those aggregates and the report's `real` time without a committed wall-clock threshold.
 
 - [ ] **Step 8: Write RED release assertions with exact copy**
 
-Set release tests to require version/date `0.1.42`/`2026-07-31`, `preview === true`, and these exact changelog bullets in both changelogs:
+In `tests/test_github_actions_workflow.py`, rename `test_release_metadata_versions_are_0_1_41` to `test_release_metadata_versions_are_0_1_42` and change all five expected version strings in that existing full-body test to `0.1.42`.
+
+In `tests/test_task_transfer_docs.py`, prepend `"0.1.42": "2026-07-31"` to `ROOT_RELEASE_DATES`, prepend `"0.1.42"` to `EXTENSION_RELEASE_VERSIONS`, and add this complete test:
+
+```python
+@pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
+def test_0_1_42_changelogs_describe_parallel_refresh_contract(changelog: Path) -> None:
+    section = markdown_section(
+        changelog,
+        "## 0.1.42 - 2026-07-31 - Faster Root-Task Transfer And Usage Refresh",
+    )
+    expected_bullets = (
+        "Listed only active user-visible root tasks in Task Transfer while keeping subagent usage in dashboard totals.",
+        "Deferred complete task hashing and conflict planning until after selection by replacing browse-time usage parsing and all-task hashing with metadata-only inventory.",
+        "Skipped JSON decoding for irrelevant Codex events without changing usage totals, pricing, cache schema, or aggregation behavior.",
+        "Refreshed invalidated usage caches with at most four whole-file worker processes and parent-only eight-file atomic commits, retaining complete prior generations on failure without adding offsets, range pruning, or schema changes.",
+    )
+    assert tuple(
+        line.removeprefix("- ")
+        for line in section.splitlines()
+        if line.startswith("- ")
+    ) == expected_bullets
+
+
+@pytest.mark.parametrize("readme", CURRENT_DOCS, ids=("repository", "extension"))
+def test_current_docs_describe_parallel_complete_file_recovery(readme: Path) -> None:
+    text = readme.read_text(encoding="utf-8")
+    for phrase in (
+        "complete files from byte zero",
+        "at most four worker processes",
+        "SQLite remains in the parent process",
+        "eight complete-file replacements",
+        "committed batches are reusable after interruption",
+        "no within-file checkpoint or range pruning",
+    ):
+        assert phrase in text
+
+
+def test_release_docs_require_parallel_audit_and_prepublish_native_gate() -> None:
+    text = (ROOT / "docs/release.md").read_text(encoding="utf-8")
+    for phrase in (
+        "non-parent worker PIDs",
+        "overlapping worker spans",
+        "no serial fallback",
+        "non-publishing native workflow",
+        "before creating v0.1.42",
+    ):
+        assert phrase in text
+```
+
+In `extensions/vscode/test/core.test.js`, add `assert.equal(packageJson.version, "0.1.42");` immediately before the existing `assert.equal(packageJson.preview, true);` in `package metadata is ready for Marketplace preview publishing`.
+
+The exact changelog body asserted above is:
 
 ```markdown
 - Listed only active user-visible root tasks in Task Transfer while keeping subagent usage in dashboard totals.
@@ -1679,8 +2435,6 @@ Set release tests to require version/date `0.1.42`/`2026-07-31`, `preview === tr
 - Refreshed invalidated usage caches with at most four whole-file worker processes and parent-only eight-file atomic commits, retaining complete prior generations on failure without adding offsets, range pruning, or schema changes.
 ```
 
-Require both READMEs' Performance Cache sections to contain: `complete files from byte zero`, `at most four worker processes`, `SQLite remains in the parent process`, `eight complete-file replacements`, `committed batches are reusable after interruption`, and `no within-file checkpoint or range pruning`. Require `docs/release.md` to list the packaged audit's non-parent PID/overlap/no-fallback checks and the pre-publish non-publishing native workflow gate.
-
 Run:
 
 ```bash
@@ -1688,11 +2442,11 @@ uv run pytest tests/test_github_actions_workflow.py tests/test_task_transfer_doc
 cd extensions/vscode && npm run build && npm run typecheck:contracts && node --test --test-name-pattern='package metadata' test/core.test.js
 ```
 
-Expected: FAIL only because release metadata/docs still describe `0.1.41` and lack new copy.
+Expected: FAIL only because release metadata/docs still describe `0.1.41`, omit the exact `0.1.42` bullets/recovery phrases, and do not yet assert extension version `0.1.42`; Task 6 workflow-identity tests remain green.
 
 - [ ] **Step 9: Apply exact Preview release metadata and documentation**
 
-Run `uv version 0.1.42`, `uv lock`, and `npm version 0.1.42 --no-git-tag-version`. Add heading `## 0.1.42 - 2026-07-31 - Faster Root-Task Transfer And Usage Refresh` with the exact four bullets above to both changelogs. Preserve historical Preview wording. Add exact README/release statements required by Step 2 and keep `preview: true`.
+Run `uv version 0.1.42`, `uv lock`, and `npm version 0.1.42 --no-git-tag-version`. Add heading `## 0.1.42 - 2026-07-31 - Faster Root-Task Transfer And Usage Refresh` with the exact four bullets above to both changelogs. Preserve historical Preview wording. Add the exact README/release phrases asserted in Step 8 and keep `preview: true`.
 
 Run full Python and extension suites, then commit:
 
@@ -1706,53 +2460,202 @@ git commit -m "chore: prepare 0.1.42 performance release"
 
 Expected: all suites pass and release remains Preview.
 
-- [ ] **Step 10: Review, merge locally, and prove only the matching native package**
-
-Complete original Task 5 review/merge steps. On local `main`, run full Python/extension suites and only the matching Task 6 native package command. Do not claim the other native target yet.
-
-- [ ] **Step 11: Push merged main and run both native jobs without publishing**
+- [ ] **Step 10: Run complete clean suites and focused final review**
 
 Run:
 
 ```bash
+test -z "$(git status --porcelain)"
+uv sync --all-groups
+uv run pytest -q
+cd extensions/vscode
+npm ci
+npm test
+npm run test:registration-smoke
+cd ../..
+git diff --check origin/main...HEAD
+git diff --stat origin/main...HEAD
+```
+
+Then invoke `superpowers:requesting-code-review` with this exact scope: review `origin/main...HEAD` for transfer-root classification, accidental usage filtering, browse-time full reads/hashes, stale inventory protocol fields, parser false negatives including malformed JSON, serial/spawn divergence, parent-only SQLite violations, incomplete-generation replacement, transition verification-cache ordering, frozen recursive spawn, and release-gate identity. For each finding, invoke `superpowers:receiving-code-review`, reproduce it with a focused test, apply only a durable contract-level fix, and rerun that test plus both complete suites above.
+
+Expected: all commands pass and the final reviewer reports no unresolved correctness finding.
+
+- [ ] **Step 11: Merge into the existing main worktree and prove the matching native package**
+
+Run from the implementation worktree:
+
+```bash
+set -euo pipefail
+implementation_branch="codex/task-transfer-performance-0.1.42"
+test "$(git branch --show-current)" = "$implementation_branch"
+main_worktree="$(git worktree list --porcelain | awk '
+  $1 == "worktree" { path = $2 }
+  $1 == "branch" && $2 == "refs/heads/main" { print path; exit }
+')"
+test -n "$main_worktree"
+test -z "$(git -C "$main_worktree" status --porcelain)"
+git -C "$main_worktree" pull --ff-only origin main
+git -C "$main_worktree" merge --no-ff "$implementation_branch"
+test -z "$(git -C "$main_worktree" status --porcelain)"
+git -C "$main_worktree" diff --check HEAD^
+(cd "$main_worktree" && uv run pytest -q)
+npm --prefix "$main_worktree/extensions/vscode" test
+```
+
+Then run exactly one matching native command from `main_worktree`:
+
+```bash
+# macOS Apple Silicon only
+main_worktree="$(git worktree list --porcelain | awk '
+  $1 == "worktree" { path = $2 }
+  $1 == "branch" && $2 == "refs/heads/main" { print path; exit }
+')"
+test -n "$main_worktree"
+cd "$main_worktree" && bash scripts/build-macos-arm64-exe.sh
+```
+
+```powershell
+# Windows x64 only
+$MainWorktree = $null
+$Candidate = $null
+foreach ($Line in (git worktree list --porcelain)) {
+    if ($Line.StartsWith("worktree ")) {
+        $Candidate = $Line.Substring(9)
+    } elseif ($Line -eq "branch refs/heads/main") {
+        $MainWorktree = $Candidate
+        break
+    }
+}
+if (-not $MainWorktree) { throw "main worktree not found" }
+Set-Location $MainWorktree
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-exe.ps1
+```
+
+Expected: the merge commit contains the complete implementation, both source suites pass, and only the current host's native package is claimed locally.
+
+- [ ] **Step 12: Push merged main and await the exact new non-publishing run**
+
+Run:
+
+```bash
+set -euo pipefail
 git push origin main
+head_sha="$(git rev-parse main)"
+test "$head_sha" = "$(git rev-parse origin/main)"
+before_ids="$(mktemp "${TMPDIR:-/tmp}/codex-usage-prepublish-runs.XXXXXX")"
+cleanup_dispatch_ids() {
+  rm -f "$before_ids"
+}
+trap cleanup_dispatch_ids EXIT INT TERM
+gh run list \
+  --workflow package-vsix.yml \
+  --branch main \
+  --event workflow_dispatch \
+  --limit 100 \
+  --json databaseId \
+  --jq '.[].databaseId' | sort -n > "$before_ids"
+dispatched_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 gh workflow run package-vsix.yml --ref main -f publish=false
 run_id=""
-for attempt in {1..12}; do
-  run_id="$(gh run list --workflow package-vsix.yml --branch main --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+for attempt in {1..24}; do
+  while IFS=$'\t' read -r candidate_id created_at event branch sha title; do
+    grep -qx "$candidate_id" "$before_ids" && continue
+    [[ "$created_at" < "$dispatched_at" ]] && continue
+    test "$event" = "workflow_dispatch" || continue
+    test "$branch" = "main" || continue
+    test "$sha" = "$head_sha" || continue
+    test "$title" = "Package VSIX publish=false ref=main" || continue
+    run_id="$candidate_id"
+    break
+  done < <(
+    gh run list \
+      --workflow package-vsix.yml \
+      --branch main \
+      --event workflow_dispatch \
+      --limit 100 \
+      --json databaseId,createdAt,event,headBranch,headSha,displayTitle \
+      --jq '.[] | [.databaseId,.createdAt,.event,.headBranch,.headSha,.displayTitle] | @tsv'
+  )
+  test -n "$run_id" && break
+  sleep 5
+done
+test -n "$run_id"
+actual_identity="$(gh run view "$run_id" \
+  --json databaseId,event,headBranch,headSha,displayTitle \
+  --jq '[.databaseId,.event,.headBranch,.headSha,.displayTitle] | @tsv')"
+expected_identity="$(printf '%s\t%s\t%s\t%s\t%s' \
+  "$run_id" workflow_dispatch main "$head_sha" 'Package VSIX publish=false ref=main')"
+test "$actual_identity" = "$expected_identity"
+gh run watch "$run_id" --exit-status
+test "$(gh run view "$run_id" --json conclusion --jq '.conclusion')" = "success"
+test "$(gh run view "$run_id" --json jobs \
+  --jq '.jobs[] | select(.name == "Publish VSIX packages") | .conclusion')" = "skipped"
+gh run view "$run_id" --json databaseId,conclusion,displayTitle,event,headBranch,headSha,jobs,url
+cleanup_dispatch_ids
+trap - EXIT INT TERM
+```
+
+Expected: the selected run ID was absent before dispatch, was created no earlier than `dispatched_at`, exactly matches pushed `head_sha`, branch `main`, event `workflow_dispatch`, and run identity `publish=false`; Windows x64 and macOS Apple Silicon jobs succeed, each packaged audit proves target architecture plus two overlapping child PIDs with no fallback, and the publish job is `skipped`. No stale run can satisfy this gate.
+
+- [ ] **Step 13: Tag and publish Preview only after the pre-publish gate**
+
+Run:
+
+```bash
+set -euo pipefail
+release_sha="$(git rev-parse main)"
+test "$release_sha" = "$(git rev-parse origin/main)"
+before_ids="$(mktemp "${TMPDIR:-/tmp}/codex-usage-publish-runs.XXXXXX")"
+trap 'rm -f "$before_ids"' EXIT INT TERM
+gh run list --workflow package-vsix.yml --limit 100 --json databaseId \
+  --jq '.[].databaseId' | sort -n > "$before_ids"
+tagged_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+git tag -a v0.1.42 "$release_sha" -m "v0.1.42 Task Transfer and usage refresh performance release"
+git push origin v0.1.42
+run_id=""
+for attempt in {1..24}; do
+  while IFS=$'\t' read -r candidate_id created_at event sha title; do
+    grep -qx "$candidate_id" "$before_ids" && continue
+    [[ "$created_at" < "$tagged_at" ]] && continue
+    test "$event" = "push" || continue
+    test "$sha" = "$release_sha" || continue
+    test "$title" = "Package VSIX publish=false ref=v0.1.42" || continue
+    run_id="$candidate_id"
+    break
+  done < <(
+    gh run list --workflow package-vsix.yml --limit 100 \
+      --json databaseId,createdAt,event,headSha,displayTitle \
+      --jq '.[] | [.databaseId,.createdAt,.event,.headSha,.displayTitle] | @tsv'
+  )
   test -n "$run_id" && break
   sleep 5
 done
 test -n "$run_id"
 gh run watch "$run_id" --exit-status
-gh run view "$run_id" --json conclusion,jobs,url
+test "$(gh run view "$run_id" --json conclusion --jq '.conclusion')" = "success"
+test "$(gh run view "$run_id" --json jobs \
+  --jq '.jobs[] | select(.name == "Publish VSIX packages") | .conclusion')" = "success"
+gh run view "$run_id" --json conclusion,displayTitle,event,headBranch,headSha,jobs,url
+rm -f "$before_ids"
+trap - EXIT INT TERM
 ```
 
-Expected: Windows x64 and macOS Apple Silicon test/package jobs succeed, each packaged audit proves target architecture plus two overlapping child PIDs with no fallback, and the publish job is skipped because `publish=false`. This is the required two-platform pre-publish evidence and occurs only after the workflow changes exist on pushed `main`.
-
-- [ ] **Step 12: Tag and publish Preview only after the pre-publish gate**
-
-Run:
-
-```bash
-git tag -a v0.1.42 -m "v0.1.42 Task Transfer and usage refresh performance release"
-git push origin v0.1.42
-```
-
-Watch the tag-triggered workflow through both repeated native jobs and Marketplace publication as specified in original Task 5. Report the non-publishing gate URL, publishing URL, local matching-native result, aggregate cold/warm measurements, and manual checklist. Stop before `1.0.0` or Preview removal.
+Expected: this newly observed push run matches `release_sha` and run identity `ref=v0.1.42`; both repeated native jobs and Marketplace publication succeed. Report the Step 12 non-publishing URL, this publishing URL, local matching-native result, aggregate cold/warm measurements, and the exact manual checklist from `docs/release.md`. Stop before `1.0.0` or Preview removal.
 
 ## Completion Gate
 
 The revised addendum is complete only when:
 
 - all request/result/report/candidate/state/audit interfaces are fully typed, pickle-safe, and implemented at module top level;
-- `os.process_cpu_count()` resolves a deterministic cap of four and tests prove more than one actual overlapping non-parent child PID;
+- `os.process_cpu_count()` resolves a deterministic cap of four; `max_workers=1` is proven parent-local without fallback, while resolved counts of at least two are the only spawn path and spawned tests assert non-parent PIDs;
 - infrastructure fallback is observable and ordinary per-file errors do not fallback or restart successful work;
 - every SQLite call remains parent-only, proven by child-local spawn guards plus static import/dependency scans;
 - transition workers emit raw candidates and one parent cache verifies JSONL then state evidence in global deterministic order;
 - parallel transitions equal the frozen untouched serial oracle, not expectations built from new helpers;
 - complete-file replacements commit in parent-owned groups of eight, retain old successful rows, and preserve reusable committed groups after interruption;
-- full serial/parallel stats, summaries, errors, retained-missing state, normalized schema text/version, transitions, aggregations, payloads, and HTML are exactly equal;
+- malformed-JSON usage survives with the exact later valid record, and at least four seeded completion schedules produce identical inventory-ordered semantic results;
+- full serial/parallel stats, summaries, errors, retained-missing state, every normalized `sqlite_master` row, every schema metadata pair, transitions, aggregations, payloads, and HTML are exactly equal;
 - an old-start/old-mtime file with recent usage remains included in a seven-day range;
 - source acceptance runs from a guarded importable script and fails serial/fallback/disguised execution;
 - macOS arm64 and Windows x64 package smokes reject wrong architecture and prove actual spawned PID overlap;
@@ -1760,4 +2663,4 @@ The revised addendum is complete only when:
 - no source/test/script file changed by the addendum reaches 500 lines and every task commit leaves the full suite green;
 - cache schema, usage/fork/subagent/pricing/aggregation semantics, no-range-pruning, and no-within-file-checkpoint constraints remain intact;
 - ADR 0019 records the durable contract;
-- original Task 3 finishes, exact Preview `0.1.42` copy/assertions pass, pushed-main non-publishing native CI succeeds before tagging, and publication stops before stable promotion.
+- original Task 3 finishes, exact Preview `0.1.42` copy/assertions pass, the newly dispatched non-publishing run is matched by unseen run ID/timestamp/head SHA/branch/event/`publish=false` identity before tagging, and publication stops before stable promotion.
