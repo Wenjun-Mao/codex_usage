@@ -10,7 +10,7 @@ import json
 import re
 import shutil
 import sys
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -221,19 +221,19 @@ def _read_payload(path: Path, *, require_digest: bool) -> dict[str, object]:
         raise ValueError("invalid evidence payload")
     if type(payload["version"]) is not int or payload["version"] != 1:
         raise ValueError("invalid evidence payload")
-    if not isinstance(payload["fixtures"], list):
+    if not isinstance(payload["fixtures"], list) or len(payload["fixtures"]) > 100:
         raise ValueError("invalid evidence payload")
     expected_row_keys = (
         {"fixture", "size_bytes", "digest"}
         if require_digest
         else {"fixture", "size_bytes"}
     )
-    for row in payload["fixtures"]:
+    for index, row in enumerate(payload["fixtures"]):
         if not isinstance(row, dict) or set(row) != expected_row_keys:
             raise ValueError("invalid evidence payload")
         if type(row["size_bytes"]) is not int or row["size_bytes"] < 0:
             raise ValueError("invalid evidence payload")
-        _validate_fixture_path(row["fixture"], path.parent.resolve())
+        _validate_fixture_path(row["fixture"], index, path.parent.resolve())
         if require_digest and not (
             isinstance(row["digest"], str)
             and re.fullmatch(r"[0-9a-f]{64}", row["digest"])
@@ -242,19 +242,12 @@ def _read_payload(path: Path, *, require_digest: bool) -> dict[str, object]:
     return payload
 
 
-def _validate_fixture_path(value: object, evidence_root: Path) -> None:
-    if not isinstance(value, str) or not value or "\\" in value:
-        raise ValueError("invalid evidence payload")
-    relative = PurePosixPath(value)
-    if (
-        relative.is_absolute()
-        or PureWindowsPath(value).drive
-        or relative.as_posix() != value
-        or any(part in {".", ".."} for part in relative.parts)
-    ):
+def _validate_fixture_path(value: object, index: int, evidence_root: Path) -> None:
+    expected = f"fixtures/{index:03d}.jsonl"
+    if value != expected:
         raise ValueError("invalid evidence payload")
     try:
-        _require_below(evidence_root.joinpath(*relative.parts), evidence_root)
+        _require_below(evidence_root / "fixtures" / f"{index:03d}.jsonl", evidence_root)
     except (OSError, RuntimeError, ValueError) as error:
         raise ValueError("invalid evidence payload") from error
 

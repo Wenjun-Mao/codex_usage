@@ -1,5 +1,4 @@
 import ast
-import hashlib
 import importlib.util
 import json
 import subprocess
@@ -11,6 +10,27 @@ import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPOSITORY_ROOT / "scripts/parser_equivalence_check.py"
+NONCANONICAL_FIXTURE_NAMES = (
+    "fixtures/000.jsonl:stream",
+    "fixtures/CON.jsonl",
+    "fixtures/NUL.jsonl",
+    "fixtures/COM1.jsonl",
+    "fixtures/000.jsonl.",
+    "fixtures/000.jsonl ",
+    r"C:fixtures\000.jsonl",
+    r"C:\fixtures\000.jsonl",
+    "C:/fixtures/000.jsonl",
+    r"\\server\share\000.jsonl",
+    "//server/share/000.jsonl",
+    "../fixtures/000.jsonl",
+    "fixtures/../fixtures/000.jsonl",
+    "/fixtures/000.jsonl",
+    "fixtures/001.jsonl",
+    r"fixtures\000.jsonl",
+    "fixtures//000.jsonl",
+    "./fixtures/000.jsonl",
+    "Fixtures/000.jsonl",
+)
 
 
 def load_tool_module() -> ModuleType:
@@ -211,7 +231,17 @@ def test_digest_uses_two_requested_package_roots_in_fresh_processes(
         source_root, evidence_root, limit=1, max_file_bytes=10_000
     )
     outputs: list[Path] = []
-    for index, sentinel in enumerate(("sentinel-one", "sentinel-two")):
+    sentinel_digests = (
+        (
+            "sentinel-one",
+            "0d6fb56b5d68f056d1a81c89328f2594b4ef0479bea3f9a5738b8a80d63a1baa",
+        ),
+        (
+            "sentinel-two",
+            "29d009cafcae82e313e9a788111ee2f288bdcb13c7bab49ef4d515b1f2063afb",
+        ),
+    )
+    for index, (sentinel, expected_digest) in enumerate(sentinel_digests):
         package_root = tmp_path / f"package-{index}"
         write_fake_parser_package(package_root, sentinel)
         output = evidence_root / f"digest-{index}.json"
@@ -232,7 +262,6 @@ def test_digest_uses_two_requested_package_roots_in_fresh_processes(
             capture_output=True,
             text=True,
         )
-        expected_digest = hashlib.sha256(repr(sentinel).encode("utf-8")).hexdigest()
         assert json.loads(completed.stdout) == {
             "byte_count": source.stat().st_size,
             "fixture_count": 1,
@@ -348,6 +377,77 @@ def test_compare_rejects_a_symlink_alias(tmp_path: Path) -> None:
         tool_module.compare(oracle, current)
 
 
+@pytest.mark.parametrize("fixture", NONCANONICAL_FIXTURE_NAMES)
+def test_digest_rejects_noncanonical_manifest_fixture_names(
+    tmp_path: Path,
+    fixture: str,
+) -> None:
+    source_root = tmp_path / "source"
+    source = source_root / "source.jsonl"
+    write_parser_fixture(source, total_tokens=100, padding=0)
+    evidence_root = tmp_path / "evidence"
+    manifest = tool_module.capture(
+        source_root, evidence_root, limit=1, max_file_bytes=10_000
+    )
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["fixtures"][0]["fixture"] = fixture
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid evidence payload"):
+        tool_module.digest(
+            manifest,
+            REPOSITORY_ROOT / "src",
+            evidence_root / "current.json",
+        )
+
+
+@pytest.mark.parametrize("fixture", NONCANONICAL_FIXTURE_NAMES)
+def test_compare_rejects_noncanonical_digest_fixture_names(
+    tmp_path: Path,
+    fixture: str,
+) -> None:
+    evidence_root = tmp_path / "evidence"
+    oracle = evidence_root / "oracle.json"
+    current = evidence_root / "current.json"
+    write_digest_payload(oracle)
+    write_digest_payload(current, digest_payload(fixture=fixture))
+
+    with pytest.raises(ValueError, match="invalid evidence payload"):
+        tool_module.compare(oracle, current)
+
+
+@pytest.mark.parametrize(
+    "fixture_names",
+    (
+        ("fixtures/001.jsonl", "fixtures/000.jsonl"),
+        ("fixtures/000.jsonl", "fixtures/002.jsonl"),
+        ("fixtures/000.jsonl", "fixtures/000.jsonl"),
+    ),
+    ids=("wrong-order", "skipped-name", "duplicate-name"),
+)
+def test_compare_rejects_noncanonical_digest_fixture_sequences(
+    tmp_path: Path,
+    fixture_names: tuple[str, ...],
+) -> None:
+    evidence_root = tmp_path / "evidence"
+    oracle = evidence_root / "oracle.json"
+    current = evidence_root / "current.json"
+    write_digest_payload(oracle)
+    payload = digest_payload()
+    payload["fixtures"] = [
+        {
+            "fixture": fixture,
+            "size_bytes": 1,
+            "digest": "a" * 64,
+        }
+        for fixture in fixture_names
+    ]
+    write_digest_payload(current, payload)
+
+    with pytest.raises(ValueError, match="invalid evidence payload"):
+        tool_module.compare(oracle, current)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     (
@@ -356,11 +456,6 @@ def test_compare_rejects_a_symlink_alias(tmp_path: Path) -> None:
         ("size_bytes", True),
         ("size_bytes", -1),
         ("size_bytes", 1.0),
-        ("fixture", "/fixtures/000.jsonl"),
-        ("fixture", "../fixtures/000.jsonl"),
-        ("fixture", "fixtures/../fixtures/000.jsonl"),
-        ("fixture", "./fixtures/000.jsonl"),
-        ("fixture", r"fixtures\000.jsonl"),
         ("digest", "A" * 64),
         ("digest", "a" * 63),
         ("digest", "g" * 64),
