@@ -4,7 +4,12 @@ import hashlib
 import json
 from pathlib import Path
 
-from codex_usage.project_identity import normalize_project_key
+from codex_usage.models import SessionMetadata
+from codex_usage.project_identity import (
+    ProjectIdentity,
+    normalize_project_key,
+    resolve_project_identity,
+)
 from codex_usage.sync.constants import REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.local_session_probe import load_local_transfer_probe
 from codex_usage.sync.models import (
@@ -294,9 +299,11 @@ def test_selected_remote_accepts_declared_file_repository_matching_canonical_key
     tmp_path: Path,
 ) -> None:
     repository = "file:///repos/example-project.git"
+    identity = _resolved_repository_identity(repository)
+    assert identity.key == "file:///repos/example-project"
     materialized = _materialize_direct(
         tmp_path / "sync",
-        indexed_project=repository,
+        indexed_project=identity.key,
         aliases=(),
         actual_project=repository,
         actual_cwd="/remote/example-project",
@@ -311,10 +318,12 @@ def test_selected_remote_accepts_declared_file_repository_matching_canonical_key
 def test_selected_remote_accepts_declared_local_repository_matching_canonical_key(
     tmp_path: Path,
 ) -> None:
-    repository = normalize_project_key(str(tmp_path / "example-project"))
+    repository = str(tmp_path / "example-project.git")
+    identity = _resolved_repository_identity(repository)
+    assert identity.key == normalize_project_key(str(tmp_path / "example-project"))
     materialized = _materialize_direct(
         tmp_path / "sync",
-        indexed_project=repository,
+        indexed_project=identity.key,
         aliases=(),
         actual_project=repository,
         actual_cwd="/remote/example-project",
@@ -323,6 +332,37 @@ def test_selected_remote_accepts_declared_local_repository_matching_canonical_ke
     assert not any(
         issue.code == "remote_project_identity_mismatch"
         for issue in materialized.issues
+    )
+
+
+def test_selected_remote_accepts_declared_custom_repository_matching_canonical_key(
+    tmp_path: Path,
+) -> None:
+    repository = "custom:example-project.git"
+    identity = _resolved_repository_identity(repository)
+    assert identity.key == "custom:example-project"
+    materialized = _materialize_direct(
+        tmp_path / "sync",
+        indexed_project=identity.key,
+        aliases=(),
+        actual_project=repository,
+        actual_cwd="/remote/example-project",
+    )
+
+    assert not any(
+        issue.code == "remote_project_identity_mismatch"
+        for issue in materialized.issues
+    )
+
+
+def _resolved_repository_identity(repository: str) -> ProjectIdentity:
+    return resolve_project_identity(
+        SessionMetadata(
+            session_id=THREAD_ID,
+            file_path=Path("session.jsonl"),
+            cwd="/remote/example-project",
+            git_repository_url=repository,
+        )
     )
 
 

@@ -10,6 +10,7 @@ from codex_usage.project_identity import (
     ProjectIdentity,
     is_git_project_key,
     normalize_declared_project_key,
+    normalize_repository_key,
     resolve_project_identity,
 )
 from codex_usage.session_files import timestamp_key
@@ -435,9 +436,9 @@ def _project_identity_matches(
     actual: ProjectIdentity,
     declared_repository: str,
 ) -> bool:
-    repository = normalize_declared_project_key(declared_repository)
+    repository = normalize_repository_key(declared_repository)
     if repository:
-        canonical_key = normalize_declared_project_key(entry.project_key)
+        canonical_key = normalize_repository_key(entry.project_key)
         if repository == canonical_key:
             return True
         return repository in _normalized_git_aliases(entry.project_aliases)
