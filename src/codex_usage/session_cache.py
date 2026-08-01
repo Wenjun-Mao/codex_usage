@@ -8,17 +8,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import codex_usage.session_cache_schema as _schema
+import codex_usage.project_transition_collection as _transition_collection
+import codex_usage.project_transitions as _transitions
 import codex_usage.session_cache_refresh as _refresh
+import codex_usage.session_cache_schema as _schema
 import codex_usage.session_cache_store as _store
 from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.parallel.execution import (
+    EMPTY_PARALLEL_RUN_REPORT,
+    ParallelRunReport,
+)
 from codex_usage.parser import finalize_session_records, parse_session_file, parse_timestamp
 from codex_usage.project_identity import resolve_project_identity
 from codex_usage.project_transitions import (
     ProjectTransition,
     apply_project_transitions,
-    collect_repo_path_observations,
-    infer_project_transitions,
 )
 from codex_usage.session_cache_models import (
     CacheStats,
@@ -68,6 +72,35 @@ def resolve_cache_dir(session_dirs: list[Path], cache_dir: Path | None = None) -
     return Path.home() / ".codex" / ".codex-usage-cache"
 
 
+def _refresh_or_load_transitions(
+    connection: sqlite3.Connection,
+    *,
+    session_dirs: list[Path],
+    session_files: list[Path],
+    records: list[UsageRecord],
+    auto_transitions: bool,
+    max_workers: int | None,
+) -> tuple[list[ProjectTransition], ParallelRunReport]:
+    dirty = _store._project_transitions_are_dirty(connection)
+    if not auto_transitions:
+        if dirty:
+            _store._set_project_transitions_dirty(connection, dirty=True)
+            connection.commit()
+        return [], EMPTY_PARALLEL_RUN_REPORT
+    if dirty:
+        observations, transition_run = (
+            _transition_collection.collect_repo_path_observations_with_report(
+                session_dirs,
+                session_files,
+                max_workers=max_workers,
+            )
+        )
+        transitions = _transitions.infer_project_transitions(records, observations)
+        _store._replace_project_transitions(connection, transitions)
+        return transitions, transition_run
+    return _store._load_transitions(connection), EMPTY_PARALLEL_RUN_REPORT
+
+
 def load_cached_session_data(
     session_dirs: list[Path],
     *,
@@ -94,12 +127,13 @@ def load_cached_session_data(
         records_by_file_key = _store._load_records_by_file_key(connection, current_keys | missing_keys)
         ordered_keys = [entry.file_key for entry in inventory] + sorted(missing_keys - current_keys)
         records = finalize_session_records([records_by_file_key.get(file_key, []) for file_key in ordered_keys])
-        transitions = _store._refresh_or_load_transitions(
+        transitions, transition_run = _refresh_or_load_transitions(
             connection,
             session_dirs=session_dirs,
             session_files=session_files,
             records=records,
             auto_transitions=auto_transitions,
+            max_workers=max_workers,
         )
         if auto_transitions:
             records = apply_project_transitions(records, transitions)
@@ -116,4 +150,5 @@ def load_cached_session_data(
         file_errors=errors,
         retained_missing_files=retained_missing_files,
         usage_run=usage_run,
+        transition_run=transition_run,
     )

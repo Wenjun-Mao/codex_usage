@@ -7,6 +7,11 @@ from codex_usage.parallel.execution import (
     WorkerSpan,
     resolve_worker_count,
 )
+from codex_usage.parallel.transitions import (
+    TransitionScanRequest,
+    TransitionScanResult,
+    scan_transition_request,
+)
 from codex_usage.parallel.usage import (
     UsageParseRequest,
     UsageParseResult,
@@ -19,9 +24,12 @@ __all__ = [
     "SERIAL_FALLBACK_WARNING",
     "OrderedProcessMapper",
     "ParallelRunReport",
+    "TransitionScanRequest",
+    "TransitionScanResult",
     "UsageParseRequest",
     "UsageParseResult",
     "WorkerSpan",
     "parse_usage_request",
     "resolve_worker_count",
+    "scan_transition_request",
 ]

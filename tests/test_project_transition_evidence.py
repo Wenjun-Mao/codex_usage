@@ -3,7 +3,11 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+import codex_usage.project_transition_candidates as candidate_module
 import codex_usage.project_transition_evidence as project_transition_evidence
+from codex_usage.project_transition_collection import (
+    collect_repo_path_observations_with_report,
+)
 from codex_usage.project_transitions import collect_repo_path_observations
 
 
@@ -184,7 +188,11 @@ def test_collect_repo_path_observations_caches_repeated_repo_path_verification(
 
     monkeypatch.setattr(project_transition_evidence, "normalize_project_key", count_normalize)
 
-    observations = collect_repo_path_observations(session_dirs=[sessions], session_files=[session_path])
+    observations, _report = collect_repo_path_observations_with_report(
+        session_dirs=[sessions],
+        session_files=[session_path],
+        max_workers=1,
+    )
 
     assert len(observations) == 3
     assert calls == 1
@@ -211,9 +219,9 @@ def test_parse_json_line_returns_none_for_extreme_json(monkeypatch) -> None:
     def raise_recursion_error(raw_line: str) -> object:
         raise RecursionError(f"too deep: {raw_line}")
 
-    monkeypatch.setattr(project_transition_evidence.json, "loads", raise_recursion_error)
+    monkeypatch.setattr(candidate_module.json, "loads", raise_recursion_error)
 
-    parsed = project_transition_evidence._parse_json_line("[]")
+    parsed = candidate_module._parse_json_line("[]")
 
     assert parsed is None
 
