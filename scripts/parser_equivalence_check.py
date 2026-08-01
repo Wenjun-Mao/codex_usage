@@ -7,9 +7,10 @@ import argparse
 import hashlib
 import importlib
 import json
+import re
 import shutil
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -28,10 +29,11 @@ def capture(
         raise ValueError("limit must be between 1 and 100")
     if max_file_bytes < 1:
         raise ValueError("max_file_bytes must be at least 1")
-    if not source_root.is_dir():
+    resolved_source_root = source_root.resolve()
+    if not resolved_source_root.is_dir():
         raise ValueError("source root must be a directory")
 
-    candidates = _eligible_source_files(source_root, max_file_bytes)
+    candidates = _eligible_source_files(resolved_source_root, max_file_bytes)
     selected_count = min(limit, len(candidates))
     selected = [candidates[index] for index in _sample_indexes(len(candidates), selected_count)]
 
@@ -60,8 +62,9 @@ def capture(
 
 def digest(manifest_path: Path, package_root: Path, output_path: Path) -> Path:
     evidence_root = manifest_path.parent.resolve()
+    resolved_manifest = _require_below(manifest_path, evidence_root)
     resolved_output = _require_below(output_path, evidence_root)
-    manifest = _read_payload(manifest_path, require_digest=False)
+    manifest = _read_payload(resolved_manifest, require_digest=False)
     parse_session_file = _load_parser(package_root)
 
     fixtures: list[dict[str, object]] = []
@@ -90,6 +93,8 @@ def compare(oracle_path: Path, current_path: Path) -> int:
         raise ValueError(_PATH_ERROR)
     resolved_oracle = _require_below(oracle_path, evidence_root)
     resolved_current = _require_below(current_path, evidence_root)
+    if resolved_oracle == resolved_current or resolved_oracle.samefile(resolved_current):
+        raise ValueError("oracle and current must be distinct files")
     oracle = _read_payload(resolved_oracle, require_digest=True)
     current = _read_payload(resolved_current, require_digest=True)
     return 0 if oracle == current else 1
@@ -149,12 +154,15 @@ def main(argv: list[str] | None = None) -> int:
 )
 def _eligible_source_files(source_root: Path, max_file_bytes: int) -> list[tuple[int, Path]]:
     candidates: list[tuple[int, Path]] = []
+    seen: set[Path] = set()
     for path in source_root.rglob("*.jsonl"):
-        if not path.is_file():
+        resolved_path = _require_below(path, source_root)
+        if not resolved_path.is_file() or resolved_path in seen:
             continue
-        size_bytes = path.stat().st_size
+        seen.add(resolved_path)
+        size_bytes = resolved_path.stat().st_size
         if size_bytes <= max_file_bytes:
-            candidates.append((size_bytes, path))
+            candidates.append((size_bytes, resolved_path))
     return sorted(candidates, key=lambda item: (item[0], item[1].as_posix().casefold()))
 
 
@@ -211,7 +219,9 @@ def _read_payload(path: Path, *, require_digest: bool) -> dict[str, object]:
     expected_payload_keys = {"version", "fixtures"}
     if not isinstance(payload, dict) or set(payload) != expected_payload_keys:
         raise ValueError("invalid evidence payload")
-    if payload["version"] != 1 or not isinstance(payload["fixtures"], list):
+    if type(payload["version"]) is not int or payload["version"] != 1:
+        raise ValueError("invalid evidence payload")
+    if not isinstance(payload["fixtures"], list):
         raise ValueError("invalid evidence payload")
     expected_row_keys = (
         {"fixture", "size_bytes", "digest"}
@@ -221,11 +231,32 @@ def _read_payload(path: Path, *, require_digest: bool) -> dict[str, object]:
     for row in payload["fixtures"]:
         if not isinstance(row, dict) or set(row) != expected_row_keys:
             raise ValueError("invalid evidence payload")
-        if not isinstance(row["fixture"], str) or not isinstance(row["size_bytes"], int):
+        if type(row["size_bytes"]) is not int or row["size_bytes"] < 0:
             raise ValueError("invalid evidence payload")
-        if require_digest and not isinstance(row["digest"], str):
+        _validate_fixture_path(row["fixture"], path.parent.resolve())
+        if require_digest and not (
+            isinstance(row["digest"], str)
+            and re.fullmatch(r"[0-9a-f]{64}", row["digest"])
+        ):
             raise ValueError("invalid evidence payload")
     return payload
+
+
+def _validate_fixture_path(value: object, evidence_root: Path) -> None:
+    if not isinstance(value, str) or not value or "\\" in value:
+        raise ValueError("invalid evidence payload")
+    relative = PurePosixPath(value)
+    if (
+        relative.is_absolute()
+        or PureWindowsPath(value).drive
+        or relative.as_posix() != value
+        or any(part in {".", ".."} for part in relative.parts)
+    ):
+        raise ValueError("invalid evidence payload")
+    try:
+        _require_below(evidence_root.joinpath(*relative.parts), evidence_root)
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ValueError("invalid evidence payload") from error
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:

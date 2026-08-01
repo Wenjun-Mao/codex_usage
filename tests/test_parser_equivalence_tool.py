@@ -1,19 +1,30 @@
 import ast
+import hashlib
+import importlib.util
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPOSITORY_ROOT))
-
-from scripts import parser_equivalence_check as tool_module
-
-
 SCRIPT_PATH = REPOSITORY_ROOT / "scripts/parser_equivalence_check.py"
+
+
+def load_tool_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "parser_equivalence_check_test_target",
+        SCRIPT_PATH,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+tool_module = load_tool_module()
 
 
 def write_parser_fixture(path: Path, *, total_tokens: int, padding: int) -> None:
@@ -57,6 +68,43 @@ def write_five_parser_fixtures(source_root: Path) -> tuple[Path, ...]:
     for index, path in enumerate(paths):
         write_parser_fixture(path, total_tokens=100 + index, padding=50 * index)
     return paths
+
+
+def write_fake_parser_package(package_root: Path, sentinel: str) -> None:
+    package = package_root / "codex_usage"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "parser.py").write_text(
+        "from pathlib import Path\n\n"
+        f"SENTINEL = {sentinel!r}\n\n"
+        "def parse_session_file(path: Path) -> str:\n"
+        "    return SENTINEL\n",
+        encoding="utf-8",
+    )
+
+
+def digest_payload(
+    *,
+    version: object = 1,
+    fixture: object = "fixtures/000.jsonl",
+    size_bytes: object = 1,
+    digest: object = "a" * 64,
+) -> dict[str, object]:
+    return {
+        "version": version,
+        "fixtures": [
+            {
+                "fixture": fixture,
+                "size_bytes": size_bytes,
+                "digest": digest,
+            }
+        ],
+    }
+
+
+def write_digest_payload(path: Path, payload: dict[str, object] | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload or digest_payload()), encoding="utf-8")
 
 
 def assert_parser_script_guard(path: Path) -> None:
@@ -117,28 +165,100 @@ def test_capture_copies_rounded_bounded_sample_without_private_paths(
     ]
 
 
-def test_digest_and_compare_use_requested_package_root(tmp_path: Path) -> None:
+def test_capture_rejects_jsonl_symlink_outside_source_root(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.jsonl"
+    write_parser_fixture(outside, total_tokens=100, padding=0)
     source_root = tmp_path / "source"
-    write_five_parser_fixtures(source_root)
+    source_root.mkdir()
+    (source_root / "escape.jsonl").symlink_to(outside)
     evidence_root = tmp_path / "evidence"
-    manifest = tool_module.capture(
+
+    with pytest.raises(ValueError, match="path must remain under evidence root"):
+        tool_module.capture(
+            source_root, evidence_root, limit=5, max_file_bytes=10_000
+        )
+    assert not evidence_root.exists()
+
+
+def test_capture_deduplicates_contained_resolved_candidates(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    source = source_root / "source.jsonl"
+    write_parser_fixture(source, total_tokens=100, padding=0)
+    (source_root / "alias.jsonl").symlink_to(source.name)
+    evidence_root = tmp_path / "evidence"
+
+    manifest_path = tool_module.capture(
         source_root, evidence_root, limit=5, max_file_bytes=10_000
     )
-    current = tool_module.digest(
-        manifest, REPOSITORY_ROOT / "src", evidence_root / "current.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest == {
+        "version": 1,
+        "fixtures": [
+            {"fixture": "fixtures/000.jsonl", "size_bytes": source.stat().st_size}
+        ],
+    }
+
+
+def test_digest_uses_two_requested_package_roots_in_fresh_processes(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    source = source_root / "source.jsonl"
+    write_parser_fixture(source, total_tokens=100, padding=0)
+    evidence_root = tmp_path / "evidence"
+    manifest = tool_module.capture(
+        source_root, evidence_root, limit=1, max_file_bytes=10_000
     )
-    payload = json.loads(current.read_text(encoding="utf-8"))
-    assert payload["version"] == 1
-    assert all(
-        tuple(row) == ("fixture", "size_bytes", "digest")
-        for row in payload["fixtures"]
-    )
-    oracle = evidence_root / "oracle.json"
-    shutil.copyfile(current, oracle)
-    assert tool_module.compare(oracle, current) == 0
-    payload["fixtures"][0]["digest"] = "0" * 64
-    current.write_text(json.dumps(payload), encoding="utf-8")
-    assert tool_module.compare(oracle, current) == 1
+    outputs: list[Path] = []
+    for index, sentinel in enumerate(("sentinel-one", "sentinel-two")):
+        package_root = tmp_path / f"package-{index}"
+        write_fake_parser_package(package_root, sentinel)
+        output = evidence_root / f"digest-{index}.json"
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                str(SCRIPT_PATH),
+                "digest",
+                "--manifest",
+                str(manifest),
+                "--package-root",
+                str(package_root),
+                "--output",
+                str(output),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        expected_digest = hashlib.sha256(repr(sentinel).encode("utf-8")).hexdigest()
+        assert json.loads(completed.stdout) == {
+            "byte_count": source.stat().st_size,
+            "fixture_count": 1,
+        }
+        assert json.loads(output.read_text(encoding="utf-8")) == {
+            "version": 1,
+            "fixtures": [
+                {
+                    "fixture": "fixtures/000.jsonl",
+                    "size_bytes": source.stat().st_size,
+                    "digest": expected_digest,
+                }
+            ],
+        }
+        outputs.append(output)
+
+    matching = evidence_root / "matching.json"
+    matching.write_text(outputs[0].read_text(encoding="utf-8"), encoding="utf-8")
+    assert tool_module.compare(outputs[0], matching) == 0
+    assert tool_module.compare(outputs[0], outputs[1]) == 1
+
+
+def test_loading_tool_module_does_not_change_sys_path() -> None:
+    before = tuple(sys.path)
+    load_tool_module()
+    assert tuple(sys.path) == before
 
 
 def test_digest_rejects_output_outside_manifest_evidence_root(tmp_path: Path) -> None:
@@ -152,6 +272,41 @@ def test_digest_rejects_output_outside_manifest_evidence_root(tmp_path: Path) ->
         tool_module.digest(manifest, REPOSITORY_ROOT / "src", tmp_path / "outside.json")
 
 
+def test_digest_rejects_manifest_symlink_outside_evidence_root(tmp_path: Path) -> None:
+    outside_manifest = tmp_path / "outside" / "manifest.json"
+    outside_manifest.parent.mkdir()
+    outside_manifest.write_text('{"version":1,"fixtures":[]}', encoding="utf-8")
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    manifest = evidence_root / "manifest.json"
+    manifest.symlink_to(outside_manifest)
+
+    with pytest.raises(ValueError, match="path must remain under evidence root"):
+        tool_module.digest(
+            manifest,
+            REPOSITORY_ROOT / "src",
+            evidence_root / "current.json",
+        )
+
+
+def test_compare_rejects_fixture_symlink_outside_evidence_root(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text("outside", encoding="utf-8")
+    evidence_root = tmp_path / "evidence"
+    fixtures_root = evidence_root / "fixtures"
+    fixtures_root.mkdir(parents=True)
+    (fixtures_root / "000.jsonl").symlink_to(outside)
+    oracle = evidence_root / "oracle.json"
+    current = evidence_root / "current.json"
+    write_digest_payload(oracle)
+    write_digest_payload(current)
+
+    with pytest.raises(ValueError, match="invalid evidence payload"):
+        tool_module.compare(oracle, current)
+
+
 def test_compare_requires_oracle_and_current_in_one_evidence_root(
     tmp_path: Path,
 ) -> None:
@@ -163,6 +318,72 @@ def test_compare_requires_oracle_and_current_in_one_evidence_root(
     right.write_text('{"version": 1, "fixtures": []}', encoding="utf-8")
     with pytest.raises(ValueError, match="path must remain under evidence root"):
         tool_module.compare(left, right)
+
+
+def test_compare_rejects_the_same_path(tmp_path: Path) -> None:
+    digest_path = tmp_path / "evidence" / "digest.json"
+    write_digest_payload(digest_path)
+
+    with pytest.raises(ValueError, match="oracle and current must be distinct files"):
+        tool_module.compare(digest_path, digest_path)
+
+
+def test_compare_rejects_a_hardlink_alias(tmp_path: Path) -> None:
+    oracle = tmp_path / "evidence" / "oracle.json"
+    current = oracle.with_name("current.json")
+    write_digest_payload(oracle)
+    current.hardlink_to(oracle)
+
+    with pytest.raises(ValueError, match="oracle and current must be distinct files"):
+        tool_module.compare(oracle, current)
+
+
+def test_compare_rejects_a_symlink_alias(tmp_path: Path) -> None:
+    oracle = tmp_path / "evidence" / "oracle.json"
+    current = oracle.with_name("current.json")
+    write_digest_payload(oracle)
+    current.symlink_to(oracle.name)
+
+    with pytest.raises(ValueError, match="oracle and current must be distinct files"):
+        tool_module.compare(oracle, current)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("version", True),
+        ("version", 1.0),
+        ("size_bytes", True),
+        ("size_bytes", -1),
+        ("size_bytes", 1.0),
+        ("fixture", "/fixtures/000.jsonl"),
+        ("fixture", "../fixtures/000.jsonl"),
+        ("fixture", "fixtures/../fixtures/000.jsonl"),
+        ("fixture", "./fixtures/000.jsonl"),
+        ("fixture", r"fixtures\000.jsonl"),
+        ("digest", "A" * 64),
+        ("digest", "a" * 63),
+        ("digest", "g" * 64),
+    ),
+)
+def test_compare_rejects_malformed_digest_payloads(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    evidence_root = tmp_path / "evidence"
+    oracle = evidence_root / "oracle.json"
+    current = evidence_root / "current.json"
+    write_digest_payload(oracle)
+    malformed = digest_payload()
+    if field == "version":
+        malformed[field] = value
+    else:
+        malformed["fixtures"][0][field] = value
+    write_digest_payload(current, malformed)
+
+    with pytest.raises(ValueError, match="invalid evidence payload"):
+        tool_module.compare(oracle, current)
 
 
 def test_import_is_lazy_and_guarded() -> None:
