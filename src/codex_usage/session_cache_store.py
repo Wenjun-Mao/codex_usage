@@ -106,6 +106,7 @@ def replace_file_generation(
     records: tuple[UsageRecord, ...],
 ) -> None:
     path = entry.path
+    _delete_same_path_alias_rows(connection, entry)
     _delete_file_rows(connection, entry.file_key)
     for index, record in enumerate(records):
         _insert_record(connection, entry.file_key, path, index, record)
@@ -185,6 +186,22 @@ def record_file_error(
 def _delete_file_rows(connection: sqlite3.Connection, file_key: str) -> None:
     connection.execute("delete from usage_records where file_key = ?", (file_key,))
     connection.execute("delete from session_metadata where file_key = ?", (file_key,))
+
+
+def _delete_same_path_alias_rows(
+    connection: sqlite3.Connection,
+    entry: SessionFileInventoryEntry,
+) -> None:
+    alias_keys = tuple(
+        str(row["file_key"])
+        for row in connection.execute(
+            "select file_key from files where path = ? and file_key != ?",
+            (str(entry.path), entry.file_key),
+        )
+    )
+    for alias_key in alias_keys:
+        _delete_file_rows(connection, alias_key)
+        connection.execute("delete from files where file_key = ?", (alias_key,))
 
 
 def _insert_record(connection: sqlite3.Connection, file_key: str, file_path: Path, index: int, record: UsageRecord) -> None:

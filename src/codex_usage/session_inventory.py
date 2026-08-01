@@ -19,6 +19,7 @@ class SessionFileInventoryEntry:
     storage_state: str
     size_bytes: int
     mtime_ns: int
+    file_key_is_fallback: bool = False
 
 
 @dataclass(frozen=True)
@@ -74,13 +75,15 @@ def collect_session_file_inventory(session_dirs: list[Path]) -> list[SessionFile
             if not path.is_file():
                 continue
             stat = path.stat()
+            file_key, file_key_is_fallback = _session_file_key_with_provenance(path)
             entry = SessionFileInventoryEntry(
-                file_key=session_file_key(path),
+                file_key=file_key,
                 path=path,
                 session_dir=session_dir,
                 storage_state=storage_state_for_session_dir(session_dir),
                 size_bytes=stat.st_size,
                 mtime_ns=stat.st_mtime_ns,
+                file_key_is_fallback=file_key_is_fallback,
             )
             existing = selected.get(entry.file_key)
             if existing is None or _inventory_priority(entry) < _inventory_priority(existing):
@@ -93,10 +96,14 @@ def collect_jsonl_files(session_dirs: list[Path]) -> list[Path]:
 
 
 def session_file_key(path: Path) -> str:
+    return _session_file_key_with_provenance(path)[0]
+
+
+def _session_file_key_with_provenance(path: Path) -> tuple[str, bool]:
     metadata = read_session_metadata(path)
     if metadata and metadata.session_id:
-        return metadata.session_id
-    return path.stem
+        return metadata.session_id, False
+    return path.stem, True
 
 
 def storage_state_for_session_dir(session_dir: Path) -> str:

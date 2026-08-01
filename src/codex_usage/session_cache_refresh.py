@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from itertools import batched
 from pathlib import Path
@@ -44,6 +45,7 @@ def refresh_files(
             "from files"
         )
     }
+    _reconcile_fallback_file_keys(inventory, cached_rows)
     parse_entries, reused, missing_marked = _commit_preflight(
         connection,
         inventory,
@@ -111,6 +113,22 @@ def refresh_files(
         file_error_count=file_errors,
     )
     return stats, report
+
+
+def _reconcile_fallback_file_keys(
+    inventory: list[SessionFileInventoryEntry],
+    cached_rows: dict[str, sqlite3.Row],
+) -> None:
+    cached_keys_by_path: dict[str, list[str]] = {}
+    for file_key, row in cached_rows.items():
+        cached_keys_by_path.setdefault(str(row["path"]), []).append(file_key)
+
+    for index, entry in enumerate(inventory):
+        if not entry.file_key_is_fallback:
+            continue
+        matching_keys = cached_keys_by_path.get(str(entry.path), [])
+        if len(matching_keys) == 1:
+            inventory[index] = replace(entry, file_key=matching_keys[0])
 
 
 def _commit_preflight(

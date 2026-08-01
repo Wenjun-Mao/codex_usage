@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import pickle
 import sqlite3
@@ -12,6 +13,7 @@ from parallel_cache_test_support import (
     ShuffledUsageResultMapper,
     append_cumulative_token_total,
     complete_generation_snapshot,
+    load_parallel,
     load_serial,
     write_usage_corpus,
     write_valid_usage_set,
@@ -29,7 +31,10 @@ from codex_usage.session_cache import (
     CACHE_DB_NAME,
     load_cached_session_data,
 )
-from codex_usage.session_inventory import SessionFileInventoryEntry
+from codex_usage.session_inventory import (
+    SessionFileInventoryEntry,
+    collect_session_file_inventory,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -71,6 +76,31 @@ def test_usage_file_error_is_data_not_pool_fallback(tmp_path: Path) -> None:
     assert mapper.worker_count == 1
     assert mapper.used_serial_fallback is False
     assert mapper.infrastructure_error == ""
+
+
+def test_parallel_corpus_uses_overlapping_child_workers_without_path_leakage(
+    tmp_path: Path,
+) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    data = load_parallel(
+        corpus,
+        tmp_path / "parallel-cache",
+        auto_transitions=False,
+    )
+
+    report = data.usage_run
+    assert report.resolved_worker_count >= 2
+    assert len(report.worker_pids) >= 2
+    assert os.getpid() not in report.worker_pids
+    assert report.max_concurrency >= 2
+    assert report.actually_parallel(os.getpid()) is True
+    assert report.used_serial_fallback is False
+    assert report.infrastructure_error == ""
+    assert report.file_error_count == data.stats.file_errors == 1
+    assert len(data.file_errors) == 1
+    assert next(iter(data.file_errors.values())).startswith("UnicodeDecodeError: ")
+    report_text = repr(report.to_dict())
+    assert all(str(path) not in report_text for path in corpus.ordered_paths)
 
 
 def test_varied_shuffled_completion_preserves_exact_semantic_order(
@@ -142,6 +172,124 @@ def test_worker_error_retains_old_complete_rows_and_retries(tmp_path: Path) -> N
     assert recovered.stats.file_errors == 0
     assert recovered.file_errors == {}
     assert [record.usage.total_tokens for record in recovered.records] == [100]
+
+
+def test_unreadable_fallback_key_reuses_stable_metadata_identity(
+    tmp_path: Path,
+) -> None:
+    sessions, (path,) = write_valid_usage_set(tmp_path / "codex", count=1)
+    stable_key = "stable-metadata-thread"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    rows[0]["payload"]["id"] = stable_key
+    path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    valid_bytes = path.read_bytes()
+    cache_dir = tmp_path / "cache"
+
+    initial_inventory = collect_session_file_inventory([sessions])
+    assert [(entry.file_key, entry.file_key_is_fallback) for entry in initial_inventory] == [
+        (stable_key, False)
+    ]
+    initial = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        assert connection.execute(
+            "select file_key, is_missing, error from files"
+        ).fetchall() == [(stable_key, 0, "")]
+
+    path.write_bytes(b"\xff\xfe")
+    corrupt_inventory = collect_session_file_inventory([sessions])
+    assert [(entry.file_key, entry.file_key_is_fallback) for entry in corrupt_inventory] == [
+        (path.stem, True)
+    ]
+    failed = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert failed.records == initial.records
+    assert failed.stats.files_parsed == 1
+    assert failed.stats.files_removed == 0
+    assert failed.stats.files_missing_retained == 0
+    assert failed.stats.file_errors == 1
+    assert failed.retained_missing_files == []
+    assert len(failed.file_errors) == 1
+    assert next(iter(failed.file_errors.values())).startswith("UnicodeDecodeError: ")
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        failed_rows = connection.execute(
+            "select file_key, path, is_missing, error from files"
+        ).fetchall()
+    assert len(failed_rows) == 1
+    assert failed_rows[0][:3] == (stable_key, str(path), 0)
+    assert failed_rows[0][3].startswith("UnicodeDecodeError: ")
+
+    path.write_bytes(valid_bytes)
+    recovered = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert recovered.records == initial.records
+    assert recovered.stats.files_parsed == 1
+    assert recovered.stats.files_removed == 0
+    assert recovered.stats.files_missing_retained == 0
+    assert recovered.stats.file_errors == 0
+    assert recovered.file_errors == {}
+    assert recovered.retained_missing_files == []
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        assert connection.execute(
+            "select file_key, path, is_missing, error from files"
+        ).fetchall() == [(stable_key, str(path), 0, "")]
+
+
+def test_valid_new_metadata_identity_replaces_same_path_alias_generation(
+    tmp_path: Path,
+) -> None:
+    sessions, (path,) = write_valid_usage_set(tmp_path / "codex", count=1)
+    cache_dir = tmp_path / "cache"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    rows[0]["payload"]["id"] = "old-thread"
+    path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+
+    rows[0]["payload"]["id"] = "new-thread"
+    usage = rows[1]["payload"]["info"]["total_token_usage"]
+    usage["input_tokens"] = 200
+    usage["total_tokens"] = 200
+    path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    current_inventory = collect_session_file_inventory([sessions])
+    assert [(entry.file_key, entry.file_key_is_fallback) for entry in current_inventory] == [
+        ("new-thread", False)
+    ]
+
+    replaced = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert replaced.stats.files_parsed == 1
+    assert replaced.stats.files_removed == 1
+    assert replaced.stats.files_missing_retained == 0
+    assert replaced.file_errors == {}
+    assert replaced.retained_missing_files == []
+    assert [(record.session_id, record.usage.total_tokens) for record in replaced.records] == [
+        ("new-thread", 200)
+    ]
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        assert connection.execute("select file_key from files").fetchall() == [
+            ("new-thread",)
+        ]
+        assert connection.execute(
+            "select file_key, session_id from usage_records"
+        ).fetchall() == [("new-thread", "new-thread")]
+        assert connection.execute(
+            "select file_key, session_id from session_metadata"
+        ).fetchall() == [("new-thread", "new-thread")]
 
 
 def test_insert_failure_rolls_back_all_eight_replacements(
