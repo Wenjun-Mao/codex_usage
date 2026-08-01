@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
+from functools import partial
 from types import TracebackType
 from typing import Final, Self, cast
 
@@ -24,6 +25,29 @@ _CONSTRUCTION_OR_SUBMISSION_ERRORS = (
 )
 _RESULT_TRANSPORT_ERRORS = (pickle.PicklingError, BrokenProcessPool)
 _UNSET: Final[object] = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkerSuccess[ResultT]:
+    result: ResultT
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkerFailure:
+    error: Exception
+
+
+type _WorkerOutcome[ResultT] = _WorkerSuccess[ResultT] | _WorkerFailure
+
+
+def _invoke_worker[RequestT, ResultT](
+    worker: Callable[[RequestT], ResultT],
+    request: RequestT,
+) -> _WorkerOutcome[ResultT]:
+    try:
+        return _WorkerSuccess(worker(request))
+    except _RESULT_TRANSPORT_ERRORS as error:
+        return _WorkerFailure(error)
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +146,7 @@ class OrderedProcessMapper[RequestT, ResultT]:
         max_workers: int = DEFAULT_MAX_WORKERS,
     ) -> None:
         self._worker = worker
+        self._process_worker = partial(_invoke_worker, worker)
         self.worker_count = resolve_worker_count(task_count, max_workers=max_workers)
         self.used_serial_fallback = False
         self.infrastructure_error = ""
@@ -158,20 +183,27 @@ class OrderedProcessMapper[RequestT, ResultT]:
         if executor is None:
             raise RuntimeError("process executor is unavailable")
 
-        futures_by_position: dict[Future[ResultT], int] = {}
+        futures_by_position: dict[Future[_WorkerOutcome[ResultT]], int] = {}
         try:
             for position, request in enumerate(requests):
-                future = executor.submit(self._worker, request)
+                future = executor.submit(self._process_worker, request)
                 futures_by_position[future] = position
         except _CONSTRUCTION_OR_SUBMISSION_ERRORS as error:
             return self._fallback_current_batch(error, requests)
 
         results: list[ResultT | object] = [_UNSET] * len(requests)
+        worker_error: Exception | None = None
         try:
             for future in as_completed(futures_by_position):
-                results[futures_by_position[future]] = future.result()
+                outcome = future.result()
+                if isinstance(outcome, _WorkerFailure):
+                    worker_error = outcome.error
+                    break
+                results[futures_by_position[future]] = outcome.result
         except _RESULT_TRANSPORT_ERRORS as error:
             return self._fallback_current_batch(error, requests)
+        if worker_error is not None:
+            raise worker_error
         return [cast(ResultT, result) for result in results]
 
     def _map_serially(self, requests: Sequence[RequestT]) -> list[ResultT]:

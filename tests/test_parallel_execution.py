@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import pickle
 import random
 import re
 from collections.abc import Callable, Iterable, Iterator
@@ -37,6 +38,10 @@ def pid_worker(value: int) -> tuple[int, int]:
 
 def value_error_worker(value: int) -> int:
     raise ValueError(f"bad worker value {value}")
+
+
+def pickling_error_worker(value: int) -> int:
+    raise pickle.PicklingError(f"worker {os.getpid()} rejected {value}")
 
 
 def interrupt_worker(value: int) -> int:
@@ -190,6 +195,17 @@ def test_worker_value_error_is_not_pool_fallback() -> None:
     with OrderedProcessMapper(value_error_worker, task_count=1, max_workers=1) as mapper:
         with pytest.raises(ValueError, match="bad worker value 7"):
             mapper.map_batch([7])
+    assert mapper.used_serial_fallback is False
+    assert mapper.infrastructure_error == ""
+
+
+def test_spawn_worker_pickling_error_is_not_pool_fallback() -> None:
+    parent_pid = os.getpid()
+    with OrderedProcessMapper(pickling_error_worker, task_count=2, max_workers=2) as mapper:
+        with pytest.raises(pickle.PicklingError, match=r"worker \d+ rejected 7") as caught:
+            mapper.map_batch([7])
+    worker_pid = int(str(caught.value).split()[1])
+    assert worker_pid != parent_pid
     assert mapper.used_serial_fallback is False
     assert mapper.infrastructure_error == ""
 
