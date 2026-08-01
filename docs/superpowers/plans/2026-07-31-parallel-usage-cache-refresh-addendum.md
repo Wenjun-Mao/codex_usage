@@ -154,6 +154,10 @@ TransitionScanResult(
     span: WorkerSpan,
 )
 
+class PartialTransitionReadError(OSError):
+    candidates: tuple[RawRepoPathCandidate, ...]
+    cause: OSError | UnicodeDecodeError
+
 scan_transition_request(request: TransitionScanRequest) -> TransitionScanResult
 
 VerificationCache = dict[str, tuple[str, str, str] | None]
@@ -187,7 +191,7 @@ collect_repo_path_observations_with_report(
 ) -> tuple[list[RepoPathObservation], ParallelRunReport]
 ```
 
-Workers decode JSONL and extract ordered raw candidates only. They never call `Path.exists`, `Path.resolve`, `normalize_project_key`, Git config readers, or SQLite. `read_jsonl_repo_path_candidates_once` opens and completely reads one file while preserving the current `errors="ignore"`, line order, thread-ID updates, event selection, path order, and malformed-line skip behavior. `collect_jsonl_repo_path_candidates` is the tenacity-decorated wrapper with `retry=retry_if_exception_type((OSError, UnicodeDecodeError))`, `stop=stop_after_attempt(3)`, `wait=wait_exponential(multiplier=0.05, min=0.05, max=0.2)`, and `reraise=True`. After retries are exhausted, `scan_transition_request` catches only `(OSError, UnicodeDecodeError)` and returns `TransitionScanResult(request, (), f"{type(error).__name__}: {error}", span)`; parent collection skips that file exactly as the current serial scanner does. Other exceptions propagate and do not trigger per-file tolerance or process-pool fallback.
+Workers decode JSONL and extract ordered raw candidates only. They never call `Path.exists`, `Path.resolve`, `normalize_project_key`, Git config readers, or SQLite. `read_jsonl_repo_path_candidates_once` opens and reads one file while preserving the current `errors="ignore"`, line order, thread-ID updates, event selection, path order, malformed-line skip behavior, and partial-evidence behavior. If an `OSError` or `UnicodeDecodeError` occurs after valid candidates were read, it raises `PartialTransitionReadError` carrying those candidates and the original cause. `collect_jsonl_repo_path_candidates` is the tenacity-decorated wrapper with `retry=retry_if_exception_type(PartialTransitionReadError)`, `stop=stop_after_attempt(3)`, `wait=wait_exponential(multiplier=0.05, min=0.05, max=0.2)`, and `reraise=True`. After retries are exhausted, `scan_transition_request` catches only `PartialTransitionReadError` and returns the candidates from the final complete attempt prefix plus `f"{type(error.cause).__name__}: {error.cause}"`. Thus a persistent late read failure preserves the same valid prefix as the frozen collector, while a transient failure can recover on retry. Other exceptions propagate and do not trigger per-file tolerance or process-pool fallback.
 
 The parent sorts complete scan results by request ordinal, preserving line/candidate order within each result. It creates one `VerificationCache`, verifies every JSONL candidate in that order, then passes the same cache object to fully typed `collect_state_repo_path_observations`. State rows retain current session-dir, query-row, field, and candidate order. One unchanged dedupe/sort runs after both sources. This preserves the current globally shared path-verification semantics across files and across JSONL/state evidence.
 
@@ -1081,7 +1085,7 @@ This is a parent-orchestration double and does not claim spawned execution.
 
 - [ ] **Step 2: Write exact failing candidate/oracle/retry tests**
 
-`tests/test_parallel_transition_equivalence.py` writes its files and repositories inside each test; no undefined fixture is referenced. Include these complete bodies:
+`tests/test_parallel_transition_equivalence.py` imports `UTC` and `datetime` from `datetime`, `Iterator` and `Sequence` from `collections.abc`, and writes its files and repositories inside each test; no undefined fixture is referenced. Include these complete bodies:
 
 ```python
 def test_parallel_collection_equals_frozen_serial_oracle(tmp_path: Path) -> None:
@@ -1190,12 +1194,18 @@ def test_transition_read_exhaustion_is_three_attempt_error_data(
 ) -> None:
     path = tmp_path / "session.jsonl"
     path.write_text("{}\n", encoding="utf-8")
+    prefix = RawRepoPathCandidate(
+        raw_path="/repo/already-read",
+        timestamp=datetime(2026, 7, 31, 12, 0, tzinfo=UTC),
+        thread_id="thread-prefix",
+        source="function_call",
+    )
     calls = 0
 
     def fail_once(_path: Path) -> list[RawRepoPathCandidate]:
         nonlocal calls
         calls += 1
-        raise failure
+        raise PartialTransitionReadError((prefix,), failure)
 
     monkeypatch.setattr(candidate_module, "read_jsonl_repo_path_candidates_once", fail_once)
     request = TransitionScanRequest(0, path)
@@ -1203,12 +1213,42 @@ def test_transition_read_exhaustion_is_three_attempt_error_data(
         result = mapper.map_batch([request])[0]
     assert calls == 3
     assert result.request == request
-    assert result.candidates == ()
+    assert result.candidates == (prefix,)
     assert result.error == f"{type(failure).__name__}: {failure}"
     assert result.span.pid == os.getpid()
     assert mapper.worker_count == 1
     assert mapper.used_serial_fallback is False
     assert mapper.infrastructure_error == ""
+
+
+def test_once_reader_wraps_a_late_read_error_with_the_valid_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    first_line = (
+        '{"timestamp":"2026-07-31T12:00:00Z","type":"session_meta",'
+        '"payload":{"id":"thread-prefix","cwd":"/repo/already-read"}}\n'
+    )
+
+    class LateFailingHandle:
+        def __enter__(self) -> "LateFailingHandle":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def __iter__(self) -> Iterator[str]:
+            yield first_line
+            raise OSError("late transition read failure")
+
+    monkeypatch.setattr(Path, "open", lambda *_args, **_kwargs: LateFailingHandle())
+    with pytest.raises(PartialTransitionReadError) as caught:
+        read_jsonl_repo_path_candidates_once(path)
+    assert len(caught.value.candidates) == 1
+    assert caught.value.candidates[0].thread_id == "thread-prefix"
+    assert isinstance(caught.value.cause, OSError)
+    assert str(caught.value.cause) == "late transition read failure"
 
 
 def test_transition_non_io_error_propagates_without_fallback(
@@ -1748,6 +1788,8 @@ Expected: PASS; the commit contains only executable tests/support and leaves the
 `tests/test_parallel_acceptance_scripts.py` defines the helpers completely:
 
 ```python
+from __future__ import annotations
+
 import ast
 import importlib.util
 import sys
@@ -1930,24 +1972,24 @@ Update `tests/test_github_actions_workflow.py` with these complete bodies:
 
 ```python
 def test_package_workflow_exposes_dispatch_input_in_run_identity() -> None:
-    text = (REPOSITORY_ROOT / ".github/workflows/package-vsix.yml").read_text(encoding="utf-8")
+    text = (ROOT / ".github/workflows/package-vsix.yml").read_text(encoding="utf-8")
     assert 'run-name: "Package VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"' in text
 
 
 def test_native_build_scripts_run_parallel_smoke_before_transfer_smoke() -> None:
-    windows = (REPOSITORY_ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
-    macos = (REPOSITORY_ROOT / "scripts/build-macos-arm64-exe.sh").read_text(encoding="utf-8")
+    windows = (ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
+    macos = (ROOT / "scripts/build-macos-arm64-exe.sh").read_text(encoding="utf-8")
     assert "RuntimeInformation.ProcessArchitecture" in windows
     assert "Architecture.X64" in windows
     assert "--expected-target win32-x64" in windows
     assert windows.index("packaged_parallel_cache_smoke.py") < windows.index(
-        "packaged_task_transfer_smoke.py"
+        "smoke-test-packaged-sync.py"
     )
     assert "uname -s" in macos
     assert "uname -m" in macos
     assert "--expected-target darwin-arm64" in macos
     assert macos.index("packaged_parallel_cache_smoke.py") < macos.index(
-        "packaged_task_transfer_smoke.py"
+        "smoke-test-packaged-sync.py"
     )
 ```
 
