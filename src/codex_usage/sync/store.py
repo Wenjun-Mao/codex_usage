@@ -193,7 +193,7 @@ class RemoteStore:
         latest, latest_snapshot = self._read_index()
         self._validate_selected_entries(validated_entries, latest)
 
-        merged = dict(base.index.threads)
+        merged = dict(base.persisted_index.threads)
         merged.update(latest.threads)
         merged.update(repaired)
         merged.update(changed)

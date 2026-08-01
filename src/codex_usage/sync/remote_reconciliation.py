@@ -8,6 +8,7 @@ from pathlib import Path
 from codex_usage.models import SessionMetadata
 from codex_usage.project_identity import (
     ProjectIdentity,
+    is_git_project_key,
     normalize_declared_project_key,
     resolve_project_identity,
 )
@@ -111,7 +112,6 @@ def reconcile_remote_discovery(
                 metadata,
             )
             files_by_thread[thread_id] = snapshot
-            repaired_thread_ids.append(thread_id)
             missing_thread_ids.remove(thread_id)
             continue
         if thread_id in effective_threads or len(candidates) > 1:
@@ -129,7 +129,8 @@ def reconcile_remote_discovery(
         relative_path, snapshot, metadata = candidates[0]
         effective_threads[thread_id] = _reconstruct_entry(relative_path, snapshot, metadata)
         files_by_thread[thread_id] = snapshot
-        repaired_thread_ids.append(thread_id)
+        if not metadata_only and not metadata.is_subagent:
+            repaired_thread_ids.append(thread_id)
 
     for thread_id in sorted(missing_thread_ids):
         entry = persisted_index.threads[thread_id]
@@ -209,17 +210,28 @@ def materialize_selected_remote(
             continue
         if inventory.index.format_version != LEGACY_REMOTE_TRANSFER_FORMAT_VERSION:
             actual_identity = resolve_project_identity(metadata)
-            if not _project_identity_matches(entry, actual_identity):
+            provenance_entry = inventory.persisted_index.threads.get(thread_id, entry)
+            if not _project_identity_matches(
+                provenance_entry,
+                actual_identity,
+                metadata.git_repository_url,
+            ):
                 issues.append(_project_identity_issue(entry))
                 continue
+        updated_entry = entry
         if (entry.sha256, entry.size_bytes) != (snapshot.sha256, snapshot.size_bytes):
-            effective_threads[thread_id] = replace(
+            updated_entry = replace(
                 entry,
                 sha256=snapshot.sha256,
                 size_bytes=snapshot.size_bytes,
             )
-            if thread_id not in repaired_thread_ids:
-                repaired_thread_ids.append(thread_id)
+            effective_threads[thread_id] = updated_entry
+        persisted_entry = inventory.persisted_index.threads.get(thread_id)
+        if (
+            thread_id not in repaired_thread_ids
+            and (persisted_entry is None or updated_entry != persisted_entry)
+        ):
+            repaired_thread_ids.append(thread_id)
 
     return replace(
         inventory,
@@ -354,13 +366,9 @@ def _relink_entry(
     snapshot: SyncFileSnapshot,
     metadata: SessionMetadata,
 ) -> RemoteThreadEntry:
-    identity = resolve_project_identity(metadata)
     return replace(
         entry,
         file=relative_path,
-        project_key=identity.key,
-        project_label=identity.label,
-        project_aliases=identity.aliases,
         sha256=snapshot.sha256,
         size_bytes=snapshot.size_bytes,
         session_updated_at=_timestamp_iso(metadata) or entry.session_updated_at,
@@ -425,23 +433,39 @@ def _project_identity_issue(entry: RemoteThreadEntry) -> SyncIssue:
 def _project_identity_matches(
     entry: RemoteThreadEntry,
     actual: ProjectIdentity,
+    declared_repository: str,
 ) -> bool:
-    indexed_identities = _normalized_project_identities(
+    repository = normalize_declared_project_key(declared_repository)
+    if repository:
+        return repository in _normalized_project_identities(
+            entry.project_key,
+            entry.project_aliases,
+            repository=True,
+        )
+    indexed_paths = _normalized_project_identities(
         entry.project_key,
         entry.project_aliases,
+        repository=False,
     )
-    actual_identities = _normalized_project_identities(actual.key, actual.aliases)
-    return bool(indexed_identities.intersection(actual_identities))
+    actual_paths = _normalized_project_identities(
+        actual.key,
+        actual.aliases,
+        repository=False,
+    )
+    return bool(indexed_paths.intersection(actual_paths))
 
 
 def _normalized_project_identities(
     key: str,
     aliases: tuple[str, ...],
+    *,
+    repository: bool,
 ) -> frozenset[str]:
     return frozenset(
         normalized
         for value in (key, *aliases)
         if (normalized := normalize_declared_project_key(value))
+        and is_git_project_key(normalized) is repository
     )
 
 

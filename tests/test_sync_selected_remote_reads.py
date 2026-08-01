@@ -20,7 +20,7 @@ from codex_usage.sync.models import (
     RemoteIndex,
     RemoteThreadEntry,
 )
-from codex_usage.sync.runner import pull_sync
+from codex_usage.sync.runner import pull_sync, push_sync
 from codex_usage.sync.store import RemoteStore
 
 PROJECT_KEY = "https://github.com/example/selected-reads"
@@ -114,6 +114,47 @@ def test_v3_selected_unindexed_recovery_is_the_only_complete_upgrade(
     assert selected in hashes
     assert unrelated not in full_reads
     assert unrelated not in hashes
+
+
+def test_push_excludes_unselected_metadata_only_repair_from_index_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "project"
+    _write_git_origin(project)
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions / "selected.jsonl", "selected", project)
+    local = load_local_transfer_probe([sessions]).inventory
+    sync_dir = tmp_path / "sync"
+    unrelated = _write_session(
+        sync_dir / "tasks" / "unrelated.jsonl",
+        "unrelated",
+        project,
+    )
+    unrelated_before = unrelated.read_bytes()
+    _write_index(sync_dir, REMOTE_TRANSFER_FORMAT_VERSION, {})
+    full_reads, hashes = _spy_complete_reads(monkeypatch, sync_dir)
+
+    result = push_sync(
+        local=local,
+        sync_dir=sync_dir,
+        thread_ids=("selected",),
+        machine_id="source",
+        project_key=PROJECT_KEY,
+    )
+
+    selected_remote = sync_dir / "tasks" / "selected.jsonl"
+    persisted = json.loads((sync_dir / "sync-index.json").read_text(encoding="utf-8"))
+    selected_contents = selected_remote.read_bytes()
+    assert result.outcome == "completed"
+    assert result.pushed == ("selected",)
+    assert unrelated not in full_reads
+    assert unrelated not in hashes
+    assert unrelated.read_bytes() == unrelated_before
+    assert set(persisted["threads"]) == {"selected"}
+    selected_entry = persisted["threads"]["selected"]
+    assert selected_entry["sha256"] == hashlib.sha256(selected_contents).hexdigest()
+    assert selected_entry["size_bytes"] == len(selected_contents)
 
 
 def test_v2_status_still_fully_reads_and_hashes_all_migration_inputs(

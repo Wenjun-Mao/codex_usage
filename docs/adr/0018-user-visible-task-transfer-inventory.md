@@ -13,6 +13,8 @@ Browse inventory reads metadata, index display fields, file size, and project ro
 
 Version-3 status and execution discovery keep every unselected indexed or unindexed remote task metadata-only, including the locked planning pass. Only explicitly selected task IDs are upgraded to same-snapshot complete bytes and SHA-256. Version-2 stores remain an intentional exception: migration validation reads and hashes the complete legacy corpus before any version-3 selection optimization applies.
 
+Persisted index project provenance remains authoritative when discovery relocates a missing indexed task. Selected bytes must validate against that persisted key and its aliases before the relocated entry becomes repair-ready. A declared repository identity has primary authority and can match only the indexed canonical repository or a repository alias; a matching path alias cannot override a conflicting repository. Path-only tasks may still match declared path aliases. Metadata-only reconstructed entries remain browse-visible but are not commit-ready. Index commits preserve persisted catalog entries, overlay the latest persisted state, and then add only complete repairs and explicit task changes, so unrelated unselected discoveries are neither hashed nor accidentally persisted.
+
 Automatic project-transition inference remains a usage-report feature. Transfer identity uses Git metadata, declared aliases, saved roots, candidate roots, and explicit bindings so browsing never needs event-history parsing.
 
 ## Rejected Alternatives
