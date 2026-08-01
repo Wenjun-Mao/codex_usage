@@ -1,32 +1,25 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
-from codex_usage.models import SessionMetadata
-from codex_usage.project_identity import (
-    ProjectIdentity,
-    normalize_project_key,
-    resolve_project_identity,
+from _sync_remote_project_support import (
+    PROJECT_A,
+    PROJECT_B,
+    THREAD_ID,
+    remote_entry,
+    session_bytes,
 )
+
 from codex_usage.sync.constants import REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.local_session_probe import load_local_transfer_probe
 from codex_usage.sync.models import (
     LocalInventory,
     ProjectResolutionRequest,
     RemoteIndex,
-    RemoteInventory,
-    RemoteThreadEntry,
-    SyncFileSnapshot,
 )
-from codex_usage.sync.remote_reconciliation import materialize_selected_remote
 from codex_usage.sync.runner import pull_sync, push_sync, sync_status
 from codex_usage.sync.store import RemoteStore
-
-PROJECT_A = "https://github.com/example/project-a"
-PROJECT_B = "https://github.com/example/project-b"
-THREAD_ID = "same-session-id"
 
 
 def test_status_blocks_selected_remote_with_mismatched_project_provenance(
@@ -114,7 +107,7 @@ def test_pull_blocks_mismatched_remote_before_replacing_existing_counterpart(
     assert pushed.pushed == (THREAD_ID,)
 
     remote_path = sync_dir / "tasks" / f"{THREAD_ID}.jsonl"
-    remote_path.write_bytes(_session_bytes(THREAD_ID, PROJECT_B, "/remote/project-b"))
+    remote_path.write_bytes(session_bytes(THREAD_ID, PROJECT_B, "/remote/project-b"))
     local_before = local_path.read_bytes()
     index_before = (sync_dir / "sync-index.json").read_bytes()
 
@@ -220,7 +213,7 @@ def test_pull_existing_blocks_relocated_task_before_local_replacement(
     indexed_path = sync_dir / "tasks" / f"{THREAD_ID}.jsonl"
     relocated_path = sync_dir / "tasks" / "relocated.jsonl"
     relocated_path.write_bytes(
-        _session_bytes(THREAD_ID, PROJECT_B, "/remote/project-b")
+        session_bytes(THREAD_ID, PROJECT_B, "/remote/project-b")
     )
     indexed_path.unlink()
     local_before = local_path.read_bytes()
@@ -243,136 +236,13 @@ def test_pull_existing_blocks_relocated_task_before_local_replacement(
     assert (sync_dir / "sync-index.json").read_bytes() == index_before
 
 
-def test_declared_repository_conflict_is_not_masked_by_matching_path_alias(
-    tmp_path: Path,
-) -> None:
-    path_alias = normalize_project_key(str(tmp_path / "shared-checkout"))
-    materialized = _materialize_direct(
-        tmp_path / "sync",
-        indexed_project=PROJECT_A,
-        aliases=(path_alias,),
-        actual_project=PROJECT_B,
-        actual_cwd=path_alias,
-    )
-
-    assert [issue.code for issue in materialized.issues] == [
-        "remote_project_identity_mismatch"
-    ]
-
-
-def test_selected_remote_accepts_actual_path_only_identity_matching_index_alias(
-    tmp_path: Path,
-) -> None:
-    actual_path_identity = normalize_project_key(str(tmp_path / "retired-checkout"))
-    materialized = _materialize_direct(
-        tmp_path / "sync",
-        indexed_project=PROJECT_A,
-        aliases=(actual_path_identity,),
-        actual_project="",
-        actual_cwd=actual_path_identity,
-    )
-
-    assert not any(
-        issue.code == "remote_project_identity_mismatch"
-        for issue in materialized.issues
-    )
-
-
-def test_selected_remote_accepts_declared_repository_matching_index_repo_alias(
-    tmp_path: Path,
-) -> None:
-    materialized = _materialize_direct(
-        tmp_path / "sync",
-        indexed_project=PROJECT_A,
-        aliases=(PROJECT_B,),
-        actual_project=PROJECT_B,
-        actual_cwd="/remote/project-b",
-    )
-
-    assert not any(
-        issue.code == "remote_project_identity_mismatch"
-        for issue in materialized.issues
-    )
-
-
-def test_selected_remote_accepts_declared_file_repository_matching_canonical_key(
-    tmp_path: Path,
-) -> None:
-    repository = "file:///repos/example-project.git"
-    identity = _resolved_repository_identity(repository)
-    assert identity.key == "file:///repos/example-project"
-    materialized = _materialize_direct(
-        tmp_path / "sync",
-        indexed_project=identity.key,
-        aliases=(),
-        actual_project=repository,
-        actual_cwd="/remote/example-project",
-    )
-
-    assert not any(
-        issue.code == "remote_project_identity_mismatch"
-        for issue in materialized.issues
-    )
-
-
-def test_selected_remote_accepts_declared_local_repository_matching_canonical_key(
-    tmp_path: Path,
-) -> None:
-    repository = str(tmp_path / "example-project.git")
-    identity = _resolved_repository_identity(repository)
-    assert identity.key == normalize_project_key(str(tmp_path / "example-project"))
-    materialized = _materialize_direct(
-        tmp_path / "sync",
-        indexed_project=identity.key,
-        aliases=(),
-        actual_project=repository,
-        actual_cwd="/remote/example-project",
-    )
-
-    assert not any(
-        issue.code == "remote_project_identity_mismatch"
-        for issue in materialized.issues
-    )
-
-
-def test_selected_remote_accepts_declared_custom_repository_matching_canonical_key(
-    tmp_path: Path,
-) -> None:
-    repository = "custom:example-project.git"
-    identity = _resolved_repository_identity(repository)
-    assert identity.key == "custom:example-project"
-    materialized = _materialize_direct(
-        tmp_path / "sync",
-        indexed_project=identity.key,
-        aliases=(),
-        actual_project=repository,
-        actual_cwd="/remote/example-project",
-    )
-
-    assert not any(
-        issue.code == "remote_project_identity_mismatch"
-        for issue in materialized.issues
-    )
-
-
-def _resolved_repository_identity(repository: str) -> ProjectIdentity:
-    return resolve_project_identity(
-        SessionMetadata(
-            session_id=THREAD_ID,
-            file_path=Path("session.jsonl"),
-            cwd="/remote/example-project",
-            git_repository_url=repository,
-        )
-    )
-
-
 def _write_remote_store(
     sync_dir: Path,
     *,
     indexed_project: str,
     actual_project: str,
 ) -> Path:
-    contents = _session_bytes(THREAD_ID, actual_project, "/remote/project")
+    contents = session_bytes(THREAD_ID, actual_project, "/remote/project")
     remote_path = sync_dir / "tasks" / f"{THREAD_ID}.jsonl"
     remote_path.parent.mkdir(parents=True)
     remote_path.write_bytes(contents)
@@ -380,7 +250,7 @@ def _write_remote_store(
         REMOTE_TRANSFER_FORMAT_VERSION,
         "2026-07-31T12:00:00Z",
         {
-            THREAD_ID: _remote_entry(
+            THREAD_ID: remote_entry(
                 indexed_project=indexed_project,
                 aliases=(),
                 contents=contents,
@@ -395,8 +265,8 @@ def _write_remote_store(
 
 
 def _write_relocated_remote_store(sync_dir: Path) -> Path:
-    trusted_contents = _session_bytes(THREAD_ID, PROJECT_A, "/remote/project-a")
-    entry = _remote_entry(
+    trusted_contents = session_bytes(THREAD_ID, PROJECT_A, "/remote/project-a")
+    entry = remote_entry(
         indexed_project=PROJECT_A,
         aliases=(),
         contents=trusted_contents,
@@ -414,65 +284,9 @@ def _write_relocated_remote_store(sync_dir: Path) -> Path:
     relocated = sync_dir / "tasks" / "relocated.jsonl"
     relocated.parent.mkdir()
     relocated.write_bytes(
-        _session_bytes(THREAD_ID, PROJECT_B, "/remote/project-b")
+        session_bytes(THREAD_ID, PROJECT_B, "/remote/project-b")
     )
     return relocated
-
-
-def _materialize_direct(
-    root: Path,
-    *,
-    indexed_project: str,
-    aliases: tuple[str, ...],
-    actual_project: str,
-    actual_cwd: str,
-) -> RemoteInventory:
-    path = root / "tasks" / f"{THREAD_ID}.jsonl"
-    path.parent.mkdir(parents=True)
-    contents = _session_bytes(THREAD_ID, actual_project, actual_cwd)
-    path.write_bytes(contents)
-    entry = _remote_entry(
-        indexed_project=indexed_project,
-        aliases=aliases,
-        contents=contents,
-    )
-    index = RemoteIndex(REMOTE_TRANSFER_FORMAT_VERSION, "", {THREAD_ID: entry})
-    inventory = RemoteInventory(
-        persisted_index=index,
-        index=index,
-        index_snapshot=SyncFileSnapshot(None, False),
-        files={},
-        repaired_thread_ids=(),
-        issues=(),
-    )
-    return materialize_selected_remote(
-        root,
-        inventory,
-        (THREAD_ID,),
-        lambda candidate: None,
-    )
-
-
-def _remote_entry(
-    *,
-    indexed_project: str,
-    aliases: tuple[str, ...],
-    contents: bytes,
-) -> RemoteThreadEntry:
-    return RemoteThreadEntry(
-        thread_id=THREAD_ID,
-        file=f"tasks/{THREAD_ID}.jsonl",
-        source_relative_path=f"synced/{THREAD_ID}.jsonl",
-        index_entry={"id": THREAD_ID},
-        project_key=indexed_project,
-        project_label="indexed project",
-        project_aliases=aliases,
-        sha256=hashlib.sha256(contents).hexdigest(),
-        size_bytes=len(contents),
-        session_updated_at="2026-07-31T12:00:00Z",
-        exported_at="2026-07-31T12:00:00Z",
-        source_machine_id="source",
-    )
 
 
 def _empty_local(session_dir: Path) -> LocalInventory:
@@ -487,7 +301,7 @@ def _empty_local(session_dir: Path) -> LocalInventory:
 def _write_local_session(sessions: Path, project: Path) -> Path:
     path = sessions / "2026" / "07" / "31" / f"{THREAD_ID}.jsonl"
     path.parent.mkdir(parents=True)
-    path.write_bytes(_session_bytes(THREAD_ID, PROJECT_A, str(project)))
+    path.write_bytes(session_bytes(THREAD_ID, PROJECT_A, str(project)))
     return path
 
 
@@ -498,20 +312,3 @@ def _write_git_origin(project: Path, repository_url: str) -> None:
         f'[remote "origin"]\n\turl = {repository_url}.git\n',
         encoding="utf-8",
     )
-
-
-def _session_bytes(thread_id: str, repository_url: str, cwd: str) -> bytes:
-    payload: dict[str, object] = {
-        "id": thread_id,
-        "timestamp": "2026-07-31T12:00:00Z",
-        "cwd": cwd,
-        "source": "cli",
-    }
-    if repository_url:
-        payload["git"] = {"repository_url": repository_url}
-    row = {
-        "timestamp": "2026-07-31T12:00:00Z",
-        "type": "session_meta",
-        "payload": payload,
-    }
-    return (json.dumps(row, separators=(",", ":")) + "\n").encode()

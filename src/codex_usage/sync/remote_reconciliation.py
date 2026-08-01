@@ -6,13 +6,7 @@ from datetime import UTC
 from pathlib import Path
 
 from codex_usage.models import SessionMetadata
-from codex_usage.project_identity import (
-    ProjectIdentity,
-    is_git_project_key,
-    normalize_declared_project_key,
-    normalize_repository_key,
-    resolve_project_identity,
-)
+from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_files import timestamp_key
 from codex_usage.sync.constants import LEGACY_REMOTE_TRANSFER_FORMAT_VERSION
 from codex_usage.sync.format_migration_layout import guard_legacy_file, guard_task_file
@@ -30,6 +24,7 @@ from codex_usage.sync.models import (
     SyncPlan,
 )
 from codex_usage.sync.paths import is_direct_task_path, portable_thread_filename
+from codex_usage.sync.project_identity_matching import matches_indexed_project_identity
 from codex_usage.sync.transfer_metadata import (
     parse_transfer_metadata_bytes,
     read_transfer_metadata,
@@ -212,7 +207,7 @@ def materialize_selected_remote(
         if inventory.index.format_version != LEGACY_REMOTE_TRANSFER_FORMAT_VERSION:
             actual_identity = resolve_project_identity(metadata)
             provenance_entry = inventory.persisted_index.threads.get(thread_id, entry)
-            if not _project_identity_matches(
+            if not matches_indexed_project_identity(
                 provenance_entry,
                 actual_identity,
                 metadata.git_repository_url,
@@ -428,53 +423,6 @@ def _project_identity_issue(entry: RemoteThreadEntry) -> SyncIssue:
             "Re-export the task from its source project before retrying."
         ),
         entry.thread_id,
-    )
-
-
-def _project_identity_matches(
-    entry: RemoteThreadEntry,
-    actual: ProjectIdentity,
-    declared_repository: str,
-) -> bool:
-    repository = normalize_repository_key(declared_repository)
-    if repository:
-        canonical_key = normalize_repository_key(entry.project_key)
-        if repository == canonical_key:
-            return True
-        return repository in _normalized_git_aliases(entry.project_aliases)
-    indexed_paths = _normalized_project_identities(
-        entry.project_key,
-        entry.project_aliases,
-        repository=False,
-    )
-    actual_paths = _normalized_project_identities(
-        actual.key,
-        actual.aliases,
-        repository=False,
-    )
-    return bool(indexed_paths.intersection(actual_paths))
-
-
-def _normalized_project_identities(
-    key: str,
-    aliases: tuple[str, ...],
-    *,
-    repository: bool,
-) -> frozenset[str]:
-    return frozenset(
-        normalized
-        for value in (key, *aliases)
-        if (normalized := normalize_declared_project_key(value))
-        and is_git_project_key(normalized) is repository
-    )
-
-
-def _normalized_git_aliases(aliases: tuple[str, ...]) -> frozenset[str]:
-    return frozenset(
-        normalized
-        for value in aliases
-        if (normalized := normalize_declared_project_key(value))
-        and is_git_project_key(normalized)
     )
 
 
