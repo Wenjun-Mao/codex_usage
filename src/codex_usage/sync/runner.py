@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from time import perf_counter_ns
 
-from codex_usage.session_cache import CachedSessionData
 from codex_usage.session_files import codex_home_from_session_dir
 from codex_usage.sync.bookkeeping import repair_matching_bookkeeping
 from codex_usage.sync.constants import TRANSFER_TASKS_DIRNAME
@@ -23,9 +22,6 @@ from codex_usage.sync.errors import (
     ConcurrentRemoteChangeError,
     SyncStoreError,
     TransferFilesystemError,
-)
-from codex_usage.sync.inventory import (
-    build_local_inventory,
 )
 from codex_usage.sync.identity import require_remote_index_thread_identity
 from codex_usage.sync.io import atomic_copy, snapshot_file
@@ -90,12 +86,11 @@ class PhaseTimer:
 
 def sync_status(
     *,
-    data: CachedSessionData,
+    local: LocalInventory,
     sync_dir: Path,
     thread_ids: Iterable[str],
     project_resolution: ProjectResolutionRequest,
 ) -> SyncPlan:
-    local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
     try:
         _, plan = prepare_status_plan(
@@ -112,7 +107,7 @@ def sync_status(
 
 def pull_sync(
     *,
-    data: CachedSessionData,
+    local: LocalInventory,
     sync_dir: Path,
     thread_ids: Iterable[str],
     project_resolution: ProjectResolutionRequest,
@@ -122,7 +117,7 @@ def pull_sync(
 ) -> SyncRunResult:
     return _run_direction(
         direction="pull",
-        data=data,
+        local=local,
         sync_dir=sync_dir,
         thread_ids=thread_ids,
         project_resolution=project_resolution,
@@ -135,7 +130,7 @@ def pull_sync(
 
 def push_sync(
     *,
-    data: CachedSessionData,
+    local: LocalInventory,
     sync_dir: Path,
     thread_ids: Iterable[str],
     machine_id: str,
@@ -146,7 +141,7 @@ def push_sync(
 ) -> SyncRunResult:
     return _run_direction(
         direction="push",
-        data=data,
+        local=local,
         sync_dir=sync_dir,
         thread_ids=thread_ids,
         project_resolution=project_resolution,
@@ -160,7 +155,7 @@ def push_sync(
 def _run_direction(
     *,
     direction: Direction,
-    data: CachedSessionData,
+    local: LocalInventory,
     sync_dir: Path,
     thread_ids: Iterable[str],
     project_resolution: ProjectResolutionRequest,
@@ -170,8 +165,6 @@ def _run_direction(
     on_progress: Callable[[SyncProgressEvent], None] | None,
 ) -> SyncRunResult:
     timer = PhaseTimer(discovery_ms)
-    with timer.measure("planning"):
-        local = build_local_inventory(data)
     store = RemoteStore(sync_dir)
     plan: SyncPlan | None = None
     pulled: tuple[str, ...] = ()

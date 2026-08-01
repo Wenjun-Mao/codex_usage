@@ -5,6 +5,7 @@ import codex_usage.sync.runner as runner_module
 from codex_usage.project_identity import normalize_project_key
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.sync import ProjectResolutionRequest, pull_sync, push_sync
+from codex_usage.sync.inventory import build_local_inventory
 
 
 def test_conflict_result_includes_all_completed_planning_timing(
@@ -16,7 +17,7 @@ def test_conflict_result_includes_all_completed_planning_timing(
     sync_dir = tmp_path / "sync"
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
     push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -42,14 +43,14 @@ def test_conflict_result_includes_all_completed_planning_timing(
     monkeypatch.setattr(runner_module, "perf_counter_ns", lambda: next(clock))
 
     result = pull_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
         project_key=normalize_project_key(str(tmp_path / "repo")),
     )
 
-    assert result.timings_ms.planning == 7
+    assert result.timings_ms.planning == 4
 
 
 def _write_session(

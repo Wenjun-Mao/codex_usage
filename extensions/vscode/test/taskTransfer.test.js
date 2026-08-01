@@ -23,12 +23,11 @@ test("import lazily chooses and remembers a transfer folder", async () => {
     selection: transferSelection(["remote-task"]),
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.folderWrites, ["/transfer"]);
   assert.deepEqual(port.inventoryRequests, [{
     syncDir: "/transfer",
-    autoTransitions: true,
     candidateProjectRoots: ["/workspace"],
   }]);
   assert.deepEqual(port.notifications, [[
@@ -42,7 +41,7 @@ test("import lazily chooses and remembers a transfer folder", async () => {
 test("cancelling lazy folder choice is silent", async () => {
   const port = fakePort({ chosenTransferFolder: undefined });
 
-  await new TaskTransferController(port, () => true).exportTasks();
+  await new TaskTransferController(port).exportTasks();
 
   assert.deepEqual(port.notifications, []);
   assert.deepEqual(port.inventoryRequests, []);
@@ -54,8 +53,8 @@ test("empty import and export sources get state-specific messages", async () => 
   const importPort = fakePort({ folder: "/transfer", inventory: inventory() });
   const exportPort = fakePort({ folder: "/transfer", inventory: inventory() });
 
-  await new TaskTransferController(importPort, () => true).importTasks();
-  await new TaskTransferController(exportPort, () => true).exportTasks();
+  await new TaskTransferController(importPort).importTasks();
+  await new TaskTransferController(exportPort).exportTasks();
 
   assert.deepEqual(importPort.notifications, [[
     "info", "No tasks are available to import from this transfer folder.",
@@ -63,11 +62,11 @@ test("empty import and export sources get state-specific messages", async () => 
   assert.deepEqual(exportPort.notifications, [[
     "info", "No active Codex tasks are available to export from this computer.",
   ]]);
-  assert.deepEqual(importPort.statuses, ["checking", undefined]);
-  assert.deepEqual(exportPort.statuses, ["checking", undefined]);
+  assert.deepEqual(importPort.statuses, []);
+  assert.deepEqual(exportPort.statuses, []);
 });
 
-test("inventory issues are logged while task cancellation stays silent", async () => {
+test("inventory issues are logged while cancellation adds only the warning", async () => {
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory(
@@ -77,12 +76,15 @@ test("inventory issues are logged while task cancellation stays silent", async (
     selection: undefined,
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.logs, [
     "[sync inventory:unidentified_remote_task] technical path detail",
   ]);
-  assert.deepEqual(port.notifications, []);
+  assert.deepEqual(port.notifications, [[
+    "warning",
+    "Some tasks in the transfer folder could not be identified and were omitted. See Codex Usage output for details.",
+  ]]);
 });
 
 test("each operation opens a fresh picker without an initial task selection", async () => {
@@ -95,7 +97,7 @@ test("each operation opens a fresh picker without an initial task selection", as
       undefined,
     ],
   });
-  const controller = new TaskTransferController(port, () => true);
+  const controller = new TaskTransferController(port);
 
   await controller.importTasks();
   await controller.importTasks();
@@ -105,12 +107,36 @@ test("each operation opens a fresh picker without an initial task selection", as
   assert.equal("threadIdWrites" in port, false);
 });
 
+test("checking begins only after the selected tasks are confirmed", async () => {
+  const events = [];
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project({ candidateRoots: ["/workspace"] })]),
+    selection: transferSelection(["remote-task"]),
+  });
+  const chooseTasks = port.chooseTasks.bind(port);
+  port.chooseTasks = async (...args) => {
+    events.push("selection-opened");
+    const selection = await chooseTasks(...args);
+    events.push("selection-confirmed");
+    return selection;
+  };
+  port.setTransientStatus = (status) => {
+    port.statuses.push(status);
+    events.push(`status:${status}`);
+  };
+
+  await new TaskTransferController(port).importTasks();
+
+  assert.ok(events.indexOf("selection-confirmed") < events.indexOf("status:checking"));
+});
+
 test("change open and forget affect only the remembered folder", async () => {
   const port = fakePort({
     folder: "/old-transfer",
     chosenTransferFolder: "/new-transfer",
   });
-  const controller = new TaskTransferController(port, () => true);
+  const controller = new TaskTransferController(port);
 
   await controller.changeFolder();
   await controller.openFolder();
@@ -133,7 +159,7 @@ test("ambiguous destination choice becomes one binding for all selected project 
     chosenProjectRoot: "/repo-b",
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.equal(port.projectRootPrompts.length, 1);
   assert.equal(port.executions[0].request.projectKey, remoteProject.projectKey);
@@ -164,7 +190,7 @@ test("cross-project transfer selection is rejected before prompts or execution",
     selection: transferSelection(["task-a", "task-b"], "repo-a"),
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.projectRootPrompts, []);
   assert.deepEqual(port.executions, []);
@@ -183,7 +209,7 @@ test("engine destination issues stay technical while the notification stays conc
     ),
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.match(port.logs[0], /project_binding_identity_mismatch/);
   assert.match(port.logs[0], /Expected git:example\/repo/);
@@ -225,8 +251,8 @@ test("local counterparts and Review never prompt for destination bindings", asyn
     }),
   });
 
-  await new TaskTransferController(importPort, () => true).importTasks();
-  await new TaskTransferController(reviewPort, () => true).reviewStatus();
+  await new TaskTransferController(importPort).importTasks();
+  await new TaskTransferController(reviewPort).reviewStatus();
 
   assert.deepEqual(importPort.projectRootPrompts, []);
   assert.deepEqual(importPort.executions[0].request.projectBindings, []);
@@ -252,7 +278,7 @@ test("malformed native Review output becomes an actionable controller failure", 
     reviewError: new Error("Invalid Codex sync status: threads must be an array"),
   });
 
-  await new TaskTransferController(port, () => true).reviewStatus();
+  await new TaskTransferController(port).reviewStatus();
 
   assert.deepEqual(port.logs, [
     "[error] Invalid Codex sync status: threads must be an array",
@@ -274,7 +300,7 @@ test("semantically malformed native Review rows reach the actionable failure", a
     ),
   });
 
-  await new TaskTransferController(port, () => true).reviewStatus();
+  await new TaskTransferController(port).reviewStatus();
 
   assert.match(port.logs[0], /invalid state\/action pair/);
   assert.deepEqual(port.notifications, [[
@@ -299,7 +325,7 @@ test("structured partial execution results never claim that zero tasks were copi
     executionResult: partial,
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.match(port.notifications[0][1], /Imported files for 1 task before the issue occurred/);
   assert.doesNotMatch(port.notifications[0][1], /No tasks were copied/i);
@@ -318,8 +344,8 @@ test("task and destination picker cancellations stay silent", async () => {
     chosenProjectRoot: undefined,
   });
 
-  await new TaskTransferController(taskPort, () => true).importTasks();
-  await new TaskTransferController(projectPort, () => true).importTasks();
+  await new TaskTransferController(taskPort).importTasks();
+  await new TaskTransferController(projectPort).importTasks();
 
   assert.deepEqual(taskPort.notifications, []);
   assert.deepEqual(projectPort.notifications, []);
@@ -333,7 +359,7 @@ test("remembered unavailable folders get an actionable error and are not rewritt
     inventoryError: new TransferFolderUnavailableError("/offline-transfer"),
   });
 
-  await new TaskTransferController(port, () => true).exportTasks();
+  await new TaskTransferController(port).exportTasks();
 
   assert.deepEqual(port.folderWrites, []);
   assert.deepEqual(port.executions, []);
@@ -341,6 +367,32 @@ test("remembered unavailable folders get an actionable error and are not rewritt
     "error",
     "The transfer folder is not available: /offline-transfer. Choose another transfer folder and try again.",
   ]]);
+  assert.deepEqual(port.statuses, []);
+});
+
+test("folder unavailability during transfer clears the checking status", async () => {
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project({ candidateRoots: ["/workspace"] })]),
+    selection: transferSelection(["remote-task"]),
+    executionError: new TransferFolderUnavailableError("/transfer"),
+  });
+
+  await new TaskTransferController(port).importTasks();
+
+  assert.deepEqual(port.statuses, ["checking", undefined]);
+});
+
+test("folder unavailability during review clears the checking status", async () => {
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project()]),
+    selection: { threadIds: ["remote-task"] },
+    reviewError: new TransferFolderUnavailableError("/transfer"),
+  });
+
+  await new TaskTransferController(port).reviewStatus();
+
   assert.deepEqual(port.statuses, ["checking", undefined]);
 });
 
@@ -350,7 +402,7 @@ test("opening an unavailable remembered folder reports the same error without st
     openFolderError: new TransferFolderUnavailableError("/offline-transfer"),
   });
 
-  await new TaskTransferController(port, () => true).openFolder();
+  await new TaskTransferController(port).openFolder();
 
   assert.deepEqual(port.folderWrites, []);
   assert.deepEqual(port.openedFolders, []);
@@ -369,7 +421,7 @@ test("unexpected failures are logged and always clear transient transfer status"
     executionError: new Error("process failed"),
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.logs, ["[error] process failed"]);
   assert.deepEqual(port.registrationCalls, []);
@@ -390,7 +442,7 @@ test("export execution failures keep export-specific notification copy", async (
     executionError: new Error("process failed"),
   });
 
-  await new TaskTransferController(port, () => true).exportTasks();
+  await new TaskTransferController(port).exportTasks();
 
   assert.deepEqual(port.notifications, [[
     "error",
@@ -404,7 +456,7 @@ test("export execution failures keep export-specific notification copy", async (
 test("menu actions delegate through one controller and folder-only state", async () => {
   const port = fakePort({ folder: "/transfer", menuAction: "forgetFolder" });
 
-  await new TaskTransferController(port, () => true).showMenu();
+  await new TaskTransferController(port).showMenu();
 
   assert.deepEqual(port.folderWrites, [undefined]);
   assert.deepEqual(port.menuItems[0].map((item) => item.action), [

@@ -1,11 +1,12 @@
 import codex_usage.sync as sync_module
 
 
-def test_sync_package_exports_only_v2_models_and_runner_contract() -> None:
+def test_sync_package_exports_transfer_probe_and_runner_contract() -> None:
     assert sync_module.__all__ == [
         "Direction",
         "LocalInventory",
         "LocalSyncState",
+        "LocalTransferProbe",
         "ProjectBinding",
         "ProjectDestination",
         "ProjectIdentityKind",
@@ -26,6 +27,7 @@ def test_sync_package_exports_only_v2_models_and_runner_contract() -> None:
         "SyncTimings",
         "build_sync_selection_inventory",
         "directional_blockers",
+        "load_local_transfer_probe",
         "load_sync_selection_inventory",
         "pull_sync",
         "push_sync",

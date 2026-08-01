@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -36,12 +37,32 @@ from packaged_sync_smoke_validation import (
 )
 
 
+SUBAGENT_THREAD_ID = "internal-subagent"
+SUBAGENT_SESSION_RELATIVE_PATH = Path("2026") / "04" / "29" / f"{SUBAGENT_THREAD_ID}.jsonl"
+
+
 def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = "".join(
         json.dumps(row, separators=(",", ":")) + "\n" for row in rows
     )
     path.write_text(payload, encoding="utf-8")
+
+
+def _subagent_rows(project_root: Path) -> list[dict[str, object]]:
+    return [
+        {
+            "timestamp": "2026-04-29T10:00:00Z",
+            "type": "session_meta",
+            "payload": {
+                "id": SUBAGENT_THREAD_ID,
+                "timestamp": "2026-04-29T10:00:00Z",
+                "cwd": str(project_root),
+                "git": {"repository_url": PROJECT_KEY},
+                "source": {"subagent": {"other": "review"}},
+            },
+        }
+    ]
 
 
 def _write_source_home(source_home: Path, project_root: Path) -> Path:
@@ -107,11 +128,20 @@ def _write_source_home(source_home: Path, project_root: Path) -> Path:
         ],
     )
     _write_jsonl(
+        source_home / "sessions" / SUBAGENT_SESSION_RELATIVE_PATH,
+        _subagent_rows(project_root),
+    )
+    _write_jsonl(
         source_home / "session_index.jsonl",
         [
             {
                 "id": THREAD_ID,
                 "thread_name": TASK_TITLE,
+                "updated_at": TASK_UPDATED_AT,
+            },
+            {
+                "id": SUBAGENT_THREAD_ID,
+                "thread_name": "Internal packaged smoke subagent",
                 "updated_at": TASK_UPDATED_AT,
             },
         ],
@@ -255,6 +285,32 @@ def _snapshot_remote_task_files(sync_dir: Path) -> dict[Path, bytes]:
     }
 
 
+def _add_remote_subagent(sync_dir: Path, project_root: Path) -> None:
+    remote_subagent = sync_dir / TASKS_DIRNAME / f"{SUBAGENT_THREAD_ID}.jsonl"
+    _write_jsonl(remote_subagent, _subagent_rows(project_root))
+    subagent_bytes = _read_required_bytes(remote_subagent, "remote subagent JSONL")
+    index_path = sync_dir / "sync-index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["threads"][SUBAGENT_THREAD_ID] = {
+        "file": f"{TASKS_DIRNAME}/{SUBAGENT_THREAD_ID}.jsonl",
+        "source_relative_path": SUBAGENT_SESSION_RELATIVE_PATH.as_posix(),
+        "index_entry": {
+            "id": SUBAGENT_THREAD_ID,
+            "thread_name": "Internal packaged smoke subagent",
+            "updated_at": TASK_UPDATED_AT,
+        },
+        "project_key": PROJECT_KEY,
+        "project_label": PROJECT_LABEL,
+        "project_aliases": [],
+        "sha256": hashlib.sha256(subagent_bytes).hexdigest(),
+        "size_bytes": len(subagent_bytes),
+        "session_updated_at": TASK_UPDATED_AT,
+        "exported_at": "2026-04-29T10:00:03Z",
+        "source_machine_id": "packaged-smoke",
+    }
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+
 def _create_git_checkout(path: Path) -> None:
     git_dir = path / ".git"
     git_dir.mkdir(parents=True)
@@ -296,6 +352,7 @@ def main() -> int:
             local_inventory,
             "local",
             len(source_bytes) + LOCAL_METADATA_ESTIMATE_BYTES,
+            omitted_thread_ids=(SUBAGENT_THREAD_ID,),
         )
 
         pushed = _run_sync(executable, source_home, sync_dir, "push")
@@ -308,6 +365,8 @@ def main() -> int:
         )
         _validate_remote_layout(sync_dir, source_bytes)
         _validate_baseline(source_home, source_bytes, source_bytes)
+        _add_remote_subagent(sync_dir, source_project_root)
+        remote_task_files_before_pull = _snapshot_remote_task_files(sync_dir)
         unrelated_jsonl = _write_unrelated_source_task(source_home)
         unrelated_bytes = _read_required_bytes(unrelated_jsonl, "unrelated task JSONL")
 
@@ -330,6 +389,7 @@ def main() -> int:
             "remote",
             len(source_bytes),
             candidate_project_root=destination_project_root,
+            omitted_thread_ids=(SUBAGENT_THREAD_ID,),
         )
 
         pulled = _run_sync(
@@ -357,7 +417,11 @@ def main() -> int:
             source_bytes,
             destination_project_root,
         )
-        _validate_remote_layout(sync_dir, source_bytes)
+        _require_equal(
+            _snapshot_remote_task_files(sync_dir),
+            remote_task_files_before_pull,
+            "selected pull remote task-file isolation",
+        )
         _validate_baseline(target_home, imported_bytes, source_bytes)
         _require_equal(
             _read_required_bytes(source_jsonl, "source task JSONL after import"),

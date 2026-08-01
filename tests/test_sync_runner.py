@@ -7,7 +7,8 @@ import codex_usage.sync.runner as runner_module
 import pytest
 from codex_usage.project_identity import normalize_project_key
 from codex_usage.session_cache import load_cached_session_data
-from codex_usage.sync import ProjectResolutionRequest, pull_sync, push_sync
+from codex_usage.sync import LocalInventory, ProjectResolutionRequest, pull_sync, push_sync
+from codex_usage.sync.inventory import build_local_inventory
 
 
 def test_run_sync_pushes_flat_bytes_and_one_index(tmp_path: Path) -> None:
@@ -17,7 +18,7 @@ def test_run_sync_pushes_flat_bytes_and_one_index(tmp_path: Path) -> None:
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
 
     result = push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=tmp_path / "sync",
         thread_ids=["thread-1"],
         machine_id="a",
@@ -42,7 +43,7 @@ def test_new_task_in_same_project_remains_excluded_after_initial_selection(
     data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
 
     first = push_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=tmp_path / "sync",
         thread_ids=["selected-a", "selected-b"],
         machine_id="a",
@@ -52,7 +53,7 @@ def test_new_task_in_same_project_remains_excluded_after_initial_selection(
     _write_session(sessions, "future", tmp_path / "repo", total=100)
     refreshed = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
     second = push_sync(
-        data=refreshed,
+        local=build_local_inventory(refreshed),
         sync_dir=tmp_path / "sync",
         thread_ids=["selected-a", "selected-b"],
         machine_id="a",
@@ -80,7 +81,7 @@ def mixed_direction_fixture(tmp_path: Path) -> SimpleNamespace:
         [sessions], cache_dir=tmp_path / "cache"
     )
     initial = push_sync(
-        data=initial_data,
+        local=build_local_inventory(initial_data),
         sync_dir=sync_dir,
         thread_ids=["pull-thread", "push-thread"],
         machine_id="source",
@@ -110,14 +111,14 @@ def mixed_direction_fixture(tmp_path: Path) -> SimpleNamespace:
 
     return SimpleNamespace(
         pull_kwargs={
-            "data": refreshed_data,
+            "local": build_local_inventory(refreshed_data),
             "sync_dir": sync_dir,
             "thread_ids": ["pull-thread", "push-thread"],
             "project_resolution": ProjectResolutionRequest(),
             "project_key": normalize_project_key(str(project)),
         },
         push_kwargs={
-            "data": refreshed_data,
+            "local": build_local_inventory(refreshed_data),
             "sync_dir": sync_dir,
             "thread_ids": ["pull-thread", "push-thread"],
             "machine_id": "target",
@@ -189,7 +190,7 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
         [source_home / "sessions"], cache_dir=tmp_path / "source-cache"
     )
     push_sync(
-        data=source_data,
+        local=build_local_inventory(source_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="source",
@@ -200,7 +201,7 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
     )
 
     first = pull_sync(
-        data=target_data,
+        local=build_local_inventory(target_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
@@ -225,7 +226,7 @@ def test_remote_task_pull_rebinds_cwd_to_matching_saved_local_project(
         [target_home / "sessions"], cache_dir=tmp_path / "target-cache"
     )
     second = pull_sync(
-        data=refreshed,
+        local=build_local_inventory(refreshed),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
@@ -252,7 +253,7 @@ def test_remote_task_pull_requires_a_unique_matching_saved_project(
     )
     sync_dir = tmp_path / "sync"
     push_sync(
-        data=source_data,
+        local=build_local_inventory(source_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="source",
@@ -264,7 +265,7 @@ def test_remote_task_pull_requires_a_unique_matching_saved_project(
     )
 
     result = pull_sync(
-        data=target_data,
+        local=build_local_inventory(target_data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
@@ -296,8 +297,8 @@ def test_remote_task_pull_rejects_ambiguous_matching_saved_projects(
     )
     sync_dir = tmp_path / "sync"
     push_sync(
-        data=load_cached_session_data(
-            [source_home / "sessions"], cache_dir=tmp_path / "source-cache"
+        local=_load_local_inventory(
+            source_home / "sessions", tmp_path / "source-cache"
         ),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
@@ -308,9 +309,7 @@ def test_remote_task_pull_rejects_ambiguous_matching_saved_projects(
     target_sessions = target_home / "sessions"
 
     result = pull_sync(
-        data=load_cached_session_data(
-            [target_sessions], cache_dir=tmp_path / "target-cache"
-        ),
+        local=_load_local_inventory(target_sessions, tmp_path / "target-cache"),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
@@ -340,8 +339,8 @@ def test_push_rejects_non_native_existing_project_path_without_rebinding(
     )
     sync_dir = tmp_path / "sync"
     push_sync(
-        data=load_cached_session_data(
-            [source_home / "sessions"], cache_dir=tmp_path / "source-cache"
+        local=_load_local_inventory(
+            source_home / "sessions", tmp_path / "source-cache"
         ),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
@@ -350,9 +349,7 @@ def test_push_rejects_non_native_existing_project_path_without_rebinding(
     )
     target_sessions = target_home / "sessions"
     pull_sync(
-        data=load_cached_session_data(
-            [target_sessions], cache_dir=tmp_path / "target-cache"
-        ),
+        local=_load_local_inventory(target_sessions, tmp_path / "target-cache"),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
@@ -364,9 +361,7 @@ def test_push_rejects_non_native_existing_project_path_without_rebinding(
     _append_token_event(target_path, "2026-07-13T12:03:00Z", 240)
 
     result = push_sync(
-        data=load_cached_session_data(
-            [target_sessions], cache_dir=tmp_path / "target-cache"
-        ),
+        local=_load_local_inventory(target_sessions, tmp_path / "target-cache"),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="target",
@@ -385,7 +380,7 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
     sync_dir = tmp_path / "sync"
     initial = load_cached_session_data([sessions], cache_dir=tmp_path / "cache")
     push_sync(
-        data=initial,
+        local=build_local_inventory(initial),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         machine_id="a",
@@ -400,7 +395,7 @@ def test_conflict_preflight_changes_no_authoritative_files(tmp_path: Path) -> No
     index_before = (sync_dir / "sync-index.json").read_bytes()
 
     result = pull_sync(
-        data=data,
+        local=build_local_inventory(data),
         sync_dir=sync_dir,
         thread_ids=["thread-1"],
         project_resolution=ProjectResolutionRequest(),
@@ -444,6 +439,11 @@ def _write_session(sessions_dir: Path, thread_id: str, cwd: Path, total: int) ->
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
     return path
+
+
+def _load_local_inventory(session_dir: Path, cache_dir: Path) -> LocalInventory:
+    data = load_cached_session_data([session_dir], cache_dir=cache_dir)
+    return build_local_inventory(data)
 
 
 def _write_git_origin(project: Path, repository_url: str) -> None:

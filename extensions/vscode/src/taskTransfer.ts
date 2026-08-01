@@ -26,6 +26,7 @@ import {
 } from "./taskTransferRegistration";
 import {
   formatTransferResult,
+  taskInventoryWarningMessage,
   taskTransferMenuItems,
   type TransferMenuAction,
   type TransferMenuQuickPickItem,
@@ -89,10 +90,7 @@ export class TransferFolderUnavailableError extends Error {
 export class TaskTransferController {
   private operationInFlight = false;
 
-  constructor(
-    private readonly port: TaskTransferPort,
-    private readonly autoTransitions: () => boolean,
-  ) {}
+  constructor(private readonly port: TaskTransferPort) {}
 
   async showMenu(): Promise<void> {
     await this.runSingleFlight(() => this.showMenuAction());
@@ -189,7 +187,7 @@ export class TaskTransferController {
       return;
     }
 
-    this.port.setTransientStatus("checking");
+    let hasTransientStatus = false;
     let stage: "selection" | "review" = "selection";
     try {
       const requestContext = this.requestContext(folder);
@@ -207,6 +205,8 @@ export class TaskTransferController {
         return;
       }
 
+      this.port.setTransientStatus("checking");
+      hasTransientStatus = true;
       stage = "review";
       const summary = await this.port.review({
         ...requestContext,
@@ -218,8 +218,11 @@ export class TaskTransferController {
       this.port.notify("info", formatReviewStatus(summary));
     } catch (error) {
       this.reportFailure(error, stage === "review" ? "review" : "selection");
+      hasTransientStatus ||= !(error instanceof TransferFolderUnavailableError);
     } finally {
-      this.port.setTransientStatus(undefined);
+      if (hasTransientStatus) {
+        this.port.setTransientStatus(undefined);
+      }
     }
   }
 
@@ -229,7 +232,7 @@ export class TaskTransferController {
       return;
     }
 
-    this.port.setTransientStatus("checking");
+    let hasTransientStatus = false;
     let stage: "selection" | "execution" = "selection";
     try {
       const requestContext = this.requestContext(folder);
@@ -245,6 +248,8 @@ export class TaskTransferController {
         return;
       }
 
+      this.port.setTransientStatus("checking");
+      hasTransientStatus = true;
       const selectedProject = requireSelectedTransferProject(
         inventory,
         operation,
@@ -304,15 +309,17 @@ export class TaskTransferController {
       this.port.notify(formatted.kind, formatted.message);
     } catch (error) {
       this.reportFailure(error, stage, operation);
+      hasTransientStatus ||= !(error instanceof TransferFolderUnavailableError);
     } finally {
-      this.port.setTransientStatus(undefined);
+      if (hasTransientStatus) {
+        this.port.setTransientStatus(undefined);
+      }
     }
   }
 
   private requestContext(folder: string): TransferRequestContext {
     return {
       syncDir: folder,
-      autoTransitions: this.autoTransitions(),
       candidateProjectRoots: this.port.workspaceRoots(),
     };
   }
@@ -323,6 +330,9 @@ export class TaskTransferController {
     const inventory = await this.port.loadInventory(request);
     for (const issue of inventory.issues) {
       this.port.log(formatIssue("sync inventory", issue));
+    }
+    if (inventory.issues.length > 0) {
+      this.port.notify("warning", taskInventoryWarningMessage());
     }
     return inventory;
   }

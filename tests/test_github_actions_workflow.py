@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "package-vsix.yml"
 PYPROJECT = ROOT / "pyproject.toml"
@@ -18,6 +17,7 @@ NATIVE_BUILD_SCRIPTS = (
     ROOT / "scripts" / "build-macos-arm64-exe.sh",
     ROOT / "scripts" / "build-windows-exe.ps1",
 )
+WINDOWS_PROCESS_TREE_SMOKE = ROOT / "scripts" / "packaged_windows_process_tree_smoke.py"
 
 
 def read_workflow() -> str:
@@ -92,6 +92,52 @@ def test_native_build_scripts_run_packaged_sync_smoke(build_script: Path):
     assert "smoke-test-packaged-sync.py" in text
 
 
+def test_package_workflow_exposes_dispatch_input_in_run_identity() -> None:
+    text = (ROOT / ".github/workflows/package-vsix.yml").read_text(encoding="utf-8")
+    assert 'run-name: "Package VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"' in text
+
+
+def test_native_build_scripts_run_parallel_smoke_before_transfer_smoke() -> None:
+    windows = (ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
+    macos = (ROOT / "scripts/build-macos-arm64-exe.sh").read_text(encoding="utf-8")
+    assert "RuntimeInformation.ProcessArchitecture" in windows
+    assert "Architecture.X64" in windows
+    assert "--expected-target win32-x64" in windows
+    assert windows.index("packaged_parallel_cache_smoke.py") < windows.index(
+        "smoke-test-packaged-sync.py"
+    )
+    assert "uname -s" in macos
+    assert "uname -m" in macos
+    assert "--expected-target darwin-arm64" in macos
+    assert macos.index("packaged_parallel_cache_smoke.py") < macos.index(
+        "smoke-test-packaged-sync.py"
+    )
+
+
+def test_windows_build_runs_native_descendant_lifetime_proof() -> None:
+    build = (ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
+
+    assert WINDOWS_PROCESS_TREE_SMOKE.is_file()
+    smoke = WINDOWS_PROCESS_TREE_SMOKE.read_text(encoding="utf-8")
+    assert "--root" in smoke and "--child" in smoke
+    assert "root_exited_before_timeout" in smoke
+    assert "descendant_exited" in smoke
+    assert "run_process_tree" in smoke
+    assert "packaged_windows_process_tree_smoke.py" in build
+    smoke_call = "uv run python $processTreeSmokeScript --executable $exePath"
+    assert smoke_call in build
+    assert build.index("& $exePath --help") < build.index(smoke_call)
+    parallel_call = "uv run python $parallelSmokeScript --executable $exePath"
+    assert build.index(smoke_call) < build.index(parallel_call)
+
+
+def test_release_document_uses_current_tag_example() -> None:
+    release_document = (ROOT / "docs/release.md").read_text(encoding="utf-8")
+
+    assert "such as `v0.1.42`" in release_document
+    assert "`v0.1.32`" not in release_document
+
+
 def test_release_workflow_keeps_only_supported_platform_targets() -> None:
     workflow = read_workflow()
 
@@ -100,7 +146,7 @@ def test_release_workflow_keeps_only_supported_platform_targets() -> None:
     assert "linux-x64" not in workflow
 
 
-def test_release_metadata_versions_are_0_1_41():
+def test_release_metadata_versions_are_0_1_42():
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension_package = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -109,11 +155,11 @@ def test_release_metadata_versions_are_0_1_41():
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "0.1.41"
-    assert codex_usage_lock["version"] == "0.1.41"
-    assert extension_package["version"] == "0.1.41"
-    assert extension_lock["version"] == "0.1.41"
-    assert extension_lock["packages"][""]["version"] == "0.1.41"
+    assert pyproject["project"]["version"] == "0.1.42"
+    assert codex_usage_lock["version"] == "0.1.42"
+    assert extension_package["version"] == "0.1.42"
+    assert extension_lock["version"] == "0.1.42"
+    assert extension_lock["packages"][""]["version"] == "0.1.42"
 
 
 @pytest.mark.parametrize(

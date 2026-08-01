@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { TaskTransferController } = require("../out/taskTransfer");
+const { taskInventoryWarningMessage } = require("../out/transferPresentation");
 const {
   fakePort,
   inventory,
@@ -15,58 +16,71 @@ const inventoryIssue = {
   threadId: "",
 };
 
+const secondInventoryIssue = {
+  code: "unreadable_session",
+  message: "second technical detail",
+  threadId: "task-2",
+};
+
 const expectedLog = [
   "[sync inventory:unidentified_remote_task] technical path detail",
+  "[sync inventory:unreadable_session] second technical detail (task-2)",
 ];
 
-test("inventory diagnostics stay log-only when import succeeds", async () => {
+test("inventory diagnostics show one concise warning and log every issue", async () => {
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory(
       [project({ candidateRoots: ["/repo"] })],
-      [inventoryIssue],
+      [inventoryIssue, secondInventoryIssue],
     ),
     selection: transferSelection(["remote-task"]),
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.logs, expectedLog);
   assert.deepEqual(port.notifications, [[
+    "warning",
+    taskInventoryWarningMessage(),
+  ], [
     "info",
     "Imported 1 task into Repo. Open or restart Codex to display it.",
   ]]);
 });
 
-test("inventory diagnostics stay log-only before the empty-source outcome", async () => {
+test("inventory warning appears before the empty-source outcome", async () => {
   const port = fakePort({
     folder: "/transfer",
-    inventory: inventory([], [inventoryIssue]),
+    inventory: inventory([], [inventoryIssue, secondInventoryIssue]),
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.logs, expectedLog);
   assert.deepEqual(port.notifications, [[
+    "warning",
+    taskInventoryWarningMessage(),
+  ], [
     "info",
     "No tasks are available to import from this transfer folder.",
   ]]);
 });
 
-test("cancellation stays silent when inventory diagnostics were logged", async () => {
+test("task cancellation adds no notification beyond the inventory warning", async () => {
   const port = fakePort({
     folder: "/transfer",
     inventory: inventory(
       [project({ candidateRoots: ["/repo"] })],
-      [inventoryIssue],
+      [inventoryIssue, secondInventoryIssue],
     ),
     selection: undefined,
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.logs, expectedLog);
-  assert.deepEqual(port.notifications, []);
+  assert.deepEqual(port.notifications, [["warning", taskInventoryWarningMessage()]]);
   assert.deepEqual(port.executions, []);
-  assert.deepEqual(port.statuses, ["checking", undefined]);
+  assert.deepEqual(port.statuses, []);
 });

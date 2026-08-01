@@ -324,12 +324,13 @@ test("runSyncProcess reports ENOENT once even if close follows the child error",
 test("extension delegates Task Transfer commands without retaining task choices", () => {
   const extensionSource = fs.readFileSync(path.join(__dirname, "../src/extension.ts"), "utf8");
 
-  assert.match(extensionSource, /new TaskTransferController\(/);
+  assert.match(extensionSource, /new TaskTransferController\(\s*taskTransferPort,?\s*\)/);
   assert.match(extensionSource, /createTaskTransferVscodePort\(context/);
   assert.equal((extensionSource.match(/registerCommand\("codexUsage\.selectSyncTasks"/g) || []).length, 1);
   assert.match(extensionSource, /"codexUsage\.selectSyncTasks", \(\) => taskTransfer\.showMenu\(\)/);
   assert.doesNotMatch(extensionSource, /transientThreadIds|syncThreadIds|selectionVersion/);
   assert.doesNotMatch(extensionSource, /syncSetupTransaction|SyncSetupMutationCoordinator/);
+  assert.doesNotMatch(extensionSource, /TaskTransferController\([\s\S]{0,160}projectTransitions\.autoDetect/);
 });
 
 test("sync has no automatic focus activation or file watcher trigger", () => {

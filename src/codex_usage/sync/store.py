@@ -37,13 +37,13 @@ from codex_usage.sync.paths import (
     is_direct_task_path,
     portable_thread_filename,
 )
-from codex_usage.sync.remote_reconciliation import (
-    materialize_selected_remote,
-    reconcile_remote_discovery,
-)
 from codex_usage.sync.remote_inventory_probe import (
     materialize_probed_remote,
     probe_remote_inventory,
+)
+from codex_usage.sync.remote_reconciliation import (
+    materialize_selected_remote,
+    reconcile_remote_discovery,
 )
 
 
@@ -69,14 +69,14 @@ class RemoteStore:
         with acquired:
             yield self
 
-    def load_inventory(self) -> RemoteInventory:
+    def load_inventory(self, *, metadata_only: bool = False) -> RemoteInventory:
         if self._lock.is_locked:
-            return self._load_inventory_locked()
+            return self._load_inventory_locked(metadata_only=metadata_only)
         with self.transaction():
-            return self._load_inventory_locked()
+            return self._load_inventory_locked(metadata_only=metadata_only)
 
-    def probe_inventory(self) -> RemoteInventory:
-        return probe_remote_inventory(self.root)
+    def probe_inventory(self, *, metadata_only: bool = False) -> RemoteInventory:
+        return probe_remote_inventory(self.root, metadata_only=metadata_only)
 
     def materialize_probed(
         self,
@@ -89,12 +89,12 @@ class RemoteStore:
             selected_thread_ids,
         )
 
-    def _load_inventory_locked(self) -> RemoteInventory:
+    def _load_inventory_locked(self, *, metadata_only: bool) -> RemoteInventory:
         self._require_transaction()
         migrate_remote_layout_v2_to_v3(self.root)
-        return self._load_current_inventory()
+        return self._load_current_inventory(metadata_only=metadata_only)
 
-    def _load_current_inventory(self) -> RemoteInventory:
+    def _load_current_inventory(self, *, metadata_only: bool = False) -> RemoteInventory:
         persisted_index, index_snapshot = self._read_index()
         discovered_files = self._list_task_files()
         return reconcile_remote_discovery(
@@ -105,6 +105,7 @@ class RemoteStore:
             self._guard_task_target,
             directory_name=TRANSFER_TASKS_DIRNAME,
             format_version=REMOTE_TRANSFER_FORMAT_VERSION,
+            metadata_only=metadata_only,
         )
 
     def materialize_selected(
@@ -192,7 +193,7 @@ class RemoteStore:
         latest, latest_snapshot = self._read_index()
         self._validate_selected_entries(validated_entries, latest)
 
-        merged = dict(base.index.threads)
+        merged = dict(base.persisted_index.threads)
         merged.update(latest.threads)
         merged.update(repaired)
         merged.update(changed)

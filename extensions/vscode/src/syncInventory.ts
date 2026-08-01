@@ -9,8 +9,6 @@ export type SyncInventoryTask = {
   updatedAt: string;
   estimatedSyncBytes: number;
   availability: SyncTaskAvailability;
-  state: string;
-  action: string;
 };
 
 export type SyncInventoryProject = {
@@ -28,14 +26,13 @@ export type SyncInventoryIssue = {
 };
 
 export type SyncInventory = {
-  inventoryVersion: 2;
+  inventoryVersion: 3;
   projects: SyncInventoryProject[];
   issues: SyncInventoryIssue[];
 };
 
 export type SyncInventoryCommandOptions = {
   syncDir: string;
-  autoTransitions: boolean;
   candidateProjectRoots?: string[];
 };
 
@@ -47,8 +44,6 @@ const TASK_KEYS = [
   "updated_at",
   "estimated_sync_bytes",
   "availability",
-  "state",
-  "action",
 ] as const;
 const ISSUE_KEYS = ["code", "message", "thread_id"] as const;
 const TASK_AVAILABILITIES = new Set<SyncTaskAvailability>(["local", "remote", "both"]);
@@ -61,9 +56,6 @@ export function buildSyncInventoryArgs(options: SyncInventoryCommandOptions): st
     args.push("--sync-dir", syncDir);
   }
   appendSelectors(args, "--candidate-project-root", options.candidateProjectRoots);
-  if (options.autoTransitions === false) {
-    args.push("--no-auto-transitions");
-  }
   return args;
 }
 
@@ -76,14 +68,14 @@ export function parseSyncInventory(json: string): SyncInventory {
   }
 
   const inventory = exactRecord(payload, INVENTORY_KEYS, "");
-  if (inventory.inventory_version !== 2) {
-    invalidInventory("inventory_version", "must equal 2");
+  if (inventory.inventory_version !== 3) {
+    invalidInventory("inventory_version", "must equal 3");
   }
 
   const projectKeys = new Set<string>();
   const threadIds = new Set<string>();
   return {
-    inventoryVersion: 2,
+    inventoryVersion: 3,
     projects: parseArray(
       inventory.projects,
       (project, index) => parseProject(project, index, projectKeys, threadIds),
@@ -168,8 +160,6 @@ function parseTask(value: unknown, index: number, parentPath: string, threadIds:
     updatedAt: stringField(task.updated_at, `${path}.updated_at`),
     estimatedSyncBytes: nonnegativeInteger(task.estimated_sync_bytes, `${path}.estimated_sync_bytes`),
     availability: availability as SyncTaskAvailability,
-    state: stringField(task.state, `${path}.state`),
-    action: stringField(task.action, `${path}.action`),
   };
 }
 

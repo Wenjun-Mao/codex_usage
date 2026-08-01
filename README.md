@@ -81,6 +81,8 @@ Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser
 
 The VS Code preview stores a local SQLite cache under VS Code global extension storage. The first dashboard open may say "Initializing Codex usage cache" and take a few seconds while existing Codex JSONL files are parsed. Later range switches and project pickers reuse unchanged parsed rows and should usually feel much faster. The cache is local only, can be rebuilt automatically after schema changes, and does not change pricing semantics because costs are still calculated from checked-in effective-dated rates at report time.
 
+Invalidated cache entries are refreshed by reparsing complete files from byte zero with at most four worker processes. SQLite remains in the parent process, which atomically commits groups of up to eight complete-file replacements. Those committed batches are reusable after interruption, and recovery adds no within-file checkpoint or range pruning.
+
 ### Codex Fast Mode
 
 Codex fast mode is counted through the token usage that Codex records. Current Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.

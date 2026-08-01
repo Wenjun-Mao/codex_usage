@@ -114,7 +114,7 @@ test("completed imports register every selected id after transfer, including unc
   executionResult.counts.unchanged = 1;
   const port = importPort(["task-a", "task-b"], executionResult);
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.registrationCalls, [["task-a", "task-b"]]);
   assert.equal(port.executions.length, 1);
@@ -132,7 +132,7 @@ test("partial imports register only certified pulled ids", async () => {
   }];
   const port = importPort(["task-a", "task-b"], executionResult);
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.registrationCalls, [["task-a"]]);
 });
@@ -170,7 +170,7 @@ test("export, review, conflict, and pre-copy issues never register", async () =>
   ];
 
   for (const entry of cases) {
-    await new TaskTransferController(entry.port, () => true)[entry.method]();
+    await new TaskTransferController(entry.port)[entry.method]();
     assert.deepEqual(entry.port.registrationCalls, [], entry.method);
   }
 });
@@ -191,7 +191,7 @@ test("conflict and unselected pulled claims never reach the registrar", async ()
   for (const executionResult of [conflict, unselectedPartial]) {
     const port = importPort(["task-a"], executionResult);
 
-    await new TaskTransferController(port, () => true).importTasks();
+    await new TaskTransferController(port).importTasks();
 
     assert.deepEqual(port.registrationCalls, []);
   }
@@ -209,7 +209,7 @@ test("registration is awaited, reported separately, and preserves single-flight 
     executionStatus: "importing",
   });
 
-  const controller = new TaskTransferController(port, () => true);
+  const controller = new TaskTransferController(port);
   const importPending = controller.importTasks();
   await new Promise((resolve) => setImmediate(resolve));
 
@@ -259,7 +259,7 @@ test("unexpected registrar rejection stays a registration failure", async () => 
     { registrationError: new Error("private discovery path") },
   );
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.equal(port.executions.length, 1);
   assert.deepEqual(port.registrationCalls, [["task-a", "task-b"]]);

@@ -7,7 +7,6 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 LEGACY_OVERSIZED_FILES = {
-    "src/codex_usage/session_cache.py",
     "tests/test_parser_aggregation.py",
     "tests/test_sync_planner.py",
     "tests/test_sync_store.py",
@@ -22,6 +21,11 @@ def test_changed_python_source_and_tests_stay_under_500_lines() -> None:
     }
 
     assert oversized == {}
+
+
+def test_session_cache_facade_stays_under_500_lines() -> None:
+    path = REPOSITORY_ROOT / "src" / "codex_usage" / "session_cache.py"
+    assert _line_count(path) < 500
 
 
 def _guarded_python_files() -> tuple[Path, ...]:

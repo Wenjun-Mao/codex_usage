@@ -335,7 +335,6 @@ def test_blank_existing_cwd_blocks_mixed_import_before_execution(
     )
     execution_calls: list[str] = []
 
-    monkeypatch.setattr(runner_module, "build_local_inventory", lambda data: local)
     monkeypatch.setattr(
         runner_module,
         "probe_direction_scope",
@@ -359,7 +358,7 @@ def test_blank_existing_cwd_blocks_mixed_import_before_execution(
     )
 
     result = pull_sync(
-        data=object(),
+        local=local,
         sync_dir=sync_dir,
         thread_ids=selected,
         project_resolution=request,

@@ -62,7 +62,7 @@ for (const pendingCommand of pendingCommandCases) {
       const commandEntered = deferred();
       const commandRelease = deferred();
       holdPortCall(port, pendingCommand.portMethod, commandEntered, commandRelease);
-      const controller = new TaskTransferController(port, () => true);
+      const controller = new TaskTransferController(port);
 
       const activeCommand = controller[pendingCommand.command]();
       await commandEntered.promise;
@@ -114,7 +114,7 @@ test("an active transfer owns orchestration and transient status across every co
     }
     return completed(operation, request.threadIds);
   };
-  const controller = new TaskTransferController(port, () => true);
+  const controller = new TaskTransferController(port);
 
   const activeImport = controller.importTasks();
   await operationStarted.promise;
@@ -161,7 +161,7 @@ test("an active review blocks transfers without clearing its transient status", 
     reviewStarted.resolve();
     return reviewDone.promise;
   };
-  const controller = new TaskTransferController(port, () => true);
+  const controller = new TaskTransferController(port);
 
   const activeReview = controller.reviewStatus();
   await reviewStarted.promise;

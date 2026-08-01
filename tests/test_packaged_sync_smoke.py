@@ -52,7 +52,7 @@ def test_packaged_smoke_is_v3_and_static_guard_rejects_private_state_writes() ->
     validation = PACKAGED_SYNC_VALIDATION.read_text(encoding="utf-8")
     combined = source + validation
 
-    assert "INVENTORY_VERSION = 2" in combined
+    assert "INVENTORY_VERSION = 3" in combined
     assert "REMOTE_TRANSFER_FORMAT_VERSION = 3" in combined
     assert "SYNC_FORMAT_VERSION" not in combined
     assert 'TASKS_DIRNAME = "tasks"' in combined
@@ -83,6 +83,9 @@ def test_source_fixture_has_selective_multi_record_project_metadata(tmp_path: Pa
     assert len(unrelated) >= 1
     assert rows[0] in matching
     assert len([row for row in rows if row.get("type") != "session_meta"]) >= 2
+    subagent_path = tmp_path / "home" / "sessions" / smoke.SUBAGENT_SESSION_RELATIVE_PATH
+    subagent = json.loads(subagent_path.read_text(encoding="utf-8"))
+    assert subagent["payload"]["source"] == {"subagent": {"other": "review"}}
 
 
 def test_cross_project_task_is_added_after_the_initial_source_fixture(tmp_path: Path) -> None:
@@ -337,7 +340,7 @@ def test_sync_result_validation_accepts_exact_directional_contract(
 @pytest.mark.parametrize(
     ("payload", "availability", "message"),
     (
-        ({**inventory_payload("local"), "inventory_version": 1}, "local", "inventory_version"),
+        ({**inventory_payload("local"), "inventory_version": 2}, "local", "inventory_version"),
         ({**inventory_payload("local"), "issues": [{"code": "issue"}]}, "local", "issues"),
         (inventory_payload("local", thread_id="wrong-thread"), "local", "thread id"),
         (inventory_payload("both"), "local", "availability"),

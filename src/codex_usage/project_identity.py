@@ -24,7 +24,7 @@ def resolve_project_identity(metadata: SessionMetadata) -> ProjectIdentity:
     cwd_key = _normalize_path_text(metadata.cwd) if metadata.cwd else ""
     repo_url = metadata.git_repository_url.strip() or _origin_url_from_cwd(metadata.cwd)
     if repo_url:
-        key = _normalize_repo_url(repo_url)
+        key = normalize_repository_key(repo_url)
         return ProjectIdentity(
             key=key,
             label=_label_from_repo_url(key),
@@ -42,13 +42,13 @@ def normalize_project_key(value: str) -> str:
     if not raw:
         return ""
     if _looks_like_github_shorthand(raw):
-        return _clean_repo_key(f"https://github.com/{raw}")
+        return normalize_repository_key(f"https://github.com/{raw}")
     if _looks_like_repo_value(raw):
-        return _normalize_repo_url(raw)
+        return normalize_repository_key(raw)
 
     origin_url = _origin_url_from_cwd(raw)
     if origin_url:
-        return _normalize_repo_url(origin_url)
+        return normalize_repository_key(origin_url)
 
     return _normalize_path_text(raw)
 
@@ -59,10 +59,16 @@ def normalize_declared_project_key(value: str) -> str:
     if not raw:
         return ""
     if _looks_like_github_shorthand(raw):
-        return _clean_repo_key(f"https://github.com/{raw}")
+        return normalize_repository_key(f"https://github.com/{raw}")
     if _looks_like_repo_value(raw):
-        return _normalize_repo_url(raw)
+        return normalize_repository_key(raw)
     return _normalize_path_text(raw)
+
+
+def normalize_repository_key(value: str) -> str:
+    """Normalize a repository value without inspecting the filesystem."""
+    raw = value.strip()
+    return _normalize_repo_url(raw) if raw else ""
 
 
 def is_git_project_key(value: str) -> bool:

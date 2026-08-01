@@ -110,6 +110,8 @@ After installation, run `Codex Usage: Open Dashboard` from the command palette.
 
 On first open, the dashboard may show "Initializing Codex usage cache. This can take a few seconds the first time." The extension passes an internal cache folder to the bundled Python CLI and stores parsed usage rows in local SQLite under VS Code global extension storage. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
 
+Invalidated cache entries are refreshed by reparsing complete files from byte zero with at most four worker processes. SQLite remains in the parent process, which atomically commits groups of up to eight complete-file replacements. Those committed batches are reusable after interruption, and recovery adds no within-file checkpoint or range pruning.
+
 ## Privacy
 
 The extension reads local Codex session JSONL files and writes local HTML reports under VS Code extension storage. Automatic project transition detection can also read local Codex project paths and timestamps as read-only evidence. It does not upload session logs, does not include telemetry, does not fetch live pricing, and does not include or mutate SQLite databases in Task Transfer.

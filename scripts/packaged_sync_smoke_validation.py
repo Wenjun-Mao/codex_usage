@@ -15,7 +15,7 @@ TASK_UPDATED_AT = "2026-04-29T10:00:02Z"
 PROJECT_KEY = "https://github.com/example/packaged-sync-smoke"
 PROJECT_LABEL = "packaged-sync-smoke"
 UNRELATED_PROJECT_KEY = "https://github.com/example/packaged-sync-unrelated"
-INVENTORY_VERSION = 2
+INVENTORY_VERSION = 3
 REMOTE_TRANSFER_FORMAT_VERSION = 3
 LOCAL_BASELINE_VERSION = 2
 TASKS_DIRNAME = "tasks"
@@ -169,6 +169,7 @@ def _validate_inventory(
     estimated_sync_bytes: int,
     *,
     candidate_project_root: Path | None = None,
+    omitted_thread_ids: tuple[str, ...] = (),
 ) -> None:
     _require_exact_fields(result, {"inventory_version", "projects", "issues"}, "inventory")
     _require_equal(result.get("inventory_version"), INVENTORY_VERSION, "inventory_version")
@@ -197,6 +198,14 @@ def _validate_inventory(
     )
     tasks = _require_list(project.get("tasks"), f"{availability} inventory tasks")
     _require_equal(len(tasks), 1, f"{availability} inventory task count")
+    visible_thread_ids = {
+        task.get("thread_id") for task in tasks if isinstance(task, dict)
+    }
+    _require_equal(
+        visible_thread_ids.intersection(omitted_thread_ids),
+        set(),
+        f"{availability} omitted task ids",
+    )
     task = _require_object(tasks[0], f"{availability} inventory task")
     task_fields = {
         "thread_id",
@@ -204,14 +213,8 @@ def _validate_inventory(
         "updated_at",
         "estimated_sync_bytes",
         "availability",
-        "state",
-        "action",
     }
     _require_exact_fields(task, task_fields, "inventory task")
-    expected_state, expected_action = {
-        "local": ("local_only", "push"),
-        "remote": ("remote_only", "pull"),
-    }[availability]
     _require_values(
         task,
         {
@@ -220,8 +223,6 @@ def _validate_inventory(
             "updated_at": TASK_UPDATED_AT,
             "estimated_sync_bytes": estimated_sync_bytes,
             "availability": availability,
-            "state": expected_state,
-            "action": expected_action,
         },
         f"{availability} inventory task",
     )
@@ -248,7 +249,7 @@ def _validate_sync_result(
     expected_counts = {
         "discovered": 1 if pushing else 0,
         "selected": 1,
-        "remote": 0 if pushing else 1,
+        "remote": 0 if pushing else 2,
         "pulled": 0 if pushing else 1,
         "pushed": 1 if pushing else 0,
         "unchanged": 0,

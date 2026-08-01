@@ -1,126 +1,91 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_usage.models import UsageRecord
-from codex_usage.parser import finalize_session_records, parse_session_file
 from codex_usage.project_identity import resolve_project_identity
-from codex_usage.project_transitions import (
-    apply_project_transitions,
-    collect_repo_path_observations,
-    infer_project_transitions,
+from codex_usage.session_files import (
+    file_size,
+    load_all_index_entries,
+    session_updated_at,
 )
-from codex_usage.session_cache import (
-    CacheStats,
-    CachedFileSummary,
-    CachedSessionData,
-)
-from codex_usage.session_files import owning_session_dir, read_session_metadata
-from codex_usage.session_inventory import (
-    SessionFileInventoryEntry,
-    collect_session_file_inventory,
-)
-
+from codex_usage.session_inventory import storage_state_for_session_dir
+from codex_usage.sync.models import LocalInventory, SyncIssue
+from codex_usage.sync.project_roots import discover_project_roots
+from codex_usage.sync.transfer_metadata import read_transfer_metadata
+from codex_usage.threads import ThreadInfo
 
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
 
 
-def load_sync_session_data_read_only(
-    session_dirs: list[Path],
-    *,
-    auto_transitions: bool,
-) -> CachedSessionData:
-    """Build transfer input without creating or updating the usage cache."""
-    inventory = collect_session_file_inventory(session_dirs)
-    files = [entry.path for entry in inventory]
-    parsed_by_path = {
-        entry.path: parse_session_file(entry.path)
-        for entry in inventory
-    }
-    records = finalize_session_records(list(parsed_by_path.values()))
-    summaries = {
-        entry.path: _file_summary(
-            entry,
-            session_dirs,
-            parsed_by_path[entry.path],
-        )
-        for entry in inventory
-    }
-    transitions = []
-    if auto_transitions:
-        observations = collect_repo_path_observations(session_dirs, files)
-        transitions = infer_project_transitions(records, observations)
-        records = apply_project_transitions(records, transitions)
-    active_count = sum(
-        entry.storage_state == "active"
-        for entry in inventory
-    )
-    return CachedSessionData(
-        session_dirs=session_dirs,
-        files=files,
-        records=records,
-        file_summaries=summaries,
-        project_transitions=transitions,
-        stats=CacheStats(
-            files_total=len(files),
-            files_current=active_count,
-            files_archived=len(files) - active_count,
-            files_parsed=len(files),
-        ),
-        file_errors={},
-    )
+@dataclass(frozen=True)
+class LocalTransferProbe:
+    inventory: LocalInventory
+    issues: tuple[SyncIssue, ...]
 
 
-def _file_summary(
-    entry: SessionFileInventoryEntry,
-    session_dirs: list[Path],
-    records: list[UsageRecord],
-) -> CachedFileSummary:
-    metadata = read_session_metadata(entry.path)
-    selected = records[-1] if records else None
-    identity = (
-        None
-        if selected is not None or metadata is None
-        else resolve_project_identity(metadata)
+def load_local_transfer_probe(session_dirs: list[Path]) -> LocalTransferProbe:
+    index_entries = load_all_index_entries(session_dirs)
+    threads: dict[str, ThreadInfo] = {}
+    metadata_timestamps: dict[str, datetime] = {}
+    issues: list[SyncIssue] = []
+    for session_dir in session_dirs:
+        if storage_state_for_session_dir(session_dir) != "active" or not session_dir.is_dir():
+            continue
+        for path in sorted(session_dir.rglob("*.jsonl"), key=lambda item: str(item).casefold()):
+            if not path.is_file():
+                continue
+            metadata = read_transfer_metadata(path)
+            if metadata is None:
+                issues.append(
+                    SyncIssue(
+                        "local_session_metadata_unreadable",
+                        f"Local task {path} has no readable session_meta identity",
+                    )
+                )
+                continue
+            if metadata.is_subagent:
+                continue
+            identity = resolve_project_identity(metadata)
+            index_entry = index_entries.get(metadata.session_id, {})
+            size = file_size(path)
+            thread = ThreadInfo(
+                thread_id=metadata.session_id,
+                title=str(
+                    index_entry.get("thread_name")
+                    or index_entry.get("title")
+                    or identity.label
+                    or metadata.session_id
+                ),
+                updated_at=str(
+                    index_entry.get("updated_at")
+                    or session_updated_at(path, metadata.timestamp)
+                ),
+                session_path=path,
+                project_key=identity.key,
+                project_label=identity.label,
+                project_aliases=identity.aliases,
+                total_tokens=0,
+                session_bytes=size,
+                estimated_sync_bytes=size + _ESTIMATED_SYNC_METADATA_BYTES,
+                memory_mode=metadata.memory_mode,
+                has_base_instructions=metadata.has_base_instructions,
+                cwd=metadata.cwd,
+            )
+            metadata_timestamp = metadata.timestamp or datetime.fromtimestamp(
+                path.stat().st_mtime,
+                tz=UTC,
+            )
+            previous_timestamp = metadata_timestamps.get(thread.thread_id)
+            if previous_timestamp is None or metadata_timestamp >= previous_timestamp:
+                threads[thread.thread_id] = thread
+                metadata_timestamps[thread.thread_id] = metadata_timestamp
+    inventory = LocalInventory(
+        session_dirs=tuple(session_dirs),
+        threads=threads,
+        index_entries=index_entries,
+        discovered_count=len(threads),
+        project_roots=discover_project_roots(tuple(session_dirs)),
     )
-    return CachedFileSummary(
-        file_path=entry.path,
-        session_dir=owning_session_dir(entry.path, session_dirs),
-        session_id=(
-            selected.session_id
-            if selected
-            else metadata.session_id if metadata else entry.path.stem
-        ),
-        cwd=selected.cwd if selected else metadata.cwd if metadata else "",
-        project_key=(
-            selected.project_key
-            if selected
-            else identity.key if identity else ""
-        ),
-        project_label=(
-            selected.project_label
-            if selected
-            else identity.label if identity else ""
-        ),
-        project_aliases=(
-            selected.project_aliases
-            if selected
-            else identity.aliases if identity else ()
-        ),
-        git_repository_url=(
-            selected.git_repository_url
-            if selected
-            else metadata.git_repository_url if metadata else ""
-        ),
-        git_branch=(
-            selected.git_branch
-            if selected
-            else metadata.git_branch if metadata else ""
-        ),
-        memory_mode=metadata.memory_mode if metadata else "",
-        has_base_instructions=metadata.has_base_instructions if metadata else False,
-        session_bytes=entry.size_bytes,
-        estimated_sync_bytes=entry.size_bytes + _ESTIMATED_SYNC_METADATA_BYTES,
-        file_key=entry.file_key,
-        storage_state=entry.storage_state,
-    )
+    return LocalTransferProbe(inventory, tuple(issues))

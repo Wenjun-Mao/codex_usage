@@ -5,10 +5,10 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 
 from codex_usage.models import UsageRecord
-from codex_usage.project_transition_evidence import (
-    RepoPathObservation,
+from codex_usage.project_transition_collection import (
     collect_repo_path_observations as collect_repo_path_observations,
 )
+from codex_usage.project_transition_evidence import RepoPathObservation
 
 
 @dataclass(frozen=True)

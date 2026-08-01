@@ -27,7 +27,7 @@ test("non-git mapping requires confirmation and cancellation aborts the whole im
     confirmUnverified: false,
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.equal(port.confirmationPrompts.length, 1);
   assert.deepEqual(port.executions, []);
@@ -43,7 +43,7 @@ test("a unique destination candidate resolves without prompting", async () => {
     selection: transferSelection(["remote-task"]),
   });
 
-  await new TaskTransferController(port, () => false).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.projectRootPrompts, []);
   assert.deepEqual(port.executions[0].request, {
@@ -51,7 +51,6 @@ test("a unique destination candidate resolves without prompting", async () => {
     projectKey: "git:https://example.com/repo.git",
     projectLabel: "Repo",
     threadIds: ["remote-task"],
-    autoTransitions: false,
     candidateProjectRoots: ["/workspace", "/repo"],
     projectBindings: [{
       projectKey: "git:https://example.com/repo.git",
@@ -69,7 +68,7 @@ test("a missing destination candidate falls back to one current-operation bindin
     chosenProjectRoot: "/chosen/repo",
   });
 
-  await new TaskTransferController(port, () => true).importTasks();
+  await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.projectRootPrompts[0].candidates, []);
   assert.deepEqual(port.executions[0].request.projectBindings, [{
@@ -90,7 +89,7 @@ test("destination mappings are prompted again and never retained across imports"
     ],
     chosenProjectRootQueue: ["/first", "/second"],
   });
-  const controller = new TaskTransferController(port, () => true);
+  const controller = new TaskTransferController(port);
 
   await controller.importTasks();
   await controller.importTasks();

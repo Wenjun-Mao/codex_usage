@@ -9,7 +9,6 @@ export type ProjectBinding = {
 export type SyncCommandOptions = {
   syncDir: string;
   threadIds: string[];
-  autoTransitions: boolean;
   candidateProjectRoots: string[];
   projectBindings: ProjectBinding[];
 };

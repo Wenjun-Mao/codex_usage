@@ -10,8 +10,6 @@ function inventoryTask(overrides = {}) {
     updated_at: "2026-07-14T12:00:00Z",
     estimated_sync_bytes: 2048,
     availability: "remote",
-    state: "remote_only",
-    action: "pull",
     ...overrides,
   };
 }
@@ -38,7 +36,7 @@ function inventoryIssue(overrides = {}) {
 
 function inventory(overrides = {}) {
   return {
-    inventory_version: 2,
+    inventory_version: 3,
     projects: [inventoryProject()],
     issues: [],
     ...overrides,
@@ -54,7 +52,6 @@ function withoutField(record, field) {
 test("inventory args use one read-only command with repeatable candidate roots", () => {
   assert.deepEqual(buildSyncInventoryArgs({
     syncDir: " D:/Sync ",
-    autoTransitions: false,
     candidateProjectRoots: [" D:/Code/repo-a ", "D:/Code/repo-b"],
   }), [
     "sync",
@@ -66,11 +63,9 @@ test("inventory args use one read-only command with repeatable candidate roots",
     "D:/Code/repo-a",
     "--candidate-project-root",
     "D:/Code/repo-b",
-    "--no-auto-transitions",
   ]);
   assert.deepEqual(buildSyncInventoryArgs({
     syncDir: "   ",
-    autoTransitions: true,
     candidateProjectRoots: [],
   }), [
     "sync",
@@ -83,7 +78,7 @@ test("inventory parser preserves project tasks and availability", () => {
   const parsed = parseSyncInventory(JSON.stringify(inventory({ issues: [inventoryIssue()] })));
 
   assert.deepEqual(parsed, {
-    inventoryVersion: 2,
+    inventoryVersion: 3,
     projects: [
       {
         projectKey: "repo-a",
@@ -97,8 +92,6 @@ test("inventory parser preserves project tasks and availability", () => {
             updatedAt: "2026-07-14T12:00:00Z",
             estimatedSyncBytes: 2048,
             availability: "remote",
-            state: "remote_only",
-            action: "pull",
           },
         ],
       },
@@ -212,16 +205,16 @@ test("inventory parser rejects contract violations at the failing field path", (
       path: "projects[0].tasks[0].title",
     },
     {
-      name: "malformed task state",
+      name: "legacy task state",
       payload: inventory({
-        projects: [inventoryProject({ tasks: [inventoryTask({ state: null })] })],
+        projects: [inventoryProject({ tasks: [inventoryTask({ state: "remote_only" })] })],
       }),
       path: "projects[0].tasks[0].state",
     },
     {
-      name: "malformed task action",
+      name: "legacy task action",
       payload: inventory({
-        projects: [inventoryProject({ tasks: [inventoryTask({ action: null })] })],
+        projects: [inventoryProject({ tasks: [inventoryTask({ action: "pull" })] })],
       }),
       path: "projects[0].tasks[0].action",
     },

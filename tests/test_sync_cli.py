@@ -11,7 +11,11 @@ import pytest
 import codex_usage.cli as cli_module
 import codex_usage.sync_cli as sync_cli
 from codex_usage.project_identity import normalize_project_key
-from codex_usage.sync import ProjectResolutionRequest
+from codex_usage.sync import (
+    LocalInventory,
+    LocalTransferProbe,
+    ProjectResolutionRequest,
+)
 from codex_usage.sync_cli import _sync_session_dirs
 
 
@@ -128,17 +132,32 @@ def test_cli_sync_help_exposes_manual_directional_commands_and_status() -> None:
     assert "--conflict-policy" not in result.stdout
 
 
-def test_sync_push_loads_cache_once_after_scanning_and_passes_normalized_thread_ids(
+@pytest.mark.parametrize("sync_command", ["inventory", "pull", "push", "status"])
+def test_sync_commands_do_not_expose_usage_transition_options(
+    sync_command: str,
+) -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "codex_usage.cli", "sync", sync_command, "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "--no-auto-transitions" not in result.stdout
+
+
+def test_sync_push_loads_probe_once_after_scanning_and_passes_normalized_thread_ids(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    data = object()
+    local = _local_inventory(tmp_path / "sessions")
+    probe = LocalTransferProbe(local, ())
     calls: list[tuple[object, ...]] = []
 
-    def load_session_data(paths: list[Path], *, auto_transitions: bool) -> object:
-        calls.append(("load", paths, auto_transitions))
-        return data
+    def load_inventory(paths: list[Path]) -> LocalTransferProbe:
+        calls.append(("load", paths))
+        return probe
 
     def push_sync(**kwargs) -> SimpleNamespace:
         calls.append(("run", kwargs))
@@ -160,24 +179,18 @@ def test_sync_push_loads_cache_once_after_scanning_and_passes_normalized_thread_
         sync_cli, "_sync_session_dirs", lambda *, create: [tmp_path / "sessions"]
     )
     monkeypatch.setattr(sync_cli, "push_sync", push_sync)
-    monkeypatch.setattr(
-        sync_cli,
-        "get_settings",
-        lambda: SimpleNamespace(auto_project_transitions=True),
-    )
     args = _args(
         tmp_path,
         thread_id=[" Thread/One ", "Thread/One"],
-        no_auto_transitions=True,
     )
 
-    exit_code = sync_cli.handle_sync_push(args, load_session_data)
+    exit_code = sync_cli.handle_sync_push(args, load_inventory)
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert calls[0] == ("load", [tmp_path / "sessions"], False)
+    assert calls[0] == ("load", [tmp_path / "sessions"])
     assert calls[1][0] == "run"
-    assert calls[1][1]["data"] is data
+    assert calls[1][1]["local"] is local
     assert calls[1][1]["thread_ids"] == ("Thread/One",)
     assert calls[1][1]["project_key"] == "/repo/first"
     assert calls[1][1]["project_resolution"] == ProjectResolutionRequest()
@@ -200,18 +213,13 @@ def test_sync_pull_calls_directional_runner_without_machine_metadata(
     )
     monkeypatch.setattr(
         sync_cli,
-        "get_settings",
-        lambda: SimpleNamespace(auto_project_transitions=True),
-    )
-    monkeypatch.setattr(
-        sync_cli,
         "pull_sync",
         lambda **kwargs: calls.append(kwargs) or result,
     )
 
     exit_code = sync_cli.handle_sync_pull(
         _args(tmp_path, thread_id=["thread-1"]),
-        lambda *args, **kwargs: object(),
+        lambda paths: LocalTransferProbe(_local_inventory(paths[0]), ()),
     )
 
     assert exit_code == 0
@@ -348,12 +356,13 @@ def test_sync_status_uses_noncreating_default_path_and_returns_zero_for_issues(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     default_sessions = tmp_path / "codex" / "sessions"
-    data = object()
+    local = _local_inventory(default_sessions)
+    probe = LocalTransferProbe(local, ())
     calls: list[tuple[object, ...]] = []
 
-    def load_session_data(paths: list[Path], *, auto_transitions: bool) -> object:
-        calls.append(("load", paths, auto_transitions))
-        return data
+    def load_inventory(paths: list[Path]) -> LocalTransferProbe:
+        calls.append(("load", paths))
+        return probe
 
     def sync_status(**kwargs) -> SimpleNamespace:
         calls.append(("status", kwargs))
@@ -370,22 +379,16 @@ def test_sync_status_uses_noncreating_default_path_and_returns_zero_for_issues(
         sync_cli, "_sync_session_dirs", lambda *, create: [default_sessions]
     )
     monkeypatch.setattr(sync_cli, "sync_status", sync_status)
-    monkeypatch.setattr(
-        sync_cli,
-        "get_settings",
-        lambda: SimpleNamespace(auto_project_transitions=True),
-    )
-
     exit_code = sync_cli.handle_sync_status(
         _args(tmp_path, thread_id=["thread-1"]),
-        load_session_data,
+        load_inventory,
     )
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert calls[0] == ("load", [default_sessions], True)
+    assert calls[0] == ("load", [default_sessions])
     assert calls[1][0] == "status"
-    assert calls[1][1]["data"] is data
+    assert calls[1][1]["local"] is local
     assert calls[1][1]["thread_ids"] == ("thread-1",)
     assert "project_keys" not in calls[1][1]
     assert not default_sessions.exists()
@@ -411,7 +414,10 @@ def test_sync_push_returns_two_and_one_human_summary_for_conflict(
     )
     args = _args(tmp_path, thread_id=["thread-1"], json=False)
 
-    exit_code = sync_cli.handle_sync_push(args, lambda *args, **kwargs: object())
+    exit_code = sync_cli.handle_sync_push(
+        args,
+        lambda paths: LocalTransferProbe(_local_inventory(paths[0]), ()),
+    )
 
     captured = capsys.readouterr()
     assert exit_code == 2
@@ -425,11 +431,14 @@ def _args(tmp_path: Path, **overrides) -> Namespace:
         "thread_id": None,
         "machine_id": "machine-a",
         "project_key": "/repo/first",
-        "no_auto_transitions": False,
         "json": True,
     }
     values.update(overrides)
     return Namespace(**values)
+
+
+def _local_inventory(session_dir: Path) -> LocalInventory:
+    return LocalInventory((session_dir,), {}, {}, 0)
 
 
 def _run_cli(

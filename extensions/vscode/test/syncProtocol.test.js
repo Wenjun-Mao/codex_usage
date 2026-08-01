@@ -69,7 +69,6 @@ test("directional sync builders pass one explicit project key and exact task ids
       syncDir: "/sync",
       projectKey: "repo-a",
       threadIds: ["thread-1"],
-      autoTransitions: true,
       candidateProjectRoots: [],
       projectBindings: [],
     }),
@@ -85,7 +84,6 @@ test("directional sync builders pass one explicit project key and exact task ids
       syncDir: "/sync",
       projectKey: "repo-a",
       threadIds: ["thread-1"],
-      autoTransitions: true,
       candidateProjectRoots: [],
       projectBindings: [],
     }),
@@ -103,7 +101,6 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
     syncDir: " /sync ",
     projectKey: " repo-a ",
     threadIds: [" thread-1 ", "thread-1", "thread-2"],
-    autoTransitions: true,
     candidateProjectRoots: [],
     projectBindings: [],
   };
@@ -137,7 +134,6 @@ test("sync argument builders normalize repeatable selectors and preserve JSON fl
   const statusOptions = {
     syncDir: options.syncDir,
     threadIds: options.threadIds,
-    autoTransitions: options.autoTransitions,
     candidateProjectRoots: options.candidateProjectRoots,
     projectBindings: options.projectBindings,
   };
@@ -164,7 +160,7 @@ test("sync command options separate status from one-project transfers", () => {
 
   assert.match(optionsContract, /syncDir:\s*string/);
   assert.match(optionsContract, /threadIds:\s*string\[\]/);
-  assert.match(optionsContract, /autoTransitions:\s*boolean/);
+  assert.doesNotMatch(optionsContract, /autoTransitions/);
   assert.match(optionsContract, /candidateProjectRoots:\s*string\[\]/);
   assert.match(optionsContract, /projectBindings:\s*ProjectBinding\[\]/);
   assert.match(
@@ -179,7 +175,6 @@ test("directional sync builders reject blank transfer project keys", () => {
     syncDir: "/sync",
     projectKey: "   ",
     threadIds: ["thread-1"],
-    autoTransitions: true,
     candidateProjectRoots: [],
     projectBindings: [],
   };
@@ -193,7 +188,6 @@ test("import args preserve Windows paths and repository keys as separate argv va
       syncDir: "C:\\Transfer",
       projectKey: "https://github.com/example/repo",
       threadIds: ["task-1"],
-      autoTransitions: true,
       candidateProjectRoots: ["C:\\Code\\repo"],
       projectBindings: [
         {
@@ -225,7 +219,6 @@ test("export and status args append roots and only explicitly supplied bindings"
     syncDir: "/transfer",
     projectKey: "/source/plain",
     threadIds: ["task-1"],
-    autoTransitions: true,
     candidateProjectRoots: ["/code/repo"],
     projectBindings: [
       {
@@ -255,7 +248,6 @@ test("export and status args append roots and only explicitly supplied bindings"
     buildSyncStatusArgs({
       syncDir: options.syncDir,
       threadIds: options.threadIds,
-      autoTransitions: options.autoTransitions,
       candidateProjectRoots: options.candidateProjectRoots,
       projectBindings: options.projectBindings,
     }),

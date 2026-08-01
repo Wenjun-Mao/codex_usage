@@ -9,6 +9,23 @@ from typing import Any
 
 from codex_usage.models import UNKNOWN, SessionMetadata, TokenUsage, UsageRecord
 from codex_usage.project_identity import resolve_project_identity
+from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
+
+
+_USAGE_EVENT_MARKERS = (
+    '"session_meta"',
+    '"turn_context"',
+    '"token_count"',
+    '"task_started"',
+)
+
+
+def _line_may_affect_usage(raw_line: str) -> bool:
+    return (
+        any(marker in raw_line for marker in _USAGE_EVENT_MARKERS)
+        or r"\u" in raw_line
+        or r"\U" in raw_line
+    )
 
 
 def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
@@ -48,6 +65,8 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
 
     with path.open("r", encoding="utf-8") as handle:
         for raw_line in handle:
+            if not _line_may_affect_usage(raw_line):
+                continue
             obj = _parse_json_line(raw_line)
             if obj is None:
                 continue
@@ -170,12 +189,13 @@ def _parse_session_metadata(payload: dict[str, Any], path: Path, timestamp: date
         cli_version=str(payload.get("cli_version") or ""),
         model_provider=str(payload.get("model_provider") or ""),
         forked_from_id=str(payload.get("forked_from_id") or ""),
-        parent_thread_id=_extract_parent_thread_id(payload),
+        parent_thread_id=parent_thread_id_from_source(payload),
         memory_mode=str(payload.get("memory_mode") or ""),
         has_base_instructions=payload.get("base_instructions") is not None,
         git_repository_url=str(git.get("repository_url") or ""),
         git_branch=str(git.get("branch") or ""),
         git_commit_hash=str(git.get("commit_hash") or ""),
+        is_subagent=is_structured_subagent(payload),
     )
 
 
@@ -200,19 +220,6 @@ def _dedupe_aliases(values: list[str], primary_key: str) -> tuple[str, ...]:
         seen.add(value)
         aliases.append(value)
     return tuple(aliases)
-
-
-def _extract_parent_thread_id(payload: dict[str, Any]) -> str:
-    source = payload.get("source")
-    if not isinstance(source, dict):
-        return ""
-    subagent = source.get("subagent")
-    if not isinstance(subagent, dict):
-        return ""
-    thread_spawn = subagent.get("thread_spawn")
-    if not isinstance(thread_spawn, dict):
-        return ""
-    return str(thread_spawn.get("parent_thread_id") or "")
 
 
 def _extract_model(payload: dict[str, Any]) -> str:

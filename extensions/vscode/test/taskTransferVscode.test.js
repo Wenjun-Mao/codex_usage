@@ -86,7 +86,7 @@ const { createTaskTransferVscodePort } = require("../out/taskTransferVscode");
 Module._load = originalLoad;
 
 function inventoryJson() {
-  return JSON.stringify({ inventory_version: 2, projects: [], issues: [] });
+  return JSON.stringify({ inventory_version: 3, projects: [], issues: [] });
 }
 
 function statusThread(overrides = {}) {
@@ -175,7 +175,6 @@ function executionRequest() {
     projectKey: "repo-a",
     projectLabel: "Repo A",
     threadIds: ["task-1"],
-    autoTransitions: false,
     candidateProjectRoots: ["/Repo"],
     projectBindings: [{
       projectKey: "https://github.com/example/project",
@@ -241,7 +240,6 @@ test("port transports workspace roots and maps import progress to user-facing tr
   assert.deepEqual(port.workspaceRoots(), ["/Repo", "/Other"]);
   await port.loadInventory({
     syncDir: "/transfer",
-    autoTransitions: false,
     candidateProjectRoots: port.workspaceRoots(),
   });
   await port.execute("import", executionRequest());
@@ -250,14 +248,12 @@ test("port transports workspace roots and maps import progress to user-facing tr
   assert.deepEqual(deps.commands[0], [
     "sync", "inventory", "--json", "--sync-dir", "/transfer",
     "--candidate-project-root", "/Repo", "--candidate-project-root", "/Other",
-    "--no-auto-transitions",
   ]);
   assert.deepEqual(deps.processCalls[0].args, [
     "sync", "pull", "--json",
     "--sync-dir", "/transfer",
     "--project-key", "repo-a",
     "--candidate-project-root", "/Repo",
-    "--no-auto-transitions",
     "--project-binding", "https://github.com/example/project", "/Repo",
     "--thread-id", "task-1",
   ]);
@@ -416,7 +412,6 @@ test("missing remembered folder is actionable and never rewrites state", async (
   };
   const controller = new TaskTransferController(
     createTaskTransferVscodePort(ctx, deps),
-    () => true,
   );
 
   await controller.importTasks();

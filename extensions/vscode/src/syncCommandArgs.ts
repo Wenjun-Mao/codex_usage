@@ -41,9 +41,6 @@ function buildSyncArgs(
     args.push("--project-key", projectKey);
   }
   appendSelectors(args, "--candidate-project-root", options.candidateProjectRoots);
-  if (options.autoTransitions === false) {
-    args.push("--no-auto-transitions");
-  }
   appendProjectBindings(args, options.projectBindings);
   appendSelectors(args, "--thread-id", options.threadIds);
   return args;
