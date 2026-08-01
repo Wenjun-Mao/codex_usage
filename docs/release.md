@@ -41,6 +41,12 @@ Use the manual workflow trigger with `publish=false` to build and inspect artifa
 
 Publishing requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
 
+## Parallel Refresh Prepublish Gate
+
+Run the guarded source acceptance and confirm its aggregate audit records non-parent worker PIDs, overlapping worker spans, and no serial fallback.
+
+After merged `main` is pushed, dispatch a non-publishing native workflow with `publish=false`, match it to the new `main` commit, and require both native package jobs to pass. Complete both gates before creating v0.1.42.
+
 ## Inspect The VSIX
 
 Run from the repository root:

@@ -23,6 +23,7 @@ CURRENT_TASK_TRANSFER_FIXTURES = (
 )
 
 ROOT_RELEASE_DATES = {
+    "0.1.42": "2026-07-31",
     "0.1.41": "2026-07-30",
     "0.1.40": "2026-07-29",
     "0.1.39": "2026-07-29",
@@ -64,6 +65,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "0.1.42",
     "0.1.41",
     "0.1.40",
     "0.1.39",
@@ -357,6 +359,53 @@ def test_changelogs_use_exact_historical_release_dates() -> None:
     assert release_dates(CHANGELOGS[1]) == {
         version: ROOT_RELEASE_DATES[version] for version in EXTENSION_RELEASE_VERSIONS
     }
+
+
+@pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
+def test_0_1_42_changelogs_describe_parallel_refresh_contract(
+    changelog: Path,
+) -> None:
+    section = markdown_section(
+        changelog,
+        "## 0.1.42 - 2026-07-31 - Faster Root-Task Transfer And Usage Refresh",
+    )
+    expected_bullets = (
+        "Listed only active user-visible root tasks in Task Transfer while keeping subagent usage in dashboard totals.",
+        "Deferred complete task hashing and conflict planning until after selection by replacing browse-time usage parsing and all-task hashing with metadata-only inventory.",
+        "Skipped JSON decoding for irrelevant Codex events without changing usage totals, pricing, cache schema, or aggregation behavior.",
+        "Refreshed invalidated usage caches with at most four whole-file worker processes and parent-only eight-file atomic commits, retaining complete prior generations on failure without adding offsets, range pruning, or schema changes.",
+    )
+    assert tuple(
+        line.removeprefix("- ")
+        for line in section.splitlines()
+        if line.startswith("- ")
+    ) == expected_bullets
+
+
+@pytest.mark.parametrize("readme", CURRENT_DOCS, ids=("repository", "extension"))
+def test_current_docs_describe_parallel_complete_file_recovery(readme: Path) -> None:
+    text = readme.read_text(encoding="utf-8")
+    for phrase in (
+        "complete files from byte zero",
+        "at most four worker processes",
+        "SQLite remains in the parent process",
+        "eight complete-file replacements",
+        "committed batches are reusable after interruption",
+        "no within-file checkpoint or range pruning",
+    ):
+        assert phrase in text
+
+
+def test_release_docs_require_parallel_audit_and_prepublish_native_gate() -> None:
+    text = (ROOT / "docs/release.md").read_text(encoding="utf-8")
+    for phrase in (
+        "non-parent worker PIDs",
+        "overlapping worker spans",
+        "no serial fallback",
+        "non-publishing native workflow",
+        "before creating v0.1.42",
+    ):
+        assert phrase in text
 
 
 @pytest.mark.parametrize(

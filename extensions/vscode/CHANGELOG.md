@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.42 - 2026-07-31 - Faster Root-Task Transfer And Usage Refresh
+
+- Listed only active user-visible root tasks in Task Transfer while keeping subagent usage in dashboard totals.
+- Deferred complete task hashing and conflict planning until after selection by replacing browse-time usage parsing and all-task hashing with metadata-only inventory.
+- Skipped JSON decoding for irrelevant Codex events without changing usage totals, pricing, cache schema, or aggregation behavior.
+- Refreshed invalidated usage caches with at most four whole-file worker processes and parent-only eight-file atomic commits, retaining complete prior generations on failure without adding offsets, range pruning, or schema changes.
+
 ## 0.1.41 - 2026-07-30 - Reduced Terra And Luna API Pricing
 
 - Applied OpenAI's reduced Standard API rates for GPT-5.6 Terra and Luna from July 31, 2026.

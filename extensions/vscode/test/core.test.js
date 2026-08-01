@@ -428,6 +428,7 @@ test("native release jobs gate direct Codex registration before VSIX packaging",
 test("package metadata is ready for Marketplace preview publishing", () => {
   assert.equal(packageJson.publisher, "wenjun-mao");
   assert.equal(packageJson.private, undefined);
+  assert.equal(packageJson.version, "0.1.42");
   assert.equal(packageJson.preview, true);
   assert.equal(packageJson.repository.url, "https://github.com/Wenjun-Mao/codex_usage.git");
   assert.match(packageJson.description, /local/i);
