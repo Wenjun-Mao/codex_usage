@@ -18,6 +18,7 @@ from codex_usage.parallel.execution import ParallelRunReport, WorkerSpan
 from codex_usage.parallel_audit import (
     require_actual_parallel,
     validate_target_architecture,
+    write_parallel_audit,
 )
 from codex_usage.session_cache import load_cached_session_data
 
@@ -115,6 +116,60 @@ class FixedDateTime(datetime):
     def now(cls, tz: tzinfo | None = None) -> FixedDateTime:
         value = cls(2026, 7, 31, 12, 0, tzinfo=UTC)
         return value.replace(tzinfo=None) if tz is None else value.astimezone(tz)
+
+
+def packaged_transition_payload() -> dict[str, object]:
+    return {
+        "confidence": 100,
+        "effective_from": "2026-07-31T12:01:00+00:00",
+        "evidence": [
+            (
+                "verified repo path /private/tmp/transition-target -> "
+                "https://github.com/example/packaged-parallel-target "
+                "(thread packaged-parallel-00, "
+                "source jsonl:response_item:function_call_workdir)"
+            )
+        ],
+        "source_key": "https://github.com/example/source-00",
+        "source_label": "source-00",
+        "target_key": "https://github.com/example/packaged-parallel-target",
+        "target_label": "packaged-parallel-target",
+        "thread_ids": ["packaged-parallel-00"],
+    }
+
+
+def packaged_summary_payload(module: ModuleType) -> dict[str, object]:
+    return {
+        "files_scanned": module.FILE_COUNT,
+        "total": {
+            "record_count": module.EXPECTED_RECORD_COUNT,
+            "usage": dict(module.EXPECTED_USAGE),
+        },
+        "project_transitions": [packaged_transition_payload()],
+    }
+
+
+def packaged_audit_run() -> dict[str, object]:
+    return {
+        "resolved_worker_count": 2,
+        "worker_pids": [901, 902],
+        "max_concurrency": 2,
+        "used_serial_fallback": False,
+        "infrastructure_error": "",
+        "span_count": 2,
+        "file_error_count": 0,
+    }
+
+
+def packaged_audit_payload() -> dict[str, object]:
+    return {
+        "version": 1,
+        "parent_pid": 900,
+        "sys_platform": "darwin",
+        "machine": "arm64",
+        "usage_run": packaged_audit_run(),
+        "transition_run": packaged_audit_run(),
+    }
 
 
 @pytest.mark.parametrize(
@@ -238,6 +293,38 @@ def test_parallel_audit_does_not_change_summary_payload(
     assert_no_sensitive_audit_keys(audit)
 
 
+@pytest.mark.parametrize(
+    "sensitive_error",
+    [
+        "session_token_timestamp_event",
+        "OSError: /Users/alice/private-project/session.jsonl",
+    ],
+)
+def test_parallel_audit_serializes_only_fixed_infrastructure_error_sentinel(
+    sensitive_error: str,
+    tmp_path: Path,
+) -> None:
+    report = ParallelRunReport(
+        resolved_worker_count=2,
+        worker_spans=(WorkerSpan(901, 0, 20), WorkerSpan(902, 5, 15)),
+        used_serial_fallback=True,
+        infrastructure_error=sensitive_error,
+        file_error_count=0,
+    )
+    audit_path = write_parallel_audit(
+        tmp_path / "audit.json",
+        parent_pid=900,
+        usage_run=report,
+        transition_run=report,
+    )
+
+    serialized = audit_path.read_text(encoding="utf-8")
+    audit = json.loads(serialized)
+    assert audit["usage_run"]["infrastructure_error"] == "present"
+    assert audit["transition_run"]["infrastructure_error"] == "present"
+    assert sensitive_error not in serialized
+
+
 def test_actual_parallel_validator_rejects_every_disguised_serial_shape() -> None:
     parent_pid = 900
     overlap = (WorkerSpan(901, 0, 20), WorkerSpan(902, 5, 15))
@@ -249,6 +336,17 @@ def test_actual_parallel_validator_rejects_every_disguised_serial_shape() -> Non
         ),
         ParallelRunReport(
             2, (WorkerSpan(901, 0, 20), WorkerSpan(901, 5, 15)), False, "", 0
+        ),
+        ParallelRunReport(
+            2,
+            (
+                WorkerSpan(901, 0, 20),
+                WorkerSpan(901, 5, 15),
+                WorkerSpan(902, 21, 30),
+            ),
+            False,
+            "",
+            0,
         ),
         ParallelRunReport(
             2, (WorkerSpan(901, 0, 5), WorkerSpan(902, 5, 10)), False, "", 0
@@ -281,3 +379,113 @@ def test_target_architecture_validator_is_exact() -> None:
             validate_target_architecture(
                 cast(Any, target), sys_platform=sys_platform, machine=machine
             )
+
+
+def test_packaged_summary_accepts_expected_transition_in_json_key_order() -> None:
+    module = load_script_module(
+        REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
+    )
+
+    module._validate_summary(packaged_summary_payload(module))
+
+
+@pytest.mark.parametrize(
+    ("field", "wrong_value"),
+    [
+        ("source_key", "https://github.com/example/wrong-source"),
+        ("source_label", "wrong-source"),
+        ("target_key", "https://github.com/example/wrong-target"),
+        ("target_label", "wrong-target"),
+        ("effective_from", "2026-07-31T12:01:01+00:00"),
+        ("confidence", 99),
+        ("thread_ids", ["packaged-parallel-09"]),
+    ],
+)
+def test_packaged_summary_rejects_changed_stable_transition_fields(
+    field: str,
+    wrong_value: object,
+) -> None:
+    module = load_script_module(
+        REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
+    )
+    payload = packaged_summary_payload(module)
+    transition = cast(list[dict[str, object]], payload["project_transitions"])[0]
+    transition[field] = wrong_value
+
+    with pytest.raises(RuntimeError, match="deterministic transition"):
+        module._validate_summary(payload)
+
+
+@pytest.mark.parametrize(
+    ("evidence", "error_type"),
+    [
+        ([], RuntimeError),
+        ([1], TypeError),
+        (["unverified transition"], RuntimeError),
+        (
+            [
+                (
+                    "verified repo path /tmp/one -> "
+                    "https://github.com/example/packaged-parallel-target "
+                    "(thread packaged-parallel-00, "
+                    "source jsonl:response_item:function_call_workdir)"
+                ),
+                "extra evidence",
+            ],
+            RuntimeError,
+        ),
+    ],
+)
+def test_packaged_summary_structurally_validates_dynamic_transition_evidence(
+    evidence: list[object],
+    error_type: type[Exception],
+) -> None:
+    module = load_script_module(
+        REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
+    )
+    payload = packaged_summary_payload(module)
+    transition = cast(list[dict[str, object]], payload["project_transitions"])[0]
+    transition["evidence"] = evidence
+
+    with pytest.raises(error_type, match="transition evidence"):
+        module._validate_summary(payload)
+
+
+def test_packaged_audit_rejects_bool_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_script_module(
+        REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
+    )
+    audit = packaged_audit_payload()
+    audit["version"] = True
+    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setattr(module.platform, "machine", lambda: "arm64")
+
+    with pytest.raises(RuntimeError, match="fields or version"):
+        module._validate_audit(audit, "darwin-arm64")
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "resolved_worker_count",
+        "max_concurrency",
+        "span_count",
+        "file_error_count",
+    ],
+)
+def test_packaged_audit_rejects_bool_integer_counts(
+    field: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_script_module(
+        REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
+    )
+    audit = packaged_audit_payload()
+    cast(dict[str, object], audit["usage_run"])[field] = False
+    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setattr(module.platform, "machine", lambda: "arm64")
+
+    with pytest.raises(RuntimeError, match="actual process parallelism"):
+        module._validate_audit(audit, "darwin-arm64")

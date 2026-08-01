@@ -81,21 +81,32 @@ class ParallelRunReport:
             event
             for span in self.worker_spans
             if span.finished_ns > span.started_ns
-            for event in ((span.started_ns, 1), (span.finished_ns, -1))
+            for event in (
+                (span.started_ns, 1, span.pid),
+                (span.finished_ns, -1, span.pid),
+            )
         ]
-        active = 0
+        active_spans_by_pid: dict[int, int] = {}
         peak = 0
-        for _, change in sorted(events, key=lambda event: (event[0], event[1])):
-            active += change
-            peak = max(peak, active)
+        for _, change, pid in sorted(events, key=lambda event: (event[0], event[1])):
+            if change > 0:
+                active_spans_by_pid[pid] = active_spans_by_pid.get(pid, 0) + 1
+            else:
+                remaining = active_spans_by_pid[pid] - 1
+                if remaining:
+                    active_spans_by_pid[pid] = remaining
+                else:
+                    del active_spans_by_pid[pid]
+            peak = max(peak, len(active_spans_by_pid))
         return peak
 
     def actually_parallel(self, parent_pid: int) -> bool:
-        child_pids = {pid for pid in self.worker_pids if pid != parent_pid}
+        worker_pids = set(self.worker_pids)
         return (
             self.resolved_worker_count > 1
             and not self.used_serial_fallback
-            and len(child_pids) >= 2
+            and parent_pid not in worker_pids
+            and len(worker_pids) >= 2
             and self.max_concurrency >= 2
         )
 

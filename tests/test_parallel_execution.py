@@ -19,6 +19,7 @@ from codex_usage.parallel.execution import (
     SERIAL_FALLBACK_WARNING,
     OrderedProcessMapper,
     ParallelRunReport,
+    WorkerSpan,
     resolve_worker_count,
 )
 
@@ -139,6 +140,24 @@ def test_spawn_mapper_proves_two_overlapping_child_pids() -> None:
     assert parent_pid not in report.worker_pids
     assert report.max_concurrency == 2
     assert report.actually_parallel(parent_pid) is True
+
+
+def test_parallel_report_rejects_overlap_within_only_one_worker_pid() -> None:
+    report = ParallelRunReport(
+        resolved_worker_count=2,
+        worker_spans=(
+            WorkerSpan(901, 0, 20),
+            WorkerSpan(901, 5, 15),
+            WorkerSpan(902, 21, 30),
+        ),
+        used_serial_fallback=False,
+        infrastructure_error="",
+        file_error_count=0,
+    )
+
+    assert report.worker_pids == (901, 902)
+    assert report.max_concurrency == 1
+    assert report.actually_parallel(parent_pid=900) is False
 
 
 def test_varied_shuffled_future_completion_keeps_request_order(

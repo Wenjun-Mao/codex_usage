@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import cast
 
 from codex_usage.parallel_audit import ExpectedTarget, validate_target_architecture
+from codex_usage.process_tree import run_process_tree
 
 FILE_COUNT = 10
 EXPECTED_RECORD_COUNT = FILE_COUNT + 1
@@ -49,6 +50,31 @@ EXPECTED_USAGE = {
     "reasoning_output_tokens": 50,
     "total_tokens": 1_190,
 }
+TRANSITION_FIELDS = (
+    "source_key",
+    "source_label",
+    "target_key",
+    "target_label",
+    "effective_from",
+    "confidence",
+    "evidence",
+    "thread_ids",
+)
+EXPECTED_STABLE_TRANSITION = {
+    "source_key": "https://github.com/example/source-00",
+    "source_label": "source-00",
+    "target_key": "https://github.com/example/packaged-parallel-target",
+    "target_label": "packaged-parallel-target",
+    "effective_from": "2026-07-31T12:01:00+00:00",
+    "confidence": 100,
+    "thread_ids": ["packaged-parallel-00"],
+}
+TRANSITION_EVIDENCE_PREFIX = "verified repo path "
+TRANSITION_EVIDENCE_SUFFIX = (
+    " -> https://github.com/example/packaged-parallel-target "
+    "(thread packaged-parallel-00, "
+    "source jsonl:response_item:function_call_workdir)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,15 +289,11 @@ def _run_summary(
     )
     environment.pop("PYTHONPATH", None)
     try:
-        completed = subprocess.run(
+        completed = run_process_tree(
             command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            env=environment,
+            environment=environment,
             cwd=codex_home,
-            check=False,
-            timeout=COMMAND_TIMEOUT_SECONDS,
+            timeout_seconds=COMMAND_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as error:
         raise RuntimeError(
@@ -307,13 +329,43 @@ def _validate_summary(payload: dict[str, object]) -> None:
         raise RuntimeError(
             "packaged summary did not retain deterministic transition evidence"
         )
+    transition = transitions[0]
+    if not isinstance(transition, dict) or set(transition) != set(TRANSITION_FIELDS):
+        raise RuntimeError(
+            "packaged summary returned an invalid deterministic transition"
+        )
+    stable_transition = {key: transition.get(key) for key in EXPECTED_STABLE_TRANSITION}
+    if stable_transition != EXPECTED_STABLE_TRANSITION:
+        raise RuntimeError(
+            "packaged summary returned an invalid deterministic transition"
+        )
+    _validate_transition_evidence(transition.get("evidence"))
+
+
+def _validate_transition_evidence(evidence: object) -> None:
+    if not isinstance(evidence, list) or len(evidence) != 1:
+        raise RuntimeError("packaged summary returned invalid transition evidence")
+    text = evidence[0]
+    if not isinstance(text, str):
+        raise TypeError("packaged summary returned invalid transition evidence")
+    if not text.startswith(TRANSITION_EVIDENCE_PREFIX) or not text.endswith(
+        TRANSITION_EVIDENCE_SUFFIX
+    ):
+        raise RuntimeError("packaged summary returned invalid transition evidence")
+    path_text = text[len(TRANSITION_EVIDENCE_PREFIX) : -len(TRANSITION_EVIDENCE_SUFFIX)]
+    if not path_text or not Path(path_text).is_absolute():
+        raise RuntimeError("packaged summary returned invalid transition evidence")
 
 
 def _validate_audit(
     audit: dict[str, object],
     expected_target: ExpectedTarget,
 ) -> dict[str, dict[str, object]]:
-    if tuple(audit) != AUDIT_FIELDS or audit.get("version") != 1:
+    if (
+        tuple(audit) != AUDIT_FIELDS
+        or type(audit.get("version")) is not int
+        or audit["version"] != 1
+    ):
         raise RuntimeError("packaged audit fields or version are invalid")
     parent_pid = audit.get("parent_pid")
     audit_platform = audit.get("sys_platform")
@@ -370,7 +422,8 @@ def _require_actual_parallel_audit(
         and run.get("infrastructure_error") == ""
         and type(run.get("span_count")) is int
         and run["span_count"] >= 2
-        and run.get("file_error_count") == 0
+        and type(run.get("file_error_count")) is int
+        and run["file_error_count"] == 0
     )
     if not actual_parallel:
         raise RuntimeError(f"{label}: actual process parallelism not observed")

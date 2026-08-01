@@ -87,10 +87,7 @@ def _audit_run(report: ParallelRunReport) -> dict[str, object]:
 
 
 def _error_kind(error: str) -> str:
-    if not error:
-        return ""
-    candidate = error.partition(":")[0].strip()
-    return candidate if candidate.isidentifier() else "error"
+    return "present" if error else ""
 
 
 @retry(
