@@ -290,6 +290,42 @@ def test_selected_remote_accepts_declared_repository_matching_index_repo_alias(
     )
 
 
+def test_selected_remote_accepts_declared_file_repository_matching_canonical_key(
+    tmp_path: Path,
+) -> None:
+    repository = "file:///repos/example-project.git"
+    materialized = _materialize_direct(
+        tmp_path / "sync",
+        indexed_project=repository,
+        aliases=(),
+        actual_project=repository,
+        actual_cwd="/remote/example-project",
+    )
+
+    assert not any(
+        issue.code == "remote_project_identity_mismatch"
+        for issue in materialized.issues
+    )
+
+
+def test_selected_remote_accepts_declared_local_repository_matching_canonical_key(
+    tmp_path: Path,
+) -> None:
+    repository = normalize_project_key(str(tmp_path / "example-project"))
+    materialized = _materialize_direct(
+        tmp_path / "sync",
+        indexed_project=repository,
+        aliases=(),
+        actual_project=repository,
+        actual_cwd="/remote/example-project",
+    )
+
+    assert not any(
+        issue.code == "remote_project_identity_mismatch"
+        for issue in materialized.issues
+    )
+
+
 def _write_remote_store(
     sync_dir: Path,
     *,

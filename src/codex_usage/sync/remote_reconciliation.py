@@ -437,11 +437,10 @@ def _project_identity_matches(
 ) -> bool:
     repository = normalize_declared_project_key(declared_repository)
     if repository:
-        return repository in _normalized_project_identities(
-            entry.project_key,
-            entry.project_aliases,
-            repository=True,
-        )
+        canonical_key = normalize_declared_project_key(entry.project_key)
+        if repository == canonical_key:
+            return True
+        return repository in _normalized_git_aliases(entry.project_aliases)
     indexed_paths = _normalized_project_identities(
         entry.project_key,
         entry.project_aliases,
@@ -466,6 +465,15 @@ def _normalized_project_identities(
         for value in (key, *aliases)
         if (normalized := normalize_declared_project_key(value))
         and is_git_project_key(normalized) is repository
+    )
+
+
+def _normalized_git_aliases(aliases: tuple[str, ...]) -> frozenset[str]:
+    return frozenset(
+        normalized
+        for value in aliases
+        if (normalized := normalize_declared_project_key(value))
+        and is_git_project_key(normalized)
     )
 
 
