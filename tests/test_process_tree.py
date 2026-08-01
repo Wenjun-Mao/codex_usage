@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 
@@ -126,6 +127,15 @@ def assert_bounded_cleanup_timeouts(process: TimedOutProcess) -> None:
     assert all(timeout is not None and 0 < timeout <= 2 for timeout in cleanup_timeouts)
 
 
+def patch_posix_process_control(
+    monkeypatch: pytest.MonkeyPatch,
+    process_tree: ModuleType,
+    killpg: Callable[[int, int], None],
+) -> None:
+    monkeypatch.setattr(process_tree.os, "killpg", killpg, raising=False)
+    monkeypatch.setattr(process_tree.signal, "SIGKILL", 9, raising=False)
+
+
 def test_packaged_summary_invokes_120_second_process_tree_guard(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -169,9 +179,10 @@ def test_posix_process_tree_timeout_uses_session_killpg_and_reaps(
         return process
 
     monkeypatch.setattr(process_tree.subprocess, "Popen", popen)
-    monkeypatch.setattr(
-        process_tree.os,
-        "killpg",
+    monkeypatch.delattr(process_tree.os, "killpg", raising=False)
+    patch_posix_process_control(
+        monkeypatch,
+        process_tree,
         lambda pid, sig: killpg_calls.append((pid, sig)),
     )
 
@@ -278,7 +289,7 @@ def test_posix_killpg_failure_is_bounded_and_specific(
         killpg_calls.append((pid, sig))
         raise PermissionError("killpg denied")
 
-    monkeypatch.setattr(process_tree.os, "killpg", failing_killpg)
+    patch_posix_process_control(monkeypatch, process_tree, failing_killpg)
 
     with pytest.raises(RuntimeError, match="killpg failed") as caught:
         process_tree.run_process_tree(
@@ -305,7 +316,7 @@ def test_cleanup_escalates_after_first_bounded_drain_timeout(
     monkeypatch.setattr(
         process_tree.subprocess, "Popen", lambda *args, **kwargs: process
     )
-    monkeypatch.setattr(process_tree.os, "killpg", lambda pid, sig: None)
+    patch_posix_process_control(monkeypatch, process_tree, lambda pid, sig: None)
 
     with pytest.raises(subprocess.TimeoutExpired):
         process_tree.run_process_tree(
@@ -332,7 +343,7 @@ def test_second_bounded_drain_timeout_raises_cleanup_failure_and_reaps(
     monkeypatch.setattr(
         process_tree.subprocess, "Popen", lambda *args, **kwargs: process
     )
-    monkeypatch.setattr(process_tree.os, "killpg", lambda pid, sig: None)
+    patch_posix_process_control(monkeypatch, process_tree, lambda pid, sig: None)
 
     with pytest.raises(RuntimeError, match="output drain timed out") as caught:
         process_tree.run_process_tree(

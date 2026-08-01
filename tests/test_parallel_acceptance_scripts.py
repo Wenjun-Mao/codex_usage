@@ -119,12 +119,13 @@ class FixedDateTime(datetime):
 
 
 def packaged_transition_payload() -> dict[str, object]:
+    transition_target = REPOSITORY_ROOT / "transition-target"
     return {
         "confidence": 100,
         "effective_from": "2026-07-31T12:01:00+00:00",
         "evidence": [
             (
-                "verified repo path /private/tmp/transition-target -> "
+                f"verified repo path {transition_target} -> "
                 "https://github.com/example/packaged-parallel-target "
                 "(thread packaged-parallel-00, "
                 "source jsonl:response_item:function_call_workdir)"
@@ -381,7 +382,7 @@ def test_target_architecture_validator_is_exact() -> None:
             )
 
 
-def test_packaged_summary_accepts_expected_transition_in_json_key_order() -> None:
+def test_packaged_summary_accepts_host_native_transition_in_json_key_order() -> None:
     module = load_script_module(
         REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
     )
