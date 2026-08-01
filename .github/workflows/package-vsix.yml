@@ -1,4 +1,5 @@
 name: Package and Publish VSIX
+run-name: "Package VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"
 
 on:
   workflow_dispatch:

@@ -92,6 +92,28 @@ def test_native_build_scripts_run_packaged_sync_smoke(build_script: Path):
     assert "smoke-test-packaged-sync.py" in text
 
 
+def test_package_workflow_exposes_dispatch_input_in_run_identity() -> None:
+    text = (ROOT / ".github/workflows/package-vsix.yml").read_text(encoding="utf-8")
+    assert 'run-name: "Package VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"' in text
+
+
+def test_native_build_scripts_run_parallel_smoke_before_transfer_smoke() -> None:
+    windows = (ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
+    macos = (ROOT / "scripts/build-macos-arm64-exe.sh").read_text(encoding="utf-8")
+    assert "RuntimeInformation.ProcessArchitecture" in windows
+    assert "Architecture.X64" in windows
+    assert "--expected-target win32-x64" in windows
+    assert windows.index("packaged_parallel_cache_smoke.py") < windows.index(
+        "smoke-test-packaged-sync.py"
+    )
+    assert "uname -s" in macos
+    assert "uname -m" in macos
+    assert "--expected-target darwin-arm64" in macos
+    assert macos.index("packaged_parallel_cache_smoke.py") < macos.index(
+        "smoke-test-packaged-sync.py"
+    )
+
+
 def test_release_workflow_keeps_only_supported_platform_targets() -> None:
     workflow = read_workflow()
 

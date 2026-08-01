@@ -1,10 +1,20 @@
+using namespace System.Runtime.InteropServices
+
 $ErrorActionPreference = "Stop"
+
+if (
+    -not [RuntimeInformation]::IsOSPlatform([OSPlatform]::Windows) -or
+    [RuntimeInformation]::ProcessArchitecture -ne [Architecture]::X64
+) {
+    throw "This script requires Windows Architecture.X64 from RuntimeInformation.ProcessArchitecture."
+}
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $distDir = Join-Path $repoRoot "extensions\vscode\bin\win32-x64"
 $workDir = Join-Path $repoRoot "build\pyinstaller"
 $entryPoint = Join-Path $repoRoot "src\codex_usage\__main__.py"
 $exePath = Join-Path $distDir "codex-usage.exe"
+$parallelSmokeScript = Join-Path $repoRoot "scripts\packaged_parallel_cache_smoke.py"
 $smokeScript = Join-Path $repoRoot "scripts\smoke-test-packaged-sync.py"
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
@@ -35,6 +45,11 @@ try {
     & $exePath --help | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Packaged executable --help exited with code $LASTEXITCODE"
+    }
+
+    uv run python $parallelSmokeScript --executable $exePath --expected-target win32-x64
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged parallel cache smoke test exited with code $LASTEXITCODE"
     }
 
     uv run python $smokeScript --executable $exePath

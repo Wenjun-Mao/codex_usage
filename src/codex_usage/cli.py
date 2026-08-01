@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,7 @@ from codex_usage.aggregation import (
 )
 from codex_usage.discovery import collect_jsonl_files, find_session_dirs
 from codex_usage.models import UsageRecord
+from codex_usage.parallel_audit import write_parallel_audit
 from codex_usage.parser import parse_session_files
 from codex_usage.project_identity import normalize_project_key
 from codex_usage.project_transitions import (
@@ -212,6 +214,7 @@ def handle_threads(args: argparse.Namespace) -> int:
         session_dirs,
         auto_transitions=_auto_project_transitions_enabled(args, settings),
     )
+    _write_requested_parallel_audit(args, data)
     threads = list_threads_from_cached_data(data, project_keys=project_keys)
     payload = {"threads": [thread.to_dict() for thread in threads], "project_keys": project_keys}
     if args.json:
@@ -317,6 +320,7 @@ def _load_context(args: argparse.Namespace) -> _Context:
     session_dirs = find_session_dirs()
     auto_transitions = _auto_project_transitions_enabled(args, settings)
     data = _load_session_data(session_dirs, auto_transitions=auto_transitions)
+    _write_requested_parallel_audit(args, data)
     project_keys = _normalize_project_keys(args.project_key)
     range_records = filter_records_by_range(data.records, args.range_name, timezone)
     filtered_records = filter_records_by_project_keys(range_records, project_keys)
@@ -353,6 +357,11 @@ def _load_session_data(session_dirs: list[Path], *, auto_transitions: bool) -> C
 
 
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--parallel-audit",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--timezone", help="IANA timezone name, for example America/Toronto.")
     parser.add_argument(
         "--project-key",
@@ -363,6 +372,21 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         "--no-auto-transitions",
         action="store_true",
         help="Disable automatic project transition inference.",
+    )
+
+
+def _write_requested_parallel_audit(
+    args: argparse.Namespace,
+    data: CachedSessionData,
+) -> None:
+    path = getattr(args, "parallel_audit", None)
+    if path is None:
+        return
+    write_parallel_audit(
+        path,
+        parent_pid=os.getpid(),
+        usage_run=data.usage_run,
+        transition_run=data.transition_run,
     )
 
 
