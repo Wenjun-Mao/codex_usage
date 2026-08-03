@@ -425,11 +425,11 @@ test("native release jobs gate direct Codex registration before VSIX packaging",
   assert.doesNotMatch(appServer, /\b(?:exec|execFile|spawnSync)\s*\(/);
 });
 
-test("package metadata is ready for Marketplace preview publishing", () => {
+test("package metadata is ready for stable Marketplace publishing", () => {
   assert.equal(packageJson.publisher, "wenjun-mao");
   assert.equal(packageJson.private, undefined);
-  assert.equal(packageJson.version, "0.1.42");
-  assert.equal(packageJson.preview, true);
+  assert.equal(packageJson.version, "1.0.0");
+  assert.equal(packageJson.preview, undefined);
   assert.equal(packageJson.repository.url, "https://github.com/Wenjun-Mao/codex_usage.git");
   assert.match(packageJson.description, /local/i);
   assert.match(packageJson.description, /Codex/i);
@@ -443,9 +443,12 @@ test("extension package includes Marketplace support documents", () => {
   const support = fs.readFileSync(path.join(extensionRoot, "SUPPORT.md"), "utf8");
   const readme = fs.readFileSync(path.join(extensionRoot, "README.md"), "utf8");
 
-  assert.match(changelog, /0\.1\.29/);
+  assert.match(changelog, /1\.0\.0/);
   assert.match(support, /GitHub Issues/i);
+  assert.doesNotMatch(support, /Preview/i);
+  assert.match(support, /Task Transfer/i);
+  assert.doesNotMatch(support, /sync issues/i);
   assert.match(readme, /Windows x64/i);
-  assert.match(readme, /Preview/i);
+  assert.doesNotMatch(readme, /Preview/i);
   assert.match(readme, /fast mode/i);
 });

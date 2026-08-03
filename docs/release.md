@@ -1,6 +1,6 @@
-# Marketplace Preview Release Checklist
+# Marketplace Release Checklist
 
-This project is prepared for Windows x64 and macOS Apple Silicon Marketplace preview distribution. Linux packaging is a follow-up and is not a supported or hidden publication target for this release. Confirm the Marketplace publisher id `wenjun-mao` exists before publishing.
+This project is prepared for Windows x64 and macOS Apple Silicon Marketplace distribution. Linux packaging is a follow-up and is not a supported or hidden publication target for this release. Confirm the Marketplace publisher id `wenjun-mao` exists before publishing.
 
 ## Build And Test
 
@@ -37,7 +37,7 @@ output/releases/codex-usage-dashboard-darwin-arm64.vsix
 
 The repository has a `Package and Publish VSIX` workflow that builds both platform packages on native GitHub-hosted runners.
 
-Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version and points at a commit contained in `origin/main`, such as `v0.1.42`, also builds and publishes both packages.
+Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version and points at a commit contained in `origin/main`, such as `v1.0.0`, also builds and publishes both packages.
 
 Publishing requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
 
@@ -45,7 +45,7 @@ Publishing requires the repository Actions secret `VSCE_PAT`. The token must hav
 
 Run the guarded source acceptance and confirm its aggregate audit records non-parent worker PIDs, overlapping worker spans, and no serial fallback.
 
-After merged `main` is pushed, dispatch a non-publishing native workflow with `publish=false`, match it to the new `main` commit, and require both native package jobs to pass. Complete both gates before creating v0.1.42.
+After merged `main` is pushed, dispatch a non-publishing native workflow with `publish=false`, match it to the new `main` commit, and require both native package jobs to pass. Complete both gates before creating v1.0.0.
 
 ## Inspect The VSIX
 
@@ -93,11 +93,11 @@ The archive should not include:
 Before publishing:
 
 - Confirm the Visual Studio Marketplace publisher id is `wenjun-mao`.
-- Confirm `extensions/vscode/package.json` has `"preview": true`.
+- Confirm `extensions/vscode/package.json` does not contain a `preview` field.
 - Confirm `extensions/vscode/package.json` does not have `"private": true`.
 - Confirm the package targets are Windows x64 and macOS Apple Silicon.
 - Confirm no Linux package or Marketplace target is included; Linux remains follow-up work.
-- Confirm the extension README clearly says Windows x64 and macOS Apple Silicon Preview.
+- Confirm the extension README clearly identifies Windows x64 and macOS Apple Silicon as the supported platforms.
 - Confirm `PRIVACY.md`, `LICENSE`, `CHANGELOG.md`, and `SUPPORT.md` are current.
 - Confirm pricing notes say pricing is checked-in and effective-dated, with no live fetch.
 - Confirm Codex fast mode is documented as counted through recorded tokens but not separately labeled because Codex does not expose a durable per-turn fast-mode marker in JSONL.
@@ -201,7 +201,7 @@ uv run codex-usage storage snapshot --json > output\storage-snapshot-after-delet
 uv run codex-usage summary --range all --by session --json > output\delete-experiment-after-summary.json
 ```
 
-Do not use a task needed for Task Transfer testing. This beta preserves parsed historical usage but cannot restore a deleted Codex task.
+Do not use a task needed for Task Transfer testing. This release preserves parsed historical usage but cannot restore a deleted Codex task.
 
 ## Codex Delete Behavior Observation
 
@@ -210,9 +210,9 @@ Observed on Windows with Codex app build current as of 2026-05-27:
 - Archive moves session JSONL files from `sessions` to `archived_sessions`.
 - Delete removed the archived session JSONL from local Codex storage; Codex Usage retained historical usage from cache.
 
-## Preview Notes
+## Release Notes
 
-- Preview targets are Windows x64 and macOS Apple Silicon.
+- Supported targets are Windows x64 and macOS Apple Silicon.
 - Linux packaging is follow-up work and is not supported in this release.
 - The VSIX is self-contained and does not require Python, `uv`, or this repository at runtime.
 - Intel macOS is not supported.

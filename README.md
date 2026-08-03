@@ -7,12 +7,12 @@ Local tooling for understanding Codex token usage, project activity, Codex credi
 This repository contains:
 
 - A Python CLI, `codex-usage`, for parsing local Codex session logs.
-- A Windows x64 and macOS Apple Silicon VS Code extension preview that bundles the Python CLI.
+- A Windows x64 and macOS Apple Silicon VS Code extension that bundles the Python CLI.
 - A dependency-light dashboard report rendered with local HTML, CSS, and inline SVG.
 
-## VS Code Preview Packages
+## VS Code Packages
 
-The current preview packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
+The stable packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
 
 Build and install the local macOS Apple Silicon VSIX:
 
@@ -79,7 +79,7 @@ Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser
 
 ### Performance Cache
 
-The VS Code preview stores a local SQLite cache under VS Code global extension storage. The first dashboard open may say "Initializing Codex usage cache" and take a few seconds while existing Codex JSONL files are parsed. Later range switches and project pickers reuse unchanged parsed rows and should usually feel much faster. The cache is local only, can be rebuilt automatically after schema changes, and does not change pricing semantics because costs are still calculated from checked-in effective-dated rates at report time.
+The VS Code extension stores a local SQLite cache under VS Code global extension storage. The first dashboard open may say "Initializing Codex usage cache" and take a few seconds while existing Codex JSONL files are parsed. Later range switches and project pickers reuse unchanged parsed rows and should usually feel much faster. The cache is local only, can be rebuilt automatically after schema changes, and does not change pricing semantics because costs are still calculated from checked-in effective-dated rates at report time.
 
 Invalidated cache entries are refreshed by reparsing complete files from byte zero with at most four worker processes. SQLite remains in the parent process, which atomically commits groups of up to eight complete-file replacements. Those committed batches are reusable after interruption, and recovery adds no within-file checkpoint or range pruning.
 

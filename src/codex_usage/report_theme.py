@@ -226,9 +226,13 @@ def report_css() -> str:
     .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 18px; }
     .section { border-top: 1px solid var(--border); padding-top: 18px; }
     .chart-scroll { overflow-x: auto; padding-bottom: 4px; }
-    .tooltip-chart-scroll,
+    .tooltip-chart-scroll {
+      /* Horizontal scroll containers clip vertical overflow, so reserve a full multiline tooltip lane. */
+      --chart-tooltip-top-reserve: 80px;
+      padding-top: var(--chart-tooltip-top-reserve);
+      margin-top: calc(12px - var(--chart-tooltip-top-reserve));
+    }
     .heatmap-chart-scroll {
-      /* Horizontal scroll containers clip vertical overflow, so reserve hover space for the top row. */
       padding-top: 56px;
       margin-top: -44px;
     }

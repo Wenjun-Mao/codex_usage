@@ -3,8 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local Codex token usage dashboard with optional cross-computer Codex task transfer.",
   "publisher": "wenjun-mao",
-  "version": "0.1.42",
-  "preview": true,
+  "version": "1.0.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {

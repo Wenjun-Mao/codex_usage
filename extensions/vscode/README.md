@@ -1,6 +1,6 @@
 # Codex Usage Dashboard
 
-Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local Codex token usage, project rollups, Codex credits, and API-equivalent cost estimates.
+Stable Windows x64 and macOS Apple Silicon VS Code extension for viewing local Codex token usage, project rollups, Codex credits, and API-equivalent cost estimates.
 
 ![Synthetic Codex Usage Dashboard screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/dashboard-synthetic.png)
 
@@ -16,9 +16,9 @@ Windows x64 and macOS Apple Silicon Preview VS Code extension for viewing local 
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, daily/hourly views, project breakdown, and model mix.
 - Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
 
-## Preview Status
+## Supported Platforms
 
-This Marketplace preview supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
+The stable Marketplace release supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
 
 ## Commands
 
@@ -90,7 +90,7 @@ Automatic project transition detection uses read-only evidence from local Codex 
 
 The dashboard transition table shows source, target, effective timestamp, and confidence. Use `Codex Usage: Review Project Transitions` for detailed evidence and Task IDs.
 
-## Preview Install
+## Install
 
 Windows x64:
 

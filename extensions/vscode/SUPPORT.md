@@ -1,6 +1,6 @@
 # Support
 
-Codex Usage Dashboard is a Windows x64 and macOS Apple Silicon preview extension. Please use GitHub Issues for bug reports, feature requests, and preview feedback:
+Codex Usage Dashboard supports Windows x64 and macOS Apple Silicon. Please use GitHub Issues for bug reports, feature requests, and support:
 
 https://github.com/Wenjun-Mao/codex_usage/issues
 
@@ -15,4 +15,4 @@ When reporting a problem, include:
 
 Please do not attach raw Codex JSONL session logs publicly. They can contain local paths, repository URLs, prompts, and other private project context.
 
-For sync issues, include whether sync is manual-only or automatic, which sync folder provider you use, and whether `Codex Usage: Sync Status` reports conflicts.
+For Task Transfer issues, include the operation you ran, the transfer-folder provider, both computers' operating systems, and the relevant `Codex Usage` output-channel error.

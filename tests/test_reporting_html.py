@@ -58,6 +58,9 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(t
     assert 'role="img" aria-label="Daily API-equivalent cost trend"' in html
     assert 'role="grid" aria-label="Hourly API-equivalent cost heatmap"' in html
     assert 'class="chart-scroll tooltip-chart-scroll"' in html
+    assert "--chart-tooltip-top-reserve: 80px;" in html
+    assert "padding-top: var(--chart-tooltip-top-reserve);" in html
+    assert "margin-top: calc(12px - var(--chart-tooltip-top-reserve));" in html
     assert "daily-bar-chart" in html
     assert "breakdown-bar-chart" in html
     assert "chart-tooltip-main" in html

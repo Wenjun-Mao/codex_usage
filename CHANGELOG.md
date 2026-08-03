@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.0 - 2026-08-03 - Stable Marketplace Release
+
+- Promoted the Windows x64 and macOS Apple Silicon Marketplace packages from Preview to stable `1.0.0` after both native packaged Task Transfer gates passed.
+- Prevented multiline Project Breakdown and Model Mix tooltips from being clipped at the top edge of horizontally scrollable charts.
+
 ## 0.1.42 - 2026-07-31 - Faster Root-Task Transfer And Usage Refresh
 
 - Listed only active user-visible root tasks in Task Transfer while keeping subagent usage in dashboard totals.
