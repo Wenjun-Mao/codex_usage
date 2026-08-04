@@ -163,6 +163,25 @@ def test_build_report_breakdown_handles_small_unknown_role_only_and_empty_inputs
     assert build_report_breakdown([]).model_rows == ()
 
 
+def test_build_report_breakdown_omits_zero_token_records_from_visible_rows() -> None:
+    records = [
+        _record("empty", "Empty", "root", "zero-only-model", total=0),
+        _record("active", "Active", "root", "positive-model", total=10),
+        _record("active", "Active", "subagent", "zero-role-model", total=0),
+    ]
+
+    breakdown = build_report_breakdown(records)
+
+    assert [project.row.key for project in breakdown.projects] == ["active"]
+    assert breakdown.projects[0].row.usage.total_tokens == 10
+    assert breakdown.projects[0].row.record_count == 1
+    assert [role.role for role in breakdown.projects[0].roles] == ["root"]
+    assert [row.key for row in breakdown.projects[0].roles[0].model_rows] == ["positive-model"]
+    assert [row.key for row in breakdown.model_rows] == ["positive-model"]
+    assert [bucket.key for bucket in breakdown.visual_models] == ["positive-model"]
+    assert [row.key for row in breakdown.visual_model_rows] == ["positive-model"]
+
+
 def test_build_report_breakdown_conserves_effective_dated_pricing_through_other() -> None:
     records = [
         _record("alpha", "Alpha", "root", "gpt-5.6-sol", total=100),

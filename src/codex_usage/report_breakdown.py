@@ -64,6 +64,8 @@ def build_report_breakdown(
     model_totals: dict[str, UsageSummary] = {}
 
     for record in records:
+        if record.usage.total_tokens <= 0:
+            continue
         record_summary = summarize_record(record)
         project_labels[record.project_key] = record.project_label
         project_totals[record.project_key] = _add(
@@ -81,11 +83,13 @@ def build_report_breakdown(
         for model, summary in sorted(
             model_totals.items(), key=lambda item: (-item[1].usage.total_tokens, item[0])
         )
+        if summary.usage.total_tokens > 0
     )
     visual_model_rows = tuple(
         _row(bucket.key, bucket.label, summary)
         for bucket in visual_models
         if (summary := _models_summary(model_totals, bucket.exact_models)) is not None
+        and summary.usage.total_tokens > 0
     )
     projects = tuple(
         _project_breakdown(
@@ -99,6 +103,7 @@ def build_report_breakdown(
             project_totals,
             key=lambda key: (-project_totals[key].usage.total_tokens, key),
         )
+        if project_totals[project_key].usage.total_tokens > 0
     )
     report = ReportBreakdown(
         visual_models=visual_models,
@@ -155,6 +160,7 @@ def _project_breakdown(
                 if (
                     summary := _models_summary(role_models[role], bucket.exact_models)
                 ) is not None
+                and summary.usage.total_tokens > 0
             ),
         )
         for role in _ROLE_ORDER
