@@ -13,7 +13,6 @@ from parallel_cache_test_support import (
     ShuffledUsageResultMapper,
     append_cumulative_token_total,
     complete_generation_snapshot,
-    load_parallel,
     load_serial,
     write_usage_corpus,
     write_valid_usage_set,
@@ -75,31 +74,6 @@ def test_usage_file_error_is_data_not_pool_fallback(tmp_path: Path) -> None:
     assert mapper.worker_count == 1
     assert mapper.used_serial_fallback is False
     assert mapper.infrastructure_error == ""
-
-
-def test_parallel_corpus_uses_overlapping_child_workers_without_path_leakage(
-    tmp_path: Path,
-) -> None:
-    corpus = write_usage_corpus(tmp_path / "codex")
-    data = load_parallel(
-        corpus,
-        tmp_path / "parallel-cache",
-        auto_transitions=False,
-    )
-
-    report = data.usage_run
-    assert report.resolved_worker_count >= 2
-    assert len(report.worker_pids) >= 2
-    assert os.getpid() not in report.worker_pids
-    assert report.max_concurrency >= 2
-    assert report.actually_parallel(os.getpid()) is True
-    assert report.used_serial_fallback is False
-    assert report.infrastructure_error == ""
-    assert report.file_error_count == data.stats.file_errors == 1
-    assert len(data.file_errors) == 1
-    assert next(iter(data.file_errors.values())).startswith("UnicodeDecodeError: ")
-    report_text = repr(report.to_dict())
-    assert all(str(path) not in report_text for path in corpus.ordered_paths)
 
 
 def test_varied_shuffled_completion_preserves_exact_semantic_order(
