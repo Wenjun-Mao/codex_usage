@@ -52,6 +52,30 @@ def test_report_view_model_keeps_all_project_details_but_limits_chart_to_twelve(
     assert view_model.project_points == list(view_model.project_detail_points[:12])
 
 
+def test_report_view_model_uses_project_key_for_tied_top_twelve_membership() -> None:
+    records = [
+        _record(
+            f"project-{number:02d}",
+            f"Project {number:02d}",
+            "root",
+            "gpt-5.6-sol",
+            total=100,
+        )
+        for number in range(13)
+    ]
+
+    view_model = _view_model(records)
+    reversed_view_model = _view_model(list(reversed(records)))
+
+    expected_keys = [f"project-{number:02d}" for number in range(12)]
+    assert [point.key for point in view_model.project_points] == expected_keys
+    assert [point.key for point in reversed_view_model.project_points] == expected_keys
+    assert [point.key for point in view_model.project_detail_points] == [
+        *expected_keys,
+        "project-12",
+    ]
+
+
 def test_report_view_model_reserves_other_model_color_slot_seven() -> None:
     records = [
         _record("demo", "demo", "root", f"model-{number}", total=100 - number)

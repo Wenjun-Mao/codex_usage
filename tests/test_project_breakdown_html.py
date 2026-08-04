@@ -161,6 +161,17 @@ def test_breakdown_css_uses_non_layout_segment_and_model_mix_boundaries(
     assert "box-shadow: inset 0 0 0 1px var(--model-separator);" in html
 
 
+def test_project_role_fill_boundary_keeps_tooltips_outside_its_clip(tmp_path: Path) -> None:
+    html = _render_report(tmp_path, [])
+
+    role_group_css = html.split(".project-role-group {", 1)[1].split("}", 1)[0]
+
+    assert "overflow: visible;" in role_group_css
+    assert ".model-segment:first-child { border-radius: 3px 0 0 3px; }" in html
+    assert ".model-segment:last-child { border-radius: 0 3px 3px 0; }" in html
+    assert ".model-segment:only-child { border-radius: 3px; }" in html
+
+
 def test_project_role_stack_reserves_space_for_labels_and_groups(tmp_path: Path) -> None:
     html = _render_report(tmp_path, [])
 

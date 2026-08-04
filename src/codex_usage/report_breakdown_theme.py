@@ -82,8 +82,11 @@ _PROJECT_BREAKDOWN_CSS = """
     .project-role-heading { container-type: inline-size; overflow: hidden; min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
     .project-role-heading-label { color: var(--text); font-weight: 650; }
     .project-role-heading-detail { margin-left: 4px; font-variant-numeric: tabular-nums; }
-    .project-role-group { display: flex; overflow: hidden; min-width: 0; border: 1px solid var(--border); border-radius: 4px; }
+    .project-role-group { position: relative; display: flex; overflow: visible; min-width: 0; border: 1px solid var(--border); border-radius: 4px; }
     .model-segment { position: relative; display: block; flex: 0 0 auto; height: 100%; outline: none; }
+    .model-segment:first-child { border-radius: 3px 0 0 3px; }
+    .model-segment:last-child { border-radius: 0 3px 3px 0; }
+    .model-segment:only-child { border-radius: 3px; }
     .model-segment:hover { filter: brightness(1.12); z-index: 3; }
     .model-segment + .model-segment { box-shadow: inset 1px 0 0 var(--model-separator); }
     .model-segment:focus-visible {

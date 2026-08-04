@@ -104,7 +104,7 @@ def build_report_breakdown(
         )
         for project_key in sorted(
             project_totals,
-            key=lambda key: -project_totals[key].usage.total_tokens,
+            key=lambda key: (-project_totals[key].usage.total_tokens, key),
         )
         if project_totals[project_key].usage.total_tokens > 0
     )

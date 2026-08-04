@@ -109,6 +109,7 @@ def capture_marketplace_screenshot(report_path: Path, output_path: Path) -> None
             page.set_viewport_size(NARROW_VIEWPORT)
             _validate_browser_layout(page, NARROW_VIEWPORT["width"])
             page.set_viewport_size(VIEWPORT)
+            _clear_tooltip_interaction(page)
             page.screenshot(path=str(output_path), full_page=False)
         finally:
             browser.close()
@@ -187,21 +188,85 @@ def _validate_focused_tooltips(page: Page, viewport_width: int) -> None:
         raise RuntimeError("expected at least two model segments")
     for index in (0, segment_count - 1):
         segment = segments.nth(index)
+        segment.hover()
+        _validate_visible_tooltip(segment, viewport_width, interaction="hovered")
         segment.focus()
         page.wait_for_timeout(50)
-        tooltip = segment.locator(".chart-tooltip").bounding_box()
-        scroll = _ancestor(segment, "tooltip-chart-scroll").bounding_box()
-        if tooltip is None or scroll is None:
-            raise RuntimeError("focused model segment is missing geometry")
-        tooltip_x, tooltip_y, tooltip_width, tooltip_height = _box_values(tooltip)
-        _, scroll_y, _, scroll_height = _box_values(scroll)
-        if (
-            tooltip_y < scroll_y
-            or tooltip_y + tooltip_height > scroll_y + scroll_height
-            or tooltip_x < 0
-            or tooltip_x + tooltip_width > viewport_width
-        ):
-            raise RuntimeError("focused model tooltip escapes its visible chart area")
+        _validate_visible_tooltip(segment, viewport_width, interaction="focused")
+
+
+def _validate_visible_tooltip(
+    segment: Locator, viewport_width: int, *, interaction: str
+) -> None:
+    diagnostics = segment.locator(".chart-tooltip").evaluate(
+        """
+        tooltip => {
+          const rect = tooltip.getBoundingClientRect();
+          const clippingAncestors = [];
+          for (let ancestor = tooltip.parentElement; ancestor; ancestor = ancestor.parentElement) {
+            const style = getComputedStyle(ancestor);
+            const ancestorRect = ancestor.getBoundingClientRect();
+            const clipsX = style.overflowX !== "visible";
+            const clipsY = style.overflowY !== "visible";
+            const clippedX = clipsX && (rect.left < ancestorRect.left || rect.right > ancestorRect.right);
+            const clippedY = clipsY && (rect.top < ancestorRect.top || rect.bottom > ancestorRect.bottom);
+            if (clippedX || clippedY) {
+              clippingAncestors.push(ancestor.className || ancestor.tagName);
+            }
+          }
+          const originalPointerEvents = tooltip.style.pointerEvents;
+          tooltip.style.pointerEvents = "auto";
+          const hit = document.elementFromPoint(
+            rect.left + Math.min(rect.width / 2, Math.max(1, rect.width - 1)),
+            rect.top + Math.min(rect.height / 2, Math.max(1, rect.height - 1)),
+          );
+          tooltip.style.pointerEvents = originalPointerEvents;
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            clipping_ancestors: clippingAncestors,
+            hit_inside: Boolean(hit && tooltip.contains(hit)),
+          };
+        }
+        """
+    )
+    if not isinstance(diagnostics, dict):
+        raise RuntimeError(f"{interaction} model tooltip is missing diagnostics")
+    if error := _tooltip_visibility_error(diagnostics, viewport_width=viewport_width):
+        raise RuntimeError(f"{interaction} model tooltip {error}")
+
+
+def _tooltip_visibility_error(
+    tooltip: dict[str, object], *, viewport_width: int
+) -> str | None:
+    tooltip_x = float(tooltip["x"])
+    tooltip_y = float(tooltip["y"])
+    tooltip_width = float(tooltip["width"])
+    tooltip_height = float(tooltip["height"])
+    clipping_ancestors = tooltip["clipping_ancestors"]
+    if not isinstance(clipping_ancestors, list):
+        return "has invalid ancestor clipping diagnostics"
+    if clipping_ancestors:
+        ancestors = ", ".join(str(ancestor) for ancestor in clipping_ancestors)
+        return f"is clipped by ancestor overflow: {ancestors}"
+    if not tooltip.get("hit_inside"):
+        return "is not reachable by tooltip hit-testing"
+    if (
+        tooltip_y < 0
+        or tooltip_x < 0
+        or tooltip_x + tooltip_width > viewport_width
+        or tooltip_height <= 0
+    ):
+        return "escapes its visible chart area"
+    return None
+
+
+def _clear_tooltip_interaction(page: Page) -> None:
+    page.mouse.move(0, 0)
+    page.evaluate("document.activeElement?.blur()")
+    page.wait_for_timeout(100)
 
 
 def _validate_role_group_geometry(page: Page) -> None:

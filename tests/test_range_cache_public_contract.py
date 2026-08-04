@@ -19,7 +19,9 @@ from codex_usage.reporting import (
 from codex_usage.session_cache import load_cached_session_data
 
 
-def test_cached_range_preserves_inventory_order_for_tied_report_rows(tmp_path: Path) -> None:
+def test_cached_range_uses_stable_project_key_order_for_tied_report_chart_rows(
+    tmp_path: Path,
+) -> None:
     sessions = tmp_path / "codex" / "sessions"
     _write_session(
         sessions / "001-zeta.jsonl",
@@ -84,7 +86,7 @@ def test_cached_range_preserves_inventory_order_for_tied_report_rows(tmp_path: P
         files_scanned=len(ranged.files),
     )
     html = report_path.read_text(encoding="utf-8")
-    assert html.index("zeta") < html.index("alpha")
+    assert html.index("alpha") < html.index("zeta")
 
 
 def test_cached_range_uses_last_parent_identity_by_record_index(tmp_path: Path) -> None:

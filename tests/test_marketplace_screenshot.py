@@ -89,3 +89,56 @@ def test_visible_scroll_metrics_ignore_hidden_sections() -> None:
     ]
 
     assert screenshot_module._visible_scroll_metrics(metrics) == [metrics[1]]
+
+
+def test_tooltip_visibility_gate_rejects_ancestor_clipping_and_missed_hit_tests() -> None:
+    screenshot_module = _load_screenshot_module()
+    tooltip = {
+        "x": 120,
+        "y": 80,
+        "width": 160,
+        "height": 40,
+        "clipping_ancestors": ["project-role-group"],
+        "hit_inside": True,
+    }
+
+    assert "project-role-group" in screenshot_module._tooltip_visibility_error(
+        tooltip, viewport_width=720
+    )
+
+    tooltip["clipping_ancestors"] = []
+    tooltip["hit_inside"] = False
+    assert "hit-testing" in screenshot_module._tooltip_visibility_error(
+        tooltip, viewport_width=720
+    )
+
+
+def test_clear_tooltip_interaction_blurs_focus_and_moves_the_pointer() -> None:
+    screenshot_module = _load_screenshot_module()
+
+    class FakeMouse:
+        def __init__(self) -> None:
+            self.positions: list[tuple[int, int]] = []
+
+        def move(self, x: int, y: int) -> None:
+            self.positions.append((x, y))
+
+    class FakePage:
+        def __init__(self) -> None:
+            self.mouse = FakeMouse()
+            self.scripts: list[str] = []
+            self.waits: list[int] = []
+
+        def evaluate(self, script: str) -> None:
+            self.scripts.append(script)
+
+        def wait_for_timeout(self, timeout: int) -> None:
+            self.waits.append(timeout)
+
+    page = FakePage()
+
+    screenshot_module._clear_tooltip_interaction(page)
+
+    assert page.mouse.positions == [(0, 0)]
+    assert page.scripts == ["document.activeElement?.blur()"]
+    assert page.waits == [100]

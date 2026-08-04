@@ -197,6 +197,24 @@ def test_build_report_breakdown_omits_zero_token_records_from_visible_rows() -> 
     assert [row.key for row in breakdown.visual_model_rows] == ["positive-model"]
 
 
+def test_build_report_breakdown_orders_tied_projects_by_project_key() -> None:
+    records = [
+        _record("zeta", "Zeta", "root", "gpt-5.6-sol", total=100),
+        _record("alpha", "Alpha", "root", "gpt-5.6-sol", total=100),
+        _record("middle", "Middle", "root", "gpt-5.6-sol", total=100),
+    ]
+
+    breakdown = build_report_breakdown(records)
+    reversed_breakdown = build_report_breakdown(list(reversed(records)))
+
+    assert [project.row.key for project in breakdown.projects] == [
+        "alpha",
+        "middle",
+        "zeta",
+    ]
+    assert breakdown.projects == reversed_breakdown.projects
+
+
 def test_build_report_breakdown_conserves_effective_dated_pricing_through_other() -> None:
     records = [
         _record("alpha", "Alpha", "root", "gpt-5.6-sol", total=100),
