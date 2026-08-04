@@ -6,11 +6,46 @@ from collections.abc import Collection, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
+from codex_usage.aggregation import RangeBounds
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.parser import parse_timestamp
 from codex_usage.session_generation_models import RawRepoPathCandidate
 
 _MAX_IN_QUERY_IDS = 500
+_RANGE_QUERY_SQL = {
+    "all": """
+        select usage_records.*
+        from usage_records
+        join files on files.file_key = usage_records.file_key
+        where files.file_key = files.session_id
+        order by usage_records.file_key, usage_records.record_index
+    """,
+    "start": """
+        select usage_records.*
+        from usage_records
+        join files on files.file_key = usage_records.file_key
+        where files.file_key = files.session_id
+            and usage_records.timestamp_us >= ?
+        order by usage_records.file_key, usage_records.record_index
+    """,
+    "end": """
+        select usage_records.*
+        from usage_records
+        join files on files.file_key = usage_records.file_key
+        where files.file_key = files.session_id
+            and usage_records.timestamp_us < ?
+        order by usage_records.file_key, usage_records.record_index
+    """,
+    "bounded": """
+        select usage_records.*
+        from usage_records
+        join files on files.file_key = usage_records.file_key
+        where files.file_key = files.session_id
+            and usage_records.timestamp_us >= ?
+            and usage_records.timestamp_us < ?
+        order by usage_records.file_key, usage_records.record_index
+    """,
+}
 
 
 def row_to_usage_record(row: sqlite3.Row) -> UsageRecord:
@@ -39,6 +74,54 @@ def row_to_usage_record(row: sqlite3.Row) -> UsageRecord:
         git_branch=row["git_branch"] or "",
         parent_thread_id=row["parent_thread_id"] or "",
     )
+
+
+def load_records_for_range(
+    connection: sqlite3.Connection,
+    selected_keys: Collection[str],
+    bounds: RangeBounds,
+) -> list[UsageRecord]:
+    selected = {file_key for file_key in selected_keys if file_key}
+    if not selected:
+        return []
+
+    query_name, parameters = _range_query_parameters(bounds)
+    records_by_file_key: dict[str, list[UsageRecord]] = {}
+    for row in connection.execute(_RANGE_QUERY_SQL[query_name], parameters):
+        file_key = str(row["file_key"])
+        if file_key in selected:
+            records_by_file_key.setdefault(file_key, []).append(row_to_usage_record(row))
+    return [
+        record
+        for file_key in sorted(records_by_file_key)
+        for record in records_by_file_key[file_key]
+    ]
+
+
+def load_parent_identity_records(
+    connection: sqlite3.Connection,
+    parent_thread_ids: Collection[str],
+) -> list[UsageRecord]:
+    identities: dict[str, UsageRecord] = {}
+    for parent_ids in _task_id_chunks(parent_thread_ids):
+        placeholders = ", ".join("?" for _ in parent_ids)
+        rows = connection.execute(
+            f"""
+            select usage_records.*
+            from usage_records
+            join files on files.file_key = usage_records.file_key
+            where usage_records.session_id in ({placeholders})
+                and files.file_key = files.session_id
+                and usage_records.git_repository_url != ''
+            order by usage_records.session_id, usage_records.timestamp_us desc,
+                usage_records.file_key desc, usage_records.record_index desc
+            """,
+            parent_ids,
+        )
+        for row in rows:
+            parent_thread_id = str(row["session_id"])
+            identities.setdefault(parent_thread_id, row_to_usage_record(row))
+    return [identities[parent_thread_id] for parent_thread_id in sorted(identities)]
 
 
 def load_records_for_task_ids(
@@ -185,3 +268,13 @@ def _task_id_chunks(task_ids: Collection[str]) -> Iterator[tuple[str, ...]]:
     ordered = tuple(sorted({task_id for task_id in task_ids if task_id}))
     for start in range(0, len(ordered), _MAX_IN_QUERY_IDS):
         yield ordered[start : start + _MAX_IN_QUERY_IDS]
+
+
+def _range_query_parameters(bounds: RangeBounds) -> tuple[str, tuple[int, ...]]:
+    if bounds.start_us is None and bounds.end_us is None:
+        return "all", ()
+    if bounds.start_us is None:
+        return "end", (bounds.end_us,)
+    if bounds.end_us is None:
+        return "start", (bounds.start_us,)
+    return "bounded", (bounds.start_us, bounds.end_us)

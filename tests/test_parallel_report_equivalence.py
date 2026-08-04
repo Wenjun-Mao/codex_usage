@@ -3,8 +3,11 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
+import pytest
 from parallel_cache_test_support import (
+    attach_transition_evidence,
     load_parallel,
     load_serial,
     render_report_text,
@@ -15,10 +18,12 @@ from codex_usage.aggregation import (
     GROUP_CHOICES,
     aggregate_records,
     filter_records_by_range,
+    resolve_range_bounds,
     resolve_timezone,
     summarize_records,
 )
 from codex_usage.reporting import summary_payload
+from codex_usage.session_cache import load_cached_session_data
 
 
 def test_serial_parallel_aggregation_payload_and_html_are_identical(
@@ -71,3 +76,49 @@ def test_old_start_and_old_mtime_do_not_prune_recent_usage(tmp_path: Path) -> No
     ranged = filter_records_by_range(data.records, "7d", resolve_timezone("UTC"))
     assert any(record.file_path == corpus.recent_old_metadata_path for record in ranged)
     assert data.stats.files_parsed == data.stats.files_current
+
+
+@pytest.mark.parametrize(
+    ("timezone", "now"),
+    [
+        (UTC, datetime(2026, 7, 31, 12, tzinfo=UTC)),
+        (
+            ZoneInfo("America/Toronto"),
+            datetime(2026, 7, 31, 12, tzinfo=ZoneInfo("America/Toronto")),
+        ),
+    ],
+)
+def test_range_queries_match_full_load_oracle_for_every_range(
+    tmp_path: Path,
+    timezone,
+    now: datetime,
+) -> None:
+    corpus = write_usage_corpus(tmp_path / "codex")
+    attach_transition_evidence(corpus)
+    cache_dir = tmp_path / "cache"
+    full = load_serial(corpus, cache_dir, auto_transitions=True)
+
+    for range_name in ("today", "yesterday", "7d", "30d", "month", "all"):
+        bounds = resolve_range_bounds(range_name, timezone, now)
+        ranged = load_cached_session_data(
+            [corpus.sessions],
+            cache_dir=cache_dir,
+            auto_transitions=True,
+            max_workers=1,
+            range_bounds=bounds,
+        )
+
+        expected = filter_records_by_range(full.records, range_name, timezone, now)
+
+        assert sorted(ranged.records, key=_record_key) == sorted(expected, key=_record_key)
+        assert ranged.project_transitions == full.project_transitions
+
+
+def _record_key(record) -> tuple[str, datetime, str, str, int]:
+    return (
+        record.session_id,
+        record.timestamp,
+        str(record.file_path),
+        record.turn_id,
+        record.usage.total_tokens,
+    )

@@ -14,8 +14,10 @@ from codex_usage.session_generation_models import (
     ParsedSessionGeneration,
     RawRepoPathCandidate,
 )
-from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
-
+from codex_usage.session_provenance import (
+    is_structured_subagent,
+    parent_thread_id_from_source,
+)
 
 _USAGE_EVENT_MARKERS = (
     '"session_meta"',
@@ -50,13 +52,20 @@ def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
     return finalize_session_records([parse_session_file(path) for path in paths])
 
 
-def finalize_session_records(records_by_file: Iterable[list[UsageRecord]]) -> list[UsageRecord]:
+def finalize_session_records(
+    records_by_file: Iterable[list[UsageRecord]],
+    *,
+    identity_records: Iterable[UsageRecord] = (),
+) -> list[UsageRecord]:
     grouped = list(records_by_file)
     identity_by_session: dict[str, UsageRecord] = {}
     for file_records in grouped:
         for record in file_records:
             if record.git_repository_url:
                 identity_by_session[record.session_id] = record
+    for record in identity_records:
+        if record.git_repository_url:
+            identity_by_session[record.session_id] = record
 
     records: list[UsageRecord] = []
     for file_records in grouped:
@@ -206,7 +215,7 @@ def parse_timestamp(value: Any) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
     if parsed.tzinfo is None:

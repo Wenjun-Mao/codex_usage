@@ -12,10 +12,12 @@ from tenacity import (
     wait_exponential,
 )
 
+import codex_usage.session_cache_queries as _queries
 import codex_usage.session_cache_refresh as _refresh
 import codex_usage.session_cache_schema as _schema
 import codex_usage.session_cache_store as _store
 import codex_usage.session_cache_transitions as _cache_transitions
+from codex_usage.aggregation import RangeBounds
 from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import EMPTY_PARALLEL_RUN_REPORT
 from codex_usage.parser import finalize_session_records
@@ -114,6 +116,7 @@ def load_cached_session_data(
     cache_dir: Path | None = None,
     auto_transitions: bool = True,
     max_workers: int | None = None,
+    range_bounds: RangeBounds | None = None,
 ) -> CachedSessionData:
     resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
     resolved_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -134,15 +137,32 @@ def load_cached_session_data(
         usage_run = refresh_outcome.usage_run
         current_keys = {entry.file_key for entry in inventory}
         missing_keys = _store._missing_file_keys(connection)
-        records_by_file_key = _store._load_records_by_file_key(
-            connection, current_keys | missing_keys
-        )
-        ordered_keys = [entry.file_key for entry in inventory] + sorted(
-            missing_keys - current_keys
-        )
-        records = finalize_session_records(
-            [records_by_file_key.get(file_key, []) for file_key in ordered_keys]
-        )
+        selected_keys = current_keys | missing_keys
+        if range_bounds is None:
+            records_by_file_key = _store._load_records_by_file_key(
+                connection, selected_keys
+            )
+            ordered_keys = [entry.file_key for entry in inventory] + sorted(
+                missing_keys - current_keys
+            )
+            records = finalize_session_records(
+                [records_by_file_key.get(file_key, []) for file_key in ordered_keys]
+            )
+        else:
+            range_records = _queries.load_records_for_range(
+                connection, selected_keys, range_bounds
+            )
+            identity_records = _queries.load_parent_identity_records(
+                connection,
+                {
+                    record.parent_thread_id
+                    for record in range_records
+                    if record.parent_thread_id
+                },
+            )
+            records = finalize_session_records(
+                [range_records], identity_records=identity_records
+            )
         transitions = _cache_transitions.refresh_dirty_task_transitions(
             connection,
             session_dirs=session_dirs,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -10,22 +9,10 @@ from codex_usage.aggregation import (
     GROUP_CHOICES,
     RANGE_CHOICES,
     aggregate_records,
-    filter_records_by_project_keys,
-    filter_records_by_range,
-    resolve_timezone,
     summarize_records,
 )
-from codex_usage.discovery import collect_jsonl_files, find_session_dirs
-from codex_usage.models import UsageRecord
-from codex_usage.parallel_audit import write_parallel_audit
-from codex_usage.parser import parse_session_files
-from codex_usage.project_identity import normalize_project_key
-from codex_usage.project_transitions import (
-    ProjectTransition,
-    apply_project_transitions,
-    collect_repo_path_observations,
-    infer_project_transitions,
-)
+from codex_usage.project_transitions import ProjectTransition
+from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.reporting import (
     print_json,
     render_html_report,
@@ -33,22 +20,35 @@ from codex_usage.reporting import (
     summary_payload,
     write_csv,
 )
-from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
-from codex_usage.session_cache import CacheStats, CachedSessionData, load_cached_session_data, uncached_session_data
 from codex_usage.session_cache_transitions import load_cached_transition_observations
-from codex_usage.session_inventory import storage_snapshots
+from codex_usage.session_inventory import find_session_dirs, storage_snapshots
 from codex_usage.settings import get_settings
 from codex_usage.sync.local_session_probe import load_local_transfer_probe
 from codex_usage.sync_cli import (
     add_sync_common_options,
     add_sync_execution_options,
     add_sync_transfer_options,
+)
+from codex_usage.sync_cli import (
     handle_sync_inventory as sync_inventory_command,
+)
+from codex_usage.sync_cli import (
     handle_sync_pull as sync_pull_command,
+)
+from codex_usage.sync_cli import (
     handle_sync_push as sync_push_command,
+)
+from codex_usage.sync_cli import (
     handle_sync_status as sync_status_command,
 )
 from codex_usage.threads import list_threads_from_cached_data
+from codex_usage.usage_context import (
+    auto_project_transitions_enabled,
+    load_session_data,
+    load_usage_context,
+    normalize_project_keys,
+    write_requested_parallel_audit,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         return args.handler(args)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - CLI handlers must present any failure uniformly.
         print(f"codex-usage: {exc}", file=sys.stderr)
         return 2
 
@@ -154,7 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def handle_summary(args: argparse.Namespace) -> int:
-    context = _load_context(args)
+    context = load_usage_context(args)
     rows = aggregate_records(context.records, args.group_by, context.timezone)
     total = summarize_records(context.records)
     generated_at = datetime.now(context.timezone)
@@ -193,7 +193,7 @@ def handle_summary(args: argparse.Namespace) -> int:
 
 
 def handle_report(args: argparse.Namespace) -> int:
-    context = _load_context(args)
+    context = load_usage_context(args)
     total = summarize_records(context.records)
     output_path = render_html_report(
         output_path=args.output,
@@ -220,12 +220,12 @@ def handle_report(args: argparse.Namespace) -> int:
 def handle_threads(args: argparse.Namespace) -> int:
     settings = get_settings()
     session_dirs = find_session_dirs()
-    project_keys = _normalize_project_keys(args.project_key)
-    data = _load_session_data(
+    project_keys = normalize_project_keys(args.project_key)
+    data = load_session_data(
         session_dirs,
-        auto_transitions=_auto_project_transitions_enabled(args, settings),
+        auto_transitions=auto_project_transitions_enabled(args, settings),
     )
-    _write_requested_parallel_audit(args, data)
+    write_requested_parallel_audit(args, data)
     threads = list_threads_from_cached_data(data, project_keys=project_keys)
     payload = {
         "threads": [thread.to_dict() for thread in threads],
@@ -243,7 +243,7 @@ def handle_threads(args: argparse.Namespace) -> int:
 
 def handle_transitions_suggest(args: argparse.Namespace) -> int:
     session_dirs = _existing_session_dirs()
-    data = _load_session_data(session_dirs, auto_transitions=True)
+    data = load_session_data(session_dirs, auto_transitions=True)
     observations = load_cached_transition_observations(session_dirs)
 
     if args.json:
@@ -309,76 +309,6 @@ def handle_sync_status(args: argparse.Namespace) -> int:
     return sync_status_command(args, load_local_transfer_probe)
 
 
-class _Context:
-    def __init__(
-        self,
-        *,
-        session_dirs: list[Path],
-        files: list[Path],
-        records,
-        timezone,
-        project_keys: list[str],
-        project_transitions: list[ProjectTransition],
-        storage_stats: CacheStats,
-    ) -> None:
-        self.session_dirs = session_dirs
-        self.files = files
-        self.records = records
-        self.timezone = timezone
-        self.project_keys = project_keys
-        self.project_transitions = project_transitions
-        self.storage_stats = storage_stats
-
-
-def _load_context(args: argparse.Namespace) -> _Context:
-    settings = get_settings()
-    timezone = resolve_timezone(args.timezone or settings.timezone)
-    session_dirs = find_session_dirs()
-    auto_transitions = _auto_project_transitions_enabled(args, settings)
-    data = _load_session_data(session_dirs, auto_transitions=auto_transitions)
-    _write_requested_parallel_audit(args, data)
-    project_keys = _normalize_project_keys(args.project_key)
-    range_records = filter_records_by_range(data.records, args.range_name, timezone)
-    filtered_records = filter_records_by_project_keys(range_records, project_keys)
-    filtered_transitions = _filter_project_transitions(
-        data.project_transitions, filtered_records
-    )
-    return _Context(
-        session_dirs=session_dirs,
-        files=data.files,
-        records=filtered_records,
-        timezone=timezone,
-        project_keys=project_keys,
-        project_transitions=filtered_transitions,
-        storage_stats=data.stats,
-    )
-
-
-def _load_session_data(
-    session_dirs: list[Path], *, auto_transitions: bool
-) -> CachedSessionData:
-    try:
-        return load_cached_session_data(session_dirs, auto_transitions=auto_transitions)
-    except Exception as exc:
-        print(
-            f"codex-usage: cache unavailable, falling back to direct parse: {exc}",
-            file=sys.stderr,
-        )
-        files = collect_jsonl_files(session_dirs)
-        records = parse_session_files(files)
-        project_transitions: list[ProjectTransition] = []
-        if auto_transitions:
-            observations = collect_repo_path_observations(session_dirs, files)
-            project_transitions = infer_project_transitions(records, observations)
-            records = apply_project_transitions(records, project_transitions)
-        return uncached_session_data(
-            session_dirs=session_dirs,
-            files=files,
-            records=records,
-            project_transitions=project_transitions,
-        )
-
-
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--parallel-audit",
@@ -400,83 +330,8 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _write_requested_parallel_audit(
-    args: argparse.Namespace,
-    data: CachedSessionData,
-) -> None:
-    path = getattr(args, "parallel_audit", None)
-    if path is None:
-        return
-    write_parallel_audit(
-        path,
-        parent_pid=os.getpid(),
-        usage_run=data.usage_run,
-        transition_run=data.transition_run,
-    )
-
-
-def _normalize_project_keys(values: list[str] | None) -> list[str]:
-    selected: list[str] = []
-    seen: set[str] = set()
-    for value in values or []:
-        key = normalize_project_key(value)
-        if key and key not in seen:
-            selected.append(key)
-            seen.add(key)
-    return selected
-
-
-def _auto_project_transitions_enabled(args: argparse.Namespace, settings) -> bool:
-    return settings.auto_project_transitions and not getattr(
-        args, "no_auto_transitions", False
-    )
-
-
 def _transition_dicts(transitions: list[ProjectTransition]) -> list[dict[str, object]]:
     return [transition.to_dict() for transition in transitions]
-
-
-def _filter_project_transitions(
-    transitions: list[ProjectTransition],
-    records: list[UsageRecord],
-) -> list[ProjectTransition]:
-    if not transitions or not records:
-        return []
-
-    keys_by_session: dict[str, set[str]] = {}
-    for record in records:
-        if not record.session_id:
-            continue
-        keys_by_session.setdefault(record.session_id, set()).update(
-            _record_project_keys(record)
-        )
-
-    filtered: list[ProjectTransition] = []
-    for transition in transitions:
-        transition_sessions = set(transition.thread_ids) or set(keys_by_session)
-        matching_sessions = transition_sessions.intersection(keys_by_session)
-        if any(
-            _transition_keys_represented(transition, keys_by_session[session_id])
-            for session_id in matching_sessions
-        ):
-            filtered.append(transition)
-    return filtered
-
-
-def _transition_keys_represented(transition: ProjectTransition, keys: set[str]) -> bool:
-    return transition.source_key in keys and transition.target_key in keys
-
-
-def _record_project_keys(record: UsageRecord) -> set[str]:
-    return {
-        key
-        for key in (
-            record.project_key,
-            record.project_previous_key,
-            *record.project_aliases,
-        )
-        if key
-    }
 
 
 def _existing_session_dirs() -> list[Path]:

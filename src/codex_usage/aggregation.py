@@ -6,11 +6,22 @@ from datetime import UTC, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from codex_usage.models import TokenUsage, UsageRecord
-from codex_usage.pricing import CostBreakdown, CreditBreakdown, estimate_codex_credits, estimate_cost
-
+from codex_usage.pricing import (
+    CostBreakdown,
+    CreditBreakdown,
+    estimate_codex_credits,
+    estimate_cost,
+)
 
 RANGE_CHOICES = ("today", "yesterday", "7d", "30d", "month", "all")
 GROUP_CHOICES = ("day", "hour", "project", "model", "session")
+_UTC_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class RangeBounds:
+    start_us: int | None
+    end_us: int | None
 
 
 @dataclass(frozen=True)
@@ -65,9 +76,39 @@ def filter_records_by_range(
     range_name: str,
     timezone: tzinfo,
     now: datetime | None = None,
+    *,
+    bounds: RangeBounds | None = None,
 ) -> list[UsageRecord]:
-    if range_name == "all":
+    bounds = bounds or resolve_range_bounds(range_name, timezone, now)
+    if bounds.start_us is None and bounds.end_us is None:
         return records
+    return [
+        record
+        for record in records
+        if (bounds.start_us is None or datetime_to_utc_microseconds(record.timestamp) >= bounds.start_us)
+        and (bounds.end_us is None or datetime_to_utc_microseconds(record.timestamp) < bounds.end_us)
+    ]
+
+
+def resolve_range_bounds(
+    range_name: str,
+    timezone: tzinfo,
+    now: datetime | None = None,
+) -> RangeBounds:
+    start, end = resolve_local_range_datetimes(range_name, timezone, now)
+    return RangeBounds(
+        start_us=datetime_to_utc_microseconds(start) if start is not None else None,
+        end_us=datetime_to_utc_microseconds(end) if end is not None else None,
+    )
+
+
+def resolve_local_range_datetimes(
+    range_name: str,
+    timezone: tzinfo,
+    now: datetime | None = None,
+) -> tuple[datetime | None, datetime | None]:
+    if range_name == "all":
+        return None, None
     if range_name not in RANGE_CHOICES:
         raise ValueError(f"Unknown range: {range_name}")
 
@@ -92,7 +133,12 @@ def filter_records_by_range(
     else:
         start, end = today_start, tomorrow_start
 
-    return [record for record in records if start <= record.timestamp.astimezone(timezone) < end]
+    return start, end
+
+
+def datetime_to_utc_microseconds(timestamp: datetime) -> int:
+    delta = timestamp.astimezone(UTC) - _UTC_EPOCH
+    return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
 
 
 def filter_records_by_project_keys(records: list[UsageRecord], project_keys: Sequence[str] | None) -> list[UsageRecord]:

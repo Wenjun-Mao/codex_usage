@@ -4,12 +4,15 @@ import json
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-import codex_usage.cli as cli_module
 import pytest
-from codex_usage.session_cache import CACHE_DB_NAME
+
+import codex_usage.cli as cli_module
+from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.session_cache import CACHE_DB_NAME, uncached_session_data
 
 
 def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
@@ -301,6 +304,7 @@ def test_cli_report_rejects_unknown_theme(tmp_path: Path) -> None:
         ],
         capture_output=True,
         text=True,
+        check=False,
     )
 
     assert result.returncode == 2
@@ -361,6 +365,80 @@ def test_main_returns_two_for_unexpected_handler_failure(
     assert capsys.readouterr().err.strip() == "codex-usage: unexpected"
 
 
+def test_usage_context_passes_resolved_range_to_cache_and_filters_project(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_usage import usage_context
+
+    sessions = Path("/sessions")
+    selected = _usage_record(datetime.now(UTC), "/repo/selected")
+    captured = {}
+
+    def load_cached(session_dirs, *, range_bounds, **_kwargs):
+        captured["session_dirs"] = session_dirs
+        captured["range_bounds"] = range_bounds
+        return uncached_session_data(session_dirs, [selected.file_path], [selected], [])
+
+    monkeypatch.setattr(usage_context, "find_session_dirs", lambda: [sessions])
+    monkeypatch.setattr(usage_context, "load_cached_session_data", load_cached)
+    args = SimpleNamespace(
+        timezone="UTC",
+        range_name="today",
+        project_key=["/repo/selected"],
+        no_auto_transitions=True,
+        parallel_audit=None,
+    )
+
+    context = usage_context.load_usage_context(args)
+
+    assert captured["session_dirs"] == [sessions]
+    assert captured["range_bounds"].start_us is not None
+    assert captured["range_bounds"].end_us is not None
+    assert context.records == [selected]
+    assert context.project_keys == ["/repo/selected"]
+
+
+def test_usage_context_filters_direct_parse_fallback_with_same_range_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_usage import usage_context
+
+    sessions = Path("/sessions")
+    now = datetime.now(UTC)
+    today = _usage_record(now, "/repo/today")
+    yesterday = _usage_record(now - timedelta(days=1), "/repo/yesterday")
+
+    def unavailable(*_args, **_kwargs):
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(usage_context, "find_session_dirs", lambda: [sessions])
+    monkeypatch.setattr(usage_context, "load_cached_session_data", unavailable)
+    monkeypatch.setattr(usage_context, "collect_jsonl_files", lambda _dirs: [today.file_path, yesterday.file_path])
+    monkeypatch.setattr(usage_context, "parse_session_files", lambda _files: [today, yesterday])
+    args = SimpleNamespace(
+        timezone="UTC",
+        range_name="today",
+        project_key=[],
+        no_auto_transitions=True,
+        parallel_audit=None,
+    )
+
+    context = usage_context.load_usage_context(args)
+
+    assert context.records == [today]
+
+
+def _usage_record(timestamp: datetime, project_key: str) -> UsageRecord:
+    return UsageRecord(
+        timestamp=timestamp,
+        usage=TokenUsage(total_tokens=1),
+        session_id=f"session-{project_key.rsplit('/', maxsplit=1)[-1]}",
+        file_path=Path(f"{project_key}/session.jsonl"),
+        project_key=project_key,
+        project_label=project_key.rsplit("/", maxsplit=1)[-1],
+    )
+
+
 def _run_cli(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
     merged_env.pop("CODEX_USAGE_SESSIONS_DIR", None)
@@ -402,13 +480,13 @@ def _turn_context_event(timestamp: str, turn_id: str) -> dict[str, object]:
 
 
 def _token_count_event(timestamp: str, total: int) -> dict[str, object]:
-    usage = dict(
-        input_tokens=total,
-        cached_input_tokens=0,
-        output_tokens=0,
-        reasoning_output_tokens=0,
-        total_tokens=total,
-    )
+    usage = {
+        "input_tokens": total,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_output_tokens": 0,
+        "total_tokens": total,
+    }
     return {
         "timestamp": timestamp,
         "type": "event_msg",
