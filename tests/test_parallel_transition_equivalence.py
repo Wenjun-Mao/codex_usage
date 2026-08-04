@@ -37,6 +37,8 @@ from codex_usage.project_transition_evidence import (
     RepoPathObservation,
     VerificationCache,
 )
+from codex_usage.session_cache import load_cached_session_data
+from codex_usage.session_cache_transitions import load_cached_transition_observations
 
 
 @pytest.fixture(autouse=True)
@@ -84,6 +86,34 @@ def test_parallel_collection_equals_frozen_serial_oracle(tmp_path: Path) -> None
     assert report.worker_pids
     assert os.getpid() not in report.worker_pids
     assert report.used_serial_fallback is False
+
+
+def test_cached_observations_equal_frozen_serial_oracle_without_jsonl_rescan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    corpus = write_transition_corpus(tmp_path)
+    session_dirs = list(corpus.session_dirs)
+    session_files = list(corpus.session_files)
+    expected = serial_oracle.collect_repo_path_observations(session_dirs, session_files)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data(
+        session_dirs,
+        cache_dir=cache_dir,
+        auto_transitions=False,
+        max_workers=1,
+    )
+
+    original_open = Path.open
+
+    def fail_source_rescan(path: Path, *args: object, **kwargs: object):
+        if path.suffix == ".jsonl":
+            raise AssertionError("cached transition observations must not read source JSONLs")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_source_rescan)
+    actual = load_cached_transition_observations(session_dirs, cache_dir=cache_dir)
+
+    assert actual == expected
 
 
 def test_parent_uses_one_cache_across_jsonl_files_and_state(

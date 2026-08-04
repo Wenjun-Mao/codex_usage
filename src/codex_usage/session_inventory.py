@@ -39,7 +39,9 @@ def candidate_session_dirs(
     home: Path | None = None,
 ) -> list[Path]:
     candidates: list[Path] = []
-    for base in _candidate_codex_homes(codex_home=codex_home, userprofile=userprofile, home=home):
+    for base in _candidate_codex_homes(
+        codex_home=codex_home, userprofile=userprofile, home=home
+    ):
         candidates.append(base / ACTIVE_SESSION_DIR_NAME)
         candidates.append(base / ARCHIVED_SESSION_DIR_NAME)
     return _dedupe_paths(candidates)
@@ -69,14 +71,24 @@ def default_session_dir() -> Path:
     return Path.home() / ".codex" / ACTIVE_SESSION_DIR_NAME
 
 
-def collect_session_file_inventory(session_dirs: list[Path]) -> list[SessionFileInventoryEntry]:
+def collect_session_file_inventory(
+    session_dirs: list[Path],
+    *,
+    read_metadata: bool = True,
+) -> list[SessionFileInventoryEntry]:
     candidates: list[SessionFileInventoryEntry] = []
     for session_dir in session_dirs:
-        for path in sorted(session_dir.rglob("*.jsonl"), key=lambda item: str(item).casefold()):
+        for path in sorted(
+            session_dir.rglob("*.jsonl"), key=lambda item: str(item).casefold()
+        ):
             if not path.is_file():
                 continue
             stat = path.stat()
-            file_key, file_key_is_fallback = _session_file_key_with_provenance(path)
+            file_key, file_key_is_fallback = (
+                _session_file_key_with_provenance(path)
+                if read_metadata
+                else (_path_fallback_file_key(path), True)
+            )
             entry = SessionFileInventoryEntry(
                 file_key=file_key,
                 path=path,
@@ -91,7 +103,9 @@ def collect_session_file_inventory(session_dirs: list[Path]) -> list[SessionFile
     selected: dict[str, SessionFileInventoryEntry] = {}
     for entry in _reserve_fallback_file_keys(candidates):
         existing = selected.get(entry.file_key)
-        if existing is None or _inventory_priority(entry) < _inventory_priority(existing):
+        if existing is None or _inventory_priority(entry) < _inventory_priority(
+            existing
+        ):
             selected[entry.file_key] = entry
     return sorted(selected.values(), key=lambda entry: str(entry.path).casefold())
 
@@ -114,11 +128,7 @@ def _session_file_key_with_provenance(path: Path) -> tuple[str, bool]:
 def _reserve_fallback_file_keys(
     entries: list[SessionFileInventoryEntry],
 ) -> list[SessionFileInventoryEntry]:
-    reserved = {
-        entry.file_key
-        for entry in entries
-        if not entry.file_key_is_fallback
-    }
+    reserved = {entry.file_key for entry in entries if not entry.file_key_is_fallback}
     keys_by_path: dict[str, str] = {}
     fallback_paths = sorted(
         {
@@ -194,7 +204,9 @@ def storage_snapshots() -> list[StorageRootSnapshot]:
             names.extend(
                 child.name
                 for child in codex_home.iterdir()
-                if child.is_dir() and child.name.endswith("_sessions") and child.name not in names
+                if child.is_dir()
+                and child.name.endswith("_sessions")
+                and child.name not in names
             )
         for name in dict.fromkeys(names):
             path = codex_home / name
@@ -207,7 +219,9 @@ def storage_snapshots() -> list[StorageRootSnapshot]:
                     else ("archived" if name == ARCHIVED_SESSION_DIR_NAME else name),
                     exists=path.is_dir(),
                     jsonl_count=len(files),
-                    total_bytes=sum(file.stat().st_size for file in files if file.is_file()),
+                    total_bytes=sum(
+                        file.stat().st_size for file in files if file.is_file()
+                    ),
                 )
             )
     return roots
@@ -232,7 +246,13 @@ def _candidate_codex_homes(
 
 
 def _inventory_priority(entry: SessionFileInventoryEntry) -> tuple[int, int, str]:
-    state_priority = 0 if entry.storage_state == "active" else 1 if entry.storage_state == "archived" else 2
+    state_priority = (
+        0
+        if entry.storage_state == "active"
+        else 1
+        if entry.storage_state == "archived"
+        else 2
+    )
     return (state_priority, -entry.mtime_ns, str(entry.path).casefold())
 
 

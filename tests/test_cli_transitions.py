@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import sqlite3
@@ -7,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
+import codex_usage.cli as cli_module
 import codex_usage.project_transitions as project_transitions_module
 import codex_usage.session_cache_schema as cache_schema_module
-import codex_usage.session_cache_store as cache_store_module
 from codex_usage.models import UsageRecord
 from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
 
@@ -55,7 +56,16 @@ def test_cli_project_filter_matches_transition_target(tmp_path: Path) -> None:
     codex_home, _, target_key = _write_transition_fixture(tmp_path)
 
     result = _run_cli(
-        ["summary", "--range", "all", "--by", "project", "--project-key", target_key, "--json"],
+        [
+            "summary",
+            "--range",
+            "all",
+            "--by",
+            "project",
+            "--project-key",
+            target_key,
+            "--json",
+        ],
         codex_home=codex_home,
     )
 
@@ -70,12 +80,23 @@ def test_cli_summary_transition_metadata_follows_project_filter(tmp_path: Path) 
     other_target_key = "https://github.com/example/billing-console"
 
     result = _run_cli(
-        ["summary", "--range", "all", "--by", "project", "--project-key", target_key, "--json"],
+        [
+            "summary",
+            "--range",
+            "all",
+            "--by",
+            "project",
+            "--project-key",
+            target_key,
+            "--json",
+        ],
         codex_home=codex_home,
     )
 
     payload = json.loads(result.stdout)
-    assert [transition["target_key"] for transition in payload["project_transitions"]] == [target_key]
+    assert [
+        transition["target_key"] for transition in payload["project_transitions"]
+    ] == [target_key]
     assert other_target_key not in json.dumps(payload["project_transitions"])
 
 
@@ -89,8 +110,44 @@ def test_cli_transitions_suggest_json(tmp_path: Path) -> None:
     assert payload["sessions_dirs"] == [str(sessions)]
     assert payload["files_scanned"] == 1
     assert payload["observations_count"] == 1
-    assert [transition["source_key"] for transition in payload["project_transitions"]] == [source_key]
-    assert [transition["target_key"] for transition in payload["project_transitions"]] == [target_key]
+    assert [
+        transition["source_key"] for transition in payload["project_transitions"]
+    ] == [source_key]
+    assert [
+        transition["target_key"] for transition in payload["project_transitions"]
+    ] == [target_key]
+
+
+def test_cli_transitions_suggest_uses_cached_candidates_without_source_rescan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    codex_home, source_key, target_key = _write_transition_fixture(tmp_path)
+    sessions = codex_home / "sessions"
+    monkeypatch.delenv("CODEX_USAGE_CACHE_DIR", raising=False)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    load_cached_session_data([sessions], max_workers=1)
+
+    def fail_source_rescan(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("transitions suggest must use cached candidates")
+
+    monkeypatch.setattr(
+        cli_module,
+        "collect_repo_path_observations",
+        fail_source_rescan,
+        raising=False,
+    )
+    monkeypatch.setattr(cli_module, "_existing_session_dirs", lambda: [sessions])
+
+    assert cli_module.handle_transitions_suggest(argparse.Namespace(json=True)) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["observations_count"] == 1
+    assert [
+        transition["source_key"] for transition in payload["project_transitions"]
+    ] == [source_key]
+    assert [
+        transition["target_key"] for transition in payload["project_transitions"]
+    ] == [target_key]
 
 
 def test_cli_transitions_without_subcommand_shows_transitions_help() -> None:
@@ -123,14 +180,18 @@ def test_transition_recomputed_after_disabled_version_rebuild(tmp_path: Path) ->
             """
         )
 
-    disabled = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    disabled = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False
+    )
 
     assert disabled.stats.rebuilt is True
     assert disabled.project_transitions == []
     assert _usage_by_project(disabled.records) == {source_key: 300}
-    assert _transition_dirty_value(db_path) == "1"
+    assert _dirty_task_ids(db_path) == {"thread-1"}
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute("select count(*) from project_transitions").fetchone() == (0,)
+        assert connection.execute(
+            "select count(*) from project_transitions"
+        ).fetchone() == (0,)
 
     recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
 
@@ -138,7 +199,7 @@ def test_transition_recomputed_after_disabled_version_rebuild(tmp_path: Path) ->
     assert recovered.stats.files_reused == 1
     assert len(recovered.project_transitions) == 1
     assert _usage_by_project(recovered.records) == {source_key: 100, target_key: 200}
-    assert _transition_dirty_value(db_path) == "0"
+    assert _dirty_task_ids(db_path) == set()
 
 
 def test_transition_recomputed_after_file_change_while_disabled(tmp_path: Path) -> None:
@@ -146,45 +207,38 @@ def test_transition_recomputed_after_file_change_while_disabled(tmp_path: Path) 
     sessions = codex_home / "sessions"
     cache_dir = tmp_path / "cache"
     established = load_cached_session_data([sessions], cache_dir=cache_dir)
-    assert _usage_by_project(established.records) == {source_key: 100, initial_target_key: 200}
+    assert _usage_by_project(established.records) == {
+        source_key: 100,
+        initial_target_key: 200,
+    }
 
     replacement_repo = tmp_path / "billing-console"
     replacement_target_key = "https://github.com/example/billing-console"
     _write_git_config(replacement_repo, f"{replacement_target_key}.git")
     session_path = sessions / "2026" / "05" / "23" / "thread-1.jsonl"
-    _write_transition_session(session_path, "thread-1", tmp_path / "signoz-stack", replacement_repo)
+    _write_transition_session(
+        session_path, "thread-1", tmp_path / "signoz-stack", replacement_repo
+    )
 
-    disabled = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+    disabled = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False
+    )
 
     assert disabled.stats.files_parsed == 1
     assert disabled.project_transitions == []
-    assert _transition_dirty_value(cache_dir / CACHE_DB_NAME) == "1"
+    assert _dirty_task_ids(cache_dir / CACHE_DB_NAME) == {"thread-1"}
 
     recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
 
     assert recovered.stats.files_parsed == 0
     assert recovered.stats.files_reused == 1
-    assert [transition.target_key for transition in recovered.project_transitions] == [replacement_target_key]
-    assert _usage_by_project(recovered.records) == {source_key: 100, replacement_target_key: 200}
-
-
-def test_missing_transition_dirty_marker_is_conservatively_recomputed(tmp_path: Path) -> None:
-    codex_home, source_key, target_key = _write_transition_fixture(tmp_path)
-    sessions = codex_home / "sessions"
-    cache_dir = tmp_path / "cache"
-    load_cached_session_data([sessions], cache_dir=cache_dir)
-    db_path = cache_dir / CACHE_DB_NAME
-    with sqlite3.connect(db_path) as connection:
-        connection.execute("delete from schema_meta where key = ?", (_TRANSITIONS_DIRTY_KEY,))
-        connection.execute("delete from project_transitions")
-
-    recovered = load_cached_session_data([sessions], cache_dir=cache_dir)
-
-    assert recovered.stats.rebuilt is False
-    assert recovered.stats.files_reused == 1
-    assert len(recovered.project_transitions) == 1
-    assert _usage_by_project(recovered.records) == {source_key: 100, target_key: 200}
-    assert _transition_dirty_value(db_path) == "0"
+    assert [transition.target_key for transition in recovered.project_transitions] == [
+        replacement_target_key
+    ]
+    assert _usage_by_project(recovered.records) == {
+        source_key: 100,
+        replacement_target_key: 200,
+    }
 
 
 def test_version_match_tolerates_transition_dirty_metadata(tmp_path: Path) -> None:
@@ -227,24 +281,22 @@ def test_failed_transition_inference_leaves_dirty_for_retry(
     )
     with pytest.raises(RuntimeError, match="transition inference interrupted"):
         load_cached_session_data([sessions], cache_dir=cache_dir, max_workers=1)
-    assert _transition_dirty_value(db_path) == "1"
+    assert _dirty_task_ids(db_path) == {"thread-1"}
 
     monkeypatch.setattr(
         project_transitions_module,
         "infer_project_transitions",
         original_infer,
     )
-    recovered = load_cached_session_data(
-        [sessions], cache_dir=cache_dir, max_workers=1
-    )
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir, max_workers=1)
 
     assert recovered.stats.files_reused == 1
     assert _usage_by_project(recovered.records) == {source_key: 100, target_key: 200}
-    assert _transition_dirty_value(db_path) == "0"
+    assert _dirty_task_ids(db_path) == set()
 
 
 def test_failed_transition_replacement_rolls_back_and_leaves_dirty(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     codex_home, _, initial_target_key = _write_transition_fixture(tmp_path)
     sessions = codex_home / "sessions"
@@ -255,7 +307,9 @@ def test_failed_transition_replacement_rolls_back_and_leaves_dirty(
     replacement_target_key = "https://github.com/example/billing-console"
     _write_git_config(replacement_repo, f"{replacement_target_key}.git")
     session_path = sessions / "2026" / "05" / "23" / "thread-1.jsonl"
-    _write_transition_session(session_path, "thread-1", tmp_path / "signoz-stack", replacement_repo)
+    _write_transition_session(
+        session_path, "thread-1", tmp_path / "signoz-stack", replacement_repo
+    )
     load_cached_session_data(
         [sessions],
         cache_dir=cache_dir,
@@ -263,33 +317,43 @@ def test_failed_transition_replacement_rolls_back_and_leaves_dirty(
         max_workers=1,
     )
 
-    original_set_dirty = cache_store_module._set_project_transitions_dirty
+    db_path = cache_dir / CACHE_DB_NAME
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            create trigger fail_transition_insert
+            before insert on project_transitions
+            begin
+                select raise(abort, 'transition replacement interrupted');
+            end
+            """
+        )
 
-    def interrupt_clean(connection: sqlite3.Connection, *, dirty: bool) -> None:
-        if not dirty:
-            raise RuntimeError("transition replacement interrupted")
-        original_set_dirty(connection, dirty=dirty)
-
-    monkeypatch.setattr(cache_store_module, "_set_project_transitions_dirty", interrupt_clean)
-    with pytest.raises(RuntimeError, match="transition replacement interrupted"):
+    with pytest.raises(
+        sqlite3.IntegrityError, match="transition replacement interrupted"
+    ):
         load_cached_session_data([sessions], cache_dir=cache_dir, max_workers=1)
 
-    db_path = cache_dir / CACHE_DB_NAME
-    assert _transition_dirty_value(db_path) == "1"
+    assert _dirty_task_ids(db_path) == {"thread-1"}
     with sqlite3.connect(db_path) as connection:
-        targets = connection.execute("select target_key from project_transitions").fetchall()
+        targets = connection.execute(
+            "select target_key from project_transitions"
+        ).fetchall()
     assert targets == [(initial_target_key,)]
 
-    monkeypatch.setattr(cache_store_module, "_set_project_transitions_dirty", original_set_dirty)
-    recovered = load_cached_session_data(
-        [sessions], cache_dir=cache_dir, max_workers=1
-    )
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("drop trigger fail_transition_insert")
+    recovered = load_cached_session_data([sessions], cache_dir=cache_dir, max_workers=1)
 
-    assert [transition.target_key for transition in recovered.project_transitions] == [replacement_target_key]
-    assert _transition_dirty_value(db_path) == "0"
+    assert [transition.target_key for transition in recovered.project_transitions] == [
+        replacement_target_key
+    ]
+    assert _dirty_task_ids(db_path) == set()
 
 
-def _run_cli(args: list[str], *, codex_home: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run_cli(
+    args: list[str], *, codex_home: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.pop("CODEX_USAGE_SESSIONS_DIR", None)
     env.pop("CODEX_USAGE_PROJECT_ALIASES", None)
@@ -307,19 +371,25 @@ def _run_cli(args: list[str], *, codex_home: Path | None = None) -> subprocess.C
 def _usage_by_project(records: list[UsageRecord]) -> dict[str, int]:
     totals: dict[str, int] = {}
     for record in records:
-        totals[record.project_key] = totals.get(record.project_key, 0) + record.usage.total_tokens
+        totals[record.project_key] = (
+            totals.get(record.project_key, 0) + record.usage.total_tokens
+        )
     return totals
 
 
-def _transition_dirty_value(db_path: Path) -> str | None:
+def _dirty_task_ids(db_path: Path) -> set[str]:
     with sqlite3.connect(db_path) as connection:
-        row = connection.execute(
-            "select value from schema_meta where key = ?", (_TRANSITIONS_DIRTY_KEY,)
-        ).fetchone()
-    return None if row is None else str(row[0])
+        return {
+            str(row[0])
+            for row in connection.execute(
+                "select thread_id from dirty_transition_tasks order by thread_id"
+            )
+        }
 
 
-def _write_transition_fixture(tmp_path: Path, *, include_second: bool = False) -> tuple[Path, str, str]:
+def _write_transition_fixture(
+    tmp_path: Path, *, include_second: bool = False
+) -> tuple[Path, str, str]:
     codex_home = tmp_path / "codex"
     sessions = codex_home / "sessions"
     day = sessions / "2026" / "05" / "23"
@@ -336,8 +406,12 @@ def _write_transition_fixture(tmp_path: Path, *, include_second: bool = False) -
     if include_second:
         inventory_repo = tmp_path / "inventory-api"
         billing_repo = tmp_path / "billing-console"
-        _write_git_config(inventory_repo, "https://github.com/example/inventory-api.git")
-        _write_git_config(billing_repo, "https://github.com/example/billing-console.git")
+        _write_git_config(
+            inventory_repo, "https://github.com/example/inventory-api.git"
+        )
+        _write_git_config(
+            billing_repo, "https://github.com/example/billing-console.git"
+        )
         _write_transition_session(
             day / "thread-2.jsonl",
             "thread-2",
@@ -376,7 +450,9 @@ def _write_transition_session(
                 "type": "response_item",
                 "payload": {
                     "type": "function_call",
-                    "arguments": json.dumps({"workdir": str(target_repo), "command": "Get-Location"}),
+                    "arguments": json.dumps(
+                        {"workdir": str(target_repo), "command": "Get-Location"}
+                    ),
                 },
             },
             _turn_context_event("2026-05-23T21:10:01Z", "turn-2"),
@@ -390,7 +466,11 @@ def _write_jsonl(path: Path, events: list[dict[str, object]]) -> None:
 
 
 def _turn_context_event(timestamp: str, turn_id: str) -> dict[str, object]:
-    return {"timestamp": timestamp, "type": "turn_context", "payload": {"turn_id": turn_id, "model": "gpt-5.5"}}
+    return {
+        "timestamp": timestamp,
+        "type": "turn_context",
+        "payload": {"turn_id": turn_id, "model": "gpt-5.5"},
+    }
 
 
 def _token_count_event(timestamp: str, total: int) -> dict[str, object]:
@@ -411,4 +491,6 @@ def _token_count_event(timestamp: str, total: int) -> dict[str, object]:
 def _write_git_config(repo: Path, url: str) -> None:
     git_dir = repo / ".git"
     git_dir.mkdir(parents=True)
-    (git_dir / "config").write_text(f'[remote "origin"]\n\turl = {url}\n', encoding="utf-8")
+    (git_dir / "config").write_text(
+        f'[remote "origin"]\n\turl = {url}\n', encoding="utf-8"
+    )

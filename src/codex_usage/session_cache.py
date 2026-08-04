@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
-from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 from tenacity import (
     retry,
@@ -15,37 +12,45 @@ from tenacity import (
     wait_exponential,
 )
 
-import codex_usage.project_transition_collection as _transition_collection
-import codex_usage.project_transitions as _transitions
 import codex_usage.session_cache_refresh as _refresh
 import codex_usage.session_cache_schema as _schema
 import codex_usage.session_cache_store as _store
-from codex_usage.models import TokenUsage, UsageRecord
-from codex_usage.parallel.execution import (
-    EMPTY_PARALLEL_RUN_REPORT,
-    ParallelRunReport,
-)
-from codex_usage.parser import finalize_session_records, parse_session_file, parse_timestamp
-from codex_usage.project_identity import resolve_project_identity
+import codex_usage.session_cache_transitions as _cache_transitions
+from codex_usage.models import UsageRecord
+from codex_usage.parallel.execution import EMPTY_PARALLEL_RUN_REPORT
+from codex_usage.parser import finalize_session_records
 from codex_usage.project_transitions import (
     ProjectTransition,
     apply_project_transitions,
 )
 from codex_usage.session_cache_models import (
-    CacheStats,
     CachedFileSummary,
     CachedSessionData,
+    CacheStats,
 )
 from codex_usage.session_cache_schema import (
     CACHE_SCHEMA_VERSION,
     PARSER_CACHE_VERSION,
     PROJECT_TRANSITION_CACHE_VERSION,
 )
-from codex_usage.session_files import owning_session_dir, read_session_metadata
-from codex_usage.session_inventory import SessionFileInventoryEntry, collect_session_file_inventory
+from codex_usage.session_inventory import collect_session_file_inventory
 
 CACHE_DB_NAME = "usage-cache-v4.sqlite3"
 LEGACY_CACHE_DB_NAMES = ("usage-cache.sqlite3",)
+
+__all__ = (
+    "CACHE_DB_NAME",
+    "CACHE_SCHEMA_VERSION",
+    "LEGACY_CACHE_DB_NAMES",
+    "PARSER_CACHE_VERSION",
+    "PROJECT_TRANSITION_CACHE_VERSION",
+    "CacheStats",
+    "CachedFileSummary",
+    "CachedSessionData",
+    "load_cached_session_data",
+    "resolve_cache_dir",
+    "uncached_session_data",
+)
 
 
 @retry(
@@ -103,35 +108,6 @@ def resolve_cache_dir(session_dirs: list[Path], cache_dir: Path | None = None) -
     return Path.home() / ".codex" / ".codex-usage-cache"
 
 
-def _refresh_or_load_transitions(
-    connection: sqlite3.Connection,
-    *,
-    session_dirs: list[Path],
-    session_files: list[Path],
-    records: list[UsageRecord],
-    auto_transitions: bool,
-    max_workers: int | None,
-) -> tuple[list[ProjectTransition], ParallelRunReport]:
-    dirty = _store._project_transitions_are_dirty(connection)
-    if not auto_transitions:
-        if dirty:
-            _store._set_project_transitions_dirty(connection, dirty=True)
-            connection.commit()
-        return [], EMPTY_PARALLEL_RUN_REPORT
-    if dirty:
-        observations, transition_run = (
-            _transition_collection.collect_repo_path_observations_with_report(
-                session_dirs,
-                session_files,
-                max_workers=max_workers,
-            )
-        )
-        transitions = _transitions.infer_project_transitions(records, observations)
-        _store._replace_project_transitions(connection, transitions)
-        return transitions, transition_run
-    return _store._load_transitions(connection), EMPTY_PARALLEL_RUN_REPORT
-
-
 def load_cached_session_data(
     session_dirs: list[Path],
     *,
@@ -141,8 +117,7 @@ def load_cached_session_data(
 ) -> CachedSessionData:
     resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
     resolved_cache_dir.mkdir(parents=True, exist_ok=True)
-    inventory = collect_session_file_inventory(session_dirs)
-    session_files = [entry.path for entry in inventory]
+    inventory = collect_session_file_inventory(session_dirs, read_metadata=False)
     with sqlite3.connect(resolved_cache_dir / CACHE_DB_NAME) as connection:
         connection.row_factory = sqlite3.Row
         schema_state = _schema._ensure_schema(connection)
@@ -154,20 +129,24 @@ def load_cached_session_data(
             rebuilt=schema_state.created or schema_state.reset,
             max_workers=max_workers,
         )
+        session_files = [entry.path for entry in inventory]
         stats = refresh_outcome.stats
         usage_run = refresh_outcome.usage_run
         current_keys = {entry.file_key for entry in inventory}
         missing_keys = _store._missing_file_keys(connection)
-        records_by_file_key = _store._load_records_by_file_key(connection, current_keys | missing_keys)
-        ordered_keys = [entry.file_key for entry in inventory] + sorted(missing_keys - current_keys)
-        records = finalize_session_records([records_by_file_key.get(file_key, []) for file_key in ordered_keys])
-        transitions, transition_run = _refresh_or_load_transitions(
+        records_by_file_key = _store._load_records_by_file_key(
+            connection, current_keys | missing_keys
+        )
+        ordered_keys = [entry.file_key for entry in inventory] + sorted(
+            missing_keys - current_keys
+        )
+        records = finalize_session_records(
+            [records_by_file_key.get(file_key, []) for file_key in ordered_keys]
+        )
+        transitions = _cache_transitions.refresh_dirty_task_transitions(
             connection,
             session_dirs=session_dirs,
-            session_files=session_files,
-            records=records,
             auto_transitions=auto_transitions,
-            max_workers=max_workers,
         )
         if auto_transitions:
             records = apply_project_transitions(records, transitions)
@@ -185,5 +164,5 @@ def load_cached_session_data(
         file_errors=errors,
         retained_missing_files=retained_missing_files,
         usage_run=usage_run,
-        transition_run=transition_run,
+        transition_run=EMPTY_PARALLEL_RUN_REPORT,
     )

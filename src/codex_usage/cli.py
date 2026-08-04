@@ -35,6 +35,7 @@ from codex_usage.reporting import (
 )
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.session_cache import CacheStats, CachedSessionData, load_cached_session_data, uncached_session_data
+from codex_usage.session_cache_transitions import load_cached_transition_observations
 from codex_usage.session_inventory import storage_snapshots
 from codex_usage.settings import get_settings
 from codex_usage.sync.local_session_probe import load_local_transfer_probe
@@ -101,15 +102,25 @@ def build_parser() -> argparse.ArgumentParser:
     suggest_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     suggest_parser.set_defaults(handler=handle_transitions_suggest)
 
-    storage_parser = subparsers.add_parser("storage", help="Inspect local Codex storage state.")
+    storage_parser = subparsers.add_parser(
+        "storage", help="Inspect local Codex storage state."
+    )
     storage_subparsers = storage_parser.add_subparsers(dest="storage_command")
-    storage_parser.set_defaults(handler=handle_subparser_help, help_parser=storage_parser)
+    storage_parser.set_defaults(
+        handler=handle_subparser_help, help_parser=storage_parser
+    )
 
-    storage_snapshot_parser = storage_subparsers.add_parser("snapshot", help="Print a local Codex storage snapshot.")
-    storage_snapshot_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    storage_snapshot_parser = storage_subparsers.add_parser(
+        "snapshot", help="Print a local Codex storage snapshot."
+    )
+    storage_snapshot_parser.add_argument(
+        "--json", action="store_true", help="Print machine-readable JSON."
+    )
     storage_snapshot_parser.set_defaults(handler=handle_storage_snapshot)
 
-    sync_parser = subparsers.add_parser("sync", help="Synchronize selected Codex tasks.")
+    sync_parser = subparsers.add_parser(
+        "sync", help="Synchronize selected Codex tasks."
+    )
     sync_subparsers = sync_parser.add_subparsers(dest="sync_command")
 
     inventory_parser = sync_subparsers.add_parser(
@@ -216,19 +227,24 @@ def handle_threads(args: argparse.Namespace) -> int:
     )
     _write_requested_parallel_audit(args, data)
     threads = list_threads_from_cached_data(data, project_keys=project_keys)
-    payload = {"threads": [thread.to_dict() for thread in threads], "project_keys": project_keys}
+    payload = {
+        "threads": [thread.to_dict() for thread in threads],
+        "project_keys": project_keys,
+    }
     if args.json:
         print_json(payload)
     else:
         for thread in threads:
-            print(f"{thread.thread_id}\t{thread.title}\t{thread.project_label}\t{thread.updated_at}")
+            print(
+                f"{thread.thread_id}\t{thread.title}\t{thread.project_label}\t{thread.updated_at}"
+            )
     return 0
 
 
 def handle_transitions_suggest(args: argparse.Namespace) -> int:
     session_dirs = _existing_session_dirs()
     data = _load_session_data(session_dirs, auto_transitions=True)
-    observations = collect_repo_path_observations(session_dirs, data.files)
+    observations = load_cached_transition_observations(session_dirs)
 
     if args.json:
         print_json(
@@ -271,8 +287,8 @@ def handle_storage_snapshot(args: argparse.Namespace) -> int:
         for root in roots:
             exists = "yes" if root["exists"] else "no"
             print(
-                f'{root["storage_state"]:>12} {exists:>3} {root["jsonl_count"]:>5} files '
-                f'{root["total_bytes"]:>12} bytes {root["path"]}'
+                f"{root['storage_state']:>12} {exists:>3} {root['jsonl_count']:>5} files "
+                f"{root['total_bytes']:>12} bytes {root['path']}"
             )
     return 0
 
@@ -324,7 +340,9 @@ def _load_context(args: argparse.Namespace) -> _Context:
     project_keys = _normalize_project_keys(args.project_key)
     range_records = filter_records_by_range(data.records, args.range_name, timezone)
     filtered_records = filter_records_by_project_keys(range_records, project_keys)
-    filtered_transitions = _filter_project_transitions(data.project_transitions, filtered_records)
+    filtered_transitions = _filter_project_transitions(
+        data.project_transitions, filtered_records
+    )
     return _Context(
         session_dirs=session_dirs,
         files=data.files,
@@ -336,11 +354,16 @@ def _load_context(args: argparse.Namespace) -> _Context:
     )
 
 
-def _load_session_data(session_dirs: list[Path], *, auto_transitions: bool) -> CachedSessionData:
+def _load_session_data(
+    session_dirs: list[Path], *, auto_transitions: bool
+) -> CachedSessionData:
     try:
         return load_cached_session_data(session_dirs, auto_transitions=auto_transitions)
     except Exception as exc:
-        print(f"codex-usage: cache unavailable, falling back to direct parse: {exc}", file=sys.stderr)
+        print(
+            f"codex-usage: cache unavailable, falling back to direct parse: {exc}",
+            file=sys.stderr,
+        )
         files = collect_jsonl_files(session_dirs)
         records = parse_session_files(files)
         project_transitions: list[ProjectTransition] = []
@@ -362,7 +385,9 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         type=Path,
         help=argparse.SUPPRESS,
     )
-    parser.add_argument("--timezone", help="IANA timezone name, for example America/Toronto.")
+    parser.add_argument(
+        "--timezone", help="IANA timezone name, for example America/Toronto."
+    )
     parser.add_argument(
         "--project-key",
         action="append",
@@ -402,7 +427,9 @@ def _normalize_project_keys(values: list[str] | None) -> list[str]:
 
 
 def _auto_project_transitions_enabled(args: argparse.Namespace, settings) -> bool:
-    return settings.auto_project_transitions and not getattr(args, "no_auto_transitions", False)
+    return settings.auto_project_transitions and not getattr(
+        args, "no_auto_transitions", False
+    )
 
 
 def _transition_dicts(transitions: list[ProjectTransition]) -> list[dict[str, object]]:
@@ -420,13 +447,18 @@ def _filter_project_transitions(
     for record in records:
         if not record.session_id:
             continue
-        keys_by_session.setdefault(record.session_id, set()).update(_record_project_keys(record))
+        keys_by_session.setdefault(record.session_id, set()).update(
+            _record_project_keys(record)
+        )
 
     filtered: list[ProjectTransition] = []
     for transition in transitions:
         transition_sessions = set(transition.thread_ids) or set(keys_by_session)
         matching_sessions = transition_sessions.intersection(keys_by_session)
-        if any(_transition_keys_represented(transition, keys_by_session[session_id]) for session_id in matching_sessions):
+        if any(
+            _transition_keys_represented(transition, keys_by_session[session_id])
+            for session_id in matching_sessions
+        ):
             filtered.append(transition)
     return filtered
 
@@ -436,7 +468,15 @@ def _transition_keys_represented(transition: ProjectTransition, keys: set[str]) 
 
 
 def _record_project_keys(record: UsageRecord) -> set[str]:
-    return {key for key in (record.project_key, record.project_previous_key, *record.project_aliases) if key}
+    return {
+        key
+        for key in (
+            record.project_key,
+            record.project_previous_key,
+            *record.project_aliases,
+        )
+        if key
+    }
 
 
 def _existing_session_dirs() -> list[Path]:

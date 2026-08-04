@@ -25,11 +25,12 @@ from codex_usage.session_cache_generations import (
 )
 from codex_usage.session_cache_models import CacheRefreshOutcome, CacheStats
 from codex_usage.session_cache_schema import _REPARSE_REQUIRED_ERROR
-from codex_usage.session_cache_store import (
-    _set_project_transitions_dirty,
-    record_file_error,
+from codex_usage.session_cache_store import record_file_error
+from codex_usage.session_generation_models import ParsedSessionGeneration
+from codex_usage.session_inventory import (
+    SessionFileInventoryEntry,
+    _path_fallback_file_key,
 )
-from codex_usage.session_inventory import SessionFileInventoryEntry
 
 _COMMIT_GROUP_SIZE = 8
 
@@ -45,8 +46,7 @@ def refresh_files(
     cached_rows = {
         str(row["file_key"]): row
         for row in connection.execute(
-            "select file_key, path, size_bytes, mtime_ns, is_missing, error "
-            "from files"
+            "select file_key, path, size_bytes, mtime_ns, is_missing, error from files"
         )
     }
     _reconcile_fallback_file_keys(inventory, cached_rows)
@@ -69,9 +69,8 @@ def refresh_files(
 
     worker_spans: list[WorkerSpan] = []
     file_errors = 0
-    resolved_max_workers = (
-        DEFAULT_MAX_WORKERS if max_workers is None else max_workers
-    )
+    identity_replacements = 0
+    resolved_max_workers = DEFAULT_MAX_WORKERS if max_workers is None else max_workers
     with OrderedProcessMapper(
         parse_usage_request,
         task_count=len(requests),
@@ -82,14 +81,20 @@ def refresh_files(
                 request_group,
                 mapper.map_batch(request_group),
             )
-            affected_task_ids.update(_commit_result_group(
-                connection,
-                session_dirs,
-                inventory,
-                results,
-            ))
+            group_affected_task_ids, group_identity_replacements = (
+                _commit_result_group(
+                    connection,
+                    session_dirs,
+                    inventory,
+                    results,
+                )
+            )
+            affected_task_ids.update(group_affected_task_ids)
+            identity_replacements += group_identity_replacements
             worker_spans.extend(result.span for result in results)
             file_errors += sum(bool(result.error) for result in results)
+
+    _dedupe_inventory_by_file_key(inventory)
 
     missing_count = int(
         connection.execute(
@@ -99,12 +104,10 @@ def refresh_files(
     stats = CacheStats(
         files_total=len(inventory),
         files_current=len(inventory),
-        files_archived=sum(
-            entry.storage_state == "archived" for entry in inventory
-        ),
+        files_archived=sum(entry.storage_state == "archived" for entry in inventory),
         files_parsed=len(requests),
         files_reused=reused,
-        files_removed=missing_marked,
+        files_removed=missing_marked + identity_replacements,
         files_missing_retained=missing_count,
         file_errors=file_errors,
         rebuilt=rebuilt,
@@ -164,9 +167,7 @@ def _commit_preflight(
         for file_key, row in cached_rows.items():
             if file_key in current_keys or int(row["is_missing"]) != 0:
                 continue
-            affected_task_ids.update(
-                affected_task_ids_for_file(connection, file_key)
-            )
+            affected_task_ids.update(affected_task_ids_for_file(connection, file_key))
             remove_candidate_generation(connection, file_key)
             connection.execute(
                 """
@@ -195,8 +196,6 @@ def _commit_preflight(
                 parse_entries.append((ordinal, entry))
 
         _mark_transition_tasks_dirty(connection, affected_task_ids)
-        if rebuilt or missing_marked:
-            _set_project_transitions_dirty(connection, dirty=True)
         connection.commit()
     except BaseException:
         connection.rollback()
@@ -249,13 +248,33 @@ def _commit_result_group(
     session_dirs: list[Path],
     inventory: list[SessionFileInventoryEntry],
     results: tuple[UsageParseResult, ...],
-) -> set[str]:
+) -> tuple[set[str], int]:
     affected_task_ids: set[str] = set()
+    identity_replacements = 0
+    successful_task_ids = {
+        result.generation.metadata.session_id
+        for result in results
+        if result.error == "" and result.generation is not None
+    }
+    errors = sorted(
+        (result for result in results if result.error),
+        key=lambda result: result.request.ordinal,
+    )
+    successes = sorted(
+        (result for result in results if not result.error),
+        key=lambda result: (
+            _entry_priority(inventory[result.request.ordinal]),
+            result.request.ordinal,
+        ),
+        reverse=True,
+    )
     connection.execute("begin immediate")
     try:
-        for result in results:
+        for result in (*errors, *successes):
             entry = inventory[result.request.ordinal]
             if result.error:
+                entry = _error_entry(entry, successful_task_ids)
+                inventory[result.request.ordinal] = entry
                 record_file_error(
                     connection,
                     session_dirs,
@@ -265,19 +284,83 @@ def _commit_result_group(
             else:
                 if result.generation is None:
                     raise ValueError("successful usage parse result lacks generation")
-                affected_task_ids.update(replace_file_generation(
-                    connection,
-                    session_dirs,
-                    entry,
-                    result.generation,
-                ))
+                entry = _entry_with_generation_identity(entry, result.generation)
+                identity_replacements += int(
+                    _replaces_cached_identity(
+                        connection,
+                        inventory[result.request.ordinal],
+                        entry,
+                    )
+                )
+                inventory[result.request.ordinal] = entry
+                affected_task_ids.update(
+                    replace_file_generation(
+                        connection,
+                        session_dirs,
+                        entry,
+                        result.generation,
+                    )
+                )
         _mark_transition_tasks_dirty(connection, affected_task_ids)
-        _set_project_transitions_dirty(connection, dirty=True)
         connection.commit()
     except BaseException:
         connection.rollback()
         raise
-    return affected_task_ids
+    return affected_task_ids, identity_replacements
+
+
+def _entry_with_generation_identity(
+    entry: SessionFileInventoryEntry,
+    generation: ParsedSessionGeneration,
+) -> SessionFileInventoryEntry:
+    session_id = generation.metadata.session_id
+    if not session_id or session_id == entry.file_key:
+        return entry
+    return replace(entry, file_key=session_id, file_key_is_fallback=False)
+
+
+def _error_entry(
+    entry: SessionFileInventoryEntry,
+    successful_task_ids: set[str],
+) -> SessionFileInventoryEntry:
+    if not entry.file_key_is_fallback or entry.file_key not in successful_task_ids:
+        return entry
+    return replace(entry, file_key=_path_fallback_file_key(entry.path))
+
+
+def _replaces_cached_identity(
+    connection: sqlite3.Connection,
+    existing_entry: SessionFileInventoryEntry,
+    replacement_entry: SessionFileInventoryEntry,
+) -> bool:
+    if existing_entry.file_key == replacement_entry.file_key:
+        return False
+    return connection.execute(
+        "select 1 from files where file_key = ? and path = ?",
+        (existing_entry.file_key, str(existing_entry.path)),
+    ).fetchone() is not None
+
+
+def _dedupe_inventory_by_file_key(
+    inventory: list[SessionFileInventoryEntry],
+) -> None:
+    selected: dict[str, SessionFileInventoryEntry] = {}
+    for entry in inventory:
+        existing = selected.get(entry.file_key)
+        if existing is None or _entry_priority(entry) < _entry_priority(existing):
+            selected[entry.file_key] = entry
+    inventory[:] = sorted(
+        selected.values(), key=lambda entry: str(entry.path).casefold()
+    )
+
+
+def _entry_priority(entry: SessionFileInventoryEntry) -> tuple[int, int, str]:
+    storage_priority = (
+        0
+        if entry.storage_state == "active"
+        else 1 if entry.storage_state == "archived" else 2
+    )
+    return (storage_priority, -entry.mtime_ns, str(entry.path).casefold())
 
 
 def _mark_transition_tasks_dirty(

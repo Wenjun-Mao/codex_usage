@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from datetime import UTC, datetime
 from pathlib import Path
 
 import project_transition_serial_oracle as serial_oracle
@@ -17,6 +16,7 @@ from parallel_cache_test_support import (
     write_usage_corpus,
 )
 
+from codex_usage.parallel.execution import EMPTY_PARALLEL_RUN_REPORT
 from codex_usage.project_transition_collection import (
     collect_repo_path_observations_with_report,
 )
@@ -39,10 +39,14 @@ def test_serial_and_parallel_cache_state_are_exactly_equal(tmp_path: Path) -> No
     assert parallel.retained_missing_files == serial.retained_missing_files
     assert parallel.project_transitions == serial.project_transitions == []
     malformed_serial = [
-        record for record in serial.records if record.file_path == corpus.malformed_json_path
+        record
+        for record in serial.records
+        if record.file_path == corpus.malformed_json_path
     ]
     malformed_parallel = [
-        record for record in parallel.records if record.file_path == corpus.malformed_json_path
+        record
+        for record in parallel.records
+        if record.file_path == corpus.malformed_json_path
     ]
     assert [record.usage.total_tokens for record in malformed_serial] == [211]
     assert malformed_parallel == malformed_serial
@@ -60,7 +64,9 @@ def test_serial_and_parallel_cache_state_are_exactly_equal(tmp_path: Path) -> No
             assert complete_schema_metadata(connection) == EXPECTED_SCHEMA_META
 
 
-def test_serial_and_parallel_errors_and_retained_missing_are_equal(tmp_path: Path) -> None:
+def test_serial_and_parallel_errors_and_retained_missing_are_equal(
+    tmp_path: Path,
+) -> None:
     corpus = write_usage_corpus(tmp_path / "codex")
     serial_cache = tmp_path / "serial-cache"
     parallel_cache = tmp_path / "parallel-cache"
@@ -74,7 +80,11 @@ def test_serial_and_parallel_errors_and_retained_missing_are_equal(tmp_path: Pat
     assert parallel.records == serial.records
     assert parallel.file_summaries == serial.file_summaries
     assert parallel.file_errors == serial.file_errors
-    assert parallel.retained_missing_files == serial.retained_missing_files == [corpus.missing_path]
+    assert (
+        parallel.retained_missing_files
+        == serial.retained_missing_files
+        == [corpus.missing_path]
+    )
 
 
 def test_serial_and_parallel_transition_enabled_state_is_exactly_equal(
@@ -96,12 +106,17 @@ def test_serial_and_parallel_transition_enabled_state_is_exactly_equal(
         [corpus.sessions], list(corpus.ordered_paths), max_workers=4
     )
     assert actual_observations == expected_observations
-    assert serial.project_transitions == parallel.project_transitions == expected_transitions
+    assert (
+        serial.project_transitions
+        == parallel.project_transitions
+        == expected_transitions
+    )
     assert parallel.records == serial.records
     assert parallel.file_summaries == serial.file_summaries
     assert parallel.stats == serial.stats
     assert parallel.file_errors == serial.file_errors
     assert parallel.retained_missing_files == serial.retained_missing_files
+    assert serial.transition_run == parallel.transition_run == EMPTY_PARALLEL_RUN_REPORT
     assert transition_run.resolved_worker_count > 1
     assert transition_run.worker_pids
     assert os.getpid() not in transition_run.worker_pids
