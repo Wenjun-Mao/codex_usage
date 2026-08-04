@@ -163,7 +163,7 @@ def test_parent_identity_lookup_chunks_ids_and_uses_canonical_rows() -> None:
     queries = [sql for sql in statements if "from usage_records" in sql]
     assert len(queries) == 2
     assert all("files.file_key = files.session_id" in query for query in queries)
-    assert all("timestamp_us desc" in query for query in queries)
+    assert all("usage_records.record_index" in query for query in queries)
 
 
 def test_cached_range_keeps_retained_missing_records(tmp_path: Path) -> None:

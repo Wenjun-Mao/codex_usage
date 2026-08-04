@@ -110,15 +110,5 @@ def test_range_queries_match_full_load_oracle_for_every_range(
 
         expected = filter_records_by_range(full.records, range_name, timezone, now)
 
-        assert sorted(ranged.records, key=_record_key) == sorted(expected, key=_record_key)
+        assert ranged.records == expected
         assert ranged.project_transitions == full.project_transitions
-
-
-def _record_key(record) -> tuple[str, datetime, str, str, int]:
-    return (
-        record.session_id,
-        record.timestamp,
-        str(record.file_path),
-        record.turn_id,
-        record.usage.total_tokens,
-    )

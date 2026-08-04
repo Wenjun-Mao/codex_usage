@@ -81,9 +81,24 @@ def load_records_for_range(
     selected_keys: Collection[str],
     bounds: RangeBounds,
 ) -> list[UsageRecord]:
+    records_by_file_key = load_records_by_file_key_for_range(
+        connection, selected_keys, bounds
+    )
+    return [
+        record
+        for file_key in sorted(records_by_file_key)
+        for record in records_by_file_key[file_key]
+    ]
+
+
+def load_records_by_file_key_for_range(
+    connection: sqlite3.Connection,
+    selected_keys: Collection[str],
+    bounds: RangeBounds,
+) -> dict[str, list[UsageRecord]]:
     selected = {file_key for file_key in selected_keys if file_key}
     if not selected:
-        return []
+        return {}
 
     query_name, parameters = _range_query_parameters(bounds)
     records_by_file_key: dict[str, list[UsageRecord]] = {}
@@ -91,11 +106,7 @@ def load_records_for_range(
         file_key = str(row["file_key"])
         if file_key in selected:
             records_by_file_key.setdefault(file_key, []).append(row_to_usage_record(row))
-    return [
-        record
-        for file_key in sorted(records_by_file_key)
-        for record in records_by_file_key[file_key]
-    ]
+    return records_by_file_key
 
 
 def load_parent_identity_records(
@@ -113,14 +124,14 @@ def load_parent_identity_records(
             where usage_records.session_id in ({placeholders})
                 and files.file_key = files.session_id
                 and usage_records.git_repository_url != ''
-            order by usage_records.session_id, usage_records.timestamp_us desc,
-                usage_records.file_key desc, usage_records.record_index desc
+            order by usage_records.session_id, usage_records.file_key,
+                usage_records.record_index
             """,
             parent_ids,
         )
         for row in rows:
             parent_thread_id = str(row["session_id"])
-            identities.setdefault(parent_thread_id, row_to_usage_record(row))
+            identities[parent_thread_id] = row_to_usage_record(row)
     return [identities[parent_thread_id] for parent_thread_id in sorted(identities)]
 
 

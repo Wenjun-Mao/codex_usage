@@ -149,9 +149,17 @@ def load_cached_session_data(
                 [records_by_file_key.get(file_key, []) for file_key in ordered_keys]
             )
         else:
-            range_records = _queries.load_records_for_range(
+            records_by_file_key = _queries.load_records_by_file_key_for_range(
                 connection, selected_keys, range_bounds
             )
+            ordered_keys = [entry.file_key for entry in inventory] + sorted(
+                missing_keys - current_keys
+            )
+            range_records = [
+                record
+                for file_key in ordered_keys
+                for record in records_by_file_key.get(file_key, [])
+            ]
             identity_records = _queries.load_parent_identity_records(
                 connection,
                 {
@@ -161,7 +169,8 @@ def load_cached_session_data(
                 },
             )
             records = finalize_session_records(
-                [range_records], identity_records=identity_records
+                [records_by_file_key.get(file_key, []) for file_key in ordered_keys],
+                identity_records=identity_records,
             )
         transitions = _cache_transitions.refresh_dirty_task_transitions(
             connection,
