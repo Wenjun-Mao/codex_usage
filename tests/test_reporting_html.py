@@ -14,7 +14,9 @@ from codex_usage.report_breakdown import (
 from codex_usage.reporting import render_html_report
 
 
-def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(tmp_path: Path) -> None:
+def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
+    tmp_path: Path,
+) -> None:
     output = tmp_path / "report.html"
     total = UsageSummary(
         usage=TokenUsage(
@@ -34,8 +36,19 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(t
         generated_at=datetime(2026, 4, 29, 12, tzinfo=UTC),
         range_name="all",
         total=total,
-        daily_rows=[_row("2026-04-29", "2026-04-29", 1_100, cost=1.75, credits=14.25, cache_write=125)],
-        hourly_rows=[_row("2026-04-29 10:00", "2026-04-29 10:00", 700, cost=0.75, credits=9.0)],
+        daily_rows=[
+            _row(
+                "2026-04-29",
+                "2026-04-29",
+                1_100,
+                cost=1.75,
+                credits=14.25,
+                cache_write=125,
+            )
+        ],
+        hourly_rows=[
+            _row("2026-04-29 10:00", "2026-04-29 10:00", 700, cost=0.75, credits=9.0)
+        ],
         breakdown=_breakdown(
             [_row("repo", "demo", 1_100, cost=1.75, credits=14.25)],
             [
@@ -70,21 +83,24 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(t
     assert "padding-top: var(--chart-tooltip-top-reserve);" in html
     assert "margin-top: calc(12px - var(--chart-tooltip-top-reserve));" in html
     assert "daily-bar-chart" in html
-    assert "breakdown-bar-chart" in html
+    assert "project-breakdown-chart" in html
+    assert "model-mix-chart" in html
     assert "chart-tooltip-main" in html
     assert '<span class="chart-tooltip-main">2026-04-29</span>' in html
     assert '<span class="chart-tooltip-detail">$1.7500 | 1,100 tokens</span>' in html
-    assert '<span class="chart-tooltip-main">demo</span>' in html
-    assert '<span class="chart-tooltip-detail">1,100 tokens | $1.7500 | 14.2 credits</span>' in html
-    assert '<span class="chart-tooltip-main">gpt-5.5</span>' in html
+    assert "demo · Root tasks · gpt-5.5" in html
+    assert 'class="model-legend" aria-label="Model colors"' in html
     assert "<title>2026-04-29:" not in html
-    assert "<title>demo:" not in html
-    assert "<title>gpt-5.5:" not in html
+    assert "<title>demo," not in html
+    assert "<title>gpt-5.5," not in html
     assert "Codex Credits" in html
     assert '<th class="num">Cache Read</th>' in html
     assert '<th class="num">Cache Write</th>' in html
     assert '<td class="num">125</td>' in html
-    assert "Newer token details may be unavailable until source files are restored" not in html
+    assert (
+        "Newer token details may be unavailable until source files are restored"
+        not in html
+    )
     assert "rates effective at each usage event" in html
     assert "API USD excludes" not in html
     assert "Cost is partial" not in html
@@ -97,7 +113,12 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(t
 def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     output = tmp_path / "report.html"
     total = UsageSummary(
-        usage=TokenUsage(input_tokens=1_000, cached_input_tokens=500, output_tokens=100, total_tokens=1_100),
+        usage=TokenUsage(
+            input_tokens=1_000,
+            cached_input_tokens=500,
+            output_tokens=100,
+            total_tokens=1_100,
+        ),
         cost=CostBreakdown(total_usd=1.75),
         credits=CreditBreakdown(total_credits=14.25),
         record_count=4,
@@ -109,7 +130,9 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
         range_name="all",
         total=total,
         daily_rows=[_row("2026-04-29", "2026-04-29", 1_100, cost=1.75, credits=14.25)],
-        hourly_rows=[_row("2026-04-29 10:00", "2026-04-29 10:00", 700, cost=0.75, credits=9.0)],
+        hourly_rows=[
+            _row("2026-04-29 10:00", "2026-04-29 10:00", 700, cost=0.75, credits=9.0)
+        ],
         breakdown=_breakdown([], []),
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
@@ -143,7 +166,12 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
 
 def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:
     output = tmp_path / "transitions.html"
-    total = UsageSummary(usage=TokenUsage(), cost=CostBreakdown(), credits=CreditBreakdown(), record_count=0)
+    total = UsageSummary(
+        usage=TokenUsage(),
+        cost=CostBreakdown(),
+        credits=CreditBreakdown(),
+        record_count=0,
+    )
     effective_from = datetime(2026, 5, 23, 21, 6, 45, tzinfo=UTC)
     transition = ProjectTransition(
         source_key="https://github.com/example/signoz-stack",
@@ -177,7 +205,9 @@ def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:
     assert effective_from.isoformat() in html
 
 
-def test_report_html_mentions_archived_and_retained_missing_files(tmp_path: Path) -> None:
+def test_report_html_mentions_archived_and_retained_missing_files(
+    tmp_path: Path,
+) -> None:
     output = tmp_path / "storage.html"
     total = UsageSummary(
         usage=TokenUsage(input_tokens=30, total_tokens=30),
@@ -204,8 +234,13 @@ def test_report_html_mentions_archived_and_retained_missing_files(tmp_path: Path
 
     assert "Archived files included: 1" in html
     assert "Retained missing files: 1" in html
-    assert "Newer token details may be unavailable until source files are restored" in html
-    assert "<!-- newer token details may be unavailable until source files are restored -->" not in html
+    assert (
+        "Newer token details may be unavailable until source files are restored" in html
+    )
+    assert (
+        "<!-- newer token details may be unavailable until source files are restored -->"
+        not in html
+    )
 
 
 def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> None:
@@ -222,7 +257,9 @@ def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> 
         generated_at=datetime(2026, 4, 29, 12, tzinfo=UTC),
         range_name="all",
         total=total,
-        daily_rows=[_row("2026-04-29", "2026-04-29", 25, unpriced=25, credit_unpriced=25)],
+        daily_rows=[
+            _row("2026-04-29", "2026-04-29", 25, unpriced=25, credit_unpriced=25)
+        ],
         hourly_rows=[],
         breakdown=_breakdown(
             [],
@@ -237,10 +274,17 @@ def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> 
     assert "No price data is available for 25 tokens" in html
 
 
-def test_dashboard_report_warns_for_unknown_future_model_without_price_data(tmp_path: Path) -> None:
+def test_dashboard_report_warns_for_unknown_future_model_without_price_data(
+    tmp_path: Path,
+) -> None:
     output = tmp_path / "future-model.html"
     total = UsageSummary(
-        usage=TokenUsage(input_tokens=1_000, cached_input_tokens=100, output_tokens=50, total_tokens=1_050),
+        usage=TokenUsage(
+            input_tokens=1_000,
+            cached_input_tokens=100,
+            output_tokens=50,
+            total_tokens=1_050,
+        ),
         cost=CostBreakdown(unpriced_tokens=1_050),
         credits=CreditBreakdown(unpriced_tokens=1_050),
         record_count=1,
@@ -251,7 +295,11 @@ def test_dashboard_report_warns_for_unknown_future_model_without_price_data(tmp_
         generated_at=datetime(2026, 7, 9, 12, tzinfo=UTC),
         range_name="all",
         total=total,
-        daily_rows=[_row("2026-07-09", "2026-07-09", 1_050, unpriced=1_050, credit_unpriced=1_050)],
+        daily_rows=[
+            _row(
+                "2026-07-09", "2026-07-09", 1_050, unpriced=1_050, credit_unpriced=1_050
+            )
+        ],
         hourly_rows=[],
         breakdown=_breakdown(
             [],
@@ -278,7 +326,12 @@ def test_dashboard_report_warns_for_unknown_future_model_without_price_data(tmp_
 
 def test_dashboard_report_has_empty_states(tmp_path: Path) -> None:
     output = tmp_path / "empty.html"
-    total = UsageSummary(usage=TokenUsage(), cost=CostBreakdown(), credits=CreditBreakdown(), record_count=0)
+    total = UsageSummary(
+        usage=TokenUsage(),
+        cost=CostBreakdown(),
+        credits=CreditBreakdown(),
+        record_count=0,
+    )
 
     render_html_report(
         output_path=output,
@@ -341,7 +394,7 @@ def _breakdown(
                 RoleModelBreakdown(
                     role="root",
                     total=_summary(row),
-                    model_rows=(),
+                    model_rows=tuple(model_rows),
                 ),
             ),
         )

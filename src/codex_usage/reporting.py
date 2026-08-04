@@ -12,11 +12,17 @@ from codex_usage.aggregation import AggregateRow, UsageSummary
 from codex_usage.charts import (
     render_daily_cost_svg,
     render_hourly_heatmap_html,
-    render_model_mix_svg,
-    render_project_breakdown_svg,
+    render_model_mix_chart,
+    render_project_breakdown_chart,
 )
 from codex_usage.pricing import PRICING_AS_OF, PRICING_METHOD
 from codex_usage.report_breakdown import ReportBreakdown
+from codex_usage.report_tables import (
+    format_credits,
+    format_int,
+    render_aggregate_table,
+    render_project_details_table,
+)
 from codex_usage.report_theme import normalize_report_theme, report_css
 from codex_usage.report_view import ReportViewModel, build_report_view_model
 
@@ -182,17 +188,17 @@ def render_html_report(
     <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())} | Range: {html.escape(range_name)} | Pricing table as of {PRICING_AS_OF}</div>
     <div class="muted summary-line">Pricing uses rates effective at each usage event.</div>
     <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
-    <div class="muted summary-line">Sessions: {html.escape(', '.join(str(path) for path in sessions_dirs))}</div>
+    <div class="muted summary-line">Sessions: {html.escape(", ".join(str(path) for path in sessions_dirs))}</div>
     <div class="muted summary-line">{html.escape(storage_summary)}</div>
     {_render_kpis(view_model)}
     {pricing_notice_html}
     {_empty_report_notice(view_model)}
     {project_transitions_html}
     <div class="dashboard-grid">
-      {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), _table_section("Daily Details", daily_rows), scroll_class="tooltip-chart-scroll")}
-      {_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), _table_section("Hourly Details", hourly_rows), scroll_class="heatmap-chart-scroll")}
-      {_chart_section("Project Breakdown", render_project_breakdown_svg(view_model.project_points), _table_section("Project Details", view_model.project_rows), scroll_class="tooltip-chart-scroll")}
-      {_chart_section("Model Mix", render_model_mix_svg(view_model.model_points), _table_section("Model Details", view_model.model_rows), scroll_class="tooltip-chart-scroll")}
+      {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), render_aggregate_table("Daily Details", view_model.daily_rows, section_id="daily-details"), section_id="daily-cost", scroll_class="tooltip-chart-scroll")}
+      {_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table("Hourly Details", view_model.hourly_rows, section_id="hourly-details"), section_id="hourly-heatmap", scroll_class="heatmap-chart-scroll")}
+      {_chart_section("Project Breakdown", render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table("Project Details", view_model.project_detail_points, section_id="project-details"), section_id="project-breakdown", scroll_class="tooltip-chart-scroll")}
+      {_chart_section("Model Mix", render_model_mix_chart(view_model.model_points), render_aggregate_table("Model Details", view_model.model_rows, section_id="model-details"), section_id="model-mix", scroll_class="tooltip-chart-scroll")}
     </div>
   </main>
 </body>
@@ -208,13 +214,17 @@ def _project_filter_label(project_keys: list[str] | None) -> str:
     return ", ".join(selected)
 
 
-def _storage_bits(*, files_scanned: int, files_archived: int, files_retained_missing: int) -> list[str]:
+def _storage_bits(
+    *, files_scanned: int, files_archived: int, files_retained_missing: int
+) -> list[str]:
     bits = [f"Files scanned: {files_scanned}"]
     if files_archived:
         bits.append(f"Archived files included: {files_archived}")
     if files_retained_missing:
         bits.append(f"Retained missing files: {files_retained_missing}")
-        bits.append("Newer token details may be unavailable until source files are restored")
+        bits.append(
+            "Newer token details may be unavailable until source files are restored"
+        )
     return bits
 
 
@@ -266,27 +276,31 @@ def _render_kpis(view_model: ReportViewModel) -> str:
     cards = []
     for card in view_model.kpis:
         cards.append(
-            "<div class=\"kpi\">"
-            f"<div class=\"kpi-label\">{html.escape(card.label)}</div>"
-            f"<strong class=\"kpi-value\">{html.escape(card.value)}</strong>"
-            f"<div class=\"kpi-detail\">{html.escape(card.detail)}</div>"
+            '<div class="kpi">'
+            f'<div class="kpi-label">{html.escape(card.label)}</div>'
+            f'<strong class="kpi-value">{html.escape(card.value)}</strong>'
+            f'<div class="kpi-detail">{html.escape(card.detail)}</div>'
             "</div>"
         )
-    return "<section class=\"kpis\" aria-label=\"Usage summary\">" + "".join(cards) + "</section>"
+    return (
+        '<section class="kpis" aria-label="Usage summary">'
+        + "".join(cards)
+        + "</section>"
+    )
 
 
 def _pricing_notice(view_model: ReportViewModel) -> str:
     notices = []
     if view_model.has_partial_cost:
         notices.append(
-            "<p class=\"notice\">API USD excludes "
-            f"{_fmt_int(view_model.total.cost.unpriced_tokens)} tokens from models without API USD rates. "
+            '<p class="notice">API USD excludes '
+            f"{format_int(view_model.total.cost.unpriced_tokens)} tokens from models without API USD rates. "
             "Codex credit estimates are shown separately.</p>"
         )
     if view_model.no_price_data_tokens:
         notices.append(
-            "<p class=\"notice warn\">No price data is available for "
-            f"{_fmt_int(view_model.no_price_data_tokens)} tokens; these models have neither API USD nor Codex credit rates.</p>"
+            '<p class="notice warn">No price data is available for '
+            f"{format_int(view_model.no_price_data_tokens)} tokens; these models have neither API USD nor Codex credit rates.</p>"
         )
     return "".join(notices)
 
@@ -294,10 +308,12 @@ def _pricing_notice(view_model: ReportViewModel) -> str:
 def _empty_report_notice(view_model: ReportViewModel) -> str:
     if view_model.has_usage:
         return ""
-    return "<p class=\"notice\">No Codex usage was found for this report range.</p>"
+    return '<p class="notice">No Codex usage was found for this report range.</p>'
 
 
-def _project_transitions_section(project_transitions: list[dict[str, object]] | None) -> str:
+def _project_transitions_section(
+    project_transitions: list[dict[str, object]] | None,
+) -> str:
     if not project_transitions:
         return ""
 
@@ -308,31 +324,36 @@ def _project_transitions_section(project_transitions: list[dict[str, object]] | 
             f"<td>{html.escape(str(transition.get('source_label', '')))}</td>"
             f"<td>{html.escape(str(transition.get('target_label', '')))}</td>"
             f"<td>{html.escape(str(transition.get('effective_from', '')))}</td>"
-            f"<td class=\"num\">{html.escape(str(transition.get('confidence', '')))}</td>"
+            f'<td class="num">{html.escape(str(transition.get("confidence", "")))}</td>'
             "</tr>"
         )
 
     return (
-        "<section class=\"section\">"
+        '<section class="section">'
         "<h2>Project Transitions</h2>"
-        "<p class=\"muted\">Usage is split at verified local repository switch points.</p>"
-        "<div class=\"table-wrap\"><table>"
-        "<thead><tr><th>From</th><th>To</th><th>Effective From</th><th class=\"num\">Confidence</th></tr></thead>"
-        "<tbody>"
-        + "".join(rows)
-        + "</tbody></table></div>"
+        '<p class="muted">Usage is split at verified local repository switch points.</p>'
+        '<div class="table-wrap"><table>'
+        '<thead><tr><th>From</th><th>To</th><th>Effective From</th><th class="num">Confidence</th></tr></thead>'
+        "<tbody>" + "".join(rows) + "</tbody></table></div>"
         "</section>"
     )
 
 
-def _chart_section(title: str, svg: str, table_html: str, *, scroll_class: str = "") -> str:
+def _chart_section(
+    title: str,
+    chart_html: str,
+    table_html: str,
+    *,
+    section_id: str,
+    scroll_class: str = "",
+) -> str:
     classes = "chart-scroll"
     if scroll_class:
         classes = f"{classes} {html.escape(scroll_class, quote=True)}"
     return (
-        "<section class=\"section\">"
+        f'<section class="section" data-report-section="{html.escape(section_id, quote=True)}">'
         f"<h2>{html.escape(title)}</h2>"
-        f"<div class=\"{classes}\">{svg}</div>"
+        f'<div class="{classes}">{chart_html}</div>'
         f"{table_html}"
         "</section>"
     )
@@ -359,50 +380,7 @@ def _format_row(
     credit_unpriced: int,
 ) -> str:
     return (
-        f"{label[:34]:<34} {_fmt_int(total):>14} {_fmt_int(input_tokens):>14} "
-        f"{_fmt_int(cached):>14} {_fmt_int(cache_write):>14} {_fmt_int(output):>14} ${cost:>10.4f} "
-        f"{_fmt_credits(credits):>12} {_fmt_int(unpriced):>14} {_fmt_int(credit_unpriced):>14}"
+        f"{label[:34]:<34} {format_int(total):>14} {format_int(input_tokens):>14} "
+        f"{format_int(cached):>14} {format_int(cache_write):>14} {format_int(output):>14} ${cost:>10.4f} "
+        f"{format_credits(credits):>12} {format_int(unpriced):>14} {format_int(credit_unpriced):>14}"
     )
-
-
-def _table_section(title: str, rows: list[AggregateRow]) -> str:
-    if not rows:
-        return f"<h3>{html.escape(title)}</h3><p class=\"muted\">No usage found.</p>"
-    max_total = max(row.usage.total_tokens for row in rows) or 1
-    table_rows = []
-    for row in rows[:200]:
-        width = max(1, round(row.usage.total_tokens / max_total * 100))
-        table_rows.append(
-            "<tr>"
-            f"<td>{html.escape(row.label)}</td>"
-            f"<td class=\"num\">{_fmt_int(row.usage.total_tokens)}</td>"
-            f"<td class=\"num\">{_fmt_int(row.usage.input_tokens)}</td>"
-            f"<td class=\"num\">{_fmt_int(row.usage.cached_input_tokens)}</td>"
-            f"<td class=\"num\">{_fmt_int(row.usage.cache_write_input_tokens)}</td>"
-            f"<td class=\"num\">{_fmt_int(row.usage.output_tokens)}</td>"
-            f"<td class=\"num\">${row.cost.total_usd:.4f}</td>"
-            f"<td class=\"num\">{_fmt_credits(row.credits.total_credits)}</td>"
-            f"<td class=\"num\">{_fmt_int(row.cost.unpriced_tokens)}</td>"
-            f"<td class=\"num\">{_fmt_int(row.credits.unpriced_tokens)}</td>"
-            f"<td><div class=\"bar-wrap\"><div class=\"bar\" style=\"width:{width}%\"></div></div></td>"
-            "</tr>"
-        )
-    return (
-        f"<h3>{html.escape(title)}</h3><div class=\"table-wrap\">"
-        "<table><thead><tr><th>Label</th><th class=\"num\">Total</th><th class=\"num\">Input</th>"
-        "<th class=\"num\">Cache Read</th><th class=\"num\">Cache Write</th><th class=\"num\">Output</th><th class=\"num\">API Cost</th>"
-        "<th class=\"num\">Codex Credits</th><th class=\"num\">API Excl.</th><th class=\"num\">No Credit Rate</th><th>Share</th>"
-        "</tr></thead><tbody>"
-        + "".join(table_rows)
-        + "</tbody></table></div>"
-    )
-
-
-def _fmt_int(value: int) -> str:
-    return f"{value:,}"
-
-
-def _fmt_credits(value: float) -> str:
-    if value >= 1_000:
-        return f"{value:,.0f}"
-    return f"{value:,.1f}"

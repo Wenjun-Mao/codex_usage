@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from codex_usage.report_breakdown_theme import report_breakdown_css
+
 REPORT_THEME_CHOICES = ("auto", "day", "night")
 
 
@@ -242,8 +244,7 @@ def report_css() -> str:
     .bar-label { fill: var(--text); font-size: 12px; }
     .value-label { fill: var(--muted); font-size: 12px; }
     .cost-bar { fill: var(--accent); }
-    .cost-bar:hover, .breakdown-bar:hover { fill: var(--accent-strong); }
-    .breakdown-bar { fill: var(--highlight); }
+    .cost-bar:hover { fill: var(--accent-strong); }
     .daily-bar-chart {
       min-width: 680px;
       max-width: 920px;
@@ -298,51 +299,8 @@ def report_css() -> str:
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
-    .breakdown-bar-chart {
-      display: grid;
-      gap: 10px;
-      min-width: 680px;
-      max-width: 920px;
-      width: 100%;
-    }
-    .breakdown-bar-row {
-      display: grid;
-      grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;
-      gap: 10px;
-      align-items: center;
-    }
-    .breakdown-bar-label {
-      color: var(--text);
-      font-size: 12px;
-      overflow: hidden;
-      text-align: right;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .breakdown-bar-hit {
-      height: 24px;
-      border-radius: 4px;
-    }
-    .breakdown-bar-fill {
-      display: block;
-      min-width: 2px;
-      height: 20px;
-      margin-top: 2px;
-      border-radius: 4px;
-      background: var(--highlight);
-    }
-    .breakdown-bar-value {
-      color: var(--muted);
-      font-size: 12px;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
     .chart-bar-hit:hover .daily-bar-fill,
     .chart-bar-hit:focus-visible .daily-bar-fill {
-      background: var(--accent-strong);
-    }
-    .chart-bar-hit:hover .breakdown-bar-fill,
-    .chart-bar-hit:focus-visible .breakdown-bar-fill {
       background: var(--accent-strong);
     }
     .chart-bar-hit:hover,
@@ -469,4 +427,4 @@ def report_css() -> str:
       .kpi-value { font-size: 20px; }
       th, td { padding: 6px; }
     }
-"""
+""" + report_breakdown_css()
