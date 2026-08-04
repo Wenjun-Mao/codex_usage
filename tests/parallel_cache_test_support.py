@@ -14,6 +14,7 @@ from typing import ClassVar, Self
 from codex_usage.aggregation import aggregate_records, resolve_timezone, summarize_records
 from codex_usage.parallel.execution import resolve_worker_count
 from codex_usage.parallel.usage import UsageParseRequest, UsageParseResult
+from codex_usage.report_breakdown import build_report_breakdown
 from codex_usage.reporting import render_html_report
 from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
 from codex_usage.session_cache_models import CachedSessionData
@@ -330,8 +331,7 @@ def render_report_text(
         total=total,
         daily_rows=aggregate_records(data.records, "day", timezone),
         hourly_rows=aggregate_records(data.records, "hour", timezone),
-        project_rows=aggregate_records(data.records, "project", timezone),
-        model_rows=aggregate_records(data.records, "model", timezone),
+        breakdown=build_report_breakdown(data.records),
         sessions_dirs=data.session_dirs,
         files_scanned=len(data.files),
         storage_roots=[str(item) for item in data.session_dirs],

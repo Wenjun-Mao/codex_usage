@@ -15,6 +15,7 @@ from codex_usage.pricing import CostBreakdown, CreditBreakdown
 
 OTHER_MODEL_KEY = "__codex_usage_other_models__"
 OTHER_MODEL_LABEL = "Other"
+MAX_VISUAL_MODEL_COUNT = 7
 _ROLE_ORDER: tuple[UsageRole, ...] = (ROOT_USAGE_ROLE, SUBAGENT_USAGE_ROLE)
 
 
@@ -55,8 +56,10 @@ def build_report_breakdown(
     *,
     visual_model_limit: int = 7,
 ) -> ReportBreakdown:
-    if visual_model_limit < 0:
-        raise ValueError("visual_model_limit must be non-negative")
+    if not 0 <= visual_model_limit <= MAX_VISUAL_MODEL_COUNT:
+        raise ValueError(
+            f"visual_model_limit must be between 0 and {MAX_VISUAL_MODEL_COUNT}"
+        )
 
     project_role_model: dict[str, dict[UsageRole, dict[str, UsageSummary]]] = {}
     project_totals: dict[str, UsageSummary] = {}
@@ -101,7 +104,7 @@ def build_report_breakdown(
         )
         for project_key in sorted(
             project_totals,
-            key=lambda key: (-project_totals[key].usage.total_tokens, key),
+            key=lambda key: -project_totals[key].usage.total_tokens,
         )
         if project_totals[project_key].usage.total_tokens > 0
     )

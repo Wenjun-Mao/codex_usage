@@ -9,6 +9,7 @@ from codex_usage.aggregation import (
     resolve_range_bounds,
     summarize_records,
 )
+from codex_usage.report_breakdown import build_report_breakdown
 from codex_usage.reporting import (
     render_html_report,
     render_terminal,
@@ -78,8 +79,7 @@ def test_cached_range_preserves_inventory_order_for_tied_report_rows(tmp_path: P
         total=summarize_records(ranged.records),
         daily_rows=aggregate_records(ranged.records, "day", UTC),
         hourly_rows=aggregate_records(ranged.records, "hour", UTC),
-        project_rows=rows,
-        model_rows=aggregate_records(ranged.records, "model", UTC),
+        breakdown=build_report_breakdown(ranged.records),
         sessions_dirs=ranged.session_dirs,
         files_scanned=len(ranged.files),
     )

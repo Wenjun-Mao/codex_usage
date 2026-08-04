@@ -8,6 +8,7 @@ from codex_usage.aggregation import UsageSummary
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
 from codex_usage.report_breakdown import OTHER_MODEL_KEY, build_report_breakdown
+from codex_usage.report_breakdown_view import build_breakdown_view
 
 
 def _record(
@@ -145,6 +146,20 @@ def test_build_report_breakdown_keeps_top_seven_visual_models_and_groups_the_res
     assert breakdown.visual_model_rows[-1].usage.total_tokens == 70
     assert [row.label for row in breakdown.model_rows] == [*expected_top_seven, *expected_other_models]
     assert breakdown.visual_models == reversed_breakdown.visual_models
+    assert [item.color_slot for item in build_breakdown_view(breakdown).model_legend] == [
+        *range(7),
+        7,
+    ]
+
+
+def test_build_report_breakdown_rejects_more_than_seven_exact_visual_models() -> None:
+    records = [
+        _record("alpha", "Alpha", "root", f"model-{number}", total=10)
+        for number in range(8)
+    ]
+
+    with pytest.raises(ValueError, match="visual_model_limit must be between 0 and 7"):
+        build_report_breakdown(records, visual_model_limit=8)
 
 
 def test_build_report_breakdown_handles_small_unknown_role_only_and_empty_inputs() -> None:
