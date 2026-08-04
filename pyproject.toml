@@ -32,3 +32,10 @@ package = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+per-file-ignores = { "scripts/packaged_parallel_cache_smoke.py" = ["E402"], "scripts/parallel_cache_acceptance.py" = ["E402"] }
