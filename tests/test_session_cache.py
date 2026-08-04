@@ -89,7 +89,7 @@ def test_unchanged_file_is_reused_without_reparse(tmp_path: Path, monkeypatch: p
     def fail_parse(_path: Path):
         raise AssertionError("unchanged file should be loaded from cache")
 
-    monkeypatch.setattr(usage_module, "parse_session_file", fail_parse)
+    monkeypatch.setattr(usage_module, "parse_session_generation", fail_parse)
     data = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
     )
@@ -264,19 +264,19 @@ def test_parse_error_without_prior_success_retries_unchanged_file(
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", "/repo/demo", 100)
     cache_dir = tmp_path / "cache"
-    original_parser = usage_module.parse_session_file
+    original_parser = usage_module.parse_session_generation
 
     def fail_parse(_path: Path):
         raise OSError("transient first-read failure")
 
-    monkeypatch.setattr(usage_module, "parse_session_file", fail_parse)
+    monkeypatch.setattr(usage_module, "parse_session_generation", fail_parse)
     failed = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
     )
     assert failed.stats.file_errors == 1
     assert failed.records == []
 
-    monkeypatch.setattr(usage_module, "parse_session_file", original_parser)
+    monkeypatch.setattr(usage_module, "parse_session_generation", original_parser)
     recovered = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
     )
@@ -314,7 +314,7 @@ def test_parse_failure_keeps_previous_cached_records(tmp_path: Path, monkeypatch
     def fail_parse(_path: Path):
         raise OSError("transient read failure")
 
-    monkeypatch.setattr(usage_module, "parse_session_file", fail_parse)
+    monkeypatch.setattr(usage_module, "parse_session_generation", fail_parse)
 
     data = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1

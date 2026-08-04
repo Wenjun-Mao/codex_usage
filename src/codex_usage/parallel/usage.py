@@ -14,7 +14,8 @@ from tenacity import (
 
 from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import WorkerSpan
-from codex_usage.parser import parse_session_file
+from codex_usage.parser import parse_session_generation
+from codex_usage.session_generation_models import ParsedSessionGeneration
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,27 +30,31 @@ class UsageParseRequest:
 @dataclass(frozen=True, slots=True)
 class UsageParseResult:
     request: UsageParseRequest
-    records: tuple[UsageRecord, ...]
+    generation: ParsedSessionGeneration | None
     error: str
     span: WorkerSpan
 
     def __post_init__(self) -> None:
-        if self.records and self.error:
-            raise ValueError("usage parse result cannot contain records and an error")
+        if self.generation is not None and self.error:
+            raise ValueError("usage parse result cannot contain a generation and an error")
+
+    @property
+    def records(self) -> tuple[UsageRecord, ...]:
+        return self.generation.records if self.generation is not None else ()
 
 
 def parse_usage_request(request: UsageParseRequest) -> UsageParseResult:
     started_ns = time.monotonic_ns()
     pid = os.getpid()
     try:
-        records = tuple(_parse_session_file_with_retry(request.path))
+        generation = _parse_session_generation_with_retry(request.path)
         error = ""
     except Exception as exc:
-        records = ()
+        generation = None
         error = f"{type(exc).__name__}: {exc}"
     return UsageParseResult(
         request=request,
-        records=records,
+        generation=generation,
         error=error,
         span=WorkerSpan(
             pid=pid,
@@ -65,5 +70,5 @@ def parse_usage_request(request: UsageParseRequest) -> UsageParseResult:
     wait=wait_exponential(multiplier=0.05, min=0.05, max=0.2),
     reraise=True,
 )
-def _parse_session_file_with_retry(path: Path) -> list[UsageRecord]:
-    return parse_session_file(path)
+def _parse_session_generation_with_retry(path: Path) -> ParsedSessionGeneration:
+    return parse_session_generation(path)

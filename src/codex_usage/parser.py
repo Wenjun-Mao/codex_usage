@@ -9,6 +9,11 @@ from typing import Any
 
 from codex_usage.models import UNKNOWN, SessionMetadata, TokenUsage, UsageRecord
 from codex_usage.project_identity import resolve_project_identity
+from codex_usage.project_transition_evidence import extract_repo_paths
+from codex_usage.session_generation_models import (
+    ParsedSessionGeneration,
+    RawRepoPathCandidate,
+)
 from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
 
 
@@ -18,11 +23,24 @@ _USAGE_EVENT_MARKERS = (
     '"token_count"',
     '"task_started"',
 )
+_FUNCTION_CALL_MARKERS = ('"response_item"', '"function_call"')
+
+
+class _PartialSessionGenerationReadError(OSError):
+    def __init__(
+        self,
+        candidates: tuple[RawRepoPathCandidate, ...],
+        cause: OSError | UnicodeDecodeError,
+    ) -> None:
+        super().__init__(str(cause))
+        self.candidates = candidates
+        self.cause = cause
 
 
 def _line_may_affect_usage(raw_line: str) -> bool:
     return (
         any(marker in raw_line for marker in _USAGE_EVENT_MARKERS)
+        or all(marker in raw_line for marker in _FUNCTION_CALL_MARKERS)
         or r"\u" in raw_line
         or r"\U" in raw_line
     )
@@ -52,8 +70,18 @@ def finalize_session_records(records_by_file: Iterable[list[UsageRecord]]) -> li
 
 
 def parse_session_file(path: Path) -> list[UsageRecord]:
+    return list(parse_session_generation(path).records)
+
+
+def parse_session_generation(
+    path: Path,
+    *,
+    _capture_partial_candidates: bool = False,
+) -> ParsedSessionGeneration:
     metadata = SessionMetadata(session_id=path.stem, file_path=path)
+    root_metadata: SessionMetadata | None = None
     records: list[UsageRecord] = []
+    candidates: list[RawRepoPathCandidate] = []
     previous_usage: TokenUsage | None = None
     root_session_id = ""
     root_session_is_fork = False
@@ -63,90 +91,110 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
     current_effort = ""
     current_mode = ""
 
-    with path.open("r", encoding="utf-8") as handle:
-        for raw_line in handle:
-            if not _line_may_affect_usage(raw_line):
-                continue
-            obj = _parse_json_line(raw_line)
-            if obj is None:
-                continue
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                if not _line_may_affect_usage(raw_line):
+                    continue
+                obj = _parse_json_line(raw_line)
+                if obj is None:
+                    continue
 
-            event_timestamp = parse_timestamp(obj.get("timestamp"))
-            event_type = obj.get("type")
-            payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+                event_timestamp = parse_timestamp(obj.get("timestamp"))
+                event_type = obj.get("type")
+                payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
 
-            if event_type == "session_meta":
-                metadata = _parse_session_metadata(payload, path, event_timestamp)
-                if not root_session_id:
-                    root_session_id = metadata.session_id
-                    root_session_is_fork = bool(metadata.forked_from_id)
-                continue
+                if event_type == "session_meta":
+                    metadata = _parse_session_metadata(payload, path, event_timestamp)
+                    if root_metadata is None:
+                        root_metadata = metadata
+                        root_session_id = metadata.session_id
+                        root_session_is_fork = bool(metadata.forked_from_id)
+                    continue
 
-            if event_type == "turn_context":
-                current_turn_id = str(payload.get("turn_id") or current_turn_id)
-                current_model = _extract_model(payload) or current_model
-                current_effort = _extract_effort(payload) or current_effort
-                current_mode = _extract_collaboration_mode(payload) or current_mode
-                continue
+                if event_type == "response_item":
+                    candidates.extend(
+                        _extract_repo_path_candidates(
+                            payload,
+                            event_timestamp,
+                            metadata.session_id,
+                        )
+                    )
+                    continue
 
-            if event_type != "event_msg":
-                continue
+                if event_type == "turn_context":
+                    current_turn_id = str(payload.get("turn_id") or current_turn_id)
+                    current_model = _extract_model(payload) or current_model
+                    current_effort = _extract_effort(payload) or current_effort
+                    current_mode = _extract_collaboration_mode(payload) or current_mode
+                    continue
 
-            payload_type = payload.get("type")
-            if payload_type == "task_started":
-                current_turn_id = str(payload.get("turn_id") or current_turn_id)
-                current_mode = str(payload.get("collaboration_mode_kind") or current_mode)
-                continue
-            if payload_type != "token_count":
-                continue
+                if event_type != "event_msg":
+                    continue
 
-            info = payload.get("info")
-            if not isinstance(info, dict):
-                continue
+                payload_type = payload.get("type")
+                if payload_type == "task_started":
+                    current_turn_id = str(payload.get("turn_id") or current_turn_id)
+                    current_mode = str(payload.get("collaboration_mode_kind") or current_mode)
+                    continue
+                if payload_type != "token_count":
+                    continue
 
-            total_usage = TokenUsage.from_mapping(info.get("total_token_usage"))
-            had_previous_usage = previous_usage is not None
-            delta = total_usage.positive_delta(previous_usage)
-            previous_usage = total_usage
-            if delta is None:
-                continue
+                info = payload.get("info")
+                if not isinstance(info, dict):
+                    continue
 
-            is_root_session = not root_session_id or metadata.session_id == root_session_id
-            if root_session_is_fork and not is_root_session:
-                continue
-            # Fork files can replay imported parent history before actual fork work. A first root
-            # snapshot without a prior baseline is inherited context, not newly consumed tokens.
-            if root_session_is_fork and is_root_session and not counted_root_fork_usage and not had_previous_usage:
-                continue
+                total_usage = TokenUsage.from_mapping(info.get("total_token_usage"))
+                had_previous_usage = previous_usage is not None
+                delta = total_usage.positive_delta(previous_usage)
+                previous_usage = total_usage
+                if delta is None:
+                    continue
 
-            timestamp = event_timestamp or metadata.timestamp
-            if timestamp is None:
-                continue
+                is_root_session = not root_session_id or metadata.session_id == root_session_id
+                if root_session_is_fork and not is_root_session:
+                    continue
+                # Fork files can replay imported parent history before actual fork work. A first root
+                # snapshot without a prior baseline is inherited context, not newly consumed tokens.
+                if root_session_is_fork and is_root_session and not counted_root_fork_usage and not had_previous_usage:
+                    continue
 
-            project_identity = resolve_project_identity(metadata)
-            records.append(
-                UsageRecord(
-                    timestamp=timestamp,
-                    usage=delta,
-                    session_id=metadata.session_id,
-                    file_path=path,
-                    model=current_model,
-                    turn_id=current_turn_id,
-                    effort=current_effort,
-                    collaboration_mode=current_mode,
-                    project_key=project_identity.key,
-                    project_label=project_identity.label,
-                    project_aliases=project_identity.aliases,
-                    cwd=metadata.cwd,
-                    git_repository_url=metadata.git_repository_url or project_identity.git_repository_url,
-                    git_branch=metadata.git_branch,
-                    parent_thread_id=metadata.parent_thread_id,
+                timestamp = event_timestamp or metadata.timestamp
+                if timestamp is None:
+                    continue
+
+                project_identity = resolve_project_identity(metadata)
+                records.append(
+                    UsageRecord(
+                        timestamp=timestamp,
+                        usage=delta,
+                        session_id=metadata.session_id,
+                        file_path=path,
+                        model=current_model,
+                        turn_id=current_turn_id,
+                        effort=current_effort,
+                        collaboration_mode=current_mode,
+                        project_key=project_identity.key,
+                        project_label=project_identity.label,
+                        project_aliases=project_identity.aliases,
+                        cwd=metadata.cwd,
+                        git_repository_url=metadata.git_repository_url or project_identity.git_repository_url,
+                        git_branch=metadata.git_branch,
+                        parent_thread_id=metadata.parent_thread_id,
+                    )
                 )
-            )
-            if root_session_is_fork and is_root_session:
-                counted_root_fork_usage = True
+                if root_session_is_fork and is_root_session:
+                    counted_root_fork_usage = True
+    except (OSError, UnicodeDecodeError) as error:
+        if _capture_partial_candidates:
+            raise _PartialSessionGenerationReadError(tuple(candidates), error) from error
+        raise
 
-    return records
+    return ParsedSessionGeneration(
+        records=tuple(records),
+        metadata=root_metadata or SessionMetadata(session_id=path.stem, file_path=path),
+        candidates=tuple(candidates),
+    )
 
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -172,9 +220,44 @@ def _parse_json_line(raw_line: str) -> dict[str, Any] | None:
         return None
     try:
         parsed = json.loads(line)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def _extract_repo_path_candidates(
+    payload: dict[str, Any],
+    timestamp: datetime | None,
+    thread_id: str,
+) -> list[RawRepoPathCandidate]:
+    if payload.get("type") != "function_call" or timestamp is None:
+        return []
+    workdir = _function_call_workdir(payload.get("arguments"))
+    if not workdir:
+        return []
+    return [
+        RawRepoPathCandidate(
+            raw_path=raw_path,
+            timestamp=timestamp,
+            thread_id=thread_id,
+            source="jsonl:response_item:function_call_workdir",
+        )
+        for raw_path in extract_repo_paths(workdir, preserve_exact_field=True)
+    ]
+
+
+def _function_call_workdir(arguments: object) -> str:
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except (ValueError, RecursionError):
+            return ""
+    else:
+        parsed = arguments
+    if not isinstance(parsed, dict):
+        return ""
+    workdir = parsed.get("workdir")
+    return workdir if isinstance(workdir, str) else ""
 
 
 def _parse_session_metadata(payload: dict[str, Any], path: Path, timestamp: datetime | None) -> SessionMetadata:

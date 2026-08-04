@@ -198,7 +198,7 @@ def test_collect_repo_path_observations_caches_repeated_repo_path_verification(
     assert calls == 1
 
 
-def test_collect_repo_path_observations_ignores_invalid_utf8_jsonl_bytes(tmp_path: Path) -> None:
+def test_collect_repo_path_observations_treats_invalid_utf8_as_a_file_error(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     repo = tmp_path / "ops-board"
     _write_git_config(repo, "https://github.com/Wenjun-Mao/ops-board.git")
@@ -208,11 +208,13 @@ def test_collect_repo_path_observations_ignores_invalid_utf8_jsonl_bytes(tmp_pat
     response = json.dumps(_function_call_workdir_event("2026-05-23T21:06:45Z", repo))
     session_path.write_bytes(session_meta.encode() + b"\n\xff\xfe\xfa\n" + response.encode() + b"\n")
 
-    observations = collect_repo_path_observations(session_dirs=[sessions], session_files=[session_path])
+    observations, report = collect_repo_path_observations_with_report(
+        session_dirs=[sessions],
+        session_files=[session_path],
+    )
 
-    assert len(observations) == 1
-    assert observations[0].thread_id == "thread-1"
-    assert observations[0].project_key == "https://github.com/wenjun-mao/ops-board"
+    assert observations == []
+    assert report.file_error_count == 1
 
 
 def test_parse_json_line_returns_none_for_extreme_json(monkeypatch) -> None:

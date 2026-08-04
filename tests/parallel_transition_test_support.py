@@ -131,7 +131,7 @@ def _write_mixed_jsonl(
         (row if isinstance(row, str) else json.dumps(row)).encode("utf-8") + b"\n"
         for row in rows
     )
-    path.write_bytes(encoded + b"\xff\xfe\xfa\n")
+    path.write_bytes(encoded)
 
 
 def _session_meta(thread_id: str, timestamp: str) -> dict[str, object]:

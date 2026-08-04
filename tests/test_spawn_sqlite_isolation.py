@@ -120,7 +120,7 @@ def test_spawned_usage_and_transition_workers_cannot_open_sqlite(
         result.span.pid != parent_pid and result.error == ""
         for result in usage_results
     )
-    assert all(result.records for result in usage_results)
+    assert all(result.generation and result.generation.records for result in usage_results)
     assert all(
         result.span.pid != parent_pid and result.error == ""
         for result in transition_results
@@ -134,6 +134,7 @@ def test_worker_import_closure_has_no_sqlite_or_parent_store_dependency() -> Non
     closure = local_import_closure(
         (
             "codex_usage.parallel.usage",
+            "codex_usage.session_generation_models",
             "codex_usage.parallel.transitions",
             "codex_usage.project_transition_candidates",
         )
