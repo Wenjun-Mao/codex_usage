@@ -10,6 +10,9 @@ _MODEL_COLOR_CSS = """
       --model-5: #dd6a9e;
       --model-6: #d9aa2b;
       --model-7: #8b949f;
+      --model-separator: var(--surface);
+      --model-focus-inner: var(--text);
+      --model-focus-outer: var(--accent-strong);
     }
     html[data-codex-theme="night"] {
       --model-0: #a7c2fa;
@@ -80,9 +83,13 @@ _PROJECT_BREAKDOWN_CSS = """
     .project-role-heading-detail { margin-left: 4px; font-variant-numeric: tabular-nums; }
     .project-role-group { display: flex; overflow: hidden; min-width: 0; border: 1px solid var(--border); border-radius: 4px; }
     .model-segment { position: relative; display: block; flex: 0 0 auto; height: 100%; outline: none; }
-    .model-segment:hover, .model-segment:focus-visible { filter: brightness(1.12); z-index: 3; }
-    .model-segment:focus-visible { box-shadow: inset 0 0 0 2px var(--text); z-index: 3; }
-    .model-segment + .model-segment { border-left: 1px solid var(--surface); }
+    .model-segment:hover { filter: brightness(1.12); z-index: 3; }
+    .model-segment + .model-segment { box-shadow: inset 1px 0 0 var(--model-separator); }
+    .model-segment:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--model-focus-inner), 0 0 0 2px var(--model-focus-outer);
+      filter: brightness(1.12);
+      z-index: 3;
+    }
     .model-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 2px 0 0 210px; color: var(--muted); font-size: 12px; }
     .model-legend-item { display: inline-flex; align-items: center; gap: 5px; }
     .model-swatch { display: inline-block; width: 10px; height: 10px; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
@@ -97,8 +104,6 @@ _PROJECT_BREAKDOWN_CSS = """
       .breakdown-bar-label { text-align: left; }
       .model-legend { margin-left: 104px; }
     }
-    body.vscode-high-contrast .project-role-group,
-    body.vscode-high-contrast .model-segment { border-color: var(--border); }
     body.vscode-high-contrast {
       --model-0: var(--text);
       --model-1: var(--text);
@@ -108,17 +113,25 @@ _PROJECT_BREAKDOWN_CSS = """
       --model-5: var(--text);
       --model-6: var(--text);
       --model-7: var(--text);
+      --model-separator: var(--bg);
+      --model-focus-inner: var(--bg);
+      --model-focus-outer: var(--accent);
+    }
+    body.vscode-high-contrast .model-segment + .model-segment {
+      box-shadow: inset 2px 0 0 var(--model-separator);
+    }
+    body.vscode-high-contrast .model-segment:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--model-focus-inner), 0 0 0 2px var(--model-focus-outer);
     }
 """
 
 _MODEL_MIX_CSS = """
     .model-mix-track { height: 24px; position: relative; }
-    .model-mix-fill { position: relative; display: block; height: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 4px; outline: none; }
+    .model-mix-fill { position: relative; display: block; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--model-separator); outline: none; }
     .model-mix-fill:hover, .model-mix-fill:focus-visible { filter: brightness(1.12); z-index: 3; }
-    .model-mix-fill:focus-visible { box-shadow: inset 0 0 0 2px var(--text); }
+    .model-mix-fill:focus-visible { box-shadow: inset 0 0 0 2px var(--model-focus-inner), 0 0 0 2px var(--model-focus-outer); }
     .model-mix-fill:hover .chart-tooltip,
     .model-mix-fill:focus-visible .chart-tooltip { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s; }
-    body.vscode-high-contrast .model-mix-fill { border-color: var(--border); }
 """
 
 

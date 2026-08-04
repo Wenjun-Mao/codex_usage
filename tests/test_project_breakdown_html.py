@@ -129,6 +129,54 @@ def test_project_breakdown_empty_state_and_styles_are_self_contained(
     assert " href=" not in html
 
 
+def test_breakdown_css_keeps_high_contrast_focus_and_boundaries_distinct(
+    tmp_path: Path,
+) -> None:
+    html = _render_report(tmp_path, [])
+
+    assert "--model-0: var(--text);" in html
+    assert "--model-separator: var(--bg);" in html
+    assert "--model-focus-inner: var(--bg);" in html
+    assert "--model-focus-outer: var(--accent);" in html
+    assert (
+        "box-shadow: inset 0 0 0 2px var(--model-focus-inner), 0 0 0 2px var(--model-focus-outer);"
+        in html
+    )
+    assert "box-shadow: inset 2px 0 0 var(--model-separator);" in html
+
+
+def test_breakdown_css_uses_non_layout_segment_and_model_mix_boundaries(
+    tmp_path: Path,
+) -> None:
+    html = _render_report(tmp_path, [])
+
+    segment_css = html.split(".model-segment {", 1)[1].split("}", 1)[0]
+    model_mix_css = html.split(".model-mix-fill {", 1)[1].split("}", 1)[0]
+
+    assert "border:" not in segment_css
+    assert "min-width:" not in segment_css
+    assert "border:" not in model_mix_css
+    assert "min-width:" not in model_mix_css
+    assert "box-shadow: inset 1px 0 0 var(--model-separator);" in html
+    assert "box-shadow: inset 0 0 0 1px var(--model-separator);" in html
+
+
+def test_model_details_keeps_all_exact_models_beyond_two_hundred_rows(
+    tmp_path: Path,
+) -> None:
+    html = _render_report(
+        tmp_path,
+        [_record("root", f"model-{index:03d}", 1) for index in range(201)],
+    )
+
+    model_details = html.split(
+        '<section class="report-table-section" data-report-section="model-details">', 1
+    )[1].split("</section>", 1)[0]
+    assert model_details.count("<tr>") == 202
+    assert ">model-000</td>" in model_details
+    assert ">model-200</td>" in model_details
+
+
 def _render_report(tmp_path: Path, records: list[UsageRecord]) -> str:
     output = tmp_path / "report.html"
     total = summarize_records(records)

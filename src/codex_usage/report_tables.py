@@ -13,7 +13,7 @@ def render_aggregate_table(
         return _empty_table_section(title, section_id)
 
     max_total = max(row.usage.total_tokens for row in rows) or 1
-    table_rows = "".join(_aggregate_row_html(row, max_total) for row in rows[:200])
+    table_rows = "".join(_aggregate_row_html(row, max_total) for row in rows)
     return _table_section(
         title,
         section_id,
@@ -35,7 +35,7 @@ def render_project_details_table(
         return _empty_table_section(title, section_id)
 
     max_total = max(point.total_tokens for point in points) or 1
-    table_rows = "".join(_project_row_html(point, max_total) for point in points[:200])
+    table_rows = "".join(_project_row_html(point, max_total) for point in points)
     return _table_section(
         title,
         section_id,
