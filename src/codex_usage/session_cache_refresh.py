@@ -25,6 +25,10 @@ from codex_usage.session_cache_generations import (
     replace_file_generation,
 )
 from codex_usage.session_cache_models import CacheRefreshOutcome, CacheStats
+from codex_usage.session_cache_ownership import (
+    is_reusable,
+    promote_reusable_cached_session_owners,
+)
 from codex_usage.session_cache_schema import _REPARSE_REQUIRED_ERROR
 from codex_usage.session_cache_store import record_file_error
 from codex_usage.session_generation_models import ParsedSessionGeneration
@@ -176,6 +180,17 @@ def _commit_preflight(
 
     connection.execute("begin immediate")
     try:
+        affected_task_ids.update(
+            promote_reusable_cached_session_owners(
+                connection,
+                inventory,
+                cached_rows,
+                rebuilt=rebuilt,
+                entry_priority=_entry_priority,
+            )
+        )
+        cached_rows = _load_cached_rows(connection)
+        current_keys = {entry.file_key for entry in inventory}
         for file_key, row in cached_rows.items():
             if file_key in current_keys or int(row["is_missing"]) != 0:
                 continue
@@ -198,7 +213,7 @@ def _commit_preflight(
 
         for ordinal, entry in enumerate(inventory):
             cached = cached_rows.get(entry.file_key)
-            if _is_reusable(entry, cached, rebuilt=rebuilt):
+            if is_reusable(entry, cached, rebuilt=rebuilt):
                 connection.execute(
                     "update files set last_seen_at = ? where file_key = ?",
                     (now, entry.file_key),
@@ -213,22 +228,6 @@ def _commit_preflight(
         connection.rollback()
         raise
     return parse_entries, reused, missing_marked, affected_task_ids
-
-
-def _is_reusable(
-    entry: SessionFileInventoryEntry,
-    cached: sqlite3.Row | None,
-    *,
-    rebuilt: bool,
-) -> bool:
-    return bool(
-        not rebuilt
-        and cached is not None
-        and str(cached["path"]) == str(entry.path)
-        and int(cached["size_bytes"]) == entry.size_bytes
-        and int(cached["mtime_ns"]) == entry.mtime_ns
-        and int(cached["is_missing"]) == 0
-    )
 
 
 def _validated_results(
