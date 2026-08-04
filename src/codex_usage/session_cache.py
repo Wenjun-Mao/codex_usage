@@ -147,13 +147,15 @@ def load_cached_session_data(
         connection.row_factory = sqlite3.Row
         schema_state = _schema._ensure_schema(connection)
         legacy_cleanup_errors = _cleanup_legacy_cache_files(resolved_cache_dir)
-        stats, usage_run = _refresh.refresh_files(
+        refresh_outcome = _refresh.refresh_files(
             connection,
             session_dirs,
             inventory,
             rebuilt=schema_state.created or schema_state.reset,
             max_workers=max_workers,
         )
+        stats = refresh_outcome.stats
+        usage_run = refresh_outcome.usage_run
         current_keys = {entry.file_key for entry in inventory}
         missing_keys = _store._missing_file_keys(connection)
         records_by_file_key = _store._load_records_by_file_key(connection, current_keys | missing_keys)

@@ -25,6 +25,13 @@ class CacheStats:
     legacy_cleanup_errors: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class CacheRefreshOutcome:
+    stats: CacheStats
+    usage_run: ParallelRunReport
+    affected_task_ids: frozenset[str]
+
+
 @dataclass(frozen=True)
 class CachedFileSummary:
     file_path: Path

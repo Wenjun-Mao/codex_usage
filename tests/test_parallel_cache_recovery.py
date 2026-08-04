@@ -20,7 +20,6 @@ from parallel_cache_test_support import (
 )
 
 import codex_usage.session_cache_refresh as refresh_module
-from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import OrderedProcessMapper
 from codex_usage.parallel.usage import (
     UsageParseRequest,
@@ -31,6 +30,7 @@ from codex_usage.session_cache import (
     CACHE_DB_NAME,
     load_cached_session_data,
 )
+from codex_usage.session_generation_models import ParsedSessionGeneration
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     collect_session_file_inventory,
@@ -46,7 +46,6 @@ def reset_usage_mapper_doubles() -> Iterator[None]:
     ShuffledUsageResultMapper.seed = 0
     ShuffledUsageResultMapper.observed_orders.clear()
     InterruptAfterFirstBatchMapper.calls = 0
-
 
 def test_usage_request_and_result_are_pickle_safe(tmp_path: Path) -> None:
     corpus = write_usage_corpus(tmp_path / "codex")
@@ -392,15 +391,15 @@ def test_insert_failure_rolls_back_all_eight_replacements(
         connection: sqlite3.Connection,
         session_dirs: list[Path],
         entry: SessionFileInventoryEntry,
-        records: tuple[UsageRecord, ...],
-    ) -> None:
+        generation: ParsedSessionGeneration,
+    ) -> set[str]:
         nonlocal calls
         calls += 1
         if calls == 2:
             raise sqlite3.IntegrityError(
                 "injected second replacement failure"
             )
-        original(connection, session_dirs, entry, records)
+        return original(connection, session_dirs, entry, generation)
 
     monkeypatch.setattr(
         refresh_module, "replace_file_generation", fail_second_replacement

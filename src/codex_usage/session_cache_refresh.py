@@ -18,12 +18,16 @@ from codex_usage.parallel.usage import (
     UsageParseResult,
     parse_usage_request,
 )
-from codex_usage.session_cache_models import CacheStats
+from codex_usage.session_cache_generations import (
+    affected_task_ids_for_file,
+    remove_candidate_generation,
+    replace_file_generation,
+)
+from codex_usage.session_cache_models import CacheRefreshOutcome, CacheStats
 from codex_usage.session_cache_schema import _REPARSE_REQUIRED_ERROR
 from codex_usage.session_cache_store import (
     _set_project_transitions_dirty,
     record_file_error,
-    replace_file_generation,
 )
 from codex_usage.session_inventory import SessionFileInventoryEntry
 
@@ -37,7 +41,7 @@ def refresh_files(
     *,
     rebuilt: bool,
     max_workers: int | None = None,
-) -> tuple[CacheStats, ParallelRunReport]:
+) -> CacheRefreshOutcome:
     cached_rows = {
         str(row["file_key"]): row
         for row in connection.execute(
@@ -46,7 +50,7 @@ def refresh_files(
         )
     }
     _reconcile_fallback_file_keys(inventory, cached_rows)
-    parse_entries, reused, missing_marked = _commit_preflight(
+    parse_entries, reused, missing_marked, affected_task_ids = _commit_preflight(
         connection,
         inventory,
         cached_rows,
@@ -78,12 +82,12 @@ def refresh_files(
                 request_group,
                 mapper.map_batch(request_group),
             )
-            _commit_result_group(
+            affected_task_ids.update(_commit_result_group(
                 connection,
                 session_dirs,
                 inventory,
                 results,
-            )
+            ))
             worker_spans.extend(result.span for result in results)
             file_errors += sum(bool(result.error) for result in results)
 
@@ -112,7 +116,11 @@ def refresh_files(
         infrastructure_error=mapper.infrastructure_error,
         file_error_count=file_errors,
     )
-    return stats, report
+    return CacheRefreshOutcome(
+        stats=stats,
+        usage_run=report,
+        affected_task_ids=frozenset(affected_task_ids),
+    )
 
 
 def _reconcile_fallback_file_keys(
@@ -143,18 +151,23 @@ def _commit_preflight(
     cached_rows: dict[str, sqlite3.Row],
     *,
     rebuilt: bool,
-) -> tuple[list[tuple[int, SessionFileInventoryEntry]], int, int]:
+) -> tuple[list[tuple[int, SessionFileInventoryEntry]], int, int, set[str]]:
     now = datetime.now(UTC).isoformat()
     current_keys = {entry.file_key for entry in inventory}
     parse_entries: list[tuple[int, SessionFileInventoryEntry]] = []
     reused = 0
     missing_marked = 0
+    affected_task_ids: set[str] = set()
 
     connection.execute("begin immediate")
     try:
         for file_key, row in cached_rows.items():
             if file_key in current_keys or int(row["is_missing"]) != 0:
                 continue
+            affected_task_ids.update(
+                affected_task_ids_for_file(connection, file_key)
+            )
+            remove_candidate_generation(connection, file_key)
             connection.execute(
                 """
                 update files
@@ -181,13 +194,14 @@ def _commit_preflight(
             else:
                 parse_entries.append((ordinal, entry))
 
+        _mark_transition_tasks_dirty(connection, affected_task_ids)
         if rebuilt or missing_marked:
             _set_project_transitions_dirty(connection, dirty=True)
         connection.commit()
     except BaseException:
         connection.rollback()
         raise
-    return parse_entries, reused, missing_marked
+    return parse_entries, reused, missing_marked, affected_task_ids
 
 
 def _is_reusable(
@@ -235,7 +249,8 @@ def _commit_result_group(
     session_dirs: list[Path],
     inventory: list[SessionFileInventoryEntry],
     results: tuple[UsageParseResult, ...],
-) -> None:
+) -> set[str]:
+    affected_task_ids: set[str] = set()
     connection.execute("begin immediate")
     try:
         for result in results:
@@ -248,14 +263,27 @@ def _commit_result_group(
                     result.error,
                 )
             else:
-                replace_file_generation(
+                if result.generation is None:
+                    raise ValueError("successful usage parse result lacks generation")
+                affected_task_ids.update(replace_file_generation(
                     connection,
                     session_dirs,
                     entry,
-                    result.records,
-                )
+                    result.generation,
+                ))
+        _mark_transition_tasks_dirty(connection, affected_task_ids)
         _set_project_transitions_dirty(connection, dirty=True)
         connection.commit()
     except BaseException:
         connection.rollback()
         raise
+    return affected_task_ids
+
+
+def _mark_transition_tasks_dirty(
+    connection: sqlite3.Connection, task_ids: set[str]
+) -> None:
+    connection.executemany(
+        "insert or ignore into dirty_transition_tasks (thread_id) values (?)",
+        [(task_id,) for task_id in sorted(task_ids) if task_id],
+    )
