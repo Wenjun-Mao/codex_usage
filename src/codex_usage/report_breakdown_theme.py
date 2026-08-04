@@ -68,6 +68,7 @@ _PROJECT_BREAKDOWN_CSS = """
       border-radius: 4px;
       background: var(--surface-soft);
     }
+    .project-track { height: 62px; }
     .project-role-stack { min-width: 0; height: 100%; }
     .project-role-labels {
       display: grid;

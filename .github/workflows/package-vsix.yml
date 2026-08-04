@@ -105,6 +105,12 @@ jobs:
       - name: Run Python tests
         run: uv run pytest -q
 
+      - name: Install screenshot browser
+        run: uv run playwright install chromium
+
+      - name: Verify Marketplace screenshot renderer
+        run: uv run python scripts/generate_marketplace_screenshot.py --check
+
       - name: Install VS Code extension dependencies
         working-directory: extensions/vscode
         run: npm ci

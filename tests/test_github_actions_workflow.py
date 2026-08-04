@@ -87,6 +87,24 @@ def test_native_workflow_jobs_test_before_packaging(
     assert job.index("run: npm test") < job.index(f"run: {package_command}")
 
 
+def test_only_macos_installs_and_checks_marketplace_screenshot() -> None:
+    workflow = read_workflow()
+    macos = extract_workflow_job(workflow, "macos")
+    windows = extract_workflow_job(workflow, "windows")
+    publish = extract_workflow_job(workflow, "publish")
+    browser_install = "uv run playwright install chromium"
+    screenshot_check = "uv run python scripts/generate_marketplace_screenshot.py --check"
+
+    assert browser_install in macos
+    assert screenshot_check in macos
+    assert macos.index("run: uv run pytest -q") < macos.index(browser_install)
+    assert macos.index(browser_install) < macos.index(screenshot_check)
+    assert browser_install not in windows
+    assert screenshot_check not in windows
+    assert browser_install not in publish
+    assert screenshot_check not in publish
+
+
 @pytest.mark.parametrize("build_script", NATIVE_BUILD_SCRIPTS, ids=lambda path: path.name)
 def test_native_build_scripts_run_packaged_sync_smoke(build_script: Path):
     text = build_script.read_text(encoding="utf-8")

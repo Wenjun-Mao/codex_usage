@@ -21,6 +21,8 @@ codex-usage = "codex_usage.cli:main"
 
 [dependency-groups]
 dev = [
+    "pillow>=12.3.0",
+    "playwright>=1.62.0",
     "pytest>=9.0.2",
 ]
 package = [

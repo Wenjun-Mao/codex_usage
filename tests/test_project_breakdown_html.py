@@ -161,6 +161,13 @@ def test_breakdown_css_uses_non_layout_segment_and_model_mix_boundaries(
     assert "box-shadow: inset 0 0 0 1px var(--model-separator);" in html
 
 
+def test_project_role_stack_reserves_space_for_labels_and_groups(tmp_path: Path) -> None:
+    html = _render_report(tmp_path, [])
+
+    assert ".project-track, .model-mix-track {" in html
+    assert "height: 62px;" in html
+
+
 def test_model_details_keeps_all_exact_models_beyond_two_hundred_rows(
     tmp_path: Path,
 ) -> None:
