@@ -11,6 +11,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
+    "1.1.0": "2026-08-03",
     "1.0.0": "2026-08-03",
     "0.1.42": "2026-07-31",
     "0.1.41": "2026-07-30",
@@ -54,6 +55,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "1.1.0",
     "1.0.0",
     "0.1.42",
     "0.1.41",
@@ -183,6 +185,20 @@ def test_1_0_0_changelogs_describe_stable_promotion_and_tooltip_fix(
     assert "stable" in section and "preview" in section
     assert "project breakdown" in section and "model mix" in section
     assert "tooltip" in section and "clipped" in section
+
+
+@pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
+def test_1_1_0_changelogs_describe_incremental_cache_release(changelog: Path) -> None:
+    section = normalized_prose(
+        markdown_section(
+            changelog,
+            "## 1.1.0 - 2026-08-03 - Incremental Usage Cache",
+        )
+    )
+
+    assert "schema 4" in section
+    assert "one pass" in section
+    assert "Loaded in".casefold() in section
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))

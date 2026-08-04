@@ -28,4 +28,4 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 
 The current Task Transfer inventory contract is recorded in [ADR 0018](0018-user-visible-task-transfer-inventory.md).
 The bounded parallel cache refresh recovery contract is recorded in [ADR 0019](0019-bounded-parallel-cache-refresh.md).
-The disposable versioned usage-cache contract is recorded in [ADR 0020](0020-disposable-versioned-usage-cache.md).
+The incremental range-aware usage-cache contract is recorded in [ADR 0020](0020-incremental-range-aware-usage-cache.md).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove spawned cache workers through the frozen command-line executable."""
+"""Prove packaged combined cache workers through the frozen executable."""
 
 from __future__ import annotations
 
@@ -12,15 +12,21 @@ import platform
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from codex_usage.parallel_audit import ExpectedTarget, validate_target_architecture
 from codex_usage.process_tree import run_process_tree
 
+SCRIPT_DIRECTORY = str(Path(__file__).parent)
+if SCRIPT_DIRECTORY not in sys.path:
+    sys.path.insert(0, SCRIPT_DIRECTORY)
+
+from parallel_cache_fixture import append_incremental_change, write_parallel_cache_fixture
+
 FILE_COUNT = 10
 EXPECTED_RECORD_COUNT = FILE_COUNT + 1
+EXPECTED_CHANGED_RECORD_COUNT = EXPECTED_RECORD_COUNT + 1
 MINIMUM_FILE_BYTES = 2 * 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 120
 AUDIT_FIELDS = (
@@ -50,6 +56,16 @@ EXPECTED_USAGE = {
     "reasoning_output_tokens": 50,
     "total_tokens": 1_190,
 }
+EXPECTED_CHANGED_USAGE = {
+    "input_tokens": 1_095,
+    "cached_input_tokens": 210,
+    "cache_write_input_tokens": 0,
+    "uncached_input_tokens": 885,
+    "ordinary_input_tokens": 885,
+    "output_tokens": 155,
+    "reasoning_output_tokens": 53,
+    "total_tokens": 1_250,
+}
 TRANSITION_FIELDS = (
     "source_key",
     "source_label",
@@ -75,13 +91,6 @@ TRANSITION_EVIDENCE_SUFFIX = (
     "(thread packaged-parallel-00, "
     "source jsonl:response_item:function_call_workdir)"
 )
-
-
-@dataclass(frozen=True, slots=True)
-class CorpusMetrics:
-    file_count: int
-    byte_count: int
-    minimum_file_bytes: int
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,161 +119,82 @@ def main(argv: list[str] | None = None) -> int:
         prefix="codex-usage-packaged-parallel-"
     ) as directory:
         root = Path(directory)
-        codex_home = root / "codex-home"
+        corpus = write_parallel_cache_fixture(
+            root / "codex-home",
+            file_count=FILE_COUNT,
+            minimum_file_bytes=MINIMUM_FILE_BYTES,
+        )
         cache_dir = root / "cache"
-        audit_path = root / "cold-audit.json"
-        corpus = _write_corpus(codex_home)
+        cold = _run_summary_with_audit(
+            executable, corpus.sessions_dir.parent, cache_dir, root / "cold-audit.json"
+        )
+        _validate_summary(cold[0])
+        cold_evidence = _validate_audit(cold[1], expected_target)
 
-        cold = _run_summary(executable, codex_home, cache_dir, audit_path=audit_path)
-        _validate_summary(cold)
-        audit = _read_json_object(audit_path, "parallel audit")
-        evidence = _validate_audit(audit, expected_target)
+        warm = _run_summary_with_audit(
+            executable, corpus.sessions_dir.parent, cache_dir, root / "warm-audit.json"
+        )
+        _validate_summary(warm[0])
+        warm_evidence = _validate_audit(
+            warm[1], expected_target, usage_must_be_parallel=False
+        )
+        if _stable_summary(cold[0]) != _stable_summary(warm[0]):
+            raise RuntimeError("packaged warm summary payload differs from cold payload")
 
-        warm = _run_summary(executable, codex_home, cache_dir)
-        _validate_summary(warm)
-        if _stable_summary(cold) != _stable_summary(warm):
-            raise RuntimeError(
-                "packaged warm summary payload differs from cold payload"
-            )
+        changed_file = append_incremental_change(corpus)
+        changed = _run_summary_with_audit(
+            executable, corpus.sessions_dir.parent, cache_dir, root / "changed-audit.json"
+        )
+        _validate_summary(
+            changed[0],
+            expected_record_count=EXPECTED_CHANGED_RECORD_COUNT,
+            expected_usage=EXPECTED_CHANGED_USAGE,
+        )
+        changed_evidence = _validate_audit(
+            changed[1], expected_target, expected_usage_span_count=1
+        )
+
+        oracle = _run_summary(
+            executable, corpus.sessions_dir.parent, root / "cold-oracle-cache"
+        )
+        _validate_summary(
+            oracle,
+            expected_record_count=EXPECTED_CHANGED_RECORD_COUNT,
+            expected_usage=EXPECTED_CHANGED_USAGE,
+        )
+        if _stable_summary(changed[0]) != _stable_summary(oracle):
+            raise RuntimeError("packaged incremental summary differs from cold oracle")
 
         payload = {
             "expected_target": expected_target,
             "sys_platform": sys.platform,
             "machine": platform.machine(),
             "corpus": {
-                "file_count": corpus.file_count,
+                "file_count": len(corpus.files),
                 "byte_count": corpus.byte_count,
-                "minimum_file_bytes": corpus.minimum_file_bytes,
+                "minimum_file_bytes": min(path.stat().st_size for path in corpus.files),
             },
-            "record_count": EXPECTED_RECORD_COUNT,
-            "total_tokens": EXPECTED_USAGE["total_tokens"],
-            "summary_sha256": _json_digest(_stable_summary(cold)),
-            "usage_run": evidence["usage_run"],
-            "transition_run": evidence["transition_run"],
+            "cold": {"summary_sha256": _json_digest(_stable_summary(cold[0])), **cold_evidence},
+            "warm": warm_evidence,
+            "changed": {
+                "summary_sha256": _json_digest(_stable_summary(changed[0])),
+                "source_bytes_eligible": changed_file.stat().st_size,
+                **changed_evidence,
+            },
         }
         print(json.dumps(payload, sort_keys=True))
     return 0
 
 
-def _write_corpus(codex_home: Path) -> CorpusMetrics:
-    day = codex_home / "sessions" / "2026" / "07" / "31"
-    day.mkdir(parents=True, exist_ok=True)
-    target_repo = codex_home.parent / "transition-target"
-    git_dir = target_repo / ".git"
-    git_dir.mkdir(parents=True)
-    (git_dir / "config").write_text(
-        '[remote "origin"]\n'
-        "    url = https://github.com/example/packaged-parallel-target.git\n",
-        encoding="utf-8",
+def _run_summary_with_audit(
+    executable: Path,
+    codex_home: Path,
+    cache_dir: Path,
+    audit_path: Path,
+) -> tuple[dict[str, object], dict[str, object]]:
+    return _run_summary(executable, codex_home, cache_dir, audit_path=audit_path), _read_json_object(
+        audit_path, "parallel audit"
     )
-
-    sizes: list[int] = []
-    for index in range(FILE_COUNT):
-        path = day / f"parallel-{index:02d}.jsonl"
-        _write_large_session(path, index=index, transition_target=target_repo)
-        sizes.append(path.stat().st_size)
-    if min(sizes) < MINIMUM_FILE_BYTES:
-        raise RuntimeError("packaged smoke corpus files are smaller than required")
-    return CorpusMetrics(FILE_COUNT, sum(sizes), min(sizes))
-
-
-def _write_large_session(
-    path: Path,
-    *,
-    index: int,
-    transition_target: Path,
-) -> None:
-    session_id = f"packaged-parallel-{index:02d}"
-    timestamp = f"2026-07-31T12:00:{index:02d}Z"
-    prefix = _json_lines(
-        {
-            "timestamp": timestamp,
-            "type": "session_meta",
-            "payload": {
-                "id": session_id,
-                "timestamp": timestamp,
-                "cwd": f"/source/project/{index:02d}",
-                "source": "cli",
-                "git": {
-                    "repository_url": f"https://github.com/example/source-{index:02d}.git",
-                    "branch": "main",
-                },
-            },
-        },
-        {
-            "timestamp": timestamp,
-            "type": "turn_context",
-            "payload": {"model": "gpt-5", "turn_id": f"turn-{index:02d}"},
-        },
-    )
-    filler = _json_lines(
-        {
-            "timestamp": timestamp,
-            "type": "event_msg",
-            "payload": {
-                "type": "task_started",
-                "turn_id": f"turn-{index:02d}",
-                "padding": "x" * 896,
-            },
-        }
-    )
-    final_usage = {
-        "input_tokens": 100 + index,
-        "cached_input_tokens": 20,
-        "cache_write_input_tokens": 0,
-        "output_tokens": 10 + index,
-        "reasoning_output_tokens": 5,
-        "total_tokens": 110 + (2 * index),
-    }
-    initial_usage = (
-        {
-            "input_tokens": 50,
-            "cached_input_tokens": 10,
-            "cache_write_input_tokens": 0,
-            "output_tokens": 5,
-            "reasoning_output_tokens": 2,
-            "total_tokens": 55,
-        }
-        if index == 0
-        else final_usage
-    )
-    suffix_rows = [_token_count_row(timestamp, initial_usage)]
-    if index == 0:
-        suffix_rows.extend(
-            [
-                {
-                    "timestamp": "2026-07-31T12:01:00Z",
-                    "type": "response_item",
-                    "payload": {
-                        "type": "function_call",
-                        "arguments": json.dumps({"workdir": str(transition_target)}),
-                    },
-                },
-                _token_count_row("2026-07-31T12:02:00Z", final_usage),
-            ]
-        )
-    suffix = _json_lines(*suffix_rows)
-    missing_bytes = max(0, MINIMUM_FILE_BYTES - len(prefix) - len(suffix))
-    repetitions = (missing_bytes + len(filler) - 1) // len(filler)
-    path.write_text(prefix + (filler * repetitions) + suffix, encoding="utf-8")
-
-
-def _json_lines(*rows: dict[str, object]) -> str:
-    return "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows)
-
-
-def _token_count_row(
-    timestamp: str,
-    usage: dict[str, int],
-) -> dict[str, object]:
-    return {
-        "timestamp": timestamp,
-        "type": "event_msg",
-        "payload": {
-            "type": "token_count",
-            "info": {"total_token_usage": usage},
-        },
-    }
 
 
 def _run_summary(
@@ -296,9 +226,7 @@ def _run_summary(
             timeout_seconds=COMMAND_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as error:
-        raise RuntimeError(
-            "packaged command exceeded recursion deadlock guard"
-        ) from error
+        raise RuntimeError("packaged command exceeded recursion deadlock guard") from error
     if completed.returncode != 0:
         raise RuntimeError(
             f"packaged command exited with code {completed.returncode}\n"
@@ -313,32 +241,28 @@ def _run_summary(
     return payload
 
 
-def _validate_summary(payload: dict[str, object]) -> None:
+def _validate_summary(
+    payload: dict[str, object],
+    *,
+    expected_record_count: int = EXPECTED_RECORD_COUNT,
+    expected_usage: dict[str, int] = EXPECTED_USAGE,
+) -> None:
     if payload.get("files_scanned") != FILE_COUNT:
         raise RuntimeError("packaged summary scanned an unexpected file count")
     total = payload.get("total")
-    if (
-        not isinstance(total, dict)
-        or total.get("record_count") != EXPECTED_RECORD_COUNT
-    ):
+    if not isinstance(total, dict) or total.get("record_count") != expected_record_count:
         raise RuntimeError("packaged summary returned an unexpected record count")
-    if total.get("usage") != EXPECTED_USAGE:
+    if total.get("usage") != expected_usage:
         raise RuntimeError("packaged summary returned unexpected usage totals")
     transitions = payload.get("project_transitions")
     if not isinstance(transitions, list) or len(transitions) != 1:
-        raise RuntimeError(
-            "packaged summary did not retain deterministic transition evidence"
-        )
+        raise RuntimeError("packaged summary did not retain deterministic transition evidence")
     transition = transitions[0]
     if not isinstance(transition, dict) or set(transition) != set(TRANSITION_FIELDS):
-        raise RuntimeError(
-            "packaged summary returned an invalid deterministic transition"
-        )
+        raise RuntimeError("packaged summary returned an invalid deterministic transition")
     stable_transition = {key: transition.get(key) for key in EXPECTED_STABLE_TRANSITION}
     if stable_transition != EXPECTED_STABLE_TRANSITION:
-        raise RuntimeError(
-            "packaged summary returned an invalid deterministic transition"
-        )
+        raise RuntimeError("packaged summary returned an invalid deterministic transition")
     _validate_transition_evidence(transition.get("evidence"))
 
 
@@ -360,6 +284,9 @@ def _validate_transition_evidence(evidence: object) -> None:
 def _validate_audit(
     audit: dict[str, object],
     expected_target: ExpectedTarget,
+    *,
+    usage_must_be_parallel: bool = True,
+    expected_usage_span_count: int | None = None,
 ) -> dict[str, dict[str, object]]:
     if (
         tuple(audit) != AUDIT_FIELDS
@@ -375,34 +302,38 @@ def _validate_audit(
     if not isinstance(audit_platform, str) or not isinstance(audit_machine, str):
         raise TypeError("packaged audit architecture fields are invalid")
     validate_target_architecture(
-        expected_target,
-        sys_platform=audit_platform,
-        machine=audit_machine,
+        expected_target, sys_platform=audit_platform, machine=audit_machine
     )
-    if (
-        audit_platform != sys.platform
-        or audit_machine.casefold() != platform.machine().casefold()
-    ):
+    if audit_platform != sys.platform or audit_machine.casefold() != platform.machine().casefold():
         raise RuntimeError("packaged audit architecture differs from smoke host")
 
-    evidence: dict[str, dict[str, object]] = {}
-    for key, label in (
-        ("usage_run", "cold usage"),
-        ("transition_run", "cold transition"),
-    ):
-        value = audit.get(key)
-        if not isinstance(value, dict):
-            raise TypeError(f"{label}: packaged audit run is not an object")
-        _require_actual_parallel_audit(value, parent_pid=parent_pid, label=label)
-        evidence[key] = value
-    return evidence
+    usage_run = _audit_run(audit, "usage_run", "usage")
+    transition_run = _audit_run(audit, "transition_run", "transition")
+    if expected_usage_span_count is not None:
+        _require_exact_usage_span_count(
+            usage_run,
+            parent_pid=parent_pid,
+            expected_span_count=expected_usage_span_count,
+        )
+    elif usage_must_be_parallel:
+        _require_actual_parallel_audit(usage_run, parent_pid=parent_pid, label="usage")
+    else:
+        _require_idle_audit(usage_run, "warm usage")
+    _require_idle_audit(transition_run, "transition")
+    return {"usage_run": usage_run, "transition_run": transition_run}
+
+
+def _audit_run(
+    audit: dict[str, object], key: str, label: str
+) -> dict[str, object]:
+    value = audit.get(key)
+    if not isinstance(value, dict):
+        raise TypeError(f"{label}: packaged audit run is not an object")
+    return value
 
 
 def _require_actual_parallel_audit(
-    run: dict[str, object],
-    *,
-    parent_pid: int,
-    label: str,
+    run: dict[str, object], *, parent_pid: int, label: str
 ) -> None:
     worker_pids = run.get("worker_pids")
     valid_pids = (
@@ -427,6 +358,51 @@ def _require_actual_parallel_audit(
     )
     if not actual_parallel:
         raise RuntimeError(f"{label}: actual process parallelism not observed")
+
+
+def _require_idle_audit(run: dict[str, object], label: str) -> None:
+    idle = (
+        tuple(run) == RUN_FIELDS
+        and run.get("resolved_worker_count") == 0
+        and run.get("worker_pids") == []
+        and run.get("max_concurrency") == 0
+        and run.get("used_serial_fallback") is False
+        and run.get("infrastructure_error") == ""
+        and run.get("span_count") == 0
+        and run.get("file_error_count") == 0
+    )
+    if not idle:
+        raise RuntimeError(f"{label}: unexpected worker spans")
+
+
+def _require_exact_usage_span_count(
+    run: dict[str, object],
+    *,
+    parent_pid: int,
+    expected_span_count: int,
+) -> None:
+    worker_pids = run.get("worker_pids")
+    exact = (
+        expected_span_count == 1
+        and tuple(run) == RUN_FIELDS
+        and type(run.get("resolved_worker_count")) is int
+        and run["resolved_worker_count"] == 1
+        and isinstance(worker_pids, list)
+        and len(worker_pids) == 1
+        and type(worker_pids[0]) is int
+        and worker_pids[0] > 0
+        and worker_pids[0] != parent_pid
+        and type(run.get("max_concurrency")) is int
+        and run["max_concurrency"] == 1
+        and run.get("used_serial_fallback") is False
+        and run.get("infrastructure_error") == ""
+        and type(run.get("span_count")) is int
+        and run["span_count"] == expected_span_count
+        and type(run.get("file_error_count")) is int
+        and run["file_error_count"] == 0
+    )
+    if not exact:
+        raise RuntimeError("changed usage: expected one combined worker span")
 
 
 def _read_json_object(path: Path, label: str) -> dict[str, object]:

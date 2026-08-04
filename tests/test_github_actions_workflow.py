@@ -116,6 +116,22 @@ def test_native_build_scripts_run_parallel_smoke_before_transfer_smoke() -> None
     )
 
 
+@pytest.mark.parametrize("job_name", ("windows", "macos"))
+def test_native_package_jobs_reach_the_parallel_smoke_before_vsix_creation(
+    job_name: str,
+) -> None:
+    job = extract_workflow_job(read_workflow(), job_name)
+    package_command = "package:vsix:win" if job_name == "windows" else "package:vsix:mac"
+    build_script = (
+        ROOT / "scripts/build-windows-exe.ps1"
+        if job_name == "windows"
+        else ROOT / "scripts/build-macos-arm64-exe.sh"
+    )
+
+    assert f"run: npm run {package_command}" in job
+    assert "packaged_parallel_cache_smoke.py" in build_script.read_text(encoding="utf-8")
+
+
 def test_windows_build_runs_native_descendant_lifetime_proof() -> None:
     build = (ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
 
@@ -149,7 +165,7 @@ def test_release_workflow_keeps_only_supported_platform_targets() -> None:
     assert "linux-x64" not in workflow
 
 
-def test_release_metadata_is_stable_1_0_0():
+def test_release_metadata_is_stable_1_1_0():
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension_package = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -158,13 +174,13 @@ def test_release_metadata_is_stable_1_0_0():
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "1.0.0"
-    assert __version__ == "1.0.0"
-    assert codex_usage_lock["version"] == "1.0.0"
-    assert extension_package["version"] == "1.0.0"
+    assert pyproject["project"]["version"] == "1.1.0"
+    assert __version__ == "1.1.0"
+    assert codex_usage_lock["version"] == "1.1.0"
+    assert extension_package["version"] == "1.1.0"
     assert "preview" not in extension_package
-    assert extension_lock["version"] == "1.0.0"
-    assert extension_lock["packages"][""]["version"] == "1.0.0"
+    assert extension_lock["version"] == "1.1.0"
+    assert extension_lock["packages"][""]["version"] == "1.1.0"
 
 
 @pytest.mark.parametrize(

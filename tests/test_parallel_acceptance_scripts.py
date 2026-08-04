@@ -4,6 +4,7 @@ import ast
 import importlib.util
 import inspect
 import json
+import subprocess
 import sys
 from datetime import UTC, datetime, tzinfo
 from pathlib import Path
@@ -45,16 +46,12 @@ def load_script_module(path: Path) -> ModuleType:
     finally:
         sys.modules.pop(module_name, None)
     return module
-
-
 def call_name(call: ast.Call) -> str:
     if isinstance(call.func, ast.Name):
         return call.func.id
     if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name):
         return f"{call.func.value.id}.{call.func.attr}"
     return ""
-
-
 def assert_importable_guard(path: Path, *, requires_freeze_support: bool) -> None:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     guards = [
@@ -150,14 +147,14 @@ def packaged_summary_payload(module: ModuleType) -> dict[str, object]:
     }
 
 
-def packaged_audit_run() -> dict[str, object]:
+def packaged_audit_run(*, spans: int = 2) -> dict[str, object]:
     return {
-        "resolved_worker_count": 2,
-        "worker_pids": [901, 902],
-        "max_concurrency": 2,
+        "resolved_worker_count": min(spans, 2),
+        "worker_pids": [901, 902][:spans],
+        "max_concurrency": min(spans, 2),
         "used_serial_fallback": False,
         "infrastructure_error": "",
-        "span_count": 2,
+        "span_count": spans,
         "file_error_count": 0,
     }
 
@@ -169,7 +166,7 @@ def packaged_audit_payload() -> dict[str, object]:
         "sys_platform": "darwin",
         "machine": "arm64",
         "usage_run": packaged_audit_run(),
-        "transition_run": packaged_audit_run(),
+        "transition_run": packaged_audit_run(spans=0),
     }
 
 
@@ -189,8 +186,26 @@ def test_acceptance_scripts_are_importable_and_guarded(
     assert callable(module.main)
     assert inspect.signature(module.main).return_annotation in {"int", int}
     assert_importable_guard(path, requires_freeze_support=requires_freeze_support)
+def test_synthetic_acceptance_proves_one_file_incremental_refresh() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(REPOSITORY_ROOT / "scripts/parallel_cache_acceptance.py"), "--synthetic"],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
 
-
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["warm"]["stats"]["files_parsed"] == 0
+    assert payload["warm"]["usage_run"]["span_count"] == 0
+    assert payload["warm"]["transition_run"]["span_count"] == 0
+    assert payload["changed"]["stats"]["files_parsed"] == 1
+    assert payload["changed"]["usage_run"]["span_count"] == 1
+    assert payload["changed"]["transition_run"]["span_count"] == 0
+    assert payload["changed"]["source_bytes_eligible"] < payload["corpus"]["byte_count"]
+    assert payload["changed"]["semantic_digest"] == payload["oracle"]["semantic_digest"]
 def test_frozen_main_calls_freeze_support_before_cli_import() -> None:
     path = REPOSITORY_ROOT / "src/codex_usage/__main__.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -217,37 +232,20 @@ def test_frozen_main_calls_freeze_support_before_cli_import() -> None:
 def test_packaged_corpus_represents_both_sides_of_transition(
     tmp_path: Path,
 ) -> None:
-    module = load_script_module(
-        REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
-    )
-    sessions = tmp_path / "codex" / "sessions"
-    day = sessions / "2026" / "07" / "31"
-    day.mkdir(parents=True)
-    target_repo = tmp_path / "transition-target"
-    git_dir = target_repo / ".git"
-    git_dir.mkdir(parents=True)
-    (git_dir / "config").write_text(
-        '[remote "origin"]\n'
-        "    url = https://github.com/example/packaged-parallel-target.git\n",
-        encoding="utf-8",
-    )
-    module._write_large_session(
-        day / "parallel-00.jsonl",
-        index=0,
-        transition_target=target_repo,
-    )
+    fixture = load_script_module(REPOSITORY_ROOT / "scripts/parallel_cache_fixture.py")
+    corpus = fixture.write_parallel_cache_fixture(tmp_path / "codex", file_count=2, minimum_file_bytes=512)
 
     data = load_cached_session_data(
-        [sessions],
+        [corpus.sessions_dir],
         cache_dir=tmp_path / "cache",
         auto_transitions=True,
         max_workers=1,
     )
     assert len(data.project_transitions) == 1
-    assert {record.project_key for record in data.records} == {
+    assert {
         "https://github.com/example/source-00",
         "https://github.com/example/packaged-parallel-target",
-    }
+    }.issubset({record.project_key for record in data.records})
 
 
 def test_parallel_audit_does_not_change_summary_payload(
@@ -415,8 +413,6 @@ def test_packaged_summary_rejects_changed_stable_transition_fields(
 
     with pytest.raises(RuntimeError, match="deterministic transition"):
         module._validate_summary(payload)
-
-
 @pytest.mark.parametrize(
     ("evidence", "error_type"),
     [
@@ -465,6 +461,17 @@ def test_packaged_audit_rejects_bool_version(
 
     with pytest.raises(RuntimeError, match="fields or version"):
         module._validate_audit(audit, "darwin-arm64")
+def test_packaged_audit_accepts_one_combined_changed_file_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_script_module(
+        REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
+    )
+    audit = packaged_audit_payload()
+    audit["usage_run"] = packaged_audit_run(spans=1)
+    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setattr(module.platform, "machine", lambda: "arm64")
+    module._validate_audit(audit, "darwin-arm64", expected_usage_span_count=1)
 
 
 @pytest.mark.parametrize(

@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ADR = ROOT / "docs/adr/0019-bounded-parallel-cache-refresh.md"
 ADR_INDEX = ROOT / "docs/adr/README.md"
+INCREMENTAL_ADR = ROOT / "docs/adr/0020-incremental-range-aware-usage-cache.md"
 
 
 def normalized_prose(value: str) -> str:
@@ -62,3 +63,29 @@ def test_parallel_refresh_adr_locks_the_recovery_contract() -> None:
 
     assert "0018" in index
     assert "0019" in index
+
+
+def test_incremental_cache_docs_lock_the_1_1_0_contract() -> None:
+    documents = (
+        INCREMENTAL_ADR,
+        ROOT / "README.md",
+        ROOT / "extensions/vscode/README.md",
+    )
+    prose = "\n".join(path.read_text(encoding="utf-8") for path in documents)
+
+    for phrase in (
+        "schema 4",
+        "disposable derived data",
+        "one pass",
+        "per task",
+        "range-aware",
+        "Loaded in",
+        "latest request",
+        "complete file generation",
+        "macOS Apple Silicon",
+        "Windows x64",
+    ):
+        assert phrase.casefold() in prose.casefold(), phrase
+    assert "0020-incremental-range-aware-usage-cache.md" in ADR_INDEX.read_text(
+        encoding="utf-8"
+    )

@@ -108,9 +108,9 @@ After installation, run `Codex Usage: Open Dashboard` from the command palette.
 
 ## First Run And Cache
 
-On first open, the dashboard may show "Initializing Codex usage cache. This can take a few seconds the first time." The extension passes an internal cache folder to the bundled Python CLI and stores parsed usage rows in local SQLite under VS Code global extension storage. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
+The first 1.1.0 dashboard report rebuilds the schema 4 cache once because it is disposable derived data. The extension passes an internal cache folder to the bundled Python CLI and stores parsed usage rows in local SQLite under VS Code global extension storage. Later reports inspect only changed files and parse each changed file in one pass for usage and transition candidates. The toolbar displays `Loaded in X.X seconds` for the report currently shown. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
 
-Invalidated cache entries are refreshed by reparsing complete files from byte zero with at most four worker processes. SQLite remains in the parent process, which atomically commits groups of up to eight complete-file replacements. Those committed batches are reusable after interruption, and recovery adds no within-file checkpoint or range pruning.
+Invalidated cache entries are refreshed by reparsing complete files from byte zero with at most four worker processes. SQLite remains in the parent process, verifies candidates, and atomically commits groups of up to eight complete-file replacements. Those committed batches are reusable after interruption, and recovery adds no within-file checkpoint or range pruning. Range-aware cache queries use UTC-microsecond timestamps, and refresh coordination retains only the latest request while an active process and its worker tree finish.
 
 ## Privacy
 

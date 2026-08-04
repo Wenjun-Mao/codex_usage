@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.1.0 - 2026-08-03 - Incremental Usage Cache
+
+- Rebuilt the disposable schema 4 cache once after upgrade, then refreshed only changed complete files in one pass for usage and transition candidates.
+- Kept candidate verification and SQLite in the parent process, refreshed transitions per task, and used range-aware UTC-microsecond cache queries with parent identity lookup.
+- Serialized dashboard refreshes to the latest request and added the `Loaded in X.X seconds` toolbar value without promising a fixed load time.
+
 ## 1.0.0 - 2026-08-03 - Stable Marketplace Release
 
 - Promoted the Windows x64 and macOS Apple Silicon Marketplace packages from Preview to stable `1.0.0` after both native packaged Task Transfer gates passed.
