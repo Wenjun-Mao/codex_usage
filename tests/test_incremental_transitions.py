@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import project_transition_serial_oracle as serial_oracle
 import pytest
 
 import codex_usage.project_transition_state as state_module
 import codex_usage.project_transitions as transitions_module
-import project_transition_serial_oracle as serial_oracle
 from codex_usage.project_transitions import (
     apply_project_transitions,
     infer_project_transitions,
@@ -46,6 +46,32 @@ def test_one_changed_task_never_scans_unchanged_jsonl_for_transitions(
     assert opened.count(corpus.paths[2]) == 1
     assert not set(corpus.paths[:2] + corpus.paths[3:]).intersection(opened)
     assert refreshed.transition_run.worker_spans == ()
+
+
+def test_duplicate_archive_generation_does_not_influence_cached_transition(
+    tmp_path: Path,
+) -> None:
+    corpus = write_multi_task_transition_corpus(tmp_path, count=1)
+    archive_target = tmp_path / "archive-target"
+    write_git_config(
+        archive_target, "https://github.com/example/archive-target.git"
+    )
+    archived_path = corpus.archive / "2026" / "08" / "03" / "thread-0.jsonl"
+    archived_path.parent.mkdir(parents=True)
+    write_task_session(
+        archived_path,
+        thread_id="thread-0",
+        source_repo=corpus.source_repos[0],
+        target_repo=archive_target,
+    )
+
+    cached = load_cached_session_data(
+        [corpus.sessions, corpus.archive], cache_dir=corpus.cache, max_workers=1
+    )
+
+    assert [transition.target_key for transition in cached.project_transitions] == [
+        repo_key(corpus.target_repos[0])
+    ]
 
 
 def test_disabled_transition_refresh_retains_dirty_tasks_until_enabled(

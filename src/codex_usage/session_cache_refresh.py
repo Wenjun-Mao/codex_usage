@@ -20,6 +20,7 @@ from codex_usage.parallel.usage import (
 )
 from codex_usage.session_cache_generations import (
     affected_task_ids_for_file,
+    rekey_file_generation,
     remove_candidate_generation,
     replace_file_generation,
 )
@@ -43,12 +44,7 @@ def refresh_files(
     rebuilt: bool,
     max_workers: int | None = None,
 ) -> CacheRefreshOutcome:
-    cached_rows = {
-        str(row["file_key"]): row
-        for row in connection.execute(
-            "select file_key, path, size_bytes, mtime_ns, is_missing, error from files"
-        )
-    }
+    cached_rows = _load_cached_rows(connection)
     _reconcile_fallback_file_keys(inventory, cached_rows)
     parse_entries, reused, missing_marked, affected_task_ids = _commit_preflight(
         connection,
@@ -94,7 +90,9 @@ def refresh_files(
             worker_spans.extend(result.span for result in results)
             file_errors += sum(bool(result.error) for result in results)
 
-    _dedupe_inventory_by_file_key(inventory)
+    _dedupe_inventory_by_cached_session_id(
+        inventory, _load_cached_rows(connection)
+    )
 
     missing_count = int(
         connection.execute(
@@ -124,6 +122,20 @@ def refresh_files(
         usage_run=report,
         affected_task_ids=frozenset(affected_task_ids),
     )
+
+
+def _load_cached_rows(
+    connection: sqlite3.Connection,
+) -> dict[str, sqlite3.Row]:
+    return {
+        str(row["file_key"]): row
+        for row in connection.execute(
+            """
+            select file_key, path, size_bytes, mtime_ns, is_missing, session_id, error
+            from files
+            """
+        )
+    }
 
 
 def _reconcile_fallback_file_keys(
@@ -216,7 +228,6 @@ def _is_reusable(
         and int(cached["size_bytes"]) == entry.size_bytes
         and int(cached["mtime_ns"]) == entry.mtime_ns
         and int(cached["is_missing"]) == 0
-        and not cached["error"]
     )
 
 
@@ -251,6 +262,7 @@ def _commit_result_group(
 ) -> tuple[set[str], int]:
     affected_task_ids: set[str] = set()
     identity_replacements = 0
+    group_winners = _group_canonical_winners(results, inventory)
     successful_task_ids = {
         result.generation.metadata.session_id
         for result in results
@@ -284,7 +296,13 @@ def _commit_result_group(
             else:
                 if result.generation is None:
                     raise ValueError("successful usage parse result lacks generation")
-                entry = _entry_with_generation_identity(entry, result.generation)
+                entry, duplicate_affected = _entry_for_successful_generation(
+                    connection,
+                    inventory,
+                    result,
+                    group_winners,
+                )
+                affected_task_ids.update(duplicate_affected)
                 identity_replacements += int(
                     _replaces_cached_identity(
                         connection,
@@ -309,6 +327,54 @@ def _commit_result_group(
     return affected_task_ids, identity_replacements
 
 
+def _group_canonical_winners(
+    results: tuple[UsageParseResult, ...],
+    inventory: list[SessionFileInventoryEntry],
+) -> dict[str, int]:
+    winners: dict[str, int] = {}
+    for result in results:
+        if result.error or result.generation is None:
+            continue
+        session_id = result.generation.metadata.session_id
+        current = winners.get(session_id)
+        if current is None or _entry_priority(
+            inventory[result.request.ordinal]
+        ) < _entry_priority(inventory[current]):
+            winners[session_id] = result.request.ordinal
+    return winners
+
+
+def _entry_for_successful_generation(
+    connection: sqlite3.Connection,
+    inventory: list[SessionFileInventoryEntry],
+    result: UsageParseResult,
+    group_winners: dict[str, int],
+) -> tuple[SessionFileInventoryEntry, set[str]]:
+    if result.generation is None:
+        raise ValueError("successful usage parse result lacks generation")
+    original_entry = inventory[result.request.ordinal]
+    session_id = result.generation.metadata.session_id
+    if group_winners[session_id] != result.request.ordinal:
+        return _fallback_duplicate_entry(original_entry), set()
+
+    canonical_entry = _entry_with_generation_identity(
+        original_entry, result.generation
+    )
+    existing_index = _canonical_duplicate_index(
+        inventory, result.request.ordinal, session_id
+    )
+    if existing_index is None:
+        return canonical_entry, set()
+
+    existing_entry = inventory[existing_index]
+    if _entry_priority(existing_entry) <= _entry_priority(canonical_entry):
+        return _fallback_duplicate_entry(original_entry), set()
+
+    replacement = _fallback_duplicate_entry(existing_entry)
+    inventory[existing_index] = replacement
+    return canonical_entry, rekey_file_generation(connection, existing_entry, replacement)
+
+
 def _entry_with_generation_identity(
     entry: SessionFileInventoryEntry,
     generation: ParsedSessionGeneration,
@@ -317,6 +383,33 @@ def _entry_with_generation_identity(
     if not session_id or session_id == entry.file_key:
         return entry
     return replace(entry, file_key=session_id, file_key_is_fallback=False)
+
+
+def _fallback_duplicate_entry(
+    entry: SessionFileInventoryEntry,
+) -> SessionFileInventoryEntry:
+    if entry.file_key_is_fallback:
+        return entry
+    return replace(
+        entry,
+        file_key=_path_fallback_file_key(entry.path),
+        file_key_is_fallback=True,
+    )
+
+
+def _canonical_duplicate_index(
+    inventory: list[SessionFileInventoryEntry],
+    current_index: int,
+    session_id: str,
+) -> int | None:
+    candidates = [
+        index
+        for index, entry in enumerate(inventory)
+        if index != current_index and entry.file_key == session_id
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda index: _entry_priority(inventory[index]))
 
 
 def _error_entry(
@@ -341,14 +434,21 @@ def _replaces_cached_identity(
     ).fetchone() is not None
 
 
-def _dedupe_inventory_by_file_key(
+def _dedupe_inventory_by_cached_session_id(
     inventory: list[SessionFileInventoryEntry],
+    cached_rows: dict[str, sqlite3.Row],
 ) -> None:
     selected: dict[str, SessionFileInventoryEntry] = {}
     for entry in inventory:
-        existing = selected.get(entry.file_key)
+        cached = cached_rows.get(entry.file_key)
+        session_id = (
+            str(cached["session_id"])
+            if cached is not None and cached["session_id"] and not cached["error"]
+            else entry.file_key
+        )
+        existing = selected.get(session_id)
         if existing is None or _entry_priority(entry) < _entry_priority(existing):
-            selected[entry.file_key] = entry
+            selected[session_id] = entry
     inventory[:] = sorted(
         selected.values(), key=lambda entry: str(entry.path).casefold()
     )

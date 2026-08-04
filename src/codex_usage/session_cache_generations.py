@@ -40,6 +40,37 @@ def replace_file_generation(
     return affected | generation_task_ids(generation)
 
 
+def rekey_file_generation(
+    connection: sqlite3.Connection,
+    entry: SessionFileInventoryEntry,
+    replacement: SessionFileInventoryEntry,
+) -> set[str]:
+    affected = affected_task_ids_for_file(connection, entry.file_key)
+    affected.update(affected_task_ids_for_file(connection, replacement.file_key))
+    delete_file_generation(connection, replacement.file_key)
+    connection.execute("delete from files where file_key = ?", (replacement.file_key,))
+    for table in ("usage_records", "session_metadata", "transition_candidates"):
+        connection.execute(
+            f"update {table} set file_key = ? where file_key = ?",
+            (replacement.file_key, entry.file_key),
+        )
+    connection.execute(
+        """
+        update files
+        set file_key = ?, path = ?, session_dir = ?, storage_state = ?
+        where file_key = ?
+        """,
+        (
+            replacement.file_key,
+            str(replacement.path),
+            str(replacement.session_dir),
+            replacement.storage_state,
+            entry.file_key,
+        ),
+    )
+    return affected
+
+
 def remove_candidate_generation(
     connection: sqlite3.Connection, file_key: str
 ) -> set[str]:

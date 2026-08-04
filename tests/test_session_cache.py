@@ -162,6 +162,38 @@ def test_active_and_archived_duplicate_prefers_active_file(tmp_path: Path) -> No
     assert [record.cwd for record in data.records] == ["/repo/active"]
 
 
+def test_active_and_archived_duplicate_warm_load_reuses_active_generation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    archived = codex_home / "archived_sessions"
+    active = _write_session(sessions, "thread-1", "/repo/active", 100)
+    archived_path = _write_session(archived, "thread-1", "/repo/archived", 100)
+    cache_dir = tmp_path / "cache"
+    load_cached_session_data(
+        [sessions, archived], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+
+    opened: list[Path] = []
+    original_open = Path.open
+
+    def record_jsonl_open(path: Path, *args: object, **kwargs: object):
+        if path in {active, archived_path}:
+            opened.append(path)
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", record_jsonl_open)
+    data = load_cached_session_data(
+        [sessions, archived], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+
+    assert data.stats.files_parsed == 0
+    assert opened == []
+    assert data.files == [active]
+    assert [record.cwd for record in data.records] == ["/repo/active"]
+
+
 def test_schema_version_mismatch_rebuilds_cache(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     _write_session(sessions, "thread-1", "/repo/demo", 100, cache_write=25)
@@ -258,11 +290,11 @@ def test_interrupted_schema_rebuild_reparses_active_file_on_next_load(
     assert recovered.records[0].usage.cache_write_input_tokens == 25
 
 
-def test_parse_error_without_prior_success_retries_unchanged_file(
+def test_parse_error_is_reused_until_fingerprint_changes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, "thread-1", "/repo/demo", 100)
+    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
     cache_dir = tmp_path / "cache"
     original_parser = usage_module.parse_session_generation
 
@@ -277,6 +309,28 @@ def test_parse_error_without_prior_success_retries_unchanged_file(
     assert failed.records == []
 
     monkeypatch.setattr(usage_module, "parse_session_generation", original_parser)
+    opened: list[Path] = []
+    original_open = Path.open
+
+    def reject_unchanged_reopen(path: Path, *args: object, **kwargs: object):
+        if path == session_path:
+            opened.append(path)
+            raise AssertionError("unchanged cached parse error reopened JSONL")
+        return original_open(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", reject_unchanged_reopen)
+        unchanged = load_cached_session_data(
+            [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+        )
+
+    assert unchanged.stats.files_parsed == 0
+    assert unchanged.stats.files_reused == 1
+    assert unchanged.file_errors == failed.file_errors
+    assert opened == []
+
+    _append_token_count(session_path, "2026-04-29T10:05:00Z", 150)
+    os.utime(session_path, None)
     recovered = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
     )
@@ -284,7 +338,7 @@ def test_parse_error_without_prior_success_retries_unchanged_file(
     assert recovered.stats.files_parsed == 1
     assert recovered.stats.files_reused == 0
     assert recovered.file_errors == {}
-    assert [record.usage.total_tokens for record in recovered.records] == [100]
+    assert [record.usage.total_tokens for record in recovered.records] == [100, 50]
 
 
 def test_corrupt_file_records_error_and_keeps_other_files(tmp_path: Path) -> None:

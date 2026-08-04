@@ -59,8 +59,8 @@ def test_exact_fallback_stem_and_canonical_id_both_survive_cold_and_warm_loads(
     assert cold_keys[str(unreadable)] != "shared-session"
     assert cold_keys[str(unreadable)].startswith("codex-usage:fallback:path:")
     assert _file_keys_by_path(cache_dir) == cold_keys
-    assert warm.stats.files_reused == 1
-    assert warm.stats.files_parsed == 1
+    assert warm.stats.files_reused == 2
+    assert warm.stats.files_parsed == 0
 
 
 def test_canonical_id_reserves_the_path_derived_fallback_key_globally(

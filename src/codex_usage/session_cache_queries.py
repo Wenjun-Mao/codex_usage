@@ -45,7 +45,12 @@ def load_records_for_task_ids(
     connection: sqlite3.Connection,
     task_ids: Collection[str],
 ) -> list[UsageRecord]:
-    rows = query_rows_in_chunks(connection, "session_id", task_ids)
+    rows = _query_current_generation_rows_in_chunks(
+        connection,
+        table="usage_records",
+        column="session_id",
+        task_ids=task_ids,
+    )
     return [row_to_usage_record(row) for row in rows]
 
 
@@ -53,7 +58,12 @@ def load_raw_candidates_for_task_ids(
     connection: sqlite3.Connection,
     task_ids: Collection[str],
 ) -> list[RawRepoPathCandidate]:
-    rows = query_candidate_rows_in_chunks(connection, task_ids)
+    rows = _query_current_generation_rows_in_chunks(
+        connection,
+        table="transition_candidates",
+        column="thread_id",
+        task_ids=task_ids,
+    )
     return [row_to_raw_candidate(row) for row in rows]
 
 
@@ -61,7 +71,13 @@ def load_all_raw_candidates(
     connection: sqlite3.Connection,
 ) -> list[RawRepoPathCandidate]:
     rows = connection.execute(
-        "select * from transition_candidates order by file_key, candidate_index"
+        """
+        select transition_candidates.*
+        from transition_candidates
+        join files on files.file_key = transition_candidates.file_key
+        where files.file_key = files.session_id
+        order by transition_candidates.file_key, transition_candidates.candidate_index
+        """
     )
     return [row_to_raw_candidate(row) for row in rows]
 
@@ -124,6 +140,36 @@ def _query_rows_in_chunks(
         rows.extend(
             connection.execute(
                 f"select * from {table} where {column} in ({placeholders})",
+                task_id_chunk,
+            )
+        )
+    return rows
+
+
+def _query_current_generation_rows_in_chunks(
+    connection: sqlite3.Connection,
+    *,
+    table: str,
+    column: str,
+    task_ids: Collection[str],
+) -> list[sqlite3.Row]:
+    if (table, column) not in {
+        ("usage_records", "session_id"),
+        ("transition_candidates", "thread_id"),
+    }:
+        raise ValueError("unsupported current-generation query")
+    rows: list[sqlite3.Row] = []
+    for task_id_chunk in _task_id_chunks(task_ids):
+        placeholders = ", ".join("?" for _ in task_id_chunk)
+        rows.extend(
+            connection.execute(
+                f"""
+                select {table}.*
+                from {table}
+                join files on files.file_key = {table}.file_key
+                where {table}.{column} in ({placeholders})
+                    and files.file_key = files.session_id
+                """,
                 task_id_chunk,
             )
         )
