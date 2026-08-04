@@ -33,6 +33,19 @@ output/releases/codex-usage-dashboard-win32-x64.vsix
 output/releases/codex-usage-dashboard-darwin-arm64.vsix
 ```
 
+## Marketplace Screenshot
+
+Run from the repository root whenever dashboard presentation changes:
+
+```bash
+uv sync
+uv run playwright install chromium
+uv run python scripts/generate_marketplace_screenshot.py
+uv run python scripts/generate_marketplace_screenshot.py --check
+```
+
+Visually review the tracked image at 1440 x 900. Confirm that both `Root tasks` and `Subagents` headings are visible where space permits, the 8 px boundary is obvious, model colors match Model Mix, `Other` is neutral, no tooltip text is clipped, and no personal paths or data appear. Require `git diff -- docs/marketplace/dashboard-synthetic.png` review whenever dashboard presentation changes.
+
 ## GitHub Actions Release
 
 The repository has a `Package and Publish VSIX` workflow that builds both platform packages on native GitHub-hosted runners.

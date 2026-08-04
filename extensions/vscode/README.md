@@ -1,8 +1,6 @@
 # Codex Usage Dashboard
 
-Stable Windows x64 and macOS Apple Silicon VS Code extension for viewing local Codex token usage, project rollups, Codex credits, and API-equivalent cost estimates.
-
-![Synthetic Codex Usage Dashboard screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/dashboard-synthetic.png)
+Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Codex usage reporting: view project activity, token usage, Codex credits, and API-equivalent cost estimates from local Codex session JSONL logs. Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 
 ## Features
 
@@ -12,9 +10,13 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for viewing local C
 - Supports multi-project filtering from detected project keys.
 - Supports auto/day/night dashboard theme switching.
 - Detects high-confidence project transitions and can split dashboard usage after verified local repository changes.
-- Adds optional cross-computer Codex Task Transfer through a user-provided folder.
-- Shows total tokens, API-equivalent USD, Codex credits, cache hit share, daily/hourly views, project breakdown, and model mix.
+- Shows total tokens, API-equivalent USD, Codex credits, cache hit share, and daily/hourly views.
+- Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
+- Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
+- Adds optional cross-computer Task Transfer through a user-provided folder; token reporting works without it.
 - Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
+
+![Synthetic Codex Usage Dashboard screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/dashboard-synthetic.png)
 
 ## Supported Platforms
 
@@ -108,7 +110,7 @@ After installation, run `Codex Usage: Open Dashboard` from the command palette.
 
 ## First Run And Cache
 
-The first 1.1.0 dashboard report rebuilds the schema 4 cache once because it is disposable derived data. The extension passes an internal cache folder to the bundled Python CLI and stores parsed usage rows in local SQLite under VS Code global extension storage. Later reports inspect only changed files and parse each changed file in one pass for usage and transition candidates. The toolbar displays `Loaded in X.X seconds` for the report currently shown. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
+The first report after the project role/model update builds the disposable schema 5 cache once so every usage row carries an explicit root/subagent role. Later reports continue to inspect only changed files and query the selected time range from local SQLite. The role/model breakdown is aggregated from those already range-filtered records and does not rescan source JSONL files. The extension passes an internal cache folder to the bundled Python CLI and stores parsed usage rows in parent-owned local SQLite under VS Code global extension storage. The cache is local only and does not fetch live pricing; costs are still calculated from checked-in effective-dated rates at report time. The toolbar displays `Loaded in X.X seconds` for the report currently shown. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
 
 Invalidated cache entries are refreshed by reparsing complete files from byte zero with at most four worker processes. SQLite remains in the parent process, verifies candidates, and atomically commits groups of up to eight complete-file replacements. Those committed batches are reusable after interruption, and recovery adds no within-file checkpoint or range pruning. Range-aware cache queries use UTC-microsecond timestamps, and refresh coordination retains only the latest request while an active process and its worker tree finish.
 

@@ -1,6 +1,16 @@
 # Codex Usage Dashboard
 
-Local tooling for understanding Codex token usage, project activity, Codex credits, and API-equivalent cost from Codex session JSONL logs.
+Local-first Codex usage reporting for understanding project activity, token usage, Codex credits, and API-equivalent cost from local Codex session JSONL logs. Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model so the report explains both who used tokens and which models contributed.
+
+## What The Dashboard Shows
+
+- Total tokens and usage event counts.
+- API-equivalent USD using checked-in effective-dated pricing.
+- Codex credits, estimated from recorded usage.
+- Cache hit share and daily/hourly usage patterns.
+- Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
+- Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
+- Optional Task Transfer moves selected active tasks between computers; token reporting works without it.
 
 ![Synthetic Codex Usage Dashboard screenshot](docs/marketplace/dashboard-synthetic.png)
 
@@ -79,22 +89,13 @@ Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser
 
 ### Performance Cache
 
-The VS Code extension stores a local SQLite cache under VS Code global extension storage. The first 1.1.0 report rebuilds the schema 4 cache once because it is disposable derived data. Later reports inventory the source and inspect only changed files, parsing each changed file in one pass for usage and project-transition candidates. The cache is local only and does not change pricing semantics because costs are still calculated from checked-in effective-dated rates at report time. The dashboard toolbar shows `Loaded in X.X seconds` for the report currently displayed.
+The VS Code extension stores a local SQLite cache under VS Code global extension storage. The first report after the project role/model update builds the disposable schema 5 cache once so every usage row carries an explicit root/subagent role. Later reports continue to inspect only changed files and query the selected time range from local SQLite. The role/model breakdown is aggregated from those already range-filtered records and does not rescan source JSONL files. The cache uses parent-owned SQLite, remains local only, and does not change pricing semantics or fetch live pricing because costs are still calculated from checked-in effective-dated rates at report time. The dashboard toolbar shows `Loaded in X.X seconds` for the report currently displayed.
 
 Invalidated cache entries are refreshed by reparsing complete files from byte zero with at most four worker processes. SQLite remains in the parent process, which verifies candidates and atomically commits groups of up to eight complete-file replacements. Those committed batches are reusable after interruption, and recovery adds no within-file checkpoint or range pruning. Range-aware queries use cached UTC-microsecond timestamps, while refresh coordination keeps only the latest request pending behind an active report.
 
 ### Codex Fast Mode
 
 Codex fast mode is counted through the token usage that Codex records. Current Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.
-
-## What The Dashboard Shows
-
-- Total tokens and usage event counts
-- API-equivalent USD using checked-in effective-dated pricing
-- Codex credit estimates
-- Cache hit share
-- Daily and hourly usage patterns
-- Project, model, and session rollups
 
 The report uses no remote assets, JavaScript, or Python chart libraries. It is safe to open locally and is designed to fit inside a VS Code webview.
 The dashboard uses the same tokenized day/night design system as the VS Code extension, including dark-mode-friendly charts and tables.
