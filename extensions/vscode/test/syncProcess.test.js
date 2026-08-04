@@ -5,6 +5,11 @@ const path = require("node:path");
 const { PassThrough } = require("node:stream");
 const test = require("node:test");
 
+const { cacheDbPath, legacyCacheDbPath } = require("../out/core");
+const {
+  dashboardLoadingKind,
+  executeDashboardRefresh,
+} = require("../out/dashboardRefresh");
 const { runSyncProcess } = require("../out/syncProcess");
 
 function completedResult(countOverrides = {}) {
@@ -319,6 +324,60 @@ test("runSyncProcess reports ENOENT once even if close follows the child error",
   await assert.rejects(completion, /Could not start bundled codex-usage executable: \/bin\/codex-usage/);
   assert.equal(spawnCount, 1);
   assert.equal(rejectionCount, 1);
+});
+
+test("dashboard loading kind distinguishes new, legacy, and schema-4 cache storage", async (t) => {
+  const storagePath = fs.mkdtempSync(path.join(__dirname, "dashboard-cache-"));
+  t.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
+
+  assert.equal(await dashboardLoadingKind(storagePath), "initializing");
+  fs.mkdirSync(path.dirname(legacyCacheDbPath(storagePath)), { recursive: true });
+  fs.writeFileSync(legacyCacheDbPath(storagePath), "legacy");
+  assert.equal(await dashboardLoadingKind(storagePath), "rebuilding");
+  fs.writeFileSync(cacheDbPath(storagePath), "schema-4");
+  assert.equal(await dashboardLoadingKind(storagePath), "refreshing");
+});
+
+test("dashboard execution passes timing output and preserves a report when the sidecar is unavailable", async (t) => {
+  const storagePath = fs.mkdtempSync(path.join(__dirname, "dashboard-timing-"));
+  t.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
+  const reportPath = path.join(storagePath, "report-1.html");
+  const timingOutputPath = path.join(storagePath, "report-1.timing.json");
+  const output = [];
+  const panel = { webview: { html: "", cspSource: "vscode-resource:" } };
+  const result = await executeDashboardRefresh({
+    requestId: 1,
+    panel,
+    settings: {
+      range: "today",
+      projectKeys: [],
+      theme: "auto",
+      taskTransfer: { folder: "" },
+      projectTransitions: { autoDetect: true },
+    },
+    versionLabel: "v1.0.0",
+    reportPath,
+    timingOutputPath,
+  }, {
+    globalStoragePath: storagePath,
+    resolveExecutable: async () => "/bin/codex-usage",
+    runCodexUsage: async (_executablePath, args) => {
+      assert.deepEqual(args, [
+        "report", "--range", "today", "--output", reportPath,
+        "--theme", "auto", "--timing-output", timingOutputPath,
+      ]);
+      await fs.promises.writeFile(reportPath, "<html><head></head><body><main>Report</main></body></html>");
+      return { stdout: "", stderr: "" };
+    },
+    appendOutput: (line) => output.push(line),
+    setStatus: () => undefined,
+  });
+
+  assert.equal(result.kind, "success");
+  assert.match(result.html, /Report/);
+  assert.equal(Number.isFinite(result.elapsedSeconds), true);
+  assert.match(panel.webview.html, /Initializing Codex usage cache/);
+  assert.match(output.join("\n"), /timing sidecar unavailable/i);
 });
 
 test("extension delegates Task Transfer commands without retaining task choices", () => {

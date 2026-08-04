@@ -34,6 +34,32 @@ test("dashboard controls always expose Task Transfer without setup-derived copy"
   assert.doesNotMatch(out, /Setup required|Sync: Off|Sync: \d+ tasks?/i);
 });
 
+test("dashboard controls render loaded time in a shared trailing metadata region", () => {
+  const html = "<!doctype html><html><head></head><body><main><h1>Report</h1></main></body></html>";
+  const withTiming = injectWebviewControls(html, {
+    range: "today",
+    projectKeys: [],
+    theme: "auto",
+    taskTransfer: { folder: "" },
+    loadedSeconds: 4.24,
+    versionLabel: "v1.0.0",
+  });
+  const withoutTiming = injectWebviewControls(html, {
+    range: "today",
+    projectKeys: [],
+    theme: "auto",
+    taskTransfer: { folder: "" },
+    versionLabel: "v1.0.0",
+  });
+
+  assert.match(withTiming, /Loaded in 4\.2 seconds/);
+  assert.match(withTiming, /class="codex-usage-trailing-metadata"/);
+  assert.match(withTiming, /codex-usage-load-time[\s\S]*?codex-usage-version/);
+  assert.match(withTiming, /\.codex-usage-trailing-metadata\s*\{[\s\S]*?flex-wrap: wrap;/);
+  assert.match(withTiming, /\.codex-usage-trailing-metadata\s*\{[\s\S]*?margin-left: auto;/);
+  assert.doesNotMatch(withoutTiming, /Loaded in/);
+});
+
 test("loading and error documents remain escaped script-free and themeable", () => {
   const loading = renderLoadingHtml("Loading <tasks>");
   const error = renderErrorHtml("boom <script>alert(1)</script>");

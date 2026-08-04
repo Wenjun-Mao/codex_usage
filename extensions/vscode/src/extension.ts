@@ -1,15 +1,12 @@
 import { spawn } from "child_process";
 import * as fs from "fs/promises";
-import * as path from "path";
 import * as vscode from "vscode";
 import {
   type ExtensionSettings,
   buildCodexUsageEnv,
-  buildReportArgs,
   buildSummaryArgs,
   buildTransitionSuggestArgs,
   bundledExecutablePath,
-  cacheDbPath,
   extensionVersionLabel,
   normalizeProjectKeys,
   normalizeRange,
@@ -23,11 +20,9 @@ import {
   WEBVIEW_COMMANDS,
 } from "./core";
 import {
-  injectWebviewControls,
-  injectWebviewCsp,
-  renderErrorHtml,
-  renderLoadingHtml,
-} from "./dashboardWebview";
+  createDashboardRefreshCoordinator,
+  createDashboardRefreshRequest,
+} from "./dashboardRefresh";
 import {
   createTaskTransferVscodePort,
   migrateVscodeTaskTransferState,
@@ -44,6 +39,8 @@ let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
 let transientStatus: TransferTransientStatus | undefined;
+let dashboardRefresh: ReturnType<typeof createDashboardRefreshCoordinator> | undefined;
+let dashboardRequestId = 0;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   output = vscode.window.createOutputChannel("Codex Usage");
@@ -55,6 +52,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   updateStatusItem(readSettings(context));
   statusItem.show();
+  dashboardRefresh = createDashboardRefreshCoordinator({
+    globalStoragePath: context.globalStorageUri.fsPath,
+    resolveExecutable: () => resolveBundledExecutable(context),
+    runCodexUsage,
+    appendOutput: (line) => output.appendLine(line),
+    setStatus: setUsageStatus,
+    updateStatus: () => updateStatusItem(readSettings(context)),
+    showError: (message) => vscode.window.showErrorMessage(message),
+  });
 
   const registerImportedTasks = createCodexTaskRegistrar({
     extensionVersion: context.extension.packageJSON.version,
@@ -114,6 +120,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
   panel = undefined;
+  dashboardRefresh = undefined;
 }
 
 async function openOrRefreshDashboard(context: vscode.ExtensionContext): Promise<void> {
@@ -134,70 +141,16 @@ async function openOrRefreshDashboard(context: vscode.ExtensionContext): Promise
 }
 
 async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: vscode.WebviewPanel): Promise<void> {
-  const settings = readSettings(context);
-  const reportPath = path.join(context.globalStorageUri.fsPath, "report.html");
-  const loadingKind = await dashboardLoadingKind(context);
-  setDashboardLoading(context, targetPanel, loadingKind);
-  setUsageStatus(loadingKind === "initializing" ? "Codex Usage: Initializing" : "Codex Usage: Loading");
-
-  try {
-    const executablePath = await resolveBundledExecutable(context);
-    await fs.mkdir(context.globalStorageUri.fsPath, { recursive: true });
-    const args = buildReportArgs({
-      range: settings.range,
-      outputPath: reportPath,
-      projectKeys: settings.projectKeys,
-      theme: settings.theme,
-      projectTransitions: settings.projectTransitions,
-    });
-    await runCodexUsage(executablePath, args, buildCodexUsageEnv(context.globalStorageUri.fsPath));
-    const reportHtml = await fs.readFile(reportPath, "utf8");
-    targetPanel.webview.html = renderWebviewHtml(
-      reportHtml,
-      targetPanel.webview,
-      settings,
-      extensionVersionLabel(context.extension.packageJSON),
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    output.appendLine(`[error] ${message}`);
-    targetPanel.webview.html = renderWebviewHtml(
-      renderErrorHtml(`${message}\n\nCheck the Codex Usage output channel for details.`),
-      targetPanel.webview,
-      settings,
-      extensionVersionLabel(context.extension.packageJSON),
-    );
-    void vscode.window.showErrorMessage(`Codex Usage failed: ${message}`);
-  } finally {
-    updateStatusItem(readSettings(context));
+  if (!dashboardRefresh) {
+    return;
   }
-}
-
-type UsageLoadingKind = "initializing" | "refreshing";
-
-async function dashboardLoadingKind(context: vscode.ExtensionContext): Promise<UsageLoadingKind> {
-  try {
-    await fs.access(cacheDbPath(context.globalStorageUri.fsPath));
-    return "refreshing";
-  } catch {
-    return "initializing";
-  }
-}
-
-function setDashboardLoading(
-  context: vscode.ExtensionContext,
-  targetPanel: vscode.WebviewPanel,
-  kind: UsageLoadingKind,
-): void {
-  const message = kind === "initializing"
-    ? "Initializing Codex usage cache. This can take a few seconds the first time."
-    : "Refreshing Codex usage...";
-  targetPanel.webview.html = renderWebviewHtml(
-    renderLoadingHtml(message),
-    targetPanel.webview,
-    readSettings(context),
-    extensionVersionLabel(context.extension.packageJSON),
-  );
+  await dashboardRefresh.request(createDashboardRefreshRequest({
+    requestId: ++dashboardRequestId,
+    panel: targetPanel,
+    settings: readSettings(context),
+    versionLabel: extensionVersionLabel(context.extension.packageJSON),
+    globalStoragePath: context.globalStorageUri.fsPath,
+  }));
 }
 
 function setUsageStatus(label: string): void {
@@ -408,21 +361,6 @@ function projectQuickPickItems(
       projectKey: choice.key,
     })),
   ];
-}
-
-function renderWebviewHtml(
-  rawHtml: string,
-  webview: vscode.Webview,
-  settings: ExtensionSettings,
-  versionLabel: string,
-): string {
-  return injectWebviewCsp(injectWebviewControls(rawHtml, {
-    range: settings.range,
-    projectKeys: settings.projectKeys,
-    theme: settings.theme,
-    taskTransfer: settings.taskTransfer,
-    versionLabel,
-  }), webview.cspSource);
 }
 
 function updateStatusItem(settings: ExtensionSettings): void {

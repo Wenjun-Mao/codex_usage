@@ -1,0 +1,269 @@
+import * as fs from "fs/promises";
+import * as path from "path";
+import { performance } from "perf_hooks";
+
+import {
+  buildCodexUsageEnv,
+  buildReportArgs,
+  cacheDbPath,
+  legacyCacheDbPath,
+  type ExtensionSettings,
+} from "./core";
+import {
+  injectWebviewControls,
+  injectWebviewCsp,
+  renderErrorHtml,
+  renderLoadingHtml,
+} from "./dashboardWebview";
+import { LatestRefreshCoordinator } from "./latestRefreshCoordinator";
+
+export type DashboardLoadingKind = "initializing" | "rebuilding" | "refreshing";
+
+export type DashboardPanel = {
+  webview: {
+    html: string;
+    cspSource: string;
+  };
+};
+
+export type DashboardRefreshRequest = {
+  requestId: number;
+  panel: DashboardPanel;
+  settings: ExtensionSettings;
+  versionLabel: string;
+  reportPath: string;
+  timingOutputPath: string;
+};
+
+export type DashboardTimingDiagnostics = {
+  phaseSeconds: Record<string, number>;
+  cliSeconds: number | undefined;
+};
+
+export type DashboardRefreshResult =
+  | {
+    kind: "success";
+    html: string;
+    settings: ExtensionSettings;
+    elapsedSeconds: number;
+    timing: DashboardTimingDiagnostics | undefined;
+  }
+  | {
+    kind: "error";
+    settings: ExtensionSettings;
+    message: string;
+  };
+
+type RunCodexUsage = (
+  executablePath: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+) => Promise<{ stdout: string; stderr: string }>;
+
+export type DashboardExecutionDependencies = {
+  globalStoragePath: string;
+  resolveExecutable: () => Promise<string>;
+  runCodexUsage: RunCodexUsage;
+  appendOutput: (line: string) => void;
+  setStatus: (label: string) => void;
+};
+
+export type DashboardRefreshDependencies = DashboardExecutionDependencies & {
+  updateStatus: () => void;
+  showError: (message: string) => PromiseLike<unknown> | void;
+};
+
+export function createDashboardRefreshRequest(options: {
+  requestId: number;
+  panel: DashboardPanel;
+  settings: ExtensionSettings;
+  versionLabel: string;
+  globalStoragePath: string;
+}): DashboardRefreshRequest {
+  const artifactPrefix = `dashboard-${options.requestId}`;
+  return {
+    requestId: options.requestId,
+    panel: options.panel,
+    settings: options.settings,
+    versionLabel: options.versionLabel,
+    reportPath: path.join(options.globalStoragePath, `${artifactPrefix}.html`),
+    timingOutputPath: path.join(options.globalStoragePath, `${artifactPrefix}.timing.json`),
+  };
+}
+
+export function createDashboardRefreshCoordinator(
+  dependencies: DashboardRefreshDependencies,
+): LatestRefreshCoordinator<DashboardRefreshRequest, DashboardRefreshResult> {
+  return new LatestRefreshCoordinator(
+    (request) => executeDashboardRefresh(request, dependencies),
+    (request, result) => publishDashboardRefresh(request, result, dependencies),
+  );
+}
+
+export async function dashboardLoadingKind(globalStoragePath: string): Promise<DashboardLoadingKind> {
+  if (await pathExists(cacheDbPath(globalStoragePath))) {
+    return "refreshing";
+  }
+  if (await pathExists(legacyCacheDbPath(globalStoragePath))) {
+    return "rebuilding";
+  }
+  return "initializing";
+}
+
+export async function executeDashboardRefresh(
+  request: DashboardRefreshRequest,
+  dependencies: DashboardExecutionDependencies,
+): Promise<DashboardRefreshResult> {
+  const loadingKind = await dashboardLoadingKind(dependencies.globalStoragePath);
+  setDashboardLoading(request, loadingKind);
+  dependencies.setStatus(statusLabelFor(loadingKind));
+  const startedAt = performance.now();
+
+  try {
+    await fs.mkdir(dependencies.globalStoragePath, { recursive: true });
+    const executablePath = await dependencies.resolveExecutable();
+    await dependencies.runCodexUsage(
+      executablePath,
+      buildReportArgs({
+        range: request.settings.range,
+        outputPath: request.reportPath,
+        timingOutputPath: request.timingOutputPath,
+        projectKeys: request.settings.projectKeys,
+        theme: request.settings.theme,
+        projectTransitions: request.settings.projectTransitions,
+      }),
+      buildCodexUsageEnv(dependencies.globalStoragePath),
+    );
+    const html = await fs.readFile(request.reportPath, "utf8");
+    const timing = await readTimingDiagnostics(request.timingOutputPath, dependencies.appendOutput);
+    return {
+      kind: "success",
+      html,
+      settings: request.settings,
+      elapsedSeconds: (performance.now() - startedAt) / 1000,
+      timing,
+    };
+  } catch (error) {
+    return {
+      kind: "error",
+      settings: request.settings,
+      message: errorMessage(error),
+    };
+  }
+}
+
+export function publishDashboardRefresh(
+  request: DashboardRefreshRequest,
+  result: DashboardRefreshResult,
+  dependencies: Pick<DashboardRefreshDependencies, "appendOutput" | "updateStatus" | "showError">,
+): void {
+  if (result.kind === "success") {
+    request.panel.webview.html = renderDashboardHtml(request, result.html, result.elapsedSeconds);
+    logTiming(dependencies.appendOutput, result.timing, result.elapsedSeconds);
+  } else {
+    dependencies.appendOutput(`[error] ${result.message}`);
+    request.panel.webview.html = renderDashboardHtml(
+      request,
+      renderErrorHtml(`${result.message}\n\nCheck the Codex Usage output channel for details.`),
+    );
+    void dependencies.showError(`Codex Usage failed: ${result.message}`);
+  }
+  dependencies.updateStatus();
+}
+
+async function readTimingDiagnostics(
+  timingOutputPath: string,
+  appendOutput: (line: string) => void,
+): Promise<DashboardTimingDiagnostics | undefined> {
+  try {
+    const payload = JSON.parse(await fs.readFile(timingOutputPath, "utf8"));
+    if (!isRecord(payload) || !isRecord(payload.phases_seconds)) {
+      throw new Error("timing sidecar did not contain phases_seconds");
+    }
+    const phaseSeconds: Record<string, number> = {};
+    for (const [phase, seconds] of Object.entries(payload.phases_seconds)) {
+      if (typeof seconds === "number" && Number.isFinite(seconds)) {
+        phaseSeconds[phase] = seconds;
+      }
+    }
+    const cliSeconds = typeof payload.total_seconds === "number" && Number.isFinite(payload.total_seconds)
+      ? payload.total_seconds
+      : undefined;
+    return { phaseSeconds, cliSeconds };
+  } catch (error) {
+    appendOutput(`[timing] timing sidecar unavailable: ${errorMessage(error)}`);
+    return undefined;
+  }
+}
+
+function setDashboardLoading(request: DashboardRefreshRequest, kind: DashboardLoadingKind): void {
+  request.panel.webview.html = renderDashboardHtml(request, renderLoadingHtml(loadingMessageFor(kind)));
+}
+
+function renderDashboardHtml(
+  request: DashboardRefreshRequest,
+  rawHtml: string,
+  loadedSeconds?: number,
+): string {
+  return injectWebviewCsp(injectWebviewControls(rawHtml, {
+    range: request.settings.range,
+    projectKeys: request.settings.projectKeys,
+    theme: request.settings.theme,
+    taskTransfer: request.settings.taskTransfer,
+    loadedSeconds,
+    versionLabel: request.versionLabel,
+  }), request.panel.webview.cspSource);
+}
+
+function loadingMessageFor(kind: DashboardLoadingKind): string {
+  if (kind === "initializing") {
+    return "Initializing Codex usage cache. This can take a few seconds the first time.";
+  }
+  if (kind === "rebuilding") {
+    return "Rebuilding usage cache after upgrade...";
+  }
+  return "Refreshing Codex usage...";
+}
+
+function statusLabelFor(kind: DashboardLoadingKind): string {
+  if (kind === "initializing") {
+    return "Codex Usage: Initializing";
+  }
+  if (kind === "rebuilding") {
+    return "Codex Usage: Rebuilding";
+  }
+  return "Codex Usage: Loading";
+}
+
+function logTiming(
+  appendOutput: (line: string) => void,
+  timing: DashboardTimingDiagnostics | undefined,
+  elapsedSeconds: number,
+): void {
+  if (timing) {
+    for (const [phase, seconds] of Object.entries(timing.phaseSeconds)) {
+      appendOutput(`[timing] ${phase}: ${seconds.toFixed(3)}s`);
+    }
+    if (timing.cliSeconds !== undefined && !("total_cli" in timing.phaseSeconds)) {
+      appendOutput(`[timing] total_cli: ${timing.cliSeconds.toFixed(3)}s`);
+    }
+  }
+  appendOutput(`[timing] extension_total: ${elapsedSeconds.toFixed(3)}s`);
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

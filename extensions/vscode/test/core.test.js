@@ -61,6 +61,24 @@ test("buildReportArgs includes optional CLI arguments for the bundled executable
   assert.doesNotMatch(args.join(" "), /uv|codex-usage/);
 });
 
+test("buildReportArgs sends the optional timing sidecar path to the bundled executable", () => {
+  assert.deepEqual(buildReportArgs({
+    range: "today",
+    outputPath: "/tmp/report.html",
+    timingOutputPath: "/tmp/timing.json",
+  }), [
+    "report",
+    "--range",
+    "today",
+    "--output",
+    "/tmp/report.html",
+    "--theme",
+    "auto",
+    "--timing-output",
+    "/tmp/timing.json",
+  ]);
+});
+
 test("buildSummaryArgs includes project JSON arguments and project filters", () => {
   const args = buildSummaryArgs({
     range: "30d",

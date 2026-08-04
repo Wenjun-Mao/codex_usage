@@ -23,6 +23,7 @@ export type ProjectTransitionsSettings = {
 export type ReportCommandOptions = {
   range: string;
   outputPath: string;
+  timingOutputPath?: string;
   projectKeys?: string[];
   theme?: string;
   projectTransitions?: ProjectTransitionsSettings;
@@ -160,6 +161,9 @@ export function buildReportArgs(options: ReportCommandOptions): string[] {
     "--theme",
     normalizeTheme(options.theme),
   ];
+  if (options.timingOutputPath) {
+    args.push("--timing-output", options.timingOutputPath);
+  }
   appendProjectTransitionArgs(args, options);
   appendProjectKeyArgs(args, options.projectKeys);
   return args;

@@ -11,6 +11,7 @@ export type WebviewControlState = {
   projectKeys: string[];
   theme: ReportTheme;
   taskTransfer: TaskTransferSettings;
+  loadedSeconds?: number;
   versionLabel?: string;
 };
 
@@ -42,8 +43,16 @@ export function injectWebviewControls(reportHtml: string, state: WebviewControlS
     .codex-usage-actions a:hover {
       background: var(--vscode-toolbar-hoverBackground, var(--surface-soft));
     }
-    .codex-usage-version {
+    .codex-usage-trailing-metadata {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
       margin-left: auto;
+      max-width: 100%;
+    }
+    .codex-usage-load-time,
+    .codex-usage-version {
       color: var(--vscode-descriptionForeground, var(--muted));
       font-size: 12px;
       white-space: nowrap;
@@ -117,8 +126,14 @@ ${basicWebviewCss()}
 }
 
 function renderWebviewControls(state: WebviewControlState): string {
+  const loaded = Number.isFinite(state.loadedSeconds)
+    ? `<span class="codex-usage-load-time">Loaded in ${state.loadedSeconds!.toFixed(1)} seconds</span>`
+    : "";
   const version = state.versionLabel?.trim()
     ? `<span class="codex-usage-version" aria-label="Codex Usage extension version">${escapeHtml(state.versionLabel.trim())}</span>`
+    : "";
+  const metadata = loaded || version
+    ? `<span class="codex-usage-trailing-metadata">${loaded}${version}</span>`
     : "";
   return (
     '<nav class="codex-usage-actions" aria-label="Codex Usage dashboard controls">' +
@@ -128,7 +143,7 @@ function renderWebviewControls(state: WebviewControlState): string {
     `<a href="command:codexUsage.openSyncMenu">${escapeHtml(taskTransferControlLabel())}</a>` +
     '<a href="command:codexUsage.refreshDashboard">Refresh</a>' +
     '<a href="command:codexUsage.openSettings">Settings</a>' +
-    version +
+    metadata +
     "</nav>"
   );
 }
