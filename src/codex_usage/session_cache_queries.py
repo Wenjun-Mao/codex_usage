@@ -153,10 +153,11 @@ def _query_current_generation_rows_in_chunks(
     column: str,
     task_ids: Collection[str],
 ) -> list[sqlite3.Row]:
-    if (table, column) not in {
-        ("usage_records", "session_id"),
-        ("transition_candidates", "thread_id"),
-    }:
+    index_column = {
+        ("usage_records", "session_id"): "record_index",
+        ("transition_candidates", "thread_id"): "candidate_index",
+    }.get((table, column))
+    if index_column is None:
         raise ValueError("unsupported current-generation query")
     rows: list[sqlite3.Row] = []
     for task_id_chunk in _task_id_chunks(task_ids):
@@ -169,11 +170,15 @@ def _query_current_generation_rows_in_chunks(
                 join files on files.file_key = {table}.file_key
                 where {table}.{column} in ({placeholders})
                     and files.file_key = files.session_id
+                order by {table}.file_key, {table}.{index_column}
                 """,
                 task_id_chunk,
             )
         )
-    return rows
+    return sorted(
+        rows,
+        key=lambda row: (str(row["file_key"]), int(row[index_column])),
+    )
 
 
 def _task_id_chunks(task_ids: Collection[str]) -> Iterator[tuple[str, ...]]:
