@@ -18,6 +18,24 @@ def test_removed_active_duplicate_promotes_unchanged_archive_generation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     corpus = _write_handoff_corpus(tmp_path)
+    _write_mixed_session(
+        corpus.active_path,
+        corpus.active_source,
+        corpus.active_target,
+        child_session_id="stale-canonical",
+        initial_total=100,
+        child_total=150,
+        final_total=300,
+    )
+    _write_mixed_session(
+        corpus.archived_path,
+        corpus.archive_source,
+        corpus.archive_target,
+        child_session_id="surviving-fallback",
+        initial_total=50,
+        child_total=80,
+        final_total=170,
+    )
     unrelated_source = tmp_path / "unrelated-source"
     unrelated_target = tmp_path / "unrelated-target"
     _write_git_config(unrelated_source)
@@ -31,13 +49,6 @@ def test_removed_active_duplicate_promotes_unchanged_archive_generation(
         "unrelated",
     )
     load_cached_session_data(corpus.session_dirs, cache_dir=corpus.cache_dir, max_workers=1)
-    # Keep the root ownership identity stable while exposing distinct stale and surviving row owners.
-    _set_cached_generation_task_id(
-        corpus.cache_dir, corpus.active_path, "stale-canonical"
-    )
-    _set_cached_generation_task_id(
-        corpus.cache_dir, corpus.archived_path, "surviving-fallback"
-    )
     corpus.active_path.unlink()
 
     def fail_parse(_path: Path):
@@ -69,10 +80,10 @@ def test_removed_active_duplicate_promotes_unchanged_archive_generation(
         str(unrelated_source),
     }
     assert [
-        record.usage.total_tokens
+        (record.session_id, record.usage.total_tokens)
         for record in unbounded.records
-        if record.session_id == "surviving-fallback"
-    ] == [50, 120]
+        if record.cwd == str(corpus.archive_source)
+    ] == [("handoff", 50), ("surviving-fallback", 30), ("handoff", 90)]
     assert [
         record.usage.total_tokens
         for record in unbounded.records
@@ -122,6 +133,22 @@ def test_removed_active_duplicate_promotes_unchanged_archive_generation(
         assert connection.execute(
             "select distinct file_key, raw_path from transition_candidates where file_key = 'handoff'"
         ).fetchall() == [("handoff", str(corpus.archive_target))]
+        assert connection.execute(
+            """
+            select record_index, session_id, total_tokens
+            from usage_records where file_key = 'handoff'
+            order by record_index
+            """
+        ).fetchall() == [
+            (0, "handoff", 50),
+            (1, "surviving-fallback", 30),
+            (2, "handoff", 90),
+        ]
+        assert connection.execute(
+            "select file_key, thread_id, raw_path from transition_candidates where file_key = 'handoff'"
+        ).fetchall() == [
+            ("handoff", "surviving-fallback", str(corpus.archive_target))
+        ]
 
     rebuilt = load_cached_session_data(
         corpus.session_dirs, cache_dir=corpus.cache_dir, max_workers=1
@@ -339,15 +366,53 @@ def _write_session(
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
 
 
-def _session_meta(source_repo: Path, session_id: str) -> dict[str, object]:
+def _write_mixed_session(
+    path: Path,
+    source_repo: Path,
+    target_repo: Path,
+    *,
+    child_session_id: str,
+    initial_total: int,
+    child_total: int,
+    final_total: int,
+) -> None:
+    rows = (
+        _session_meta(source_repo, "handoff"),
+        _turn_context("2026-08-03T12:00:01Z", "root-turn-1"),
+        _token_count("2026-08-03T12:00:02Z", initial_total),
+        _session_meta(
+            source_repo,
+            child_session_id,
+            parent_thread_id="handoff",
+        ),
+        _turn_context("2026-08-03T12:05:00Z", "child-turn"),
+        _token_count("2026-08-03T12:05:00Z", child_total),
+        _function_call("2026-08-03T12:05:01Z", target_repo),
+        _session_meta(source_repo, "handoff"),
+        _turn_context("2026-08-03T12:10:01Z", "root-turn-2"),
+        _token_count("2026-08-03T12:10:02Z", final_total),
+    )
+    path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+
+
+def _session_meta(
+    source_repo: Path,
+    session_id: str,
+    parent_thread_id: str = "",
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "id": session_id,
+        "cwd": str(source_repo),
+        "git": {"repository_url": f"{_repo_key(source_repo)}.git"},
+    }
+    if parent_thread_id:
+        payload["source"] = {
+            "subagent": {"thread_spawn": {"parent_thread_id": parent_thread_id}}
+        }
     return {
         "timestamp": "2026-08-03T12:00:00Z",
         "type": "session_meta",
-        "payload": {
-            "id": session_id,
-            "cwd": str(source_repo),
-            "git": {"repository_url": f"{_repo_key(source_repo)}.git"},
-        },
+        "payload": payload,
     }
 
 
@@ -419,24 +484,6 @@ def _dirty_task_ids(cache_dir: Path) -> set[str]:
                 "select thread_id from dirty_transition_tasks order by thread_id"
             )
         }
-
-
-def _set_cached_generation_task_id(
-    cache_dir: Path, path: Path, task_id: str
-) -> None:
-    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
-        file_key = connection.execute(
-            "select file_key from files where path = ?", (str(path),)
-        ).fetchone()[0]
-        connection.execute(
-            "update usage_records set session_id = ? where file_key = ?",
-            (task_id, file_key),
-        )
-        connection.execute(
-            "update transition_candidates set thread_id = ? where file_key = ?",
-            (task_id, file_key),
-        )
-        connection.commit()
 
 
 def _transition_targets(data) -> dict[str, str]:
