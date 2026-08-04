@@ -109,26 +109,30 @@ def load_session_data(
         )
         with timer.measure("inventory") if timer else nullcontext():
             files = collect_jsonl_files(session_dirs)
-        records = parse_session_files(files)
+        with timer.measure("usage_refresh") if timer else nullcontext():
+            records = parse_session_files(files)
         project_transitions: list[ProjectTransition] = []
-        if auto_transitions:
-            observations = collect_repo_path_observations(session_dirs, files)
-            project_transitions = infer_project_transitions(records, observations)
-            records = apply_project_transitions(records, project_transitions)
-        if range_bounds is not None:
-            if timezone is None:
-                raise ValueError("timezone is required for a range-selected fallback")
-            records = filter_records_by_range(
-                records,
-                range_name,
-                timezone,
-                bounds=range_bounds,
-            )
+        with timer.measure("transition_refresh") if timer else nullcontext():
+            if auto_transitions:
+                observations = collect_repo_path_observations(session_dirs, files)
+                project_transitions = infer_project_transitions(records, observations)
+                records = apply_project_transitions(records, project_transitions)
+        with timer.measure("range_query") if timer else nullcontext():
+            if range_bounds is not None:
+                if timezone is None:
+                    raise ValueError("timezone is required for a range-selected fallback")
+                records = filter_records_by_range(
+                    records,
+                    range_name,
+                    timezone,
+                    bounds=range_bounds,
+                )
         return uncached_session_data(
             session_dirs=session_dirs,
             files=files,
             records=records,
             project_transitions=project_transitions,
+            direct_fallback=True,
         )
 
 

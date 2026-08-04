@@ -86,6 +86,8 @@ def uncached_session_data(
     files: list[Path],
     records: list[UsageRecord],
     project_transitions: list[ProjectTransition],
+    *,
+    direct_fallback: bool = False,
 ) -> CachedSessionData:
     return CachedSessionData(
         session_dirs=session_dirs,
@@ -93,7 +95,13 @@ def uncached_session_data(
         records=records,
         file_summaries={},
         project_transitions=project_transitions,
-        stats=CacheStats(files_total=len(files), files_current=len(files)),
+        stats=CacheStats(
+            files_total=len(files),
+            files_current=len(files),
+            files_parsed=len(files) if direct_fallback else 0,
+            cache_errors=int(direct_fallback),
+            direct_fallback=direct_fallback,
+        ),
         file_errors={},
     )
 
@@ -152,6 +160,11 @@ def load_cached_session_data(
         session_files = [entry.path for entry in inventory]
         stats = refresh_outcome.stats
         usage_run = refresh_outcome.usage_run
+        stats = replace(
+            stats,
+            worker_infrastructure_errors=int(bool(usage_run.infrastructure_error)),
+            worker_serial_fallbacks=int(usage_run.used_serial_fallback),
+        )
         current_keys = {entry.file_key for entry in inventory}
         missing_keys = _store._missing_file_keys(connection)
         selected_keys = current_keys | missing_keys

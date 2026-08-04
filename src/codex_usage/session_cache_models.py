@@ -23,6 +23,10 @@ class CacheStats:
     file_errors: int = 0
     rebuilt: bool = False
     legacy_cleanup_errors: int = 0
+    cache_errors: int = 0
+    worker_infrastructure_errors: int = 0
+    worker_serial_fallbacks: int = 0
+    direct_fallback: bool = False
 
 
 @dataclass(frozen=True, slots=True)

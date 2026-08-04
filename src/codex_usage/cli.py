@@ -252,18 +252,19 @@ def handle_threads(args: argparse.Namespace) -> int:
     )
     args._timing_cache_stats = data.stats
     write_requested_parallel_audit(args, data)
-    threads = list_threads_from_cached_data(data, project_keys=project_keys)
-    payload = {
-        "threads": [thread.to_dict() for thread in threads],
-        "project_keys": project_keys,
-    }
-    if args.json:
-        print_json(payload)
-    else:
-        for thread in threads:
-            print(
-                f"{thread.thread_id}\t{thread.title}\t{thread.project_label}\t{thread.updated_at}"
-            )
+    with timer.measure("aggregation_render") if timer else nullcontext():
+        threads = list_threads_from_cached_data(data, project_keys=project_keys)
+        payload = {
+            "threads": [thread.to_dict() for thread in threads],
+            "project_keys": project_keys,
+        }
+        if args.json:
+            print_json(payload)
+        else:
+            for thread in threads:
+                print(
+                    f"{thread.thread_id}\t{thread.title}\t{thread.project_label}\t{thread.updated_at}"
+                )
     return 0
 
 

@@ -10,6 +10,14 @@ from codex_usage.parallel_audit import atomic_write
 from codex_usage.session_cache_models import CacheStats
 
 _SERIALIZATION_DECIMAL_PLACES = 6
+_REQUIRED_PHASES = (
+    "inventory",
+    "usage_refresh",
+    "transition_refresh",
+    "range_query",
+    "aggregation_render",
+    "total_cli",
+)
 
 
 class PhaseTimer:
@@ -64,8 +72,12 @@ def write_timing_sidecar(
             "files_missing_retained": cache_stats.files_missing_retained,
             "file_errors": cache_stats.file_errors,
             "legacy_cleanup_errors": cache_stats.legacy_cleanup_errors,
+            "cache_errors": cache_stats.cache_errors,
+            "worker_infrastructure_errors": cache_stats.worker_infrastructure_errors,
+            "worker_serial_fallbacks": cache_stats.worker_serial_fallbacks,
+            "direct_fallback": cache_stats.direct_fallback,
         },
-        "phases_seconds": _rounded_values(timer.phases_seconds()),
+        "phases_seconds": _rounded_values(_phase_values(timer)),
         "total_seconds": _rounded(timer.elapsed_seconds("total_cli")),
     }
     atomic_write(path, json.dumps(payload, indent=2) + "\n")
@@ -73,6 +85,12 @@ def write_timing_sidecar(
 
 def _rounded_values(values: dict[str, float]) -> dict[str, float]:
     return {name: _rounded(value) for name, value in values.items()}
+
+
+def _phase_values(timer: PhaseTimer) -> dict[str, float]:
+    values = {name: timer.elapsed_seconds(name) for name in _REQUIRED_PHASES}
+    values.update(timer.phases_seconds())
+    return values
 
 
 def _rounded(value: float) -> float:
