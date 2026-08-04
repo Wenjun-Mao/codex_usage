@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import codex_usage.parallel.usage as usage_module
+import codex_usage.session_cache as session_cache_module
 import codex_usage.session_cache_refresh as cache_refresh_module
 import codex_usage.session_cache_schema as cache_schema_module
 from codex_usage.session_cache import (
@@ -31,6 +32,37 @@ def test_first_cache_build_parses_and_stores_records(tmp_path: Path) -> None:
     assert data.records[0].usage.total_tokens == 100
     assert data.records[0].usage.cache_write_input_tokens == 25
     assert (cache_dir / CACHE_DB_NAME).is_file()
+
+
+def test_cache_connection_closes_before_loader_returns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions, "thread-1", "/repo/demo", 100)
+    cache_dir = tmp_path / "cache"
+    original_connect = sqlite3.connect
+    connections: list[sqlite3.Connection] = []
+
+    class TrackingConnection(sqlite3.Connection):
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            super().close()
+
+    def track_connection(*args: object, **kwargs: object) -> sqlite3.Connection:
+        kwargs["factory"] = TrackingConnection
+        connection = original_connect(*args, **kwargs)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(session_cache_module.sqlite3, "connect", track_connection)
+
+    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
+
+    assert len(connections) == 1
+    assert isinstance(connections[0], TrackingConnection)
+    assert connections[0].closed is True
 
 
 def test_legacy_cache_files_are_removed_after_schema_opens(tmp_path: Path) -> None:

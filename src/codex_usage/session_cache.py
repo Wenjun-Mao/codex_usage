@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -120,6 +120,16 @@ def resolve_cache_dir(session_dirs: list[Path], cache_dir: Path | None = None) -
     return Path.home() / ".codex" / ".codex-usage-cache"
 
 
+@contextmanager
+def _open_cache_connection(path: Path):
+    connection = sqlite3.connect(path)
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
+
+
 def load_cached_session_data(
     session_dirs: list[Path],
     *,
@@ -136,7 +146,7 @@ def load_cached_session_data(
     else:
         with timer.measure("inventory"):
             inventory = collect_session_file_inventory(session_dirs, read_metadata=False)
-    with sqlite3.connect(resolved_cache_dir / CACHE_DB_NAME) as connection:
+    with _open_cache_connection(resolved_cache_dir / CACHE_DB_NAME) as connection:
         connection.row_factory = sqlite3.Row
         schema_state = _schema._ensure_schema(connection)
         legacy_cleanup_errors = _cleanup_legacy_cache_files(resolved_cache_dir)
