@@ -18,7 +18,26 @@ def test_removed_active_duplicate_promotes_unchanged_archive_generation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     corpus = _write_handoff_corpus(tmp_path)
+    unrelated_source = tmp_path / "unrelated-source"
+    unrelated_target = tmp_path / "unrelated-target"
+    _write_git_config(unrelated_source)
+    _write_git_config(unrelated_target)
+    _write_session(
+        corpus.sessions / "2026" / "08" / "03" / "unrelated.jsonl",
+        unrelated_source,
+        unrelated_target,
+        40,
+        90,
+        "unrelated",
+    )
     load_cached_session_data(corpus.session_dirs, cache_dir=corpus.cache_dir, max_workers=1)
+    # Keep the root ownership identity stable while exposing distinct stale and surviving row owners.
+    _set_cached_generation_task_id(
+        corpus.cache_dir, corpus.active_path, "stale-canonical"
+    )
+    _set_cached_generation_task_id(
+        corpus.cache_dir, corpus.archived_path, "surviving-fallback"
+    )
     corpus.active_path.unlink()
 
     def fail_parse(_path: Path):
@@ -45,18 +64,32 @@ def test_removed_active_duplicate_promotes_unchanged_archive_generation(
     assert ranged.stats.files_parsed == 0
     assert unbounded.stats.files_parsed == 0
     assert ranged.records == unbounded.records
-    assert {record.cwd for record in ranged.records} == {str(corpus.archive_source)}
-    assert {record.cwd for record in unbounded.records} == {str(corpus.archive_source)}
-    assert [record.usage.total_tokens for record in unbounded.records] == [50, 120]
-    assert _dirty_task_ids(corpus.cache_dir) == {"handoff"}
+    assert {record.cwd for record in ranged.records} == {
+        str(corpus.archive_source),
+        str(unrelated_source),
+    }
+    assert [
+        record.usage.total_tokens
+        for record in unbounded.records
+        if record.session_id == "surviving-fallback"
+    ] == [50, 120]
+    assert [
+        record.usage.total_tokens
+        for record in unbounded.records
+        if record.session_id == "unrelated"
+    ] == [40, 50]
+    assert _dirty_task_ids(corpus.cache_dir) == {
+        "handoff",
+        "stale-canonical",
+        "surviving-fallback",
+    }
     with sqlite3.connect(corpus.cache_dir / CACHE_DB_NAME) as connection:
         archived_stat = corpus.archived_path.stat()
         assert connection.execute(
             """
             select file_key, path, session_dir, storage_state, size_bytes, mtime_ns,
                 is_missing, session_id, error
-            from files
-            order by file_key
+            from files where file_key = 'handoff'
             """
         ).fetchall() == [
             (
@@ -74,7 +107,7 @@ def test_removed_active_duplicate_promotes_unchanged_archive_generation(
         assert connection.execute(
             """
             select file_key, file_path, session_dir, storage_state, is_missing, session_id
-            from session_metadata
+            from session_metadata where file_key = 'handoff'
             """
         ).fetchall() == [
             (
@@ -87,16 +120,17 @@ def test_removed_active_duplicate_promotes_unchanged_archive_generation(
             )
         ]
         assert connection.execute(
-            "select distinct file_key, raw_path from transition_candidates"
+            "select distinct file_key, raw_path from transition_candidates where file_key = 'handoff'"
         ).fetchall() == [("handoff", str(corpus.archive_target))]
 
     rebuilt = load_cached_session_data(
         corpus.session_dirs, cache_dir=corpus.cache_dir, max_workers=1
     )
 
-    assert [transition.target_key for transition in rebuilt.project_transitions] == [
-        _repo_key(corpus.archive_target)
-    ]
+    assert _transition_targets(rebuilt) == {
+        "surviving-fallback": _repo_key(corpus.archive_target),
+        "unrelated": _repo_key(unrelated_target),
+    }
     assert _dirty_task_ids(corpus.cache_dir) == set()
 
 
@@ -214,11 +248,20 @@ def test_archive_promotion_rolls_back_when_rekey_fails(
     )
     corpus.active_path.unlink()
     before = _ownership_snapshot(corpus.cache_dir)
+    after_rekey: dict[str, tuple[tuple[object, ...], ...]] | None = None
+    real_rekey = ownership_module.rekey_file_generation
 
-    def fail_rekey(*_args: object, **_kwargs: object) -> set[str]:
+    def rekey_then_fail(
+        connection: sqlite3.Connection,
+        *args: object,
+        **kwargs: object,
+    ) -> set[str]:
+        nonlocal after_rekey
+        real_rekey(connection, *args, **kwargs)
+        after_rekey = _ownership_snapshot_for_connection(connection)
         raise sqlite3.OperationalError("promotion interrupted")
 
-    monkeypatch.setattr(ownership_module, "rekey_file_generation", fail_rekey)
+    monkeypatch.setattr(ownership_module, "rekey_file_generation", rekey_then_fail)
     with pytest.raises(sqlite3.OperationalError, match="promotion interrupted"):
         load_cached_session_data(
             corpus.session_dirs,
@@ -227,6 +270,9 @@ def test_archive_promotion_rolls_back_when_rekey_fails(
             max_workers=1,
         )
 
+    assert after_rekey is not None
+    for table in ("fingerprints", "usage", "metadata", "candidates"):
+        assert after_rekey[table] != before[table]
     assert _ownership_snapshot(corpus.cache_dir) == before
 
 
@@ -375,6 +421,24 @@ def _dirty_task_ids(cache_dir: Path) -> set[str]:
         }
 
 
+def _set_cached_generation_task_id(
+    cache_dir: Path, path: Path, task_id: str
+) -> None:
+    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
+        file_key = connection.execute(
+            "select file_key from files where path = ?", (str(path),)
+        ).fetchone()[0]
+        connection.execute(
+            "update usage_records set session_id = ? where file_key = ?",
+            (task_id, file_key),
+        )
+        connection.execute(
+            "update transition_candidates set thread_id = ? where file_key = ?",
+            (task_id, file_key),
+        )
+        connection.commit()
+
+
 def _transition_targets(data) -> dict[str, str]:
     return {
         transition.thread_ids[0]: transition.target_key
@@ -382,15 +446,35 @@ def _transition_targets(data) -> dict[str, str]:
     }
 
 
-def _ownership_snapshot(cache_dir: Path) -> dict[str, list[tuple[object, ...]]]:
+def _ownership_snapshot(
+    cache_dir: Path,
+) -> dict[str, tuple[tuple[object, ...], ...]]:
     queries = {
-        "files": "select * from files order by file_key",
+        "fingerprints": "select * from files order by file_key",
         "usage": "select * from usage_records order by file_key, record_index",
         "metadata": "select * from session_metadata order by file_key",
         "candidates": "select * from transition_candidates order by file_key, candidate_index",
         "dirty": "select * from dirty_transition_tasks order by thread_id",
+        "transitions": "select * from project_transitions order by owner_thread_id, source_key, target_key",
     }
     with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
-        return {
-            name: list(connection.execute(query)) for name, query in queries.items()
+        return _ownership_snapshot_for_connection(connection, queries)
+
+
+def _ownership_snapshot_for_connection(
+    connection: sqlite3.Connection,
+    queries: dict[str, str] | None = None,
+) -> dict[str, tuple[tuple[object, ...], ...]]:
+    if queries is None:
+        queries = {
+            "fingerprints": "select * from files order by file_key",
+            "usage": "select * from usage_records order by file_key, record_index",
+            "metadata": "select * from session_metadata order by file_key",
+            "candidates": "select * from transition_candidates order by file_key, candidate_index",
+            "dirty": "select * from dirty_transition_tasks order by thread_id",
+            "transitions": "select * from project_transitions order by owner_thread_id, source_key, target_key",
         }
+    return {
+        name: tuple(tuple(row) for row in connection.execute(query))
+        for name, query in queries.items()
+    }
