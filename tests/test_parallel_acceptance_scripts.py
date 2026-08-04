@@ -195,13 +195,13 @@ def test_synthetic_acceptance_proves_one_file_incremental_refresh() -> None:
         timeout=120,
         check=False,
     )
-
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(completed.stdout)
     assert payload["warm"]["stats"]["files_parsed"] == 0
     assert payload["warm"]["usage_run"]["span_count"] == 0
     assert payload["warm"]["transition_run"]["span_count"] == 0
     assert payload["changed"]["stats"]["files_parsed"] == 1
+    assert payload["changed"]["stats"]["files_reused"] == payload["corpus"]["file_count"] - 1
     assert payload["changed"]["usage_run"]["span_count"] == 1
     assert payload["changed"]["transition_run"]["span_count"] == 0
     assert payload["changed"]["source_bytes_eligible"] < payload["corpus"]["byte_count"]

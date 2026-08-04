@@ -29,10 +29,7 @@ from codex_usage.parallel.execution import ParallelRunReport
 from codex_usage.parallel_audit import require_actual_parallel
 from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
 from codex_usage.session_cache_models import CachedSessionData
-from codex_usage.session_inventory import (
-    SessionFileInventoryEntry,
-    collect_session_file_inventory,
-)
+from codex_usage.session_inventory import collect_session_file_inventory
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -54,7 +51,11 @@ def main(argv: list[str] | None = None) -> int:
             payload = _run_fixture_acceptance(corpus, args.cache_dir or root / "cache")
     else:
         session_dirs = [args.sessions_dir] if args.sessions_dir else find_session_dirs()
-        payload = _run_existing_acceptance(session_dirs, args.cache_dir)
+        payload = _run_existing_acceptance(
+            session_dirs,
+            args.cache_dir,
+            exercise_changed=args.sessions_dir is not None,
+        )
     print(json.dumps(payload, sort_keys=True))
     return 0
 
@@ -73,7 +74,7 @@ def _run_fixture_acceptance(corpus: FixtureCorpus, cache_dir: Path) -> dict[str,
 
     changed_file = append_incremental_change(corpus)
     changed, changed_elapsed = _timed_load(session_dirs, cache_dir)
-    _require_changed_semantics(changed)
+    _require_changed_semantics(changed, len(inventory))
 
     oracle, oracle_elapsed = _timed_load(session_dirs, cache_dir / "cold-oracle")
     changed_semantic_digest = _semantic_digest(changed)
@@ -100,21 +101,28 @@ def _run_fixture_acceptance(corpus: FixtureCorpus, cache_dir: Path) -> dict[str,
 
 
 def _run_existing_acceptance(
-    session_dirs: list[Path], cache_dir: Path | None
+    session_dirs: list[Path],
+    cache_dir: Path | None,
+    *,
+    exercise_changed: bool = True,
 ) -> dict[str, object]:
     inventory = collect_session_file_inventory(session_dirs)
     if len(inventory) < 2:
         raise RuntimeError("parallel acceptance requires at least two session files")
     if cache_dir is None:
         with tempfile.TemporaryDirectory(prefix="codex-usage-parallel-") as directory:
-            return _run_existing_acceptance(session_dirs, Path(directory))
+            return _run_existing_acceptance(
+                session_dirs,
+                Path(directory),
+                exercise_changed=exercise_changed,
+            )
     _require_cold_cache(cache_dir)
     cold, cold_elapsed = _timed_load(session_dirs, cache_dir)
     _require_actual_parallel(cold.usage_run, "cold usage")
     _require_zero_transition_spans(cold, "cold")
     warm, warm_elapsed = _timed_load(session_dirs, cache_dir)
     _require_warm_semantics(cold, warm)
-    return {
+    payload = {
         "corpus": {
             "file_count": len(inventory),
             "byte_count": sum(entry.path.stat().st_size for entry in inventory),
@@ -123,6 +131,35 @@ def _run_existing_acceptance(
         "cold": _acceptance_snapshot(cold),
         "warm": _acceptance_snapshot(warm),
     }
+    if not exercise_changed:
+        return payload
+
+    changed_file = append_incremental_change(
+        FixtureCorpus(
+            sessions_dir=session_dirs[0],
+            files=tuple(entry.path for entry in inventory),
+            transition_target=Path.cwd(),
+            changed_file=inventory[0].path,
+        )
+    )
+    changed, changed_elapsed = _timed_load(session_dirs, cache_dir)
+    _require_changed_semantics(changed, len(inventory))
+
+    oracle, oracle_elapsed = _timed_load(session_dirs, cache_dir / "cold-oracle")
+    changed_semantic_digest = _semantic_digest(changed)
+    cold_after_same_append_digest = _semantic_digest(oracle)
+    if changed_semantic_digest != cold_after_same_append_digest:
+        raise RuntimeError("incremental semantic digest differs from cold oracle")
+
+    payload["elapsed_seconds"].update(
+        {"changed": round(changed_elapsed, 6), "cold_oracle": round(oracle_elapsed, 6)}
+    )
+    payload["changed"] = {
+        **_acceptance_snapshot(changed),
+        "source_bytes_eligible": changed_file.stat().st_size,
+    }
+    payload["oracle"] = _acceptance_snapshot(oracle)
+    return payload
 
 
 def _timed_load(
@@ -165,11 +202,16 @@ def _require_warm_semantics(cold: CachedSessionData, warm: CachedSessionData) ->
         raise RuntimeError("warm run did not reuse every successful cold generation")
 
 
-def _require_changed_semantics(changed: CachedSessionData) -> None:
+def _require_changed_semantics(
+    changed: CachedSessionData,
+    inventory_file_count: int,
+) -> None:
     _require_no_fallback(changed.usage_run, "changed usage")
     _require_no_fallback(changed.transition_run, "changed transition")
     if changed.stats.files_parsed != 1 or len(changed.usage_run.worker_spans) != 1:
         raise RuntimeError("one-file change did not produce one combined usage worker span")
+    if changed.stats.files_reused != inventory_file_count - 1:
+        raise RuntimeError("one-file change did not reuse every other inventory file")
     _require_zero_transition_spans(changed, "changed")
 
 
