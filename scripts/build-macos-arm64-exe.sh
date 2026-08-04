@@ -38,4 +38,5 @@ chmod +x "$exe_path"
 uv run python "$repo_root/scripts/packaged_parallel_cache_smoke.py" \
   --executable "$exe_path" \
   --expected-target darwin-arm64
+uv run python "$repo_root/scripts/packaged_report_smoke.py" --executable "$exe_path"
 uv run python "$repo_root/scripts/smoke-test-packaged-sync.py" --executable "$exe_path"

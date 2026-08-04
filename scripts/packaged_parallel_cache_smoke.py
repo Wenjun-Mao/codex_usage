@@ -22,7 +22,7 @@ SCRIPT_DIRECTORY = str(Path(__file__).parent)
 if SCRIPT_DIRECTORY not in sys.path:
     sys.path.insert(0, SCRIPT_DIRECTORY)
 
-from parallel_cache_fixture import (
+from parallel_cache_fixture import (  # noqa: E402 - direct execution needs the sibling fixture path.
     append_incremental_change,
     write_parallel_cache_fixture,
 )

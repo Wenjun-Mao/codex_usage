@@ -11,25 +11,38 @@ import os
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
+
+from codex_usage.aggregation import (
+    RangeBounds,
+    aggregate_records,
+    datetime_to_utc_microseconds,
+    summarize_records,
+)
+from codex_usage.discovery import find_session_dirs
+from codex_usage.models import UsageRecord
+from codex_usage.parallel.execution import ParallelRunReport
+from codex_usage.parallel_audit import require_actual_parallel
+from codex_usage.report_breakdown import build_report_breakdown
+from codex_usage.reporting import render_html_report
+from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
+from codex_usage.session_cache_models import CachedSessionData
+from codex_usage.session_inventory import collect_session_file_inventory
 
 SCRIPT_DIRECTORY = str(Path(__file__).parent)
 if SCRIPT_DIRECTORY not in sys.path:
     sys.path.insert(0, SCRIPT_DIRECTORY)
 
-from parallel_cache_fixture import (
+from parallel_cache_fixture import (  # noqa: E402 - direct execution needs the sibling fixture path.
     FixtureCorpus,
     append_incremental_change,
     write_parallel_cache_fixture,
 )
-
-from codex_usage.discovery import find_session_dirs
-from codex_usage.parallel.execution import ParallelRunReport
-from codex_usage.parallel_audit import require_actual_parallel
-from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
-from codex_usage.session_cache_models import CachedSessionData
-from codex_usage.session_inventory import collect_session_file_inventory
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,6 +84,7 @@ def _run_fixture_acceptance(corpus: FixtureCorpus, cache_dir: Path) -> dict[str,
 
     warm, warm_elapsed = _timed_load(session_dirs, cache_dir)
     _require_warm_semantics(cold, warm)
+    warm_report = _render_bounded_warm_report(session_dirs, cache_dir, warm)
 
     changed_file = append_incremental_change(corpus)
     changed, changed_elapsed = _timed_load(session_dirs, cache_dir)
@@ -92,6 +106,7 @@ def _run_fixture_acceptance(corpus: FixtureCorpus, cache_dir: Path) -> dict[str,
         },
         "cold": _acceptance_snapshot(cold),
         "warm": _acceptance_snapshot(warm),
+        "warm_report": warm_report,
         "changed": {
             **_acceptance_snapshot(changed),
             "source_bytes_eligible": changed_file.stat().st_size,
@@ -122,6 +137,7 @@ def _run_existing_acceptance(
     _require_zero_transition_spans(cold, "cold")
     warm, warm_elapsed = _timed_load(session_dirs, cache_dir)
     _require_warm_semantics(cold, warm)
+    warm_report = _render_bounded_warm_report(session_dirs, cache_dir, warm)
     payload = {
         "corpus": {
             "file_count": len(inventory),
@@ -130,6 +146,7 @@ def _run_existing_acceptance(
         "elapsed_seconds": {"cold": round(cold_elapsed, 6), "warm": round(warm_elapsed, 6)},
         "cold": _acceptance_snapshot(cold),
         "warm": _acceptance_snapshot(warm),
+        "warm_report": warm_report,
     }
     if not exercise_changed:
         return payload
@@ -163,10 +180,20 @@ def _run_existing_acceptance(
 
 
 def _timed_load(
-    session_dirs: list[Path], cache_dir: Path
+    session_dirs: list[Path],
+    cache_dir: Path,
+    *,
+    range_bounds: RangeBounds | None = None,
+    max_workers: int | None = None,
 ) -> tuple[CachedSessionData, float]:
     started = time.perf_counter()
-    data = load_cached_session_data(session_dirs, cache_dir=cache_dir, auto_transitions=True)
+    data = load_cached_session_data(
+        session_dirs,
+        cache_dir=cache_dir,
+        auto_transitions=True,
+        range_bounds=range_bounds,
+        max_workers=max_workers,
+    )
     return data, time.perf_counter() - started
 
 
@@ -200,6 +227,127 @@ def _require_warm_semantics(cold: CachedSessionData, warm: CachedSessionData) ->
     successful_cold_generations = cold.stats.files_parsed - cold.stats.file_errors
     if warm.stats.files_reused != successful_cold_generations:
         raise RuntimeError("warm run did not reuse every successful cold generation")
+
+
+def _render_bounded_warm_report(
+    session_dirs: list[Path],
+    cache_dir: Path,
+    unbounded: CachedSessionData,
+) -> dict[str, object]:
+    bounds = _bounded_range(unbounded.records)
+    with tempfile.TemporaryDirectory(prefix="codex-usage-warm-report-") as directory:
+        report_path = Path(directory) / "report.html"
+        with _block_source_jsonl_reads(session_dirs) as read_attempts:
+            ranged, _ = _timed_load(
+                session_dirs,
+                cache_dir,
+                range_bounds=bounds,
+                max_workers=1,
+            )
+            _require_bounded_warm_semantics(unbounded, ranged)
+            breakdown = build_report_breakdown(ranged.records)
+            render_html_report(
+                output_path=report_path,
+                generated_at=datetime(2026, 7, 31, 12, tzinfo=UTC),
+                range_name="bounded-cache-acceptance",
+                total=summarize_records(ranged.records),
+                daily_rows=aggregate_records(ranged.records, "day", UTC),
+                hourly_rows=aggregate_records(ranged.records, "hour", UTC),
+                breakdown=breakdown,
+                sessions_dirs=session_dirs,
+                files_scanned=len(ranged.files),
+                theme="night",
+            )
+            report_html = report_path.read_text(encoding="utf-8")
+
+    if read_attempts.count:
+        raise RuntimeError("bounded warm report opened source JSONL files")
+    for marker in ('data-report-section="project-breakdown"', 'data-report-section="model-mix"'):
+        if marker not in report_html:
+            raise RuntimeError(f"bounded warm report is missing {marker}")
+    if not breakdown.projects or not breakdown.model_rows:
+        raise RuntimeError("bounded warm report did not build project/model breakdown rows")
+    return {
+        "range_record_count": len(ranged.records),
+        "unbounded_record_count": len(unbounded.records),
+        "source_jsonl_read_attempts": read_attempts.count,
+        "stats": asdict(ranged.stats),
+        "usage_run": _run_counts(ranged.usage_run),
+        "transition_run": _run_counts(ranged.transition_run),
+        "project_count": len(breakdown.projects),
+        "model_count": len(breakdown.model_rows),
+        "report_bytes": len(report_html.encode()),
+    }
+
+
+def _bounded_range(records: list[UsageRecord]) -> RangeBounds:
+    timestamps = sorted({record.timestamp for record in records})
+    if len(timestamps) < 2:
+        raise RuntimeError("bounded warm report requires at least two cached timestamps")
+    return RangeBounds(
+        start_us=datetime_to_utc_microseconds(timestamps[0]),
+        end_us=datetime_to_utc_microseconds(timestamps[-1]),
+    )
+
+
+def _require_bounded_warm_semantics(
+    unbounded: CachedSessionData,
+    ranged: CachedSessionData,
+) -> None:
+    _require_no_fallback(ranged.usage_run, "bounded warm usage")
+    _require_no_fallback(ranged.transition_run, "bounded warm transition")
+    if ranged.stats.files_parsed or ranged.usage_run.worker_spans:
+        raise RuntimeError("bounded warm report parsed source files")
+    _require_zero_transition_spans(ranged, "bounded warm")
+    if not 0 < len(ranged.records) < len(unbounded.records):
+        raise RuntimeError("bounded warm range query did not filter cached records")
+
+
+class _SourceJsonlReadAttempts:
+    def __init__(self, session_dirs: list[Path]) -> None:
+        self._roots = tuple(path.resolve() for path in session_dirs)
+        self.count = 0
+
+    def blocks(self, path: Path) -> bool:
+        candidate = path.resolve(strict=False)
+        return candidate.suffix == ".jsonl" and any(
+            candidate.is_relative_to(root) for root in self._roots
+        )
+
+
+@contextmanager
+def _block_source_jsonl_reads(
+    session_dirs: list[Path],
+) -> Iterator[_SourceJsonlReadAttempts]:
+    attempts = _SourceJsonlReadAttempts(session_dirs)
+    original_open = Path.open
+    original_read_bytes = Path.read_bytes
+    original_read_text = Path.read_text
+
+    def guard_open(path: Path, *args: object, **kwargs: object):
+        if attempts.blocks(path):
+            attempts.count += 1
+            raise RuntimeError("bounded warm report attempted source JSONL access")
+        return original_open(path, *args, **kwargs)
+
+    def guard_read_bytes(path: Path) -> bytes:
+        if attempts.blocks(path):
+            attempts.count += 1
+            raise RuntimeError("bounded warm report attempted source JSONL access")
+        return original_read_bytes(path)
+
+    def guard_read_text(path: Path, *args: object, **kwargs: object) -> str:
+        if attempts.blocks(path):
+            attempts.count += 1
+            raise RuntimeError("bounded warm report attempted source JSONL access")
+        return original_read_text(path, *args, **kwargs)
+
+    with (
+        patch.object(Path, "open", guard_open),
+        patch.object(Path, "read_bytes", guard_read_bytes),
+        patch.object(Path, "read_text", guard_read_text),
+    ):
+        yield attempts
 
 
 def _require_changed_semantics(

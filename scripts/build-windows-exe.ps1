@@ -16,6 +16,7 @@ $entryPoint = Join-Path $repoRoot "src\codex_usage\__main__.py"
 $exePath = Join-Path $distDir "codex-usage.exe"
 $processTreeSmokeScript = Join-Path $repoRoot "scripts\packaged_windows_process_tree_smoke.py"
 $parallelSmokeScript = Join-Path $repoRoot "scripts\packaged_parallel_cache_smoke.py"
+$reportSmokeScript = Join-Path $repoRoot "scripts\packaged_report_smoke.py"
 $smokeScript = Join-Path $repoRoot "scripts\smoke-test-packaged-sync.py"
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
@@ -56,6 +57,11 @@ try {
     uv run python $parallelSmokeScript --executable $exePath --expected-target win32-x64
     if ($LASTEXITCODE -ne 0) {
         throw "Packaged parallel cache smoke test exited with code $LASTEXITCODE"
+    }
+
+    uv run python $reportSmokeScript --executable $exePath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged report smoke test exited with code $LASTEXITCODE"
     }
 
     uv run python $smokeScript --executable $exePath
