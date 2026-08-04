@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import tzinfo
 from pathlib import Path
@@ -18,6 +19,7 @@ from codex_usage.discovery import collect_jsonl_files, find_session_dirs
 from codex_usage.models import UsageRecord
 from codex_usage.parallel_audit import write_parallel_audit
 from codex_usage.parser import parse_session_files
+from codex_usage.performance_timing import PhaseTimer
 from codex_usage.project_identity import normalize_project_key
 from codex_usage.project_transitions import (
     ProjectTransition,
@@ -50,6 +52,7 @@ def load_usage_context(args: argparse.Namespace) -> UsageContext:
     timezone = resolve_timezone(args.timezone or settings.timezone)
     bounds = resolve_range_bounds(args.range_name, timezone)
     data = load_session_data_for_context(args, bounds)
+    args._timing_cache_stats = data.stats
     write_requested_parallel_audit(args, data)
     project_keys = normalize_project_keys(args.project_key)
     records = filter_records_by_project_keys(data.records, project_keys)
@@ -70,12 +73,16 @@ def load_session_data_for_context(
 ) -> CachedSessionData:
     settings = get_settings()
     timezone = resolve_timezone(args.timezone or settings.timezone)
+    timer = getattr(args, "_phase_timer", None)
+    with timer.measure("inventory") if timer else nullcontext():
+        session_dirs = find_session_dirs()
     return load_session_data(
-        find_session_dirs(),
+        session_dirs,
         auto_transitions=auto_project_transitions_enabled(args, settings),
         range_bounds=bounds,
         range_name=args.range_name,
         timezone=timezone,
+        timer=timer,
     )
 
 
@@ -86,19 +93,22 @@ def load_session_data(
     range_bounds: RangeBounds | None = None,
     range_name: str = "all",
     timezone: tzinfo | None = None,
+    timer: PhaseTimer | None = None,
 ) -> CachedSessionData:
     try:
         return load_cached_session_data(
             session_dirs,
             auto_transitions=auto_transitions,
             range_bounds=range_bounds,
+            timer=timer,
         )
     except Exception as exc:  # noqa: BLE001 - cache failures retain the direct-parse fallback contract.
         print(
             f"codex-usage: cache unavailable, falling back to direct parse: {exc}",
             file=sys.stderr,
         )
-        files = collect_jsonl_files(session_dirs)
+        with timer.measure("inventory") if timer else nullcontext():
+            files = collect_jsonl_files(session_dirs)
         records = parse_session_files(files)
         project_transitions: list[ProjectTransition] = []
         if auto_transitions:

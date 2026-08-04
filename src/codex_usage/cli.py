@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from codex_usage.aggregation import (
     aggregate_records,
     summarize_records,
 )
+from codex_usage.performance_timing import PhaseTimer, write_timing_sidecar
 from codex_usage.project_transitions import ProjectTransition
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.reporting import (
@@ -20,6 +22,7 @@ from codex_usage.reporting import (
     summary_payload,
     write_csv,
 )
+from codex_usage.session_cache import CacheStats
 from codex_usage.session_cache_transitions import load_cached_transition_observations
 from codex_usage.session_inventory import find_session_dirs, storage_snapshots
 from codex_usage.settings import get_settings
@@ -57,11 +60,26 @@ def main(argv: list[str] | None = None) -> int:
     if not hasattr(args, "handler"):
         parser.print_help(sys.stderr)
         return 2
+    timer = PhaseTimer()
+    args._phase_timer = timer
     try:
-        return args.handler(args)
+        with timer.measure("total_cli"):
+            result = args.handler(args)
     except Exception as exc:  # noqa: BLE001 - CLI handlers must present any failure uniformly.
         print(f"codex-usage: {exc}", file=sys.stderr)
         return 2
+    timing_path = getattr(args, "timing_output", None)
+    if timing_path is not None:
+        try:
+            write_timing_sidecar(
+                timing_path,
+                timer,
+                cache_stats=getattr(args, "_timing_cache_stats", CacheStats()),
+                command=args.command,
+            )
+        except Exception as exc:  # noqa: BLE001 - timing is observability only.
+            print(f"codex-usage: timing sidecar unavailable: {exc}", file=sys.stderr)
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -155,76 +173,84 @@ def build_parser() -> argparse.ArgumentParser:
 
 def handle_summary(args: argparse.Namespace) -> int:
     context = load_usage_context(args)
-    rows = aggregate_records(context.records, args.group_by, context.timezone)
-    total = summarize_records(context.records)
-    generated_at = datetime.now(context.timezone)
+    timer = getattr(args, "_phase_timer", None)
+    with timer.measure("aggregation_render") if timer else nullcontext():
+        rows = aggregate_records(context.records, args.group_by, context.timezone)
+        total = summarize_records(context.records)
+        generated_at = datetime.now(context.timezone)
 
-    payload = summary_payload(
-        rows=rows,
-        total=total,
-        generated_at=generated_at,
-        range_name=args.range_name,
-        group_by=args.group_by,
-        sessions_dirs=context.session_dirs,
-        files_scanned=len(context.files),
-        storage_roots=[str(path) for path in context.session_dirs],
-        files_archived=context.storage_stats.files_archived,
-        files_retained_missing=context.storage_stats.files_missing_retained,
-        project_keys=context.project_keys,
-        project_transitions=_transition_dicts(context.project_transitions),
-    )
-    if args.json:
-        print_json(payload)
-    elif args.csv is not None:
-        write_csv(rows, args.csv)
-    else:
-        print(
-            render_terminal(
-                rows=rows,
-                total=total,
-                range_name=args.range_name,
-                group_by=args.group_by,
-                files_scanned=len(context.files),
-                files_archived=context.storage_stats.files_archived,
-                files_retained_missing=context.storage_stats.files_missing_retained,
-            )
+        payload = summary_payload(
+            rows=rows,
+            total=total,
+            generated_at=generated_at,
+            range_name=args.range_name,
+            group_by=args.group_by,
+            sessions_dirs=context.session_dirs,
+            files_scanned=len(context.files),
+            storage_roots=[str(path) for path in context.session_dirs],
+            files_archived=context.storage_stats.files_archived,
+            files_retained_missing=context.storage_stats.files_missing_retained,
+            project_keys=context.project_keys,
+            project_transitions=_transition_dicts(context.project_transitions),
         )
+        if args.json:
+            print_json(payload)
+        elif args.csv is not None:
+            write_csv(rows, args.csv)
+        else:
+            print(
+                render_terminal(
+                    rows=rows,
+                    total=total,
+                    range_name=args.range_name,
+                    group_by=args.group_by,
+                    files_scanned=len(context.files),
+                    files_archived=context.storage_stats.files_archived,
+                    files_retained_missing=context.storage_stats.files_missing_retained,
+                )
+            )
     return 0
 
 
 def handle_report(args: argparse.Namespace) -> int:
     context = load_usage_context(args)
-    total = summarize_records(context.records)
-    output_path = render_html_report(
-        output_path=args.output,
-        generated_at=datetime.now(context.timezone),
-        range_name=args.range_name,
-        total=total,
-        daily_rows=aggregate_records(context.records, "day", context.timezone),
-        hourly_rows=aggregate_records(context.records, "hour", context.timezone),
-        project_rows=aggregate_records(context.records, "project", context.timezone),
-        model_rows=aggregate_records(context.records, "model", context.timezone),
-        sessions_dirs=context.session_dirs,
-        files_scanned=len(context.files),
-        storage_roots=[str(path) for path in context.session_dirs],
-        files_archived=context.storage_stats.files_archived,
-        files_retained_missing=context.storage_stats.files_missing_retained,
-        project_keys=context.project_keys,
-        project_transitions=_transition_dicts(context.project_transitions),
-        theme=normalize_report_theme(args.theme or get_settings().theme),
-    )
-    print(f"Wrote {output_path}")
+    timer = getattr(args, "_phase_timer", None)
+    with timer.measure("aggregation_render") if timer else nullcontext():
+        total = summarize_records(context.records)
+        output_path = render_html_report(
+            output_path=args.output,
+            generated_at=datetime.now(context.timezone),
+            range_name=args.range_name,
+            total=total,
+            daily_rows=aggregate_records(context.records, "day", context.timezone),
+            hourly_rows=aggregate_records(context.records, "hour", context.timezone),
+            project_rows=aggregate_records(context.records, "project", context.timezone),
+            model_rows=aggregate_records(context.records, "model", context.timezone),
+            sessions_dirs=context.session_dirs,
+            files_scanned=len(context.files),
+            storage_roots=[str(path) for path in context.session_dirs],
+            files_archived=context.storage_stats.files_archived,
+            files_retained_missing=context.storage_stats.files_missing_retained,
+            project_keys=context.project_keys,
+            project_transitions=_transition_dicts(context.project_transitions),
+            theme=normalize_report_theme(args.theme or get_settings().theme),
+        )
+        print(f"Wrote {output_path}")
     return 0
 
 
 def handle_threads(args: argparse.Namespace) -> int:
     settings = get_settings()
-    session_dirs = find_session_dirs()
+    timer = getattr(args, "_phase_timer", None)
+    with timer.measure("inventory") if timer else nullcontext():
+        session_dirs = find_session_dirs()
     project_keys = normalize_project_keys(args.project_key)
     data = load_session_data(
         session_dirs,
         auto_transitions=auto_project_transitions_enabled(args, settings),
+        timer=timer,
     )
+    args._timing_cache_stats = data.stats
     write_requested_parallel_audit(args, data)
     threads = list_threads_from_cached_data(data, project_keys=project_keys)
     payload = {
@@ -312,6 +338,11 @@ def handle_sync_status(args: argparse.Namespace) -> int:
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--parallel-audit",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--timing-output",
         type=Path,
         help=argparse.SUPPRESS,
     )

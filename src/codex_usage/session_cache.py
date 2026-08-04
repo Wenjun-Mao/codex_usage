@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from codex_usage.aggregation import RangeBounds
 from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import EMPTY_PARALLEL_RUN_REPORT
 from codex_usage.parser import finalize_session_records
+from codex_usage.performance_timing import PhaseTimer
 from codex_usage.project_transitions import (
     ProjectTransition,
     apply_project_transitions,
@@ -117,68 +119,86 @@ def load_cached_session_data(
     auto_transitions: bool = True,
     max_workers: int | None = None,
     range_bounds: RangeBounds | None = None,
+    timer: PhaseTimer | None = None,
 ) -> CachedSessionData:
     resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
     resolved_cache_dir.mkdir(parents=True, exist_ok=True)
-    inventory = collect_session_file_inventory(session_dirs, read_metadata=False)
+    if timer is None:
+        inventory = collect_session_file_inventory(session_dirs, read_metadata=False)
+    else:
+        with timer.measure("inventory"):
+            inventory = collect_session_file_inventory(session_dirs, read_metadata=False)
     with sqlite3.connect(resolved_cache_dir / CACHE_DB_NAME) as connection:
         connection.row_factory = sqlite3.Row
         schema_state = _schema._ensure_schema(connection)
         legacy_cleanup_errors = _cleanup_legacy_cache_files(resolved_cache_dir)
-        refresh_outcome = _refresh.refresh_files(
-            connection,
-            session_dirs,
-            inventory,
-            rebuilt=schema_state.created or schema_state.reset,
-            max_workers=max_workers,
-        )
+        if timer is None:
+            refresh_outcome = _refresh.refresh_files(
+                connection,
+                session_dirs,
+                inventory,
+                rebuilt=schema_state.created or schema_state.reset,
+                max_workers=max_workers,
+            )
+        else:
+            with timer.measure("usage_refresh"):
+                refresh_outcome = _refresh.refresh_files(
+                    connection,
+                    session_dirs,
+                    inventory,
+                    rebuilt=schema_state.created or schema_state.reset,
+                    max_workers=max_workers,
+                )
         session_files = [entry.path for entry in inventory]
         stats = refresh_outcome.stats
         usage_run = refresh_outcome.usage_run
         current_keys = {entry.file_key for entry in inventory}
         missing_keys = _store._missing_file_keys(connection)
         selected_keys = current_keys | missing_keys
-        if range_bounds is None:
-            records_by_file_key = _store._load_records_by_file_key(
-                connection, selected_keys
-            )
-            ordered_keys = [entry.file_key for entry in inventory] + sorted(
-                missing_keys - current_keys
-            )
-            records = finalize_session_records(
-                [records_by_file_key.get(file_key, []) for file_key in ordered_keys]
-            )
-        else:
-            records_by_file_key = _queries.load_records_by_file_key_for_range(
-                connection, selected_keys, range_bounds
-            )
-            ordered_keys = [entry.file_key for entry in inventory] + sorted(
-                missing_keys - current_keys
-            )
-            range_records = [
-                record
-                for file_key in ordered_keys
-                for record in records_by_file_key.get(file_key, [])
-            ]
-            identity_records = _queries.load_parent_identity_records(
+        with timer.measure("range_query") if timer else nullcontext():
+            if range_bounds is None:
+                records_by_file_key = _store._load_records_by_file_key(
+                    connection, selected_keys
+                )
+                ordered_keys = [entry.file_key for entry in inventory] + sorted(
+                    missing_keys - current_keys
+                )
+                records = finalize_session_records(
+                    [records_by_file_key.get(file_key, []) for file_key in ordered_keys]
+                )
+            else:
+                records_by_file_key = _queries.load_records_by_file_key_for_range(
+                    connection, selected_keys, range_bounds
+                )
+                ordered_keys = [entry.file_key for entry in inventory] + sorted(
+                    missing_keys - current_keys
+                )
+                range_records = [
+                    record
+                    for file_key in ordered_keys
+                    for record in records_by_file_key.get(file_key, [])
+                ]
+                identity_records = _queries.load_parent_identity_records(
+                    connection,
+                    {
+                        record.parent_thread_id
+                        for record in range_records
+                        if record.parent_thread_id
+                    },
+                )
+                records = finalize_session_records(
+                    [records_by_file_key.get(file_key, []) for file_key in ordered_keys],
+                    identity_records=identity_records,
+                )
+        with timer.measure("transition_refresh") if timer else nullcontext():
+            transitions = _cache_transitions.refresh_dirty_task_transitions(
                 connection,
-                {
-                    record.parent_thread_id
-                    for record in range_records
-                    if record.parent_thread_id
-                },
+                session_dirs=session_dirs,
+                auto_transitions=auto_transitions,
             )
-            records = finalize_session_records(
-                [records_by_file_key.get(file_key, []) for file_key in ordered_keys],
-                identity_records=identity_records,
-            )
-        transitions = _cache_transitions.refresh_dirty_task_transitions(
-            connection,
-            session_dirs=session_dirs,
-            auto_transitions=auto_transitions,
-        )
-        if auto_transitions:
-            records = apply_project_transitions(records, transitions)
+        with timer.measure("range_query") if timer else nullcontext():
+            if auto_transitions:
+                records = apply_project_transitions(records, transitions)
         summaries = _store._load_file_summaries(connection, inventory, session_dirs)
         errors = _store._load_file_errors(connection)
         retained_missing_files = _store._retained_missing_files(connection)

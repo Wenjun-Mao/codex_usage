@@ -322,6 +322,7 @@ def test_cli_help_no_longer_exposes_removed_manual_options() -> None:
     assert "--sessions-dir" not in result.stdout
     assert "--subscription-usd" not in result.stdout
     assert "--project-key" in result.stdout
+    assert "--timing-output" not in result.stdout
 
 
 def test_cli_threads_lists_selected_project(tmp_path: Path) -> None:

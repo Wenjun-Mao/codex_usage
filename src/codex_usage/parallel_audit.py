@@ -37,7 +37,7 @@ def write_parallel_audit(
         "usage_run": _audit_run(usage_run),
         "transition_run": _audit_run(transition_run),
     }
-    _atomic_write(path, json.dumps(payload, indent=2) + "\n")
+    atomic_write(path, json.dumps(payload, indent=2) + "\n")
     return path
 
 
@@ -96,7 +96,7 @@ def _error_kind(error: str) -> str:
     wait=wait_exponential(multiplier=0.05, min=0.05, max=0.2),
     reraise=True,
 )
-def _atomic_write(path: Path, contents: str) -> None:
+def atomic_write(path: Path, contents: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         dir=path.parent,
@@ -113,3 +113,7 @@ def _atomic_write(path: Path, contents: str) -> None:
     except BaseException:
         temporary_path.unlink(missing_ok=True)
         raise
+
+
+def _atomic_write(path: Path, contents: str) -> None:
+    atomic_write(path, contents)
