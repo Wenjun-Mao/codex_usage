@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.models import ROOT_USAGE_ROLE, TokenUsage, UsageRecord
 from codex_usage.project_transitions import (
     RepoPathObservation,
     apply_project_transitions,
@@ -292,6 +292,7 @@ def _usage_record(
         usage=TokenUsage(total_tokens=100, input_tokens=100),
         session_id=session_id,
         file_path=tmp_path / f"{session_id}.jsonl",
+        usage_role=ROOT_USAGE_ROLE,
         project_key=project_key,
         project_label=project_label,
         project_aliases=project_aliases,

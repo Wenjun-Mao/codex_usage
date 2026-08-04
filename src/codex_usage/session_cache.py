@@ -39,8 +39,8 @@ from codex_usage.session_cache_schema import (
 )
 from codex_usage.session_inventory import collect_session_file_inventory
 
-CACHE_DB_NAME = "usage-cache-v4.sqlite3"
-LEGACY_CACHE_DB_NAMES = ("usage-cache.sqlite3",)
+CACHE_DB_NAME = "usage-cache-v5.sqlite3"
+LEGACY_CACHE_DB_NAMES = ("usage-cache-v4.sqlite3", "usage-cache.sqlite3")
 
 __all__ = (
     "CACHE_DB_NAME",

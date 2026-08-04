@@ -12,6 +12,7 @@ import codex_usage.session_cache_schema as cache_schema_module
 from codex_usage.session_cache import (
     CACHE_DB_NAME,
     CACHE_SCHEMA_VERSION,
+    LEGACY_CACHE_DB_NAMES,
     load_cached_session_data,
     resolve_cache_dir,
 )
@@ -31,7 +32,27 @@ def test_first_cache_build_parses_and_stores_records(tmp_path: Path) -> None:
     assert data.records[0].session_id == "thread-1"
     assert data.records[0].usage.total_tokens == 100
     assert data.records[0].usage.cache_write_input_tokens == 25
+    assert data.records[0].usage_role == "root"
     assert (cache_dir / CACHE_DB_NAME).is_file()
+
+
+def test_cache_restores_explicit_root_and_parentless_subagent_roles(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    _write_session(sessions, "root", "/repo/root", 100)
+    _write_session(
+        sessions,
+        "review",
+        "/repo/review",
+        75,
+        source={"subagent": {"other": "review"}},
+    )
+
+    data = load_cached_session_data([sessions], cache_dir=tmp_path / "cache", auto_transitions=False)
+
+    assert {record.session_id: record.usage_role for record in data.records} == {
+        "root": "root",
+        "review": "subagent",
+    }
 
 
 def test_cache_connection_closes_before_loader_returns(
@@ -66,11 +87,13 @@ def test_cache_connection_closes_before_loader_returns(
 
 
 def test_legacy_cache_files_are_removed_after_schema_opens(tmp_path: Path) -> None:
-    assert CACHE_DB_NAME == "usage-cache-v4.sqlite3"
+    assert CACHE_DB_NAME == "usage-cache-v5.sqlite3"
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     legacy_paths = tuple(
-        cache_dir / f"usage-cache.sqlite3{suffix}" for suffix in ("", "-wal", "-shm")
+        cache_dir / f"{database_name}{suffix}"
+        for database_name in LEGACY_CACHE_DB_NAMES
+        for suffix in ("", "-wal", "-shm")
     )
     for path in legacy_paths:
         path.write_text("legacy", encoding="utf-8")
@@ -85,10 +108,10 @@ def test_legacy_cache_files_are_removed_after_schema_opens(tmp_path: Path) -> No
 def test_legacy_cleanup_failure_is_counted_without_removing_new_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert CACHE_DB_NAME == "usage-cache-v4.sqlite3"
+    assert CACHE_DB_NAME == "usage-cache-v5.sqlite3"
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    legacy_path = cache_dir / "usage-cache.sqlite3"
+    legacy_path = cache_dir / LEGACY_CACHE_DB_NAMES[0]
     legacy_path.write_text("legacy", encoding="utf-8")
     attempts = 0
     original_unlink = Path.unlink
@@ -418,7 +441,14 @@ def test_resolve_cache_dir_prefers_internal_env_var(tmp_path: Path, monkeypatch:
     assert resolve_cache_dir([tmp_path / "codex" / "sessions"]) == env_cache
 
 
-def _write_session(sessions: Path, session_id: str, cwd: str, total: int, cache_write: int = 0) -> Path:
+def _write_session(
+    sessions: Path,
+    session_id: str,
+    cwd: str,
+    total: int,
+    cache_write: int = 0,
+    source: object | None = None,
+) -> Path:
     day = sessions / "2026" / "04" / "29"
     day.mkdir(parents=True, exist_ok=True)
     path = day / f"{session_id}.jsonl"
@@ -426,7 +456,12 @@ def _write_session(sessions: Path, session_id: str, cwd: str, total: int, cache_
         {
             "timestamp": "2026-04-29T10:00:00Z",
             "type": "session_meta",
-            "payload": {"id": session_id, "timestamp": "2026-04-29T10:00:00Z", "cwd": cwd},
+            "payload": {
+                "id": session_id,
+                "timestamp": "2026-04-29T10:00:00Z",
+                "cwd": cwd,
+                **({"source": source} if source is not None else {}),
+            },
         },
         {"timestamp": "2026-04-29T10:00:01Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
         _token_count("2026-04-29T10:00:02Z", total, cache_write=cache_write),

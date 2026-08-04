@@ -21,10 +21,10 @@ from codex_usage.session_cache_models import CachedSessionData
 type GenerationSnapshot = tuple[tuple[object, ...], ...]
 SchemaObject = tuple[str, str, str, str]
 EXPECTED_SCHEMA_META = (
-    ("parser_version", "3"),
+    ("parser_version", "4"),
     ("project_transition_version", "2"),
     ("project_transitions_dirty", "1"),
-    ("schema_version", "4"),
+    ("schema_version", "5"),
 )
 EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
     ("index", "sqlite_autoindex_dirty_transition_tasks_1", "dirty_transition_tasks", ""),
@@ -55,7 +55,7 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
      "record_index integer not null, timestamp text not null, timestamp_us integer not null, session_id text not null, "
      "turn_id text, model text not null, effort text, collaboration_mode text, project_key text not null, "
      "project_label text not null, project_aliases_json text not null, cwd text, git_repository_url text, "
-     "git_branch text, parent_thread_id text, input_tokens integer not null, cached_input_tokens integer not null, "
+     "git_branch text, parent_thread_id text, usage_role text not null check (usage_role in ('root', 'subagent')), input_tokens integer not null, cached_input_tokens integer not null, "
      "cache_write_input_tokens integer not null default 0, output_tokens integer not null, reasoning_output_tokens integer not null, total_tokens integer not null, "
      "primary key (file_key, record_index) )"),
 )

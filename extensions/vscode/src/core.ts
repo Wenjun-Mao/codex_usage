@@ -126,11 +126,13 @@ export function cacheDirPath(globalStoragePath: string): string {
 }
 
 export function cacheDbPath(globalStoragePath: string): string {
-  return path.join(cacheDirPath(globalStoragePath), "usage-cache-v4.sqlite3");
+  return path.join(cacheDirPath(globalStoragePath), "usage-cache-v5.sqlite3");
 }
 
-export function legacyCacheDbPath(globalStoragePath: string): string {
-  return path.join(cacheDirPath(globalStoragePath), "usage-cache.sqlite3");
+export function legacyCacheDbPaths(globalStoragePath: string): string[] {
+  return ["usage-cache-v4.sqlite3", "usage-cache.sqlite3"].map((name) =>
+    path.join(cacheDirPath(globalStoragePath), name),
+  );
 }
 
 export function buildCodexUsageEnv(

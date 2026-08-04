@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from codex_usage.aggregation import RangeBounds
-from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.models import TokenUsage, UsageRecord, parse_usage_role
 from codex_usage.parser import parse_timestamp
 from codex_usage.session_generation_models import RawRepoPathCandidate
 
@@ -62,6 +62,7 @@ def row_to_usage_record(row: sqlite3.Row) -> UsageRecord:
         ),
         session_id=row["session_id"],
         file_path=Path(row["file_path"]),
+        usage_role=parse_usage_role(row["usage_role"]),
         model=row["model"],
         turn_id=row["turn_id"] or "",
         effort=row["effort"] or "",

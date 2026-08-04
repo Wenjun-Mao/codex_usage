@@ -3,10 +3,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 UNKNOWN = "unknown"
+
+type UsageRole = Literal["root", "subagent"]
+ROOT_USAGE_ROLE: UsageRole = "root"
+SUBAGENT_USAGE_ROLE: UsageRole = "subagent"
+
+
+def usage_role_from_is_subagent(is_subagent: bool) -> UsageRole:
+    return SUBAGENT_USAGE_ROLE if is_subagent else ROOT_USAGE_ROLE
+
+
+def parse_usage_role(value: object) -> UsageRole:
+    if value == ROOT_USAGE_ROLE:
+        return ROOT_USAGE_ROLE
+    if value == SUBAGENT_USAGE_ROLE:
+        return SUBAGENT_USAGE_ROLE
+    raise ValueError(f"unsupported usage role: {value!r}")
 
 
 @dataclass(frozen=True)
@@ -104,6 +120,7 @@ class UsageRecord:
     usage: TokenUsage
     session_id: str
     file_path: Path
+    usage_role: UsageRole
     model: str = UNKNOWN
     turn_id: str = ""
     effort: str = ""
@@ -124,6 +141,7 @@ class UsageRecord:
             "timestamp": self.timestamp.isoformat(),
             "session_id": self.session_id,
             "file_path": str(self.file_path),
+            "usage_role": self.usage_role,
             "model": self.model,
             "turn_id": self.turn_id,
             "effort": self.effort,

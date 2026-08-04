@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 import codex_usage.cli as cli_module
-from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.models import ROOT_USAGE_ROLE, TokenUsage, UsageRecord
 from codex_usage.session_cache import CACHE_DB_NAME, uncached_session_data
 
 
@@ -435,6 +435,7 @@ def _usage_record(timestamp: datetime, project_key: str) -> UsageRecord:
         usage=TokenUsage(total_tokens=1),
         session_id=f"session-{project_key.rsplit('/', maxsplit=1)[-1]}",
         file_path=Path(f"{project_key}/session.jsonl"),
+        usage_role=ROOT_USAGE_ROLE,
         project_key=project_key,
         project_label=project_key.rsplit("/", maxsplit=1)[-1],
     )

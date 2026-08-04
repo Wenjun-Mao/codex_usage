@@ -5,7 +5,7 @@ const path = require("node:path");
 const { PassThrough } = require("node:stream");
 const test = require("node:test");
 
-const { cacheDbPath, legacyCacheDbPath } = require("../out/core");
+const { cacheDbPath, legacyCacheDbPaths } = require("../out/core");
 const {
   dashboardLoadingKind,
   executeDashboardRefresh,
@@ -327,15 +327,15 @@ test("runSyncProcess reports ENOENT once even if close follows the child error",
   assert.equal(rejectionCount, 1);
 });
 
-test("dashboard loading kind distinguishes new, legacy, and schema-4 cache storage", async (t) => {
+test("dashboard loading kind distinguishes new, legacy, and schema-5 cache storage", async (t) => {
   const storagePath = fs.mkdtempSync(path.join(__dirname, "dashboard-cache-"));
   t.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
 
   assert.equal(await dashboardLoadingKind(storagePath), "initializing");
-  fs.mkdirSync(path.dirname(legacyCacheDbPath(storagePath)), { recursive: true });
-  fs.writeFileSync(legacyCacheDbPath(storagePath), "legacy");
+  fs.mkdirSync(path.dirname(legacyCacheDbPaths(storagePath)[1]), { recursive: true });
+  fs.writeFileSync(legacyCacheDbPaths(storagePath)[1], "legacy");
   assert.equal(await dashboardLoadingKind(storagePath), "rebuilding");
-  fs.writeFileSync(cacheDbPath(storagePath), "schema-4");
+  fs.writeFileSync(cacheDbPath(storagePath), "schema-5");
   assert.equal(await dashboardLoadingKind(storagePath), "refreshing");
 });
 

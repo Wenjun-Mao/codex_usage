@@ -148,10 +148,10 @@ def insert_usage_records(
             insert into usage_records (
                 file_key, file_path, record_index, timestamp, timestamp_us, session_id, turn_id, model, effort,
                 collaboration_mode, project_key, project_label, project_aliases_json,
-                cwd, git_repository_url, git_branch, parent_thread_id,
+                cwd, git_repository_url, git_branch, parent_thread_id, usage_role,
                 input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens,
                 reasoning_output_tokens, total_tokens
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.file_key,
@@ -171,6 +171,7 @@ def insert_usage_records(
                 record.git_repository_url,
                 record.git_branch,
                 record.parent_thread_id,
+                record.usage_role,
                 usage.input_tokens,
                 usage.cached_input_tokens,
                 usage.cache_write_input_tokens,

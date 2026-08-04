@@ -145,6 +145,7 @@ def test_cached_range_uses_out_of_range_parent_for_identity_only(tmp_path: Path)
     assert [record.session_id for record in data.records] == ["child-thread"]
     assert data.records[0].project_key == "https://github.com/example/parent"
     assert data.records[0].usage.total_tokens == 50
+    assert data.records[0].usage_role == "subagent"
 
 
 def test_parent_identity_lookup_chunks_ids_and_uses_canonical_rows() -> None:
@@ -275,6 +276,7 @@ def _range_query_connection() -> sqlite3.Connection:
             git_repository_url text,
             git_branch text,
             parent_thread_id text,
+            usage_role text not null check (usage_role in ('root', 'subagent')),
             input_tokens integer not null,
             cached_input_tokens integer not null,
             cache_write_input_tokens integer not null,
@@ -311,7 +313,7 @@ def _insert_usage_record(
         """
         insert into usage_records values (
             ?, ?, ?, ?, ?, ?, ?, 'gpt-5.5', '', '', 'project', 'Project', '[]',
-            '', '', '', '', 1, 0, 0, 0, 0, 1
+            '', '', '', '', 'root', 1, 0, 0, 0, 0, 1
         )
         """,
         (file_key, f"{file_key}.jsonl", record_index, timestamp, timestamp_us, file_key, turn_id),

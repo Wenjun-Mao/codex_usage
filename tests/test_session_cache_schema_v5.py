@@ -7,7 +7,7 @@ import codex_usage.session_cache_schema as cache_schema
 from codex_usage.session_cache import CACHE_DB_NAME
 
 
-def create_schema_three_database(db_path: Path, *, sentinel_total_tokens: int) -> None:
+def create_schema_four_database(db_path: Path, *, sentinel_total_tokens: int) -> None:
     with sqlite3.connect(db_path) as connection:
         connection.executescript(
             """
@@ -26,9 +26,9 @@ def create_schema_three_database(db_path: Path, *, sentinel_total_tokens: int) -
         connection.executemany(
             "insert into schema_meta (key, value) values (?, ?)",
             (
-                ("schema_version", "3"),
-                ("parser_version", "2"),
-                ("project_transition_version", "1"),
+                ("schema_version", "4"),
+                ("parser_version", "3"),
+                ("project_transition_version", "2"),
             ),
         )
         connection.execute(
@@ -37,24 +37,28 @@ def create_schema_three_database(db_path: Path, *, sentinel_total_tokens: int) -
         )
 
 
-def test_schema_three_is_discarded_instead_of_migrated(tmp_path: Path) -> None:
+def test_schema_four_is_discarded_instead_of_migrated(tmp_path: Path) -> None:
     db_path = tmp_path / CACHE_DB_NAME
-    create_schema_three_database(db_path, sentinel_total_tokens=999)
+    create_schema_four_database(db_path, sentinel_total_tokens=999)
 
     with sqlite3.connect(db_path) as connection:
         connection.row_factory = sqlite3.Row
         state = cache_schema._ensure_schema(connection)
 
-    assert getattr(state, "reset", False) is True
-    assert getattr(state, "reset_reason", "") == "schema 3"
+    assert state.reset is True
+    assert state.reset_reason == "schema 4"
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("select count(*) from usage_records").fetchone()[0] == 0
         assert connection.execute(
             "select value from schema_meta where key = 'schema_version'"
-        ).fetchone()[0] == "4"
+        ).fetchone()[0] == "5"
+        columns = {
+            row[1]: row for row in connection.execute("pragma table_info(usage_records)")
+        }
+    assert columns["usage_role"][3] == 1
 
 
-def test_schema_four_contains_incremental_query_contract(tmp_path: Path) -> None:
+def test_schema_five_contains_incremental_query_contract(tmp_path: Path) -> None:
     db_path = tmp_path / CACHE_DB_NAME
     with sqlite3.connect(db_path) as connection:
         connection.row_factory = sqlite3.Row
@@ -76,6 +80,34 @@ def test_matching_schema_returns_empty_state(tmp_path: Path) -> None:
         cache_schema._ensure_schema(connection)
         state = cache_schema._ensure_schema(connection)
 
-    assert getattr(state, "created", True) is False
-    assert getattr(state, "reset", True) is False
-    assert getattr(state, "reset_reason", "missing") == ""
+    assert state.created is False
+    assert state.reset is False
+    assert state.reset_reason == ""
+
+
+def test_invalid_usage_role_resets_matching_schema(tmp_path: Path) -> None:
+    db_path = tmp_path / CACHE_DB_NAME
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        cache_schema._ensure_schema(connection)
+        connection.execute("pragma ignore_check_constraints = true")
+        connection.execute(
+            """
+            insert into usage_records (
+                file_key, file_path, record_index, timestamp, timestamp_us, session_id,
+                model, project_key, project_label, project_aliases_json, usage_role,
+                input_tokens, cached_input_tokens, cache_write_input_tokens,
+                output_tokens, reasoning_output_tokens, total_tokens
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "file", "file.jsonl", 0, "2026-08-04T00:00:00+00:00", 0, "thread",
+                "gpt-5", "project", "Project", "[]", "worker", 1, 0, 0, 0, 0, 1,
+            ),
+        )
+        connection.commit()
+        state = cache_schema._ensure_schema(connection)
+
+    assert state.reset is True
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("select count(*) from usage_records").fetchone()[0] == 0

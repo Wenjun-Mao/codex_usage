@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from codex_usage.models import ROOT_USAGE_ROLE, SUBAGENT_USAGE_ROLE
 from codex_usage.parser import parse_session_file
 from codex_usage.session_files import read_session_metadata
 from codex_usage.session_provenance import (
@@ -59,3 +60,23 @@ def test_metadata_marks_subagent_but_usage_parser_keeps_its_tokens(tmp_path: Pat
     metadata = read_session_metadata(path)
     assert metadata is not None and metadata.is_subagent
     assert sum(record.usage.total_tokens for record in parse_session_file(path)) == 100
+
+
+def test_usage_records_keep_explicit_root_and_parentless_subagent_roles(
+    tmp_path: Path,
+) -> None:
+    root_path = tmp_path / "root.jsonl"
+    malformed_path = tmp_path / "malformed.jsonl"
+    review_path = tmp_path / "review.jsonl"
+    _write_session(root_path, "cli")
+    _write_session(malformed_path, {"subagent": "review"})
+    _write_session(review_path, {"subagent": {"other": "review"}})
+
+    root = parse_session_file(root_path)
+    malformed = parse_session_file(malformed_path)
+    review = parse_session_file(review_path)
+
+    assert [record.usage_role for record in root] == [ROOT_USAGE_ROLE]
+    assert [record.usage_role for record in malformed] == [ROOT_USAGE_ROLE]
+    assert [record.usage_role for record in review] == [SUBAGENT_USAGE_ROLE]
+    assert review[0].parent_thread_id == ""

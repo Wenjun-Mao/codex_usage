@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-CACHE_SCHEMA_VERSION = 4
-PARSER_CACHE_VERSION = 3
+CACHE_SCHEMA_VERSION = 5
+PARSER_CACHE_VERSION = 4
 PROJECT_TRANSITION_CACHE_VERSION = 2
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
 _PROJECT_TRANSITIONS_DIRTY_KEY = "project_transitions_dirty"
@@ -111,6 +111,7 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
             git_repository_url text,
             git_branch text,
             parent_thread_id text,
+            usage_role text not null check (usage_role in ('root', 'subagent')),
             input_tokens integer not null,
             cached_input_tokens integer not null,
             cache_write_input_tokens integer not null default 0,
@@ -189,9 +190,19 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
         "parser_version": str(PARSER_CACHE_VERSION),
         "project_transition_version": str(PROJECT_TRANSITION_CACHE_VERSION),
     }
-    return all(
-        metadata.get(key) == value for key, value in expected_versions.items()
-    )
+    if not all(metadata.get(key) == value for key, value in expected_versions.items()):
+        return False
+    try:
+        invalid_role = connection.execute(
+            """
+            select 1 from usage_records
+            where usage_role is null or usage_role not in ('root', 'subagent')
+            limit 1
+            """
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    return invalid_role is None
 
 
 def _existing_cache_tables(connection: sqlite3.Connection) -> set[str]:

@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import codex_usage.project_transition_evidence as project_transition_evidence
-from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.models import ROOT_USAGE_ROLE, TokenUsage, UsageRecord
 from codex_usage.project_transition_evidence import (
     extract_repo_paths,
     extract_windows_paths,
@@ -258,6 +258,7 @@ def test_apply_project_transitions_splits_records_at_effective_timestamp(tmp_pat
         usage=TokenUsage(total_tokens=100, input_tokens=100),
         session_id="thread-1",
         file_path=tmp_path / "thread.jsonl",
+        usage_role=ROOT_USAGE_ROLE,
         project_key="https://github.com/example/signoz-stack",
         project_label="signoz-stack",
     )
@@ -266,6 +267,7 @@ def test_apply_project_transitions_splits_records_at_effective_timestamp(tmp_pat
         usage=TokenUsage(total_tokens=200, input_tokens=200),
         session_id="thread-1",
         file_path=tmp_path / "thread.jsonl",
+        usage_role=ROOT_USAGE_ROLE,
         project_key="https://github.com/example/signoz-stack",
         project_label="signoz-stack",
     )
@@ -296,6 +298,7 @@ def test_apply_project_transitions_only_rewrites_transition_threads(tmp_path: Pa
         usage=TokenUsage(total_tokens=200, input_tokens=200),
         session_id="thread-1",
         file_path=tmp_path / "thread-1.jsonl",
+        usage_role=ROOT_USAGE_ROLE,
         project_key="https://github.com/example/signoz-stack",
         project_label="signoz-stack",
     )
@@ -304,6 +307,7 @@ def test_apply_project_transitions_only_rewrites_transition_threads(tmp_path: Pa
         usage=TokenUsage(total_tokens=300, input_tokens=300),
         session_id="thread-2",
         file_path=tmp_path / "thread-2.jsonl",
+        usage_role=ROOT_USAGE_ROLE,
         project_key="https://github.com/example/signoz-stack",
         project_label="signoz-stack",
     )

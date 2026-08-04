@@ -7,7 +7,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from codex_usage.models import UNKNOWN, SessionMetadata, TokenUsage, UsageRecord
+from codex_usage.models import (
+    UNKNOWN,
+    SessionMetadata,
+    TokenUsage,
+    UsageRecord,
+    usage_role_from_is_subagent,
+)
 from codex_usage.project_identity import resolve_project_identity
 from codex_usage.project_transition_evidence import extract_repo_paths
 from codex_usage.session_generation_models import (
@@ -179,6 +185,7 @@ def parse_session_generation(
                         usage=delta,
                         session_id=metadata.session_id,
                         file_path=path,
+                        usage_role=usage_role_from_is_subagent(metadata.is_subagent),
                         model=current_model,
                         turn_id=current_turn_id,
                         effort=current_effort,

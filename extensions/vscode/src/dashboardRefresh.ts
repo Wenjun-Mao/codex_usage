@@ -6,7 +6,7 @@ import {
   buildCodexUsageEnv,
   buildReportArgs,
   cacheDbPath,
-  legacyCacheDbPath,
+  legacyCacheDbPaths,
   type ExtensionSettings,
 } from "./core";
 import {
@@ -115,8 +115,10 @@ export async function dashboardLoadingKind(globalStoragePath: string): Promise<D
   if (await pathExists(cacheDbPath(globalStoragePath))) {
     return "refreshing";
   }
-  if (await pathExists(legacyCacheDbPath(globalStoragePath))) {
-    return "rebuilding";
+  for (const legacyPath of legacyCacheDbPaths(globalStoragePath)) {
+    if (await pathExists(legacyPath)) {
+      return "rebuilding";
+    }
   }
   return "initializing";
 }

@@ -12,7 +12,7 @@ from codex_usage.aggregation import (
     resolve_timezone,
     summarize_records,
 )
-from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.models import ROOT_USAGE_ROLE, SUBAGENT_USAGE_ROLE, TokenUsage, UsageRecord
 from codex_usage.parser import parse_session_file, parse_session_files
 from codex_usage.pricing import EffectiveModelRate, ModelRate
 
@@ -91,6 +91,7 @@ def test_parser_ignores_imported_parent_usage_in_forked_session_file(tmp_path: P
     assert [record.session_id for record in records] == ["fork-session", "fork-session"]
     assert [record.project_key for record in records] == ["/repo/fork", "/repo/fork"]
     assert [record.usage.total_tokens for record in records] == [100, 200]
+    assert {record.usage_role for record in records} == {ROOT_USAGE_ROLE}
     assert summarize_records(records).usage.total_tokens == 300
 
 
@@ -252,6 +253,7 @@ def test_aggregation_prices_records_with_rates_effective_at_each_timestamp(monke
             usage=TokenUsage(input_tokens=1_000_000, output_tokens=100_000, total_tokens=1_100_000),
             session_id="before",
             file_path=tmp_path / "before.jsonl",
+            usage_role=ROOT_USAGE_ROLE,
             model="gpt-test-effective",
         ),
         UsageRecord(
@@ -259,6 +261,7 @@ def test_aggregation_prices_records_with_rates_effective_at_each_timestamp(monke
             usage=TokenUsage(input_tokens=1_000_000, output_tokens=100_000, total_tokens=1_100_000),
             session_id="after",
             file_path=tmp_path / "after.jsonl",
+            usage_role=ROOT_USAGE_ROLE,
             model="gpt-test-effective",
         ),
     ]
@@ -416,6 +419,7 @@ def test_finalize_session_records_preserves_parent_identity_inheritance(tmp_path
     assert child_record.project_label == "parent"
     assert child_record.git_repository_url == "https://github.com/example/parent.git"
     assert "/repo/child-without-git" in child_record.project_aliases
+    assert child_record.usage_role == SUBAGENT_USAGE_ROLE
 
 
 def test_project_grouping_prefers_json_git_url_over_cwd_git_config(tmp_path: Path) -> None:

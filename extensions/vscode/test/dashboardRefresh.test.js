@@ -6,9 +6,11 @@ const test = require("node:test");
 const {
   createDashboardRefreshCoordinator,
   createDashboardRefreshRequest,
+  dashboardLoadingKind,
   executeDashboardRefresh,
   publishDashboardRefresh,
 } = require("../out/dashboardRefresh");
+const { legacyCacheDbPaths } = require("../out/core");
 
 function requestFor(storagePath, requestId, panel = { webview: { html: "", cspSource: "vscode-resource:" } }) {
   return createDashboardRefreshRequest({
@@ -33,6 +35,16 @@ function deferred() {
   });
   return { promise, resolve };
 }
+
+test("dashboard refresh marks schema-4 cache storage as rebuilding", async (t) => {
+  const storagePath = fs.mkdtempSync(path.join(__dirname, "dashboard-schema-4-"));
+  t.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
+  const legacyPath = legacyCacheDbPaths(storagePath)[0];
+  fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+  fs.writeFileSync(legacyPath, "schema-4");
+
+  assert.equal(await dashboardLoadingKind(storagePath), "rebuilding");
+});
 
 test("dashboard refresh requests give every report and timing sidecar a distinct path", () => {
   const first = requestFor("/tmp/codex-usage", 1);
