@@ -4,12 +4,11 @@ Local-first Codex usage reporting for understanding project activity, token usag
 
 ## What The Dashboard Shows
 
-- Total tokens and usage event counts.
-- API-equivalent USD using checked-in effective-dated pricing.
-- Codex credits, estimated from recorded usage.
-- Cache hit share and daily/hourly usage patterns.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
+- Total tokens and usage event counts, cache hit share, and daily/hourly usage patterns.
+- API-equivalent USD using checked-in effective-dated pricing.
+- Codex credits, estimated from recorded usage.
 - Optional Task Transfer moves selected active tasks between computers; token reporting works without it.
 
 ![Synthetic Codex Usage Dashboard screenshot](docs/marketplace/dashboard-synthetic.png)

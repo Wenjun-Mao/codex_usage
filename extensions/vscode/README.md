@@ -4,17 +4,17 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 
 ## Features
 
+- Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
+- Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
+- Shows total tokens, API-equivalent USD, Codex credits, cache hit share, and daily/hourly views.
+- Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
+- Adds optional cross-computer Task Transfer through a user-provided folder; token reporting works without it.
 - Opens a local dashboard from Codex session JSONL logs.
 - Auto-discovers the default active and archived Codex session directories.
 - Supports quick range switching: today, yesterday, 7d, 30d, month, all.
 - Supports multi-project filtering from detected project keys.
 - Supports auto/day/night dashboard theme switching.
 - Detects high-confidence project transitions and can split dashboard usage after verified local repository changes.
-- Shows total tokens, API-equivalent USD, Codex credits, cache hit share, and daily/hourly views.
-- Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
-- Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
-- Adds optional cross-computer Task Transfer through a user-provided folder; token reporting works without it.
-- Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
 
 ![Synthetic Codex Usage Dashboard screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/dashboard-synthetic.png)
 
