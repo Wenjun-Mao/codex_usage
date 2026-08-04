@@ -6,11 +6,10 @@ import pickle
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Never
-
-import pytest
+from typing import Never, Self
 
 import project_transition_serial_oracle as serial_oracle
+import pytest
 from parallel_transition_test_support import (
     ShuffledTransitionResultMapper,
     write_transition_corpus,
@@ -278,7 +277,7 @@ def test_once_reader_wraps_a_late_read_error_with_the_valid_prefix(
     )
 
     class LateFailingHandle:
-        def __enter__(self) -> "LateFailingHandle":
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, *_args: object) -> None:
@@ -329,9 +328,8 @@ def test_transition_non_io_error_propagates_without_fallback(
     )
     with OrderedProcessMapper(
         scan_transition_request, task_count=1, max_workers=1
-    ) as mapper:
-        with pytest.raises(ValueError, match="candidate contract violated"):
-            mapper.map_batch([TransitionScanRequest(0, path)])
+    ) as mapper, pytest.raises(ValueError, match="candidate contract violated"):
+        mapper.map_batch([TransitionScanRequest(0, path)])
     assert mapper.worker_count == 1
     assert mapper.used_serial_fallback is False
     assert mapper.infrastructure_error == ""

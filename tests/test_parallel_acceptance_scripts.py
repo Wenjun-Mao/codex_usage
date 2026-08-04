@@ -461,14 +461,13 @@ def test_packaged_audit_rejects_bool_version(
 
     with pytest.raises(RuntimeError, match="fields or version"):
         module._validate_audit(audit, "darwin-arm64")
-def test_packaged_audit_accepts_one_combined_changed_file_span(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_packaged_audit_accepts_one_combined_changed_file_span(monkeypatch: pytest.MonkeyPatch) -> None:
     module = load_script_module(
         REPOSITORY_ROOT / "scripts/packaged_parallel_cache_smoke.py"
     )
     audit = packaged_audit_payload()
     audit["usage_run"] = packaged_audit_run(spans=1)
+    cast(dict[str, object], audit["usage_run"])["worker_pids"] = [900]
     monkeypatch.setattr(module.sys, "platform", "darwin")
     monkeypatch.setattr(module.platform, "machine", lambda: "arm64")
     module._validate_audit(audit, "darwin-arm64", expected_usage_span_count=1)

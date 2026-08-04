@@ -14,7 +14,6 @@ import codex_usage.session_cache_schema as cache_schema_module
 from codex_usage.models import UsageRecord
 from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
 
-
 _TRANSITIONS_DIRTY_KEY = "project_transitions_dirty"
 
 
@@ -154,6 +153,7 @@ def test_cli_transitions_without_subcommand_shows_transitions_help() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "codex_usage.cli", "transitions"],
         capture_output=True,
+        check=False,
         text=True,
     )
 
@@ -474,13 +474,13 @@ def _turn_context_event(timestamp: str, turn_id: str) -> dict[str, object]:
 
 
 def _token_count_event(timestamp: str, total: int) -> dict[str, object]:
-    usage = dict(
-        input_tokens=total,
-        cached_input_tokens=0,
-        output_tokens=0,
-        reasoning_output_tokens=0,
-        total_tokens=total,
-    )
+    usage = {
+        "input_tokens": total,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_output_tokens": 0,
+        "total_tokens": total,
+    }
     return {
         "timestamp": timestamp,
         "type": "event_msg",

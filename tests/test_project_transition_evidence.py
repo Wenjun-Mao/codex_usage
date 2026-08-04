@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import codex_usage.project_transition_candidates as candidate_module
-import codex_usage.project_transition_evidence as project_transition_evidence
+from codex_usage import project_transition_evidence
 from codex_usage.project_transition_collection import (
     collect_repo_path_observations_with_report,
 )

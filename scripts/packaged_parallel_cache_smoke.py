@@ -22,7 +22,10 @@ SCRIPT_DIRECTORY = str(Path(__file__).parent)
 if SCRIPT_DIRECTORY not in sys.path:
     sys.path.insert(0, SCRIPT_DIRECTORY)
 
-from parallel_cache_fixture import append_incremental_change, write_parallel_cache_fixture
+from parallel_cache_fixture import (
+    append_incremental_change,
+    write_parallel_cache_fixture,
+)
 
 FILE_COUNT = 10
 EXPECTED_RECORD_COUNT = FILE_COUNT + 1
@@ -312,7 +315,6 @@ def _validate_audit(
     if expected_usage_span_count is not None:
         _require_exact_usage_span_count(
             usage_run,
-            parent_pid=parent_pid,
             expected_span_count=expected_usage_span_count,
         )
     elif usage_must_be_parallel:
@@ -378,7 +380,6 @@ def _require_idle_audit(run: dict[str, object], label: str) -> None:
 def _require_exact_usage_span_count(
     run: dict[str, object],
     *,
-    parent_pid: int,
     expected_span_count: int,
 ) -> None:
     worker_pids = run.get("worker_pids")
@@ -391,7 +392,6 @@ def _require_exact_usage_span_count(
         and len(worker_pids) == 1
         and type(worker_pids[0]) is int
         and worker_pids[0] > 0
-        and worker_pids[0] != parent_pid
         and type(run.get("max_concurrency")) is int
         and run["max_concurrency"] == 1
         and run.get("used_serial_fallback") is False

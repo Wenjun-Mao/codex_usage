@@ -13,7 +13,6 @@ from codex_usage.parallel.execution import OrderedProcessMapper
 from codex_usage.parallel.transitions import TransitionScanRequest
 from codex_usage.parallel.usage import UsageParseRequest
 
-
 SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
 
 

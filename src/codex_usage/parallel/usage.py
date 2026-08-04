@@ -49,7 +49,8 @@ def parse_usage_request(request: UsageParseRequest) -> UsageParseResult:
     try:
         generation = _parse_session_generation_with_retry(request.path)
         error = ""
-    except Exception as exc:
+    # A malformed session must not abort sibling files in the worker batch.
+    except Exception as exc:  # noqa: BLE001
         generation = None
         error = f"{type(exc).__name__}: {exc}"
     return UsageParseResult(
