@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  createDashboardRefreshCoordinator,
   createDashboardRefreshRequest,
   executeDashboardRefresh,
   publishDashboardRefresh,
@@ -23,6 +24,14 @@ function requestFor(storagePath, requestId, panel = { webview: { html: "", cspSo
     versionLabel: "v1.0.0",
     globalStoragePath: storagePath,
   });
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 test("dashboard refresh requests give every report and timing sidecar a distinct path", () => {
@@ -66,10 +75,65 @@ test("dashboard refresh publishes parsed timing phases with extension elapsed ti
     appendOutput: (line) => output.push(line),
     updateStatus: () => undefined,
     showError: () => undefined,
+  }, {
+    isCurrent: () => true,
+    commit: (sideEffect) => {
+      sideEffect();
+      return true;
+    },
   });
 
   assert.match(panel.webview.html, /Loaded in \d+\.\d seconds/);
   assert.match(output.join("\n"), /inventory: 0\.125s/);
   assert.equal(output.filter((line) => line.includes("total_cli")).length, 1);
   assert.match(output.join("\n"), /extension_total: \d+\.\d{3}s/);
+});
+
+test("stale dashboard execution does not emit timing diagnostics or final status", async (t) => {
+  const storagePath = fs.mkdtempSync(path.join(__dirname, "dashboard-stale-"));
+  t.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
+  const panel = { webview: { html: "", cspSource: "vscode-resource:" } };
+  const first = requestFor(storagePath, 1, panel);
+  const second = requestFor(storagePath, 2, panel);
+  const firstRunStarted = deferred();
+  const allowFirstRun = deferred();
+  const output = [];
+  const executionStatuses = [];
+  const publishedStatuses = [];
+  let runCount = 0;
+  const coordinator = createDashboardRefreshCoordinator({
+    globalStoragePath: storagePath,
+    resolveExecutable: async () => "/bin/codex-usage",
+    runCodexUsage: async (_executablePath, args) => {
+      const outputPath = args[args.indexOf("--output") + 1];
+      const timingPath = args[args.indexOf("--timing-output") + 1];
+      runCount += 1;
+      await fs.promises.writeFile(outputPath, `<html><head></head><body><main>Report ${runCount}</main></body></html>`);
+      if (runCount === 1) {
+        firstRunStarted.resolve();
+        await allowFirstRun.promise;
+      } else {
+        await fs.promises.writeFile(timingPath, "not JSON");
+      }
+      return { stdout: "", stderr: "" };
+    },
+    appendOutput: (line) => output.push(line),
+    setStatus: (label) => executionStatuses.push(label),
+    updateStatus: (intent) => publishedStatuses.push(intent),
+    showError: () => undefined,
+  });
+
+  const firstOutcome = coordinator.request(first);
+  await firstRunStarted.promise;
+  const secondOutcome = coordinator.request(second);
+  allowFirstRun.resolve();
+
+  assert.equal(await firstOutcome, "superseded");
+  assert.equal(await secondOutcome, "published");
+  assert.equal(runCount, 2);
+  assert.equal(output.join("\n").includes(first.timingOutputPath), false);
+  assert.equal(output.join("\n").includes(second.timingOutputPath), true);
+  assert.deepEqual(executionStatuses, []);
+  assert.deepEqual(publishedStatuses, [{ loadingKind: "initializing" }]);
+  assert.match(panel.webview.html, /Report 2/);
 });

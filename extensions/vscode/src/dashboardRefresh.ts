@@ -15,7 +15,10 @@ import {
   renderErrorHtml,
   renderLoadingHtml,
 } from "./dashboardWebview";
-import { LatestRefreshCoordinator } from "./latestRefreshCoordinator";
+import {
+  LatestRefreshCoordinator,
+  type RefreshPublication,
+} from "./latestRefreshCoordinator";
 
 export type DashboardLoadingKind = "initializing" | "rebuilding" | "refreshing";
 
@@ -40,6 +43,10 @@ export type DashboardTimingDiagnostics = {
   cliSeconds: number | undefined;
 };
 
+export type DashboardStatusIntent = {
+  loadingKind: DashboardLoadingKind;
+};
+
 export type DashboardRefreshResult =
   | {
     kind: "success";
@@ -47,11 +54,15 @@ export type DashboardRefreshResult =
     settings: ExtensionSettings;
     elapsedSeconds: number;
     timing: DashboardTimingDiagnostics | undefined;
+    warnings: string[];
+    status: DashboardStatusIntent;
   }
   | {
     kind: "error";
     settings: ExtensionSettings;
     message: string;
+    warnings: string[];
+    status: DashboardStatusIntent;
   };
 
 type RunCodexUsage = (
@@ -64,12 +75,11 @@ export type DashboardExecutionDependencies = {
   globalStoragePath: string;
   resolveExecutable: () => Promise<string>;
   runCodexUsage: RunCodexUsage;
-  appendOutput: (line: string) => void;
-  setStatus: (label: string) => void;
 };
 
 export type DashboardRefreshDependencies = DashboardExecutionDependencies & {
-  updateStatus: () => void;
+  appendOutput: (line: string) => void;
+  updateStatus: (intent: DashboardStatusIntent) => void;
   showError: (message: string) => PromiseLike<unknown> | void;
 };
 
@@ -96,7 +106,8 @@ export function createDashboardRefreshCoordinator(
 ): LatestRefreshCoordinator<DashboardRefreshRequest, DashboardRefreshResult> {
   return new LatestRefreshCoordinator(
     (request) => executeDashboardRefresh(request, dependencies),
-    (request, result) => publishDashboardRefresh(request, result, dependencies),
+    (request, result, publication) =>
+      publishDashboardRefresh(request, result, dependencies, publication),
   );
 }
 
@@ -116,8 +127,8 @@ export async function executeDashboardRefresh(
 ): Promise<DashboardRefreshResult> {
   const loadingKind = await dashboardLoadingKind(dependencies.globalStoragePath);
   setDashboardLoading(request, loadingKind);
-  dependencies.setStatus(statusLabelFor(loadingKind));
   const startedAt = performance.now();
+  const status = { loadingKind };
 
   try {
     await fs.mkdir(dependencies.globalStoragePath, { recursive: true });
@@ -135,19 +146,23 @@ export async function executeDashboardRefresh(
       buildCodexUsageEnv(dependencies.globalStoragePath),
     );
     const html = await fs.readFile(request.reportPath, "utf8");
-    const timing = await readTimingDiagnostics(request.timingOutputPath, dependencies.appendOutput);
+    const timingResult = await readTimingDiagnostics(request.timingOutputPath);
     return {
       kind: "success",
       html,
       settings: request.settings,
       elapsedSeconds: (performance.now() - startedAt) / 1000,
-      timing,
+      timing: timingResult.timing,
+      warnings: timingResult.warning ? [timingResult.warning] : [],
+      status,
     };
   } catch (error) {
     return {
       kind: "error",
       settings: request.settings,
       message: errorMessage(error),
+      warnings: [],
+      status,
     };
   }
 }
@@ -156,25 +171,32 @@ export function publishDashboardRefresh(
   request: DashboardRefreshRequest,
   result: DashboardRefreshResult,
   dependencies: Pick<DashboardRefreshDependencies, "appendOutput" | "updateStatus" | "showError">,
+  publication: RefreshPublication,
 ): void {
   if (result.kind === "success") {
-    request.panel.webview.html = renderDashboardHtml(request, result.html, result.elapsedSeconds);
-    logTiming(dependencies.appendOutput, result.timing, result.elapsedSeconds);
+    publication.commit(() => {
+      request.panel.webview.html = renderDashboardHtml(request, result.html, result.elapsedSeconds);
+    });
+    logDiagnostics(dependencies.appendOutput, result, publication);
   } else {
-    dependencies.appendOutput(`[error] ${result.message}`);
-    request.panel.webview.html = renderDashboardHtml(
-      request,
-      renderErrorHtml(`${result.message}\n\nCheck the Codex Usage output channel for details.`),
-    );
-    void dependencies.showError(`Codex Usage failed: ${result.message}`);
+    publication.commit(() => dependencies.appendOutput(`[error] ${result.message}`));
+    publication.commit(() => {
+      request.panel.webview.html = renderDashboardHtml(
+        request,
+        renderErrorHtml(`${result.message}\n\nCheck the Codex Usage output channel for details.`),
+      );
+    });
+    logWarnings(dependencies.appendOutput, result.warnings, publication);
+    publication.commit(() => {
+      void dependencies.showError(`Codex Usage failed: ${result.message}`);
+    });
   }
-  dependencies.updateStatus();
+  publication.commit(() => dependencies.updateStatus(result.status));
 }
 
 async function readTimingDiagnostics(
   timingOutputPath: string,
-  appendOutput: (line: string) => void,
-): Promise<DashboardTimingDiagnostics | undefined> {
+): Promise<{ timing: DashboardTimingDiagnostics | undefined; warning: string | undefined }> {
   try {
     const payload = JSON.parse(await fs.readFile(timingOutputPath, "utf8"));
     if (!isRecord(payload) || !isRecord(payload.phases_seconds)) {
@@ -189,10 +211,12 @@ async function readTimingDiagnostics(
     const cliSeconds = typeof payload.total_seconds === "number" && Number.isFinite(payload.total_seconds)
       ? payload.total_seconds
       : undefined;
-    return { phaseSeconds, cliSeconds };
+    return { timing: { phaseSeconds, cliSeconds }, warning: undefined };
   } catch (error) {
-    appendOutput(`[timing] timing sidecar unavailable: ${errorMessage(error)}`);
-    return undefined;
+    return {
+      timing: undefined,
+      warning: `[timing] timing sidecar unavailable (${timingOutputPath}): ${errorMessage(error)}`,
+    };
   }
 }
 
@@ -225,30 +249,33 @@ function loadingMessageFor(kind: DashboardLoadingKind): string {
   return "Refreshing Codex usage...";
 }
 
-function statusLabelFor(kind: DashboardLoadingKind): string {
-  if (kind === "initializing") {
-    return "Codex Usage: Initializing";
-  }
-  if (kind === "rebuilding") {
-    return "Codex Usage: Rebuilding";
-  }
-  return "Codex Usage: Loading";
-}
-
-function logTiming(
+function logDiagnostics(
   appendOutput: (line: string) => void,
-  timing: DashboardTimingDiagnostics | undefined,
-  elapsedSeconds: number,
+  result: Extract<DashboardRefreshResult, { kind: "success" }>,
+  publication: RefreshPublication,
 ): void {
+  logWarnings(appendOutput, result.warnings, publication);
+  const timing = result.timing;
   if (timing) {
     for (const [phase, seconds] of Object.entries(timing.phaseSeconds)) {
-      appendOutput(`[timing] ${phase}: ${seconds.toFixed(3)}s`);
+      publication.commit(() => appendOutput(`[timing] ${phase}: ${seconds.toFixed(3)}s`));
     }
-    if (timing.cliSeconds !== undefined && !("total_cli" in timing.phaseSeconds)) {
-      appendOutput(`[timing] total_cli: ${timing.cliSeconds.toFixed(3)}s`);
+    const cliSeconds = timing.cliSeconds;
+    if (cliSeconds !== undefined && !("total_cli" in timing.phaseSeconds)) {
+      publication.commit(() => appendOutput(`[timing] total_cli: ${cliSeconds.toFixed(3)}s`));
     }
   }
-  appendOutput(`[timing] extension_total: ${elapsedSeconds.toFixed(3)}s`);
+  publication.commit(() => appendOutput(`[timing] extension_total: ${result.elapsedSeconds.toFixed(3)}s`));
+}
+
+function logWarnings(
+  appendOutput: (line: string) => void,
+  warnings: string[],
+  publication: RefreshPublication,
+): void {
+  for (const warning of warnings) {
+    publication.commit(() => appendOutput(warning));
+  }
 }
 
 async function pathExists(filePath: string): Promise<boolean> {

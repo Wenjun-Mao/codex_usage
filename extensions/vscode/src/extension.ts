@@ -57,7 +57,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     resolveExecutable: () => resolveBundledExecutable(context),
     runCodexUsage,
     appendOutput: (line) => output.appendLine(line),
-    setStatus: setUsageStatus,
     updateStatus: () => updateStatusItem(readSettings(context)),
     showError: (message) => vscode.window.showErrorMessage(message),
   });

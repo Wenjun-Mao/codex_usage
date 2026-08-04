@@ -9,6 +9,7 @@ const { cacheDbPath, legacyCacheDbPath } = require("../out/core");
 const {
   dashboardLoadingKind,
   executeDashboardRefresh,
+  publishDashboardRefresh,
 } = require("../out/dashboardRefresh");
 const { runSyncProcess } = require("../out/syncProcess");
 
@@ -345,7 +346,7 @@ test("dashboard execution passes timing output and preserves a report when the s
   const timingOutputPath = path.join(storagePath, "report-1.timing.json");
   const output = [];
   const panel = { webview: { html: "", cspSource: "vscode-resource:" } };
-  const result = await executeDashboardRefresh({
+  const request = {
     requestId: 1,
     panel,
     settings: {
@@ -358,7 +359,8 @@ test("dashboard execution passes timing output and preserves a report when the s
     versionLabel: "v1.0.0",
     reportPath,
     timingOutputPath,
-  }, {
+  };
+  const result = await executeDashboardRefresh(request, {
     globalStoragePath: storagePath,
     resolveExecutable: async () => "/bin/codex-usage",
     runCodexUsage: async (_executablePath, args) => {
@@ -377,6 +379,19 @@ test("dashboard execution passes timing output and preserves a report when the s
   assert.match(result.html, /Report/);
   assert.equal(Number.isFinite(result.elapsedSeconds), true);
   assert.match(panel.webview.html, /Initializing Codex usage cache/);
+  assert.deepEqual(output, []);
+  assert.match(result.warnings.join("\n"), /timing sidecar unavailable/i);
+  publishDashboardRefresh(request, result, {
+    appendOutput: (line) => output.push(line),
+    updateStatus: () => undefined,
+    showError: () => undefined,
+  }, {
+    isCurrent: () => true,
+    commit: (sideEffect) => {
+      sideEffect();
+      return true;
+    },
+  });
   assert.match(output.join("\n"), /timing sidecar unavailable/i);
 });
 

@@ -1,5 +1,15 @@
 export type RefreshRequestOutcome = "published" | "superseded";
 
+/**
+ * Async publishers must route every synchronous external side effect through
+ * commit so currency is checked at the actual publication point. Two-argument
+ * publishers remain supported for existing synchronous callbacks.
+ */
+export type RefreshPublication = {
+  isCurrent: () => boolean;
+  commit: (sideEffect: () => void) => boolean;
+};
+
 type RefreshEntry<Request> = {
   request: Request;
   generation: number;
@@ -14,7 +24,11 @@ export class LatestRefreshCoordinator<Request, Result> {
 
   constructor(
     private readonly execute: (request: Request) => Promise<Result>,
-    private readonly publish: (request: Request, result: Result) => Promise<void> | void,
+    private readonly publish: (
+      request: Request,
+      result: Result,
+      publication: RefreshPublication,
+    ) => Promise<void> | void,
   ) {}
 
   request(request: Request): Promise<RefreshRequestOutcome> {
@@ -45,16 +59,17 @@ export class LatestRefreshCoordinator<Request, Result> {
   }
 
   private async run(entry: RefreshEntry<Request>): Promise<void> {
+    const publication = this.publicationFor(entry);
     try {
       const result = await this.execute(entry.request);
-      if (entry.generation !== this.latestGeneration) {
+      if (!publication.isCurrent()) {
         entry.resolve("superseded");
         return;
       }
-      await this.publish(entry.request, result);
-      entry.resolve("published");
+      await this.publish(entry.request, result, publication);
+      entry.resolve(publication.isCurrent() ? "published" : "superseded");
     } catch (error) {
-      if (entry.generation !== this.latestGeneration) {
+      if (!publication.isCurrent()) {
         entry.resolve("superseded");
       } else {
         entry.reject(error);
@@ -67,5 +82,19 @@ export class LatestRefreshCoordinator<Request, Result> {
         this.start(next);
       }
     }
+  }
+
+  private publicationFor(entry: RefreshEntry<Request>): RefreshPublication {
+    const isCurrent = (): boolean => entry.generation === this.latestGeneration;
+    return {
+      isCurrent,
+      commit: (sideEffect): boolean => {
+        if (!isCurrent()) {
+          return false;
+        }
+        sideEffect();
+        return true;
+      },
+    };
   }
 }

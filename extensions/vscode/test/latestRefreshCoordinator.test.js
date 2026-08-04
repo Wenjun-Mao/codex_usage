@@ -29,6 +29,14 @@ function tick() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 test("latest refresh coordinator runs one process and publishes only newest request", async () => {
   const gates = deferredQueue();
   const running = [];
@@ -120,4 +128,36 @@ test("latest refresh coordinator accepts a new request after becoming idle", asy
   assert.equal(await coordinator.request("month"), "published");
   assert.deepEqual(executed, ["today", "month"]);
   assert.deepEqual(published, [["today", "today report"], ["month", "month report"]]);
+});
+
+test("latest refresh coordinator prevents an async publisher from committing after replacement", async () => {
+  const firstPublisherStarted = deferred();
+  const allowFirstPublisher = deferred();
+  const executed = [];
+  const committed = [];
+  const coordinator = new LatestRefreshCoordinator(
+    async (request) => {
+      executed.push(request);
+      return `${request} report`;
+    },
+    async (request, result, publication) => {
+      if (request === "today") {
+        firstPublisherStarted.resolve();
+        await allowFirstPublisher.promise;
+      }
+      publication.commit(() => committed.push([request, result]));
+    },
+  );
+
+  const first = coordinator.request("today");
+  await firstPublisherStarted.promise;
+  const second = coordinator.request("7d");
+  allowFirstPublisher.resolve();
+
+  assert.equal(await first, "superseded");
+  assert.equal(await second, "published");
+  assert.deepEqual(executed, ["today", "7d"]);
+  assert.deepEqual(committed, [["7d", "7d report"]]);
+  assert.equal(await coordinator.request("month"), "published");
+  assert.deepEqual(committed, [["7d", "7d report"], ["month", "month report"]]);
 });
