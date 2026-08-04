@@ -240,7 +240,7 @@ def test_release_docs_require_parallel_audit_and_prepublish_native_gate() -> Non
         "overlapping worker spans",
         "no serial fallback",
         "non-publishing native workflow",
-        "before creating v1.0.0",
+        "before creating a release tag or publishing",
     ):
         assert phrase in text
 

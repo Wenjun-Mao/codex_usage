@@ -10,6 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
+    "1.2.0": "2026-08-04",
     "1.1.0": "2026-08-03",
     "1.0.0": "2026-08-03",
     "0.1.42": "2026-07-31",
@@ -54,6 +55,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "1.2.0",
     "1.1.0",
     "1.0.0",
     "0.1.42",

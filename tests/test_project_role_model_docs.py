@@ -111,7 +111,7 @@ def test_release_checklist_locks_marketplace_screenshot_gate() -> None:
         assert re.search(rf"(?m)^{re.escape(command)}$", checklist), command
 
 
-def test_unreleased_changelogs_describe_role_model_breakdown() -> None:
+def test_1_2_0_changelogs_describe_role_model_breakdown() -> None:
     required_phrases = (
         "root-task",
         "structured-subagent",
@@ -120,11 +120,15 @@ def test_unreleased_changelogs_describe_role_model_breakdown() -> None:
         "schema 5",
         "once",
     )
+    heading = "## 1.2.0 - 2026-08-04 - Project Role And Model Insights"
 
     for path in CHANGELOG_PATHS:
-        unreleased = normalized_prose(markdown_section(path, "## Unreleased"))
+        text = path.read_text(encoding="utf-8")
+        assert text.count("## Unreleased") == 1
+        assert text.count(heading) == 1
+        release = normalized_prose(markdown_section(path, heading))
         for phrase in required_phrases:
-            assert phrase in unreleased, (path, phrase)
+            assert phrase in release, (path, phrase)
 
 
 def test_historical_1_1_0_changelogs_keep_schema_4_wording() -> None:

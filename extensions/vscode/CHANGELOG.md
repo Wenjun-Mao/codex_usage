@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.0 - 2026-08-04 - Project Role And Model Insights
+
 - Split each Project Breakdown row into user-visible root-task and structured-subagent groups, then stacked both groups by model with shared Model Mix colors.
 - Kept exact model details while grouping chart models after the largest seven into visual-only Other, with complete accessible tooltips and project role totals.
 - Added explicit usage-role persistence through disposable cache schema 5 and rebuilt prior local caches once without rescanning source files for each report view.
