@@ -1,64 +1,106 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_usage.aggregation import AggregateRow, UsageSummary
-from codex_usage.models import TokenUsage
+import pytest
+
+from codex_usage.aggregation import UsageSummary
+from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
+from codex_usage.report_breakdown import OTHER_MODEL_KEY, build_report_breakdown
 from codex_usage.report_view import build_report_view_model
 
 
-def test_report_view_model_prepares_dashboard_data() -> None:
-    total = UsageSummary(
-        usage=TokenUsage(input_tokens=1_000, cached_input_tokens=250, output_tokens=100, total_tokens=1_100),
-        cost=CostBreakdown(total_usd=1.25, unpriced_tokens=50),
-        credits=CreditBreakdown(total_credits=12.5),
-        record_count=3,
-    )
-    daily_rows = [_row("2026-04-29", "2026-04-29", 1_100, cost=1.25, credits=12.5, unpriced=50)]
-    hourly_rows = [_row("2026-04-29 10:00", "2026-04-29 10:00", 600, cost=0.75)]
-    project_rows = [_row("repo", "demo", 1_100, cost=1.25)]
-    model_rows = [
-        _row("gpt-5.5", "gpt-5.5", 1_050, cost=1.25, credits=12.5),
-        _row("unknown", "unknown", 50, unpriced=50, credit_unpriced=50),
+def test_report_view_model_prepares_role_and_model_presentation_points() -> None:
+    records = [
+        _record("demo", "demo", "root", "gpt-5.6-sol", total=1_000),
+        _record("demo", "demo", "subagent", "gpt-5.6-terra", total=100),
+        _record("other", "other", "root", "gpt-5.6-luna", total=10),
     ]
 
-    view_model = build_report_view_model(
+    view_model = _view_model(records)
+
+    assert [item.label for item in view_model.model_legend] == [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    ]
+    assert [item.color_slot for item in view_model.model_legend] == [0, 1, 2]
+
+    project = view_model.project_points[0]
+    assert project.label == "demo"
+    assert project.root_tokens == 1_000
+    assert project.subagent_tokens == 100
+    assert [(group.role, group.label) for group in project.roles] == [
+        ("root", "Root tasks"),
+        ("subagent", "Subagents"),
+    ]
+    assert project.roles[0].project_share == pytest.approx(1_000 / 1_100)
+    assert project.roles[1].segments[0].project_share == pytest.approx(100 / 1_100)
+    assert view_model.project_detail_points == view_model.breakdown_view.project_points
+
+
+def test_report_view_model_keeps_all_project_details_but_limits_chart_to_twelve() -> None:
+    records = [
+        _record(f"project-{number:02d}", f"Project {number:02d}", "root", "gpt-5.6-sol", total=100 - number)
+        for number in range(13)
+    ]
+
+    view_model = _view_model(records)
+
+    assert len(view_model.project_points) == 12
+    assert len(view_model.project_detail_points) == 13
+    assert view_model.project_points == list(view_model.project_detail_points[:12])
+
+
+def test_report_view_model_reserves_other_model_color_slot_seven() -> None:
+    records = [
+        _record("demo", "demo", "root", f"model-{number}", total=100 - number)
+        for number in range(8)
+    ]
+
+    view_model = _view_model(records)
+
+    assert [item.color_slot for item in view_model.model_legend[:-1]] == list(range(7))
+    assert view_model.model_legend[-1].key == OTHER_MODEL_KEY
+    assert view_model.model_legend[-1].color_slot == 7
+    assert view_model.model_points[-1].key == OTHER_MODEL_KEY
+    assert view_model.model_points[-1].color_slot == 7
+
+
+def _view_model(records: list[UsageRecord]):
+    total = UsageSummary(
+        usage=TokenUsage(total_tokens=sum(record.usage.total_tokens for record in records)),
+        cost=CostBreakdown(),
+        credits=CreditBreakdown(),
+        record_count=len(records),
+    )
+    return build_report_view_model(
         generated_at=datetime(2026, 4, 29, tzinfo=UTC),
         range_name="all",
         total=total,
-        daily_rows=daily_rows,
-        hourly_rows=hourly_rows,
-        project_rows=project_rows,
-        model_rows=model_rows,
+        daily_rows=[],
+        hourly_rows=[],
+        breakdown=build_report_breakdown(records),
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
     )
 
-    assert view_model.kpis[2].label == "Codex Credits"
-    assert view_model.kpis[3].value == "25.0%"
-    assert view_model.has_partial_cost is True
-    assert view_model.has_codex_credit_estimates is True
-    assert view_model.no_price_data_tokens == 50
-    assert view_model.daily_points[0].label == "04/29"
-    assert view_model.hourly_cells[0].day == "2026-04-29"
-    assert view_model.hourly_cells[0].hour == 10
-    assert [point.label for point in view_model.model_points] == ["gpt-5.5", "unknown"]
 
-
-def _row(
-    key: str,
-    label: str,
+def _record(
+    project_key: str,
+    project_label: str,
+    role: str,
+    model: str,
+    *,
     total: int,
-    cost: float = 0.0,
-    credits: float = 0.0,
-    unpriced: int = 0,
-    credit_unpriced: int = 0,
-) -> AggregateRow:
-    return AggregateRow(
-        key=key,
-        label=label,
+) -> UsageRecord:
+    return UsageRecord(
+        timestamp=datetime(2026, 4, 29, tzinfo=UTC),
         usage=TokenUsage(input_tokens=total, total_tokens=total),
-        cost=CostBreakdown(total_usd=cost, unpriced_tokens=unpriced),
-        credits=CreditBreakdown(total_credits=credits, unpriced_tokens=credit_unpriced),
-        record_count=1,
+        session_id=f"{project_key}-{role}-{model}",
+        file_path=Path("/tmp/session.jsonl"),
+        usage_role=role,  # type: ignore[arg-type]
+        model=model,
+        project_key=project_key,
+        project_label=project_label,
     )

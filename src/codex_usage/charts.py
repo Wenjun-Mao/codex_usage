@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import html
 
-from codex_usage.report_view import BreakdownPoint, DailyPoint, HourlyCell
+from codex_usage.report_breakdown_view import ModelMixPoint, ProjectBreakdownPoint
+from codex_usage.report_view import DailyPoint, HourlyCell
 
 
 def render_daily_cost_svg(points: list[DailyPoint]) -> str:
@@ -77,15 +78,20 @@ def render_hourly_heatmap_html(cells: list[HourlyCell]) -> str:
     return "".join(chunks)
 
 
-def render_project_breakdown_svg(points: list[BreakdownPoint]) -> str:
+def render_project_breakdown_svg(points: list[ProjectBreakdownPoint]) -> str:
     return _render_horizontal_bars("Top projects by total tokens", points, value_kind="tokens")
 
 
-def render_model_mix_svg(points: list[BreakdownPoint]) -> str:
+def render_model_mix_svg(points: list[ModelMixPoint]) -> str:
     return _render_horizontal_bars("Model mix by total tokens", points, value_kind="tokens")
 
 
-def _render_horizontal_bars(title: str, points: list[BreakdownPoint], *, value_kind: str) -> str:
+def _render_horizontal_bars(
+    title: str,
+    points: list[ProjectBreakdownPoint] | list[ModelMixPoint],
+    *,
+    value_kind: str,
+) -> str:
     if not points:
         return _empty_svg(title, "No usage found for this range.")
 

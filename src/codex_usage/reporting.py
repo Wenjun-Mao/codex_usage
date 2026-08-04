@@ -16,8 +16,9 @@ from codex_usage.charts import (
     render_project_breakdown_svg,
 )
 from codex_usage.pricing import PRICING_AS_OF, PRICING_METHOD
-from codex_usage.report_view import ReportViewModel, build_report_view_model
+from codex_usage.report_breakdown import ReportBreakdown
 from codex_usage.report_theme import normalize_report_theme, report_css
+from codex_usage.report_view import ReportViewModel, build_report_view_model
 
 
 def summary_payload(
@@ -130,8 +131,7 @@ def render_html_report(
     total: UsageSummary,
     daily_rows: list[AggregateRow],
     hourly_rows: list[AggregateRow],
-    project_rows: list[AggregateRow],
-    model_rows: list[AggregateRow],
+    breakdown: ReportBreakdown,
     sessions_dirs: list[Path],
     files_scanned: int,
     storage_roots: list[str] | None = None,
@@ -149,8 +149,7 @@ def render_html_report(
         total=total,
         daily_rows=daily_rows,
         hourly_rows=hourly_rows,
-        project_rows=project_rows,
-        model_rows=model_rows,
+        breakdown=breakdown,
         sessions_dirs=sessions_dirs,
         files_scanned=files_scanned,
         files_archived=files_archived,
@@ -192,8 +191,8 @@ def render_html_report(
     <div class="dashboard-grid">
       {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), _table_section("Daily Details", daily_rows), scroll_class="tooltip-chart-scroll")}
       {_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), _table_section("Hourly Details", hourly_rows), scroll_class="heatmap-chart-scroll")}
-      {_chart_section("Project Breakdown", render_project_breakdown_svg(view_model.project_points), _table_section("Project Details", project_rows), scroll_class="tooltip-chart-scroll")}
-      {_chart_section("Model Mix", render_model_mix_svg(view_model.model_points), _table_section("Model Details", model_rows), scroll_class="tooltip-chart-scroll")}
+      {_chart_section("Project Breakdown", render_project_breakdown_svg(view_model.project_points), _table_section("Project Details", view_model.project_rows), scroll_class="tooltip-chart-scroll")}
+      {_chart_section("Model Mix", render_model_mix_svg(view_model.model_points), _table_section("Model Details", view_model.model_rows), scroll_class="tooltip-chart-scroll")}
     </div>
   </main>
 </body>

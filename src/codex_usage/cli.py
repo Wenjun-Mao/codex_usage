@@ -14,6 +14,7 @@ from codex_usage.aggregation import (
 )
 from codex_usage.performance_timing import PhaseTimer, write_timing_sidecar
 from codex_usage.project_transitions import ProjectTransition
+from codex_usage.report_breakdown import build_report_breakdown
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.reporting import (
     print_json,
@@ -217,6 +218,7 @@ def handle_report(args: argparse.Namespace) -> int:
     timer = getattr(args, "_phase_timer", None)
     with timer.measure("aggregation_render") if timer else nullcontext():
         total = summarize_records(context.records)
+        breakdown = build_report_breakdown(context.records)
         output_path = render_html_report(
             output_path=args.output,
             generated_at=datetime.now(context.timezone),
@@ -224,8 +226,7 @@ def handle_report(args: argparse.Namespace) -> int:
             total=total,
             daily_rows=aggregate_records(context.records, "day", context.timezone),
             hourly_rows=aggregate_records(context.records, "hour", context.timezone),
-            project_rows=aggregate_records(context.records, "project", context.timezone),
-            model_rows=aggregate_records(context.records, "model", context.timezone),
+            breakdown=breakdown,
             sessions_dirs=context.session_dirs,
             files_scanned=len(context.files),
             storage_roots=[str(path) for path in context.session_dirs],

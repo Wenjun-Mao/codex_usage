@@ -5,6 +5,14 @@ from datetime import datetime
 from pathlib import Path
 
 from codex_usage.aggregation import AggregateRow, UsageSummary
+from codex_usage.report_breakdown import ReportBreakdown
+from codex_usage.report_breakdown_view import (
+    BreakdownView,
+    ModelLegendItem,
+    ModelMixPoint,
+    ProjectBreakdownPoint,
+    build_breakdown_view,
+)
 
 
 @dataclass(frozen=True)
@@ -33,18 +41,6 @@ class HourlyCell:
 
 
 @dataclass(frozen=True)
-class BreakdownPoint:
-    key: str
-    label: str
-    total_tokens: int
-    cost_usd: float
-    total_credits: float
-    unpriced_tokens: int
-    credit_unpriced_tokens: int
-    record_count: int
-
-
-@dataclass(frozen=True)
 class ReportViewModel:
     generated_at: datetime
     range_name: str
@@ -57,8 +53,11 @@ class ReportViewModel:
     kpis: list[KpiCard]
     daily_points: list[DailyPoint]
     hourly_cells: list[HourlyCell]
-    project_points: list[BreakdownPoint]
-    model_points: list[BreakdownPoint]
+    breakdown_view: BreakdownView
+    model_legend: list[ModelLegendItem]
+    project_points: list[ProjectBreakdownPoint]
+    project_detail_points: tuple[ProjectBreakdownPoint, ...]
+    model_points: list[ModelMixPoint]
     daily_rows: list[AggregateRow]
     hourly_rows: list[AggregateRow]
     project_rows: list[AggregateRow]
@@ -92,14 +91,14 @@ def build_report_view_model(
     total: UsageSummary,
     daily_rows: list[AggregateRow],
     hourly_rows: list[AggregateRow],
-    project_rows: list[AggregateRow],
-    model_rows: list[AggregateRow],
+    breakdown: ReportBreakdown,
     sessions_dirs: list[Path],
     files_scanned: int,
     files_archived: int = 0,
     files_retained_missing: int = 0,
     storage_roots: list[str] | tuple[str, ...] | None = None,
 ) -> ReportViewModel:
+    breakdown_view = build_breakdown_view(breakdown)
     return ReportViewModel(
         generated_at=generated_at,
         range_name=range_name,
@@ -112,12 +111,15 @@ def build_report_view_model(
         kpis=_build_kpis(total),
         daily_points=[_daily_point(row) for row in daily_rows],
         hourly_cells=[cell for row in hourly_rows if (cell := _hourly_cell(row)) is not None],
-        project_points=[_breakdown_point(row) for row in project_rows[:12]],
-        model_points=[_breakdown_point(row) for row in model_rows],
+        breakdown_view=breakdown_view,
+        model_legend=list(breakdown_view.model_legend),
+        project_points=list(breakdown_view.project_points[:12]),
+        project_detail_points=breakdown_view.project_points,
+        model_points=list(breakdown_view.model_points),
         daily_rows=daily_rows,
         hourly_rows=hourly_rows,
-        project_rows=project_rows,
-        model_rows=model_rows,
+        project_rows=list(breakdown.project_rows),
+        model_rows=list(breakdown.model_rows),
     )
 
 
@@ -166,19 +168,6 @@ def _hourly_cell(row: AggregateRow) -> HourlyCell | None:
         total_tokens=row.usage.total_tokens,
         cost_usd=row.cost.total_usd,
         unpriced_tokens=row.cost.unpriced_tokens,
-    )
-
-
-def _breakdown_point(row: AggregateRow) -> BreakdownPoint:
-    return BreakdownPoint(
-        key=row.key,
-        label=row.label,
-        total_tokens=row.usage.total_tokens,
-        cost_usd=row.cost.total_usd,
-        total_credits=row.credits.total_credits,
-        unpriced_tokens=row.cost.unpriced_tokens,
-        credit_unpriced_tokens=row.credits.unpriced_tokens,
-        record_count=row.record_count,
     )
 
 

@@ -5,6 +5,12 @@ from codex_usage.aggregation import AggregateRow, UsageSummary
 from codex_usage.models import TokenUsage
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
 from codex_usage.project_transitions import ProjectTransition
+from codex_usage.report_breakdown import (
+    ProjectRoleModelBreakdown,
+    ReportBreakdown,
+    RoleModelBreakdown,
+    VisualModelBucket,
+)
 from codex_usage.reporting import render_html_report
 
 
@@ -30,11 +36,13 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(t
         total=total,
         daily_rows=[_row("2026-04-29", "2026-04-29", 1_100, cost=1.75, credits=14.25, cache_write=125)],
         hourly_rows=[_row("2026-04-29 10:00", "2026-04-29 10:00", 700, cost=0.75, credits=9.0)],
-        project_rows=[_row("repo", "demo", 1_100, cost=1.75, credits=14.25)],
-        model_rows=[
-            _row("gpt-5.5", "gpt-5.5", 1_075, cost=1.25, credits=12.0),
-            _row("gpt-5.3-codex", "gpt-5.3-codex", 25, cost=0.5, credits=2.25),
-        ],
+        breakdown=_breakdown(
+            [_row("repo", "demo", 1_100, cost=1.75, credits=14.25)],
+            [
+                _row("gpt-5.5", "gpt-5.5", 1_075, cost=1.25, credits=12.0),
+                _row("gpt-5.3-codex", "gpt-5.3-codex", 25, cost=0.5, credits=2.25),
+            ],
+        ),
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
         project_keys=["repo"],
@@ -102,8 +110,7 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
         total=total,
         daily_rows=[_row("2026-04-29", "2026-04-29", 1_100, cost=1.75, credits=14.25)],
         hourly_rows=[_row("2026-04-29 10:00", "2026-04-29 10:00", 700, cost=0.75, credits=9.0)],
-        project_rows=[],
-        model_rows=[],
+        breakdown=_breakdown([], []),
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
         theme="auto",
@@ -156,8 +163,7 @@ def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:
         total=total,
         daily_rows=[],
         hourly_rows=[],
-        project_rows=[],
-        model_rows=[],
+        breakdown=_breakdown([], []),
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
         project_transitions=[transition.to_dict()],
@@ -187,8 +193,7 @@ def test_report_html_mentions_archived_and_retained_missing_files(tmp_path: Path
         total=total,
         daily_rows=[],
         hourly_rows=[],
-        project_rows=[],
-        model_rows=[],
+        breakdown=_breakdown([], []),
         sessions_dirs=[Path("sessions"), Path("archived_sessions")],
         files_scanned=2,
         files_archived=1,
@@ -219,8 +224,10 @@ def test_dashboard_report_warns_when_model_has_no_price_data(tmp_path: Path) -> 
         total=total,
         daily_rows=[_row("2026-04-29", "2026-04-29", 25, unpriced=25, credit_unpriced=25)],
         hourly_rows=[],
-        project_rows=[],
-        model_rows=[_row("unknown", "unknown", 25, unpriced=25, credit_unpriced=25)],
+        breakdown=_breakdown(
+            [],
+            [_row("unknown", "unknown", 25, unpriced=25, credit_unpriced=25)],
+        ),
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
     )
@@ -246,10 +253,18 @@ def test_dashboard_report_warns_for_unknown_future_model_without_price_data(tmp_
         total=total,
         daily_rows=[_row("2026-07-09", "2026-07-09", 1_050, unpriced=1_050, credit_unpriced=1_050)],
         hourly_rows=[],
-        project_rows=[],
-        model_rows=[
-            _row("gpt-5.6-pro", "gpt-5.6-pro", 1_050, unpriced=1_050, credit_unpriced=1_050)
-        ],
+        breakdown=_breakdown(
+            [],
+            [
+                _row(
+                    "gpt-5.6-pro",
+                    "gpt-5.6-pro",
+                    1_050,
+                    unpriced=1_050,
+                    credit_unpriced=1_050,
+                )
+            ],
+        ),
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
     )
@@ -272,8 +287,7 @@ def test_dashboard_report_has_empty_states(tmp_path: Path) -> None:
         total=total,
         daily_rows=[],
         hourly_rows=[],
-        project_rows=[],
-        model_rows=[],
+        breakdown=_breakdown([], []),
         sessions_dirs=[Path("sessions")],
         files_scanned=0,
     )
@@ -310,4 +324,41 @@ def _row(
         cost=CostBreakdown(total_usd=cost, unpriced_tokens=unpriced),
         credits=CreditBreakdown(total_credits=credits, unpriced_tokens=credit_unpriced),
         record_count=1,
+    )
+
+
+def _breakdown(
+    project_rows: list[AggregateRow], model_rows: list[AggregateRow]
+) -> ReportBreakdown:
+    visual_models = tuple(
+        VisualModelBucket(key=row.key, label=row.label, exact_models=(row.key,))
+        for row in model_rows
+    )
+    projects = tuple(
+        ProjectRoleModelBreakdown(
+            row=row,
+            roles=(
+                RoleModelBreakdown(
+                    role="root",
+                    total=_summary(row),
+                    model_rows=(),
+                ),
+            ),
+        )
+        for row in project_rows
+    )
+    return ReportBreakdown(
+        visual_models=visual_models,
+        projects=projects,
+        model_rows=tuple(model_rows),
+        visual_model_rows=tuple(model_rows),
+    )
+
+
+def _summary(row: AggregateRow) -> UsageSummary:
+    return UsageSummary(
+        usage=row.usage,
+        cost=row.cost,
+        credits=row.credits,
+        record_count=row.record_count,
     )
