@@ -3,10 +3,17 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 import codex_usage.project_transition_collection as _transition_collection
 import codex_usage.project_transitions as _transitions
@@ -27,7 +34,6 @@ from codex_usage.project_transitions import (
 from codex_usage.session_cache_models import (
     CacheStats,
     CachedFileSummary,
-    CachedRowsSnapshot,
     CachedSessionData,
 )
 from codex_usage.session_cache_schema import (
@@ -38,7 +44,32 @@ from codex_usage.session_cache_schema import (
 from codex_usage.session_files import owning_session_dir, read_session_metadata
 from codex_usage.session_inventory import SessionFileInventoryEntry, collect_session_file_inventory
 
-CACHE_DB_NAME = "usage-cache.sqlite3"
+CACHE_DB_NAME = "usage-cache-v4.sqlite3"
+LEGACY_CACHE_DB_NAMES = ("usage-cache.sqlite3",)
+
+
+@retry(
+    retry=retry_if_exception_type(OSError),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=0.01, min=0.01, max=0.04),
+    reraise=True,
+)
+def _remove_legacy_cache_path(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def _cleanup_legacy_cache_files(cache_dir: Path) -> int:
+    errors = 0
+    for database_name in LEGACY_CACHE_DB_NAMES:
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                _remove_legacy_cache_path(cache_dir / f"{database_name}{suffix}")
+            except OSError:
+                errors += 1
+    return errors
 
 
 def uncached_session_data(
@@ -114,12 +145,13 @@ def load_cached_session_data(
     session_files = [entry.path for entry in inventory]
     with sqlite3.connect(resolved_cache_dir / CACHE_DB_NAME) as connection:
         connection.row_factory = sqlite3.Row
-        rebuilt = _schema._ensure_schema(connection)
+        schema_state = _schema._ensure_schema(connection)
+        legacy_cleanup_errors = _cleanup_legacy_cache_files(resolved_cache_dir)
         stats, usage_run = _refresh.refresh_files(
             connection,
             session_dirs,
             inventory,
-            rebuilt=rebuilt,
+            rebuilt=schema_state.created or schema_state.reset,
             max_workers=max_workers,
         )
         current_keys = {entry.file_key for entry in inventory}
@@ -140,6 +172,7 @@ def load_cached_session_data(
         summaries = _store._load_file_summaries(connection, inventory, session_dirs)
         errors = _store._load_file_errors(connection)
         retained_missing_files = _store._retained_missing_files(connection)
+    stats = replace(stats, legacy_cleanup_errors=legacy_cleanup_errors)
     return CachedSessionData(
         session_dirs=session_dirs,
         files=session_files,

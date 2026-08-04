@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 import codex_usage.parallel.usage as usage_module
-import codex_usage.session_cache as cache_module
 import codex_usage.session_cache_refresh as cache_refresh_module
 import codex_usage.session_cache_schema as cache_schema_module
 from codex_usage.session_cache import (
@@ -31,6 +30,51 @@ def test_first_cache_build_parses_and_stores_records(tmp_path: Path) -> None:
     assert data.records[0].session_id == "thread-1"
     assert data.records[0].usage.total_tokens == 100
     assert data.records[0].usage.cache_write_input_tokens == 25
+    assert (cache_dir / CACHE_DB_NAME).is_file()
+
+
+def test_legacy_cache_files_are_removed_after_schema_opens(tmp_path: Path) -> None:
+    assert CACHE_DB_NAME == "usage-cache-v4.sqlite3"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    legacy_paths = tuple(
+        cache_dir / f"usage-cache.sqlite3{suffix}" for suffix in ("", "-wal", "-shm")
+    )
+    for path in legacy_paths:
+        path.write_text("legacy", encoding="utf-8")
+
+    data = load_cached_session_data([], cache_dir=cache_dir, auto_transitions=False)
+
+    assert data.stats.legacy_cleanup_errors == 0
+    assert not any(path.exists() for path in legacy_paths)
+    assert (cache_dir / CACHE_DB_NAME).is_file()
+
+
+def test_legacy_cleanup_failure_is_counted_without_removing_new_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert CACHE_DB_NAME == "usage-cache-v4.sqlite3"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    legacy_path = cache_dir / "usage-cache.sqlite3"
+    legacy_path.write_text("legacy", encoding="utf-8")
+    attempts = 0
+    original_unlink = Path.unlink
+
+    def fail_legacy_unlink(path: Path, *args, **kwargs) -> None:
+        nonlocal attempts
+        if path == legacy_path:
+            attempts += 1
+            raise OSError("legacy cache is busy")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_legacy_unlink)
+
+    data = load_cached_session_data([], cache_dir=cache_dir, auto_transitions=False)
+
+    assert attempts == 3
+    assert data.stats.legacy_cleanup_errors == 1
+    assert legacy_path.is_file()
     assert (cache_dir / CACHE_DB_NAME).is_file()
 
 
@@ -139,57 +183,7 @@ def test_schema_version_mismatch_rebuilds_cache(tmp_path: Path) -> None:
     assert row == (str(CACHE_SCHEMA_VERSION),)
 
 
-def test_schema_rebuild_retains_missing_file_usage(tmp_path: Path) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    session_path = _write_session(sessions, "thread-1", "/repo/deleted", 100)
-    cache_dir = tmp_path / "cache"
-    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
-    session_path.unlink()
-    missing_data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
-    assert missing_data.stats.files_missing_retained == 1
-    db_path = cache_dir / CACHE_DB_NAME
-
-    with sqlite3.connect(db_path) as connection:
-        connection.execute("alter table usage_records drop column cache_write_input_tokens")
-        connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("2",))
-        connection.execute("update schema_meta set value = ? where key = 'parser_version'", ("1",))
-
-    data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
-
-    assert data.stats.rebuilt is True
-    assert data.stats.files_missing_retained == 1
-    assert [record.session_id for record in data.records] == ["thread-1"]
-    assert [record.usage.total_tokens for record in data.records] == [100]
-    assert [record.usage.cache_write_input_tokens for record in data.records] == [0]
-
-
-def test_schema_rebuild_rejects_partial_history_without_dropping_child_rows(tmp_path: Path) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, "thread-1", "/repo/demo", 100)
-    cache_dir = tmp_path / "cache"
-    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
-    db_path = cache_dir / CACHE_DB_NAME
-
-    with sqlite3.connect(db_path) as connection:
-        connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
-        connection.execute("drop table files")
-
-    with pytest.raises(sqlite3.DatabaseError, match="incomplete cache history.*files"):
-        load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
-
-    with sqlite3.connect(db_path) as connection:
-        usage_rows = connection.execute(
-            "select session_id, total_tokens from usage_records order by file_key, record_index"
-        ).fetchall()
-        metadata_rows = connection.execute(
-            "select session_id, project_key from session_metadata order by file_key"
-        ).fetchall()
-
-    assert usage_rows == [("thread-1", 100)]
-    assert metadata_rows == [("thread-1", "/repo/demo")]
-
-
-def test_restore_duplicate_rolls_back_entire_schema_rebuild(
+def test_schema_creation_failure_rolls_back_entire_reset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
@@ -201,17 +195,17 @@ def test_restore_duplicate_rolls_back_entire_schema_rebuild(
     with sqlite3.connect(db_path) as connection:
         connection.execute("update schema_meta set value = ? where key = 'schema_version'", ("old",))
 
-    original_restore = cache_schema_module._restore_cached_rows
+    original_create = cache_schema_module._create_cache_schema
 
-    def restore_with_duplicate(
-        connection: sqlite3.Connection, snapshot: cache_module.CachedRowsSnapshot
-    ) -> None:
-        original_restore(connection, snapshot)
-        cache_schema_module._insert_dict_rows(connection, "usage_records", [snapshot.usage_records[0]])
+    def fail_after_schema_creation(connection: sqlite3.Connection) -> None:
+        original_create(connection)
+        raise sqlite3.DatabaseError("schema creation interrupted")
 
-    monkeypatch.setattr(cache_schema_module, "_restore_cached_rows", restore_with_duplicate)
+    monkeypatch.setattr(
+        cache_schema_module, "_create_cache_schema", fail_after_schema_creation
+    )
 
-    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
+    with pytest.raises(sqlite3.DatabaseError, match="schema creation interrupted"):
         load_cached_session_data(
             [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
         )
@@ -244,10 +238,10 @@ def test_interrupted_schema_rebuild_reparses_active_file_on_next_load(
     original_refresh = cache_refresh_module.refresh_files
 
     def interrupt_refresh(*_args, **_kwargs):
-        raise RuntimeError("interrupted after schema restore")
+        raise RuntimeError("interrupted after schema reset")
 
     monkeypatch.setattr(cache_refresh_module, "refresh_files", interrupt_refresh)
-    with pytest.raises(RuntimeError, match="interrupted after schema restore"):
+    with pytest.raises(RuntimeError, match="interrupted after schema reset"):
         load_cached_session_data(
             [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
         )
@@ -262,85 +256,6 @@ def test_interrupted_schema_rebuild_reparses_active_file_on_next_load(
     assert recovered.stats.files_reused == 0
     assert recovered.file_errors == {}
     assert recovered.records[0].usage.cache_write_input_tokens == 25
-
-
-def test_snapshot_cached_rows_avoids_per_file_sql_parameters(tmp_path: Path) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    for index in range(3):
-        _write_session(sessions, f"thread-{index}", f"/repo/{index}", 100 + index)
-    cache_dir = tmp_path / "cache"
-    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
-
-    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
-        connection.row_factory = sqlite3.Row
-        previous_limit = connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 1)
-        try:
-            snapshot = cache_schema_module._snapshot_cached_rows(connection)
-        finally:
-            connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, previous_limit)
-
-    assert len(snapshot.files) == 3
-    assert len(snapshot.usage_records) == 3
-    assert len(snapshot.session_metadata) == 3
-
-
-def test_snapshot_cached_rows_raises_on_child_table_read_error(tmp_path: Path) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    _write_session(sessions, "thread-1", "/repo/demo", 100)
-    cache_dir = tmp_path / "cache"
-    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
-
-    with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
-        connection.row_factory = sqlite3.Row
-        connection.execute("drop table session_metadata")
-        with pytest.raises(sqlite3.DatabaseError, match="incomplete cache history.*session_metadata"):
-            cache_schema_module._snapshot_cached_rows(connection)
-
-
-def test_schema_rebuild_keeps_active_fallback_and_retries_parse_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    sessions = tmp_path / "codex" / "sessions"
-    session_path = _write_session(sessions, "thread-1", "/repo/demo", 100)
-    cache_dir = tmp_path / "cache"
-    load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
-    original_stat = session_path.stat()
-    _write_session(sessions, "thread-1", "/repo/demo", 200)
-    assert session_path.stat().st_size == original_stat.st_size
-    os.utime(session_path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
-    db_path = cache_dir / CACHE_DB_NAME
-
-    import sqlite3
-
-    with sqlite3.connect(db_path) as connection:
-        connection.execute("update schema_meta set value = ? where key = 'parser_version'", ("old",))
-
-    original_parser = usage_module.parse_session_file
-
-    def fail_parse(_path: Path):
-        raise OSError("transient rebuild failure")
-
-    monkeypatch.setattr(usage_module, "parse_session_file", fail_parse)
-    failed = load_cached_session_data(
-        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
-    )
-
-    assert failed.stats.rebuilt is True
-    assert failed.stats.file_errors == 1
-    assert failed.file_errors[str(session_path)] == "OSError: transient rebuild failure"
-    assert [record.usage.total_tokens for record in failed.records] == [100]
-    assert failed.file_summaries[session_path].project_key == "/repo/demo"
-
-    monkeypatch.setattr(usage_module, "parse_session_file", original_parser)
-    recovered = load_cached_session_data(
-        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
-    )
-
-    assert recovered.stats.files_parsed == 1
-    assert recovered.stats.files_reused == 0
-    assert recovered.stats.file_errors == 0
-    assert recovered.file_errors == {}
-    assert [record.usage.total_tokens for record in recovered.records] == [200]
 
 
 def test_parse_error_without_prior_success_retries_unchanged_file(

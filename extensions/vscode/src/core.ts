@@ -125,6 +125,10 @@ export function cacheDirPath(globalStoragePath: string): string {
 }
 
 export function cacheDbPath(globalStoragePath: string): string {
+  return path.join(cacheDirPath(globalStoragePath), "usage-cache-v4.sqlite3");
+}
+
+export function legacyCacheDbPath(globalStoragePath: string): string {
   return path.join(cacheDirPath(globalStoragePath), "usage-cache.sqlite3");
 }
 

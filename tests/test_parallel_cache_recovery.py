@@ -458,10 +458,10 @@ def test_interrupt_after_first_group_reuses_exactly_eight_files(
         assert tuple(
             connection.execute("select key, value from schema_meta order by key")
         ) == (
-            ("parser_version", "2"),
-            ("project_transition_version", "1"),
+            ("parser_version", "3"),
+            ("project_transition_version", "2"),
             ("project_transitions_dirty", "1"),
-            ("schema_version", "3"),
+            ("schema_version", "4"),
         )
 
 

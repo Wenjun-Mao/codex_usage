@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import codex_usage.cli as cli_module
 import pytest
+from codex_usage.session_cache import CACHE_DB_NAME
 
 
 def test_cli_summary_json_csv_and_report(tmp_path: Path) -> None:
@@ -220,7 +221,7 @@ def test_cli_uses_internal_cache_dir_env_var(tmp_path: Path) -> None:
 
     payload = json.loads(result.stdout)
     assert payload["total"]["usage"]["total_tokens"] == 100
-    assert (cache_dir / "usage-cache.sqlite3").is_file()
+    assert (cache_dir / CACHE_DB_NAME).is_file()
 
 
 def test_cli_cache_reuses_records_after_first_scan(tmp_path: Path) -> None:

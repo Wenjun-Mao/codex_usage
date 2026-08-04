@@ -1,53 +1,79 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from dataclasses import dataclass
 
-from codex_usage.session_cache_models import CachedRowsSnapshot
-
-CACHE_SCHEMA_VERSION = 3
-PARSER_CACHE_VERSION = 2
-PROJECT_TRANSITION_CACHE_VERSION = 1
+CACHE_SCHEMA_VERSION = 4
+PARSER_CACHE_VERSION = 3
+PROJECT_TRANSITION_CACHE_VERSION = 2
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
 _PROJECT_TRANSITIONS_DIRTY_KEY = "project_transitions_dirty"
 _DIRTY_VALUE = "1"
 _CLEAN_VALUE = "0"
 _KNOWN_CACHE_TABLES = frozenset(
-    {"schema_meta", "files", "usage_records", "session_metadata", "project_transitions"}
+    {
+        "schema_meta",
+        "files",
+        "usage_records",
+        "session_metadata",
+        "transition_candidates",
+        "dirty_transition_tasks",
+        "project_transitions",
+    }
 )
-_REQUIRED_HISTORY_TABLES = frozenset({"files", "usage_records", "session_metadata"})
+_KNOWN_CACHE_INDEXES = frozenset(
+    {
+        "usage_records_timestamp_us_idx",
+        "usage_records_session_timestamp_idx",
+        "transition_candidates_thread_idx",
+    }
+)
 
 
-def _ensure_schema(connection: sqlite3.Connection) -> bool:
+@dataclass(frozen=True, slots=True)
+class CacheSchemaState:
+    created: bool = False
+    reset: bool = False
+    reset_reason: str = ""
+
+
+def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
     if _schema_matches(connection):
-        return False
+        return CacheSchemaState()
+
     connection.execute("begin immediate")
     try:
-        cached_rows = _snapshot_cached_rows(connection)
-        _drop_cache_tables(connection)
-        _create_cache_tables(connection)
+        prior_tables = _existing_cache_tables(connection)
+        prior_version = _prior_schema_version(connection)
+        _drop_cache_schema(connection)
+        _create_cache_schema(connection)
         connection.executemany(
             "insert into schema_meta (key, value) values (?, ?)",
             [
                 ("schema_version", str(CACHE_SCHEMA_VERSION)),
                 ("parser_version", str(PARSER_CACHE_VERSION)),
-                ("project_transition_version", str(PROJECT_TRANSITION_CACHE_VERSION)),
+                (
+                    "project_transition_version",
+                    str(PROJECT_TRANSITION_CACHE_VERSION),
+                ),
                 (_PROJECT_TRANSITIONS_DIRTY_KEY, _DIRTY_VALUE),
             ],
         )
-        _restore_cached_rows(connection, cached_rows)
-        connection.execute(
-            "update files set error = ? where is_missing = 0",
-            (_REPARSE_REQUIRED_ERROR,),
-        )
         connection.commit()
-    except Exception:
+    except BaseException:
         connection.rollback()
         raise
-    return True
+
+    return CacheSchemaState(
+        created=not prior_tables,
+        reset=bool(prior_tables),
+        reset_reason=(
+            f"schema {prior_version}" if prior_version else "unrecognized schema"
+        ),
+    )
 
 
-def _create_cache_tables(connection: sqlite3.Connection) -> None:
+def _create_cache_schema(connection: sqlite3.Connection) -> None:
     statements = (
         "create table schema_meta (key text primary key, value text not null)",
         """
@@ -72,6 +98,7 @@ def _create_cache_tables(connection: sqlite3.Connection) -> None:
             file_path text not null,
             record_index integer not null,
             timestamp text not null,
+            timestamp_us integer not null,
             session_id text not null,
             turn_id text,
             model text not null,
@@ -114,7 +141,25 @@ def _create_cache_tables(connection: sqlite3.Connection) -> None:
         )
         """,
         """
+        create table transition_candidates (
+            file_key text not null,
+            candidate_index integer not null,
+            timestamp text not null,
+            timestamp_us integer not null,
+            thread_id text not null,
+            raw_path text not null,
+            source text not null,
+            primary key (file_key, candidate_index)
+        )
+        """,
+        """
+        create table dirty_transition_tasks (
+            thread_id text primary key
+        )
+        """,
+        """
         create table project_transitions (
+            owner_thread_id text not null,
             source_key text not null,
             source_label text not null,
             target_key text not null,
@@ -125,6 +170,9 @@ def _create_cache_tables(connection: sqlite3.Connection) -> None:
             thread_ids_json text not null
         )
         """,
+        "create index usage_records_timestamp_us_idx on usage_records (timestamp_us)",
+        "create index usage_records_session_timestamp_idx on usage_records (session_id, timestamp_us)",
+        "create index transition_candidates_thread_idx on transition_candidates (thread_id)",
     )
     for statement in statements:
         connection.execute(statement)
@@ -141,59 +189,43 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
         "parser_version": str(PARSER_CACHE_VERSION),
         "project_transition_version": str(PROJECT_TRANSITION_CACHE_VERSION),
     }
-    return all(metadata.get(key) == value for key, value in expected_versions.items())
+    return all(
+        metadata.get(key) == value for key, value in expected_versions.items()
+    )
 
 
-def _drop_cache_tables(connection: sqlite3.Connection) -> None:
-    for table in ("project_transitions", "session_metadata", "usage_records", "files", "schema_meta"):
-        connection.execute(f"drop table if exists {table}")
-
-
-def _snapshot_cached_rows(connection: sqlite3.Connection) -> CachedRowsSnapshot:
-    existing_tables = {
+def _existing_cache_tables(connection: sqlite3.Connection) -> set[str]:
+    return {
         str(row["name"])
-        for row in connection.execute("select name from sqlite_master where type = 'table'")
+        for row in connection.execute(
+            "select name from sqlite_master where type = 'table'"
+        )
         if str(row["name"]) in _KNOWN_CACHE_TABLES
     }
-    if not existing_tables:
-        return CachedRowsSnapshot(files=[], usage_records=[], session_metadata=[])
-    missing_history_tables = _REQUIRED_HISTORY_TABLES - existing_tables
-    if missing_history_tables:
-        missing = ", ".join(sorted(missing_history_tables))
-        raise sqlite3.DatabaseError(f"incomplete cache history; missing required table(s): {missing}")
-    file_rows = _dict_rows(connection, "select * from files")
-    usage_rows = _dict_rows(connection, "select * from usage_records order by file_key, record_index")
-    metadata_rows = _dict_rows(connection, "select * from session_metadata")
-    return CachedRowsSnapshot(files=file_rows, usage_records=usage_rows, session_metadata=metadata_rows)
 
 
-def _restore_cached_rows(connection: sqlite3.Connection, snapshot: CachedRowsSnapshot) -> None:
-    _insert_dict_rows(connection, "files", snapshot.files)
-    _insert_dict_rows(connection, "usage_records", snapshot.usage_records)
-    _insert_dict_rows(connection, "session_metadata", snapshot.session_metadata)
+def _prior_schema_version(connection: sqlite3.Connection) -> str:
+    if "schema_meta" not in _existing_cache_tables(connection):
+        return ""
+    try:
+        row = connection.execute(
+            "select value from schema_meta where key = 'schema_version'"
+        ).fetchone()
+    except sqlite3.Error:
+        return ""
+    return "" if row is None else str(row["value"])
 
 
-def _dict_rows(
-    connection: sqlite3.Connection,
-    query: str,
-    parameters: list[str] | None = None,
-) -> list[dict[str, Any]]:
-    return [dict(row) for row in connection.execute(query, parameters or [])]
-
-
-def _insert_dict_rows(connection: sqlite3.Connection, table: str, rows: list[dict[str, Any]]) -> None:
-    if not rows:
-        return
-    columns = _table_columns(connection, table)
-    selected_columns = [column for column in columns if column in rows[0]]
-    if not selected_columns:
-        raise sqlite3.DatabaseError(f"cannot restore {table}: snapshot has no compatible columns")
-    placeholders = ",".join("?" for _ in selected_columns)
-    column_sql = ",".join(selected_columns)
-    sql = f"insert into {table} ({column_sql}) values ({placeholders})"
-    for row in rows:
-        connection.execute(sql, [row.get(column) for column in selected_columns])
-
-
-def _table_columns(connection: sqlite3.Connection, table: str) -> list[str]:
-    return [str(row["name"]) for row in connection.execute(f"pragma table_info({table})")]
+def _drop_cache_schema(connection: sqlite3.Connection) -> None:
+    for index in sorted(_KNOWN_CACHE_INDEXES):
+        connection.execute(f"drop index if exists {index}")
+    for table in (
+        "project_transitions",
+        "dirty_transition_tasks",
+        "transition_candidates",
+        "session_metadata",
+        "usage_records",
+        "files",
+        "schema_meta",
+    ):
+        connection.execute(f"drop table if exists {table}")

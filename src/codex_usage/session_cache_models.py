@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import (
@@ -23,6 +22,7 @@ class CacheStats:
     files_missing_retained: int = 0
     file_errors: int = 0
     rebuilt: bool = False
+    legacy_cleanup_errors: int = 0
 
 
 @dataclass(frozen=True)
@@ -57,10 +57,3 @@ class CachedSessionData:
     retained_missing_files: list[Path] = field(default_factory=list)
     usage_run: ParallelRunReport = EMPTY_PARALLEL_RUN_REPORT
     transition_run: ParallelRunReport = EMPTY_PARALLEL_RUN_REPORT
-
-
-@dataclass(frozen=True)
-class CachedRowsSnapshot:
-    files: list[dict[str, Any]]
-    usage_records: list[dict[str, Any]]
-    session_metadata: list[dict[str, Any]]

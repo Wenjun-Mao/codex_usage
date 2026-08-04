@@ -209,18 +209,19 @@ def _insert_record(connection: sqlite3.Connection, file_key: str, file_path: Pat
     connection.execute(
         """
         insert into usage_records (
-            file_key, file_path, record_index, timestamp, session_id, turn_id, model, effort,
+            file_key, file_path, record_index, timestamp, timestamp_us, session_id, turn_id, model, effort,
             collaboration_mode, project_key, project_label, project_aliases_json,
             cwd, git_repository_url, git_branch, parent_thread_id,
             input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens,
             reasoning_output_tokens, total_tokens
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             file_key,
             str(file_path),
             index,
             record.timestamp.isoformat(),
+            int(record.timestamp.timestamp() * 1_000_000),
             record.session_id,
             record.turn_id,
             record.model,
@@ -375,11 +376,12 @@ def _replace_project_transitions(
             connection.execute(
                 """
                 insert into project_transitions (
-                    source_key, source_label, target_key, target_label,
+                    owner_thread_id, source_key, source_label, target_key, target_label,
                     effective_from, confidence, evidence_json, thread_ids_json
-                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    "",
                     transition.source_key,
                     transition.source_label,
                     transition.target_key,

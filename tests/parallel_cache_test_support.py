@@ -21,44 +21,45 @@ from codex_usage.session_cache_models import CachedSessionData
 
 type GenerationSnapshot = tuple[tuple[object, ...], ...]
 SchemaObject = tuple[str, str, str, str]
-
 EXPECTED_SCHEMA_META = (
-    ("parser_version", "2"),
-    ("project_transition_version", "1"),
+    ("parser_version", "3"),
+    ("project_transition_version", "2"),
     ("project_transitions_dirty", "1"),
-    ("schema_version", "3"),
+    ("schema_version", "4"),
 )
 EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
+    ("index", "sqlite_autoindex_dirty_transition_tasks_1", "dirty_transition_tasks", ""),
     ("index", "sqlite_autoindex_files_1", "files", ""),
     ("index", "sqlite_autoindex_schema_meta_1", "schema_meta", ""),
     ("index", "sqlite_autoindex_session_metadata_1", "session_metadata", ""),
+    ("index", "sqlite_autoindex_transition_candidates_1", "transition_candidates", ""),
     ("index", "sqlite_autoindex_usage_records_1", "usage_records", ""),
+    ("index", "transition_candidates_thread_idx", "transition_candidates", "CREATE INDEX transition_candidates_thread_idx on transition_candidates (thread_id)"),
+    ("index", "usage_records_session_timestamp_idx", "usage_records", "CREATE INDEX usage_records_session_timestamp_idx on usage_records (session_id, timestamp_us)"),
+    ("index", "usage_records_timestamp_us_idx", "usage_records", "CREATE INDEX usage_records_timestamp_us_idx on usage_records (timestamp_us)"),
+    ("table", "dirty_transition_tasks", "dirty_transition_tasks", "CREATE TABLE dirty_transition_tasks ( thread_id text primary key )"),
     ("table", "files", "files", "CREATE TABLE files ( file_key text primary key, path text not null, "
-     "session_dir text not null, storage_state text not null, size_bytes integer not null, "
-     "mtime_ns integer not null, parsed_at text not null, last_seen_at text not null, "
-     "missing_since text, is_missing integer not null, session_id text, error text )"),
-    ("table", "project_transitions", "project_transitions", "CREATE TABLE project_transitions ( source_key text not null, "
-     "source_label text not null, target_key text not null, target_label text not null, "
-     "effective_from text not null, confidence integer not null, evidence_json text not null, "
-     "thread_ids_json text not null )"),
+     "session_dir text not null, storage_state text not null, size_bytes integer not null, mtime_ns integer not null, "
+     "parsed_at text not null, last_seen_at text not null, missing_since text, is_missing integer not null, session_id text, error text )"),
+    ("table", "project_transitions", "project_transitions", "CREATE TABLE project_transitions ( owner_thread_id text not null, source_key text not null, "
+     "source_label text not null, target_key text not null, target_label text not null, effective_from text not null, "
+     "confidence integer not null, evidence_json text not null, thread_ids_json text not null )"),
     ("table", "schema_meta", "schema_meta", "CREATE TABLE schema_meta (key text primary key, value text not null)"),
     ("table", "session_metadata", "session_metadata", "CREATE TABLE session_metadata ( file_key text primary key, "
-     "file_path text not null, session_dir text not null, storage_state text not null, "
-     "is_missing integer not null, session_id text not null, cwd text, project_key text, "
-     "project_label text, project_aliases_json text not null, git_repository_url text, "
-     "git_branch text, memory_mode text, has_base_instructions integer not null, "
-     "session_bytes integer not null, estimated_sync_bytes integer not null )"),
+     "file_path text not null, session_dir text not null, storage_state text not null, is_missing integer not null, "
+     "session_id text not null, cwd text, project_key text, project_label text, project_aliases_json text not null, "
+     "git_repository_url text, git_branch text, memory_mode text, has_base_instructions integer not null, session_bytes integer not null, estimated_sync_bytes integer not null )"),
+    ("table", "transition_candidates", "transition_candidates", "CREATE TABLE transition_candidates ( file_key text not null, "
+     "candidate_index integer not null, timestamp text not null, timestamp_us integer not null, thread_id text not null, "
+     "raw_path text not null, source text not null, primary key (file_key, candidate_index) )"),
     ("table", "usage_records", "usage_records", "CREATE TABLE usage_records ( file_key text not null, file_path text not null, "
-     "record_index integer not null, timestamp text not null, session_id text not null, "
-     "turn_id text, model text not null, effort text, collaboration_mode text, "
-     "project_key text not null, project_label text not null, project_aliases_json text not null, "
-     "cwd text, git_repository_url text, git_branch text, parent_thread_id text, "
-     "input_tokens integer not null, cached_input_tokens integer not null, "
-     "cache_write_input_tokens integer not null default 0, output_tokens integer not null, "
-     "reasoning_output_tokens integer not null, total_tokens integer not null, "
+     "record_index integer not null, timestamp text not null, timestamp_us integer not null, session_id text not null, "
+     "turn_id text, model text not null, effort text, collaboration_mode text, project_key text not null, "
+     "project_label text not null, project_aliases_json text not null, cwd text, git_repository_url text, "
+     "git_branch text, parent_thread_id text, input_tokens integer not null, cached_input_tokens integer not null, "
+     "cache_write_input_tokens integer not null default 0, output_tokens integer not null, reasoning_output_tokens integer not null, total_tokens integer not null, "
      "primary key (file_key, record_index) )"),
 )
-
 _FIXED_TIMESTAMP = "2026-07-31T10:00:00Z"
 
 
