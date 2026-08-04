@@ -59,6 +59,14 @@ class UsageSummary:
             "credits": self.credits.to_dict(),
         }
 
+    def add(self, other: UsageSummary) -> UsageSummary:
+        return UsageSummary(
+            usage=self.usage.add(other.usage),
+            cost=self.cost.add(other.cost),
+            credits=self.credits.add(other.credits),
+            record_count=self.record_count + other.record_count,
+        )
+
 
 def resolve_timezone(name: str | None) -> tzinfo:
     if not name:
@@ -152,21 +160,22 @@ def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinf
     if group_by not in GROUP_CHOICES:
         raise ValueError(f"Unknown grouping: {group_by}")
 
-    buckets: dict[str, tuple[str, TokenUsage, CostBreakdown, CreditBreakdown, int]] = {}
+    buckets: dict[str, tuple[str, UsageSummary]] = {}
     for record in records:
         key, label = _bucket_key(record, group_by, timezone)
-        _, usage, cost, credits, count = buckets.get(key, (label, TokenUsage(), CostBreakdown(), CreditBreakdown(), 0))
-        buckets[key] = (
-            label,
-            usage.add(record.usage),
-            cost.add(_record_cost(record)),
-            credits.add(_record_credits(record)),
-            count + 1,
-        )
+        existing_label, existing_summary = buckets.get(key, (label, _empty_summary()))
+        buckets[key] = (existing_label, existing_summary.add(summarize_record(record)))
 
     rows = [
-        AggregateRow(key=key, label=label, usage=usage, cost=cost, credits=credits, record_count=count)
-        for key, (label, usage, cost, credits, count) in buckets.items()
+        AggregateRow(
+            key=key,
+            label=label,
+            usage=summary.usage,
+            cost=summary.cost,
+            credits=summary.credits,
+            record_count=summary.record_count,
+        )
+        for key, (label, summary) in buckets.items()
     ]
     if group_by in {"day", "hour"}:
         return sorted(rows, key=lambda row: row.key)
@@ -174,14 +183,28 @@ def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinf
 
 
 def summarize_records(records: list[UsageRecord]) -> UsageSummary:
-    usage = TokenUsage()
-    cost = CostBreakdown()
-    credits = CreditBreakdown()
+    summary = _empty_summary()
     for record in records:
-        usage = usage.add(record.usage)
-        cost = cost.add(_record_cost(record))
-        credits = credits.add(_record_credits(record))
-    return UsageSummary(usage=usage, cost=cost, credits=credits, record_count=len(records))
+        summary = summary.add(summarize_record(record))
+    return summary
+
+
+def summarize_record(record: UsageRecord) -> UsageSummary:
+    return UsageSummary(
+        usage=record.usage,
+        cost=_record_cost(record),
+        credits=_record_credits(record),
+        record_count=1,
+    )
+
+
+def _empty_summary() -> UsageSummary:
+    return UsageSummary(
+        usage=TokenUsage(),
+        cost=CostBreakdown(),
+        credits=CreditBreakdown(),
+        record_count=0,
+    )
 
 
 def _bucket_key(record: UsageRecord, group_by: str, timezone: tzinfo) -> tuple[str, str]:
