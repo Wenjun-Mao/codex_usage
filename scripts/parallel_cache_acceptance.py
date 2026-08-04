@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import builtins
 import hashlib
+import io
 import json
 import multiprocessing
 import os
@@ -308,8 +310,10 @@ class _SourceJsonlReadAttempts:
         self._roots = tuple(path.resolve() for path in session_dirs)
         self.count = 0
 
-    def blocks(self, path: Path) -> bool:
-        candidate = path.resolve(strict=False)
+    def blocks(self, path: object) -> bool:
+        candidate = _path_from_open_argument(path)
+        if candidate is None:
+            return False
         return candidate.suffix == ".jsonl" and any(
             candidate.is_relative_to(root) for root in self._roots
         )
@@ -323,31 +327,62 @@ def _block_source_jsonl_reads(
     original_open = Path.open
     original_read_bytes = Path.read_bytes
     original_read_text = Path.read_text
+    original_builtin_open = builtins.open
+    original_io_open = io.open
+    original_os_open = os.open
 
-    def guard_open(path: Path, *args: object, **kwargs: object):
-        if attempts.blocks(path):
-            attempts.count += 1
-            raise RuntimeError("bounded warm report attempted source JSONL access")
+    def guard_open(path: object, *args: object, **kwargs: object):
+        _raise_for_source_jsonl_read(attempts, path)
         return original_open(path, *args, **kwargs)
 
     def guard_read_bytes(path: Path) -> bytes:
-        if attempts.blocks(path):
-            attempts.count += 1
-            raise RuntimeError("bounded warm report attempted source JSONL access")
+        _raise_for_source_jsonl_read(attempts, path)
         return original_read_bytes(path)
 
     def guard_read_text(path: Path, *args: object, **kwargs: object) -> str:
-        if attempts.blocks(path):
-            attempts.count += 1
-            raise RuntimeError("bounded warm report attempted source JSONL access")
+        _raise_for_source_jsonl_read(attempts, path)
         return original_read_text(path, *args, **kwargs)
+
+    def guard_builtin_open(path: object, *args: object, **kwargs: object):
+        _raise_for_source_jsonl_read(attempts, path)
+        return original_builtin_open(path, *args, **kwargs)
+
+    def guard_io_open(path: object, *args: object, **kwargs: object):
+        _raise_for_source_jsonl_read(attempts, path)
+        return original_io_open(path, *args, **kwargs)
+
+    def guard_os_open(path: object, *args: object, **kwargs: object):
+        _raise_for_source_jsonl_read(attempts, path)
+        return original_os_open(path, *args, **kwargs)
 
     with (
         patch.object(Path, "open", guard_open),
         patch.object(Path, "read_bytes", guard_read_bytes),
         patch.object(Path, "read_text", guard_read_text),
+        patch.object(builtins, "open", guard_builtin_open),
+        patch.object(io, "open", guard_io_open),
+        patch.object(os, "open", guard_os_open),
     ):
         yield attempts
+
+
+def _path_from_open_argument(path: object) -> Path | None:
+    if isinstance(path, int):
+        return None
+    try:
+        raw_path = os.fspath(path)
+    except TypeError:
+        return None
+    return Path(os.fsdecode(raw_path)).resolve(strict=False)
+
+
+def _raise_for_source_jsonl_read(
+    attempts: _SourceJsonlReadAttempts,
+    path: object,
+) -> None:
+    if attempts.blocks(path):
+        attempts.count += 1
+        raise RuntimeError("bounded warm report attempted source JSONL access")
 
 
 def _require_changed_semantics(

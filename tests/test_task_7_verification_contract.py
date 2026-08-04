@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
+import os
+import sqlite3
 import sys
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +28,7 @@ def _load_script(path: Path) -> ModuleType:
 
 
 def test_synthetic_acceptance_renders_a_bounded_warm_cached_report(
-    capsys: object,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     source = _load_script(ROOT / "scripts" / "parallel_cache_acceptance.py")
 
@@ -55,6 +60,75 @@ def test_packaged_report_smoke_is_a_shared_native_build_gate() -> None:
         assert build.index("packaged_parallel_cache_smoke.py") < build.index(
             "packaged_report_smoke.py"
         ) < build.index("smoke-test-packaged-sync.py")
+
+
+def test_packaged_report_smoke_rejects_empty_model_mix() -> None:
+    source = _load_script(ROOT / "scripts" / "packaged_report_smoke.py")
+    heading_only = "\n".join(source._REPORT_MARKERS)
+
+    with pytest.raises(RuntimeError, match="Model Mix fill"):
+        source._validate_report(heading_only)
+
+
+def test_packaged_report_smoke_rejects_missing_synthetic_model_identity() -> None:
+    source = _load_script(ROOT / "scripts" / "packaged_report_smoke.py")
+    incomplete = "\n".join(
+        (
+            *source._REPORT_MARKERS,
+            *(
+                'class="model-mix-fill model-color-slot-0"'
+                for _ in source._SYNTHETIC_MODELS
+            ),
+            "gpt-5.6-sol",
+            "gpt-5.5",
+            "gpt-5.4",
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic model identities"):
+        source._validate_report(incomplete)
+
+
+def test_packaged_report_smoke_accepts_rendered_model_mix_contract() -> None:
+    source = _load_script(ROOT / "scripts" / "packaged_report_smoke.py")
+    rendered = "\n".join(
+        (
+            *source._REPORT_MARKERS,
+            *(
+                'class="model-mix-fill model-color-slot-0"'
+                for _ in source._SYNTHETIC_MODELS
+            ),
+            *(f">{model}</span>" for model in source._SYNTHETIC_MODELS),
+        )
+    )
+
+    assert source._validate_report(rendered) == len(source._SYNTHETIC_MODELS)
+
+
+@pytest.mark.parametrize(
+    "reader",
+    [
+        lambda path: open(path, encoding="utf-8").read(),
+        lambda path: io.open(path, encoding="utf-8").read(),
+        lambda path: os.close(os.open(path, os.O_RDONLY)),
+    ],
+)
+def test_warm_source_guard_blocks_non_path_jsonl_reads(
+    tmp_path: Path,
+    reader: object,
+) -> None:
+    source = _load_script(ROOT / "scripts" / "parallel_cache_acceptance.py")
+    sessions = tmp_path / "sessions"
+    source_file = sessions / "sample.jsonl"
+    source_file.parent.mkdir()
+    source_file.write_text("{}\n", encoding="utf-8")
+
+    with source._block_source_jsonl_reads([sessions]):
+        with pytest.raises(RuntimeError, match="source JSONL access"):
+            reader(source_file)
+        (tmp_path / "report.html").write_text("ok", encoding="utf-8")
+        with sqlite3.connect(tmp_path / "cache.sqlite3") as connection:
+            connection.execute("create table verification (value integer)")
 
 
 def test_direct_script_bootstrap_imports_use_inline_e402_suppressions() -> None:

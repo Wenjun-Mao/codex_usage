@@ -19,6 +19,8 @@ _REPORT_MARKERS = (
     "Root tasks",
     "Subagents",
 )
+_SYNTHETIC_MODELS = ("gpt-5.6-sol", "gpt-5.5", "gpt-5.4", "gpt-5.3-codex")
+_MODEL_MIX_FILL_MARKER = 'class="model-mix-fill '
 _COMMAND_TIMEOUT_SECONDS = 120
 
 
@@ -44,12 +46,14 @@ def main(argv: list[str] | None = None) -> int:
                 f"with code {completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
             )
         report_html = report.read_text(encoding="utf-8")
-        _validate_report(report_html)
+        model_mix_fill_count = _validate_report(report_html)
         print(
             json.dumps(
                 {
+                    "model_mix_fill_count": model_mix_fill_count,
                     "report_bytes": len(report_html.encode()),
                     "required_markers": len(_REPORT_MARKERS),
+                    "synthetic_models": list(_SYNTHETIC_MODELS),
                     "synthetic_sessions": 2,
                 },
                 sort_keys=True,
@@ -151,10 +155,25 @@ def _write_session(
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
 
 
-def _validate_report(report_html: str) -> None:
+def _validate_report(report_html: str) -> int:
     missing = [marker for marker in _REPORT_MARKERS if marker not in report_html]
     if missing:
         raise RuntimeError(f"packaged report is missing required markers: {missing!r}")
+    model_mix_fill_count = report_html.count(_MODEL_MIX_FILL_MARKER)
+    if model_mix_fill_count < len(_SYNTHETIC_MODELS):
+        raise RuntimeError(
+            "packaged report has no complete Model Mix fill set: "
+            f"expected at least {len(_SYNTHETIC_MODELS)}, got {model_mix_fill_count}"
+        )
+    missing_models = [
+        model for model in _SYNTHETIC_MODELS if f">{model}</span>" not in report_html
+    ]
+    if missing_models:
+        raise RuntimeError(
+            "packaged report is missing synthetic model identities: "
+            f"{missing_models!r}"
+        )
+    return model_mix_fill_count
 
 
 if __name__ == "__main__":
