@@ -27,7 +27,7 @@ from codex_usage.session_cache_generations import (
 from codex_usage.session_cache_models import CacheRefreshOutcome, CacheStats
 from codex_usage.session_cache_ownership import (
     is_reusable,
-    promote_reusable_cached_session_owners,
+    promote_cached_session_owners,
 )
 from codex_usage.session_cache_schema import _REPARSE_REQUIRED_ERROR
 from codex_usage.session_cache_store import record_file_error
@@ -181,7 +181,7 @@ def _commit_preflight(
     connection.execute("begin immediate")
     try:
         affected_task_ids.update(
-            promote_reusable_cached_session_owners(
+            promote_cached_session_owners(
                 connection,
                 inventory,
                 cached_rows,

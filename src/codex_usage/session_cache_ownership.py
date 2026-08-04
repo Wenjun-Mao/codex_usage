@@ -24,7 +24,7 @@ def is_reusable(
     )
 
 
-def promote_reusable_cached_session_owners(
+def promote_cached_session_owners(
     connection: sqlite3.Connection,
     inventory: list[SessionFileInventoryEntry],
     cached_rows: dict[str, sqlite3.Row],
@@ -32,27 +32,28 @@ def promote_reusable_cached_session_owners(
     rebuilt: bool,
     entry_priority: Callable[[SessionFileInventoryEntry], tuple[int, int, str]],
 ) -> set[str]:
-    """Give each unchanged cached session its current highest-priority file key.
+    """Promote a reusable current owner only when it has highest priority.
 
     Inventory discovery deliberately begins with path-based keys so duplicate
     active/archive JSONL files can coexist. Once both complete generations are
     cached, an ownership handoff can be resolved without reopening either file:
     the complete winner is moved to its session-id key in this transaction.
     """
-    reusable_by_session_id: dict[str, list[int]] = {}
+    current_by_session_id: dict[str, list[int]] = {}
     for index, entry in enumerate(inventory):
         cached = cached_rows.get(entry.file_key)
-        if not is_reusable(entry, cached, rebuilt=rebuilt):
-            continue
         session_id = _complete_cached_session_id(connection, entry.file_key, cached)
         if session_id:
-            reusable_by_session_id.setdefault(session_id, []).append(index)
+            current_by_session_id.setdefault(session_id, []).append(index)
 
     affected_task_ids: set[str] = set()
-    for session_id, indexes in reusable_by_session_id.items():
+    for session_id, indexes in current_by_session_id.items():
         winner_index = min(indexes, key=lambda index: entry_priority(inventory[index]))
         winner = inventory[winner_index]
-        if winner.file_key == session_id:
+        winner_cached = cached_rows[winner.file_key]
+        if winner.file_key == session_id or not is_reusable(
+            winner, winner_cached, rebuilt=rebuilt
+        ):
             continue
 
         canonical_entry = replace(
@@ -72,7 +73,7 @@ def _complete_cached_session_id(
     file_key: str,
     cached: sqlite3.Row | None,
 ) -> str:
-    if cached is None or cached["error"] or not cached["session_id"]:
+    if cached is None or not cached["session_id"]:
         return ""
     session_id = str(cached["session_id"])
     metadata = connection.execute(
