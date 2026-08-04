@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from codex_usage.models import ROOT_USAGE_ROLE
 from codex_usage.session_cache_queries import (
     load_raw_candidates_for_task_ids,
     load_records_for_task_ids,
@@ -20,6 +21,7 @@ def test_current_generation_usage_records_are_ordered_by_file_and_index() -> Non
         ("file-z.jsonl", "turn-z-0"),
         ("file-z.jsonl", "turn-z-1"),
     ]
+    assert {record.usage_role for record in records} == {ROOT_USAGE_ROLE}
 
 
 def test_current_generation_candidates_are_ordered_by_file_and_index() -> None:
@@ -63,6 +65,7 @@ def _query_connection() -> sqlite3.Connection:
             git_repository_url text,
             git_branch text,
             parent_thread_id text,
+            usage_role text not null check (usage_role in ('root', 'subagent')),
             input_tokens integer not null,
             cached_input_tokens integer not null,
             cache_write_input_tokens integer not null,
@@ -107,7 +110,7 @@ def _insert_usage_records(connection: sqlite3.Connection) -> None:
         """
         insert into usage_records values (
             ?, ?, ?, '2026-08-03T12:00:00Z', ?, ?, 'gpt-5.5', '', '',
-            'project', 'Project', '[]', '', '', '', '', 1, 0, 0, 0, 0, 1
+            'project', 'Project', '[]', '', '', '', '', 'root', 1, 0, 0, 0, 0, 1
         )
         """,
         rows,
