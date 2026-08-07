@@ -4,6 +4,7 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 
 ## Features
 
+- Task Storage shows current local JSONL usage by user-visible root task tree, including root versus structured-descendant bytes and transparent large-task badges.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, and daily/hourly views.
@@ -110,11 +111,19 @@ After installation, run `Codex Usage: Open Dashboard` from the command palette.
 
 ## First Run And Cache
 
-The first `1.3.0` report builds the disposable schema 6 cache once. Later reports query only the selected range from local SQLite, value each retained record once, and reuse that valuation throughout the report. The extension passes an internal cache folder to the bundled Python CLI and keeps it under VS Code global extension storage. The cache is local only and pricing still uses checked-in effective-dated rates. The toolbar displays `Loaded in X.X seconds` for the report currently shown. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
+The first `1.4.0` report builds the disposable schema 7 cache once. Later reports query only the selected range from local SQLite, value each retained record once, and reuse that valuation throughout the report. The extension passes an internal cache folder to the bundled Python CLI and keeps it under VS Code global extension storage. The cache is local only and pricing still uses checked-in effective-dated rates. The toolbar displays `Loaded in X.X seconds` for the report currently shown. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
 
 Unchanged refreshes open no session JSONLs. A growing active JSONL can resume from an atomically committed parser checkpoint after its path, OS file identity, task ID, head digest, and 64 KiB old-boundary digest are verified, so an ordinary append reads only fixed guard windows plus the new tail. Replacement, truncation, same-size modification, unavailable identity, digest mismatch, invalid state, or an archived-file change triggers a safe full parse. The parser reads only through the size captured during inventory and defers an incomplete final row from its starting offset.
 
 At most four read-only workers use buffered binary I/O to parse groups of eight files in descending unread-byte order. SQLite remains in the parent process and atomically commits records, metadata, candidates, fingerprints, and checkpoints; a failure retains the prior generation. Task Transfer metadata discovery stops as soon as it reads valid `session_meta`. Range-aware cache queries use UTC-microsecond timestamps, refresh coordination retains only the latest request while an active process finishes, and cache diagnostics in the timing sidecar and VS Code Output channel distinguish full parses, append parses, append fallbacks, and source bytes read.
+
+## Task Storage
+
+The dashboard includes a read-only **Task Storage** section for the current local JSONL corpus. It groups physical files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes active and archived files, and follows the selected project filter without following the usage date range. The report shows the largest trees as horizontal bars and lists every tree with logical bytes, file counts, storage state, and share. Transparent badges mark root size at 1 GiB and total tree size at 10 GiB.
+
+The purpose is visibility before starting a fresh root task. A 2026-08-07 corpus audit measured 151.71 GiB across 2,511 files, including 143.56 GiB in structured descendants. Version 1.4.0 does not delete, back up, restore, compress, or estimate compressed size, and it does not claim filesystem allocation or reclaimable space.
+
+Codex documentation describes side chats as ephemeral forks. In the observed local format, the side-chat turn is stored in the parent root JSONL without a separate task, file, or durable discriminator. Its bytes and token usage remain under **Root task**, and the report says so instead of inventing a heuristic third role. A future split requires reliable upstream metadata and will not retroactively guess older records.
 
 ## Privacy
 

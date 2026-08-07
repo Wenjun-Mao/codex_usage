@@ -25,9 +25,9 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 | [0015](0015-explicit-token-category-accounting.md) | Preserve explicit upstream token categories without reconstructing missing evidence. |
 | [0016](0016-register-imported-tasks-through-codex.md) | Register imported tasks through Codex's supported app-server read-repair path. |
 | [0017](0017-one-project-per-transfer-operation.md) | Constrain each Import and Export to one Codex project while keeping the transfer folder multi-project. |
-
 The current Task Transfer inventory contract is recorded in [ADR 0018](0018-user-visible-task-transfer-inventory.md).
 The bounded parallel cache refresh recovery contract is recorded in [ADR 0019](0019-bounded-parallel-cache-refresh.md).
 The incremental range-aware usage-cache contract is recorded in [ADR 0020](0020-incremental-range-aware-usage-cache.md).
 The explicit root-task/subagent usage-role contract is recorded in [ADR 0021](0021-explicit-usage-role-breakdown.md).
 The guarded append-parser checkpoint contract is recorded in [ADR 0022](0022-guarded-append-parser-checkpoints.md).
+The read-only Task Storage inventory contract is recorded in [ADR 0023](0023-task-storage-insights.md).

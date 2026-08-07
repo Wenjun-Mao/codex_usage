@@ -50,7 +50,7 @@ Visually review the tracked image at 1440 x 900. Confirm that both `Root tasks` 
 
 The repository has a `Package and Publish VSIX` workflow that builds both platform packages on native GitHub-hosted runners.
 
-Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version and points at a commit contained in `origin/main`, such as `v1.3.0`, also builds and publishes both packages.
+Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version and points at a commit contained in `origin/main`, such as `v1.4.0`, also builds and publishes both packages.
 
 Publishing requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
 
