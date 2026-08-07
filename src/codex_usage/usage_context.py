@@ -45,6 +45,7 @@ class UsageContext:
     project_keys: list[str]
     project_transitions: list[ProjectTransition]
     storage_stats: CacheStats
+    session_data: CachedSessionData | None = None
 
 
 def load_usage_context(args: argparse.Namespace) -> UsageContext:
@@ -64,6 +65,7 @@ def load_usage_context(args: argparse.Namespace) -> UsageContext:
         project_keys=project_keys,
         project_transitions=filter_project_transitions(data.project_transitions, records),
         storage_stats=data.stats,
+        session_data=data,
     )
 
 
