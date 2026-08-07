@@ -186,9 +186,10 @@ test("buildCodexUsageEnv passes internal cache directory without removing proces
 test("cacheDbPath points at the Python cache database under extension storage", () => {
   assert.equal(
     cacheDbPath("C:/global-storage"),
-    path.join("C:/global-storage", "cache", "usage-cache-v6.sqlite3"),
+    path.join("C:/global-storage", "cache", "usage-cache-v7.sqlite3"),
   );
   assert.deepEqual(legacyCacheDbPaths("C:/global-storage"), [
+    path.join("C:/global-storage", "cache", "usage-cache-v6.sqlite3"),
     path.join("C:/global-storage", "cache", "usage-cache-v5.sqlite3"),
     path.join("C:/global-storage", "cache", "usage-cache-v4.sqlite3"),
     path.join("C:/global-storage", "cache", "usage-cache.sqlite3"),

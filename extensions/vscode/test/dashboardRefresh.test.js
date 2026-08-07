@@ -36,12 +36,12 @@ function deferred() {
   return { promise, resolve };
 }
 
-test("dashboard refresh marks schema-4 cache storage as rebuilding", async (t) => {
-  const storagePath = fs.mkdtempSync(path.join(__dirname, "dashboard-schema-4-"));
+test("dashboard refresh marks schema-6 cache storage as rebuilding", async (t) => {
+  const storagePath = fs.mkdtempSync(path.join(__dirname, "dashboard-schema-6-"));
   t.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
   const legacyPath = legacyCacheDbPaths(storagePath)[0];
   fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
-  fs.writeFileSync(legacyPath, "schema-4");
+  fs.writeFileSync(legacyPath, "schema-6");
 
   assert.equal(await dashboardLoadingKind(storagePath), "rebuilding");
 });
