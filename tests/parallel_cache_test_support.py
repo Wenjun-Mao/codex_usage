@@ -39,7 +39,7 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
      "parsed_at text not null, last_seen_at text not null, missing_since text, is_missing integer not null, session_id text, error text )"),
     ("table", "parser_checkpoints", "parser_checkpoints", "CREATE TABLE parser_checkpoints ( file_key text primary key, "  # noqa: ISC004
      "byte_offset integer not null, next_record_index integer not null, next_candidate_index integer not null, "
-     "source_device integer not null, source_inode integer not null, head_sha256 text not null, boundary_sha256 text not null, "
+     "source_device text not null, source_inode text not null, head_sha256 text not null, boundary_sha256 text not null, "
      "session_id text not null, state_json text not null )"),
     ("table", "project_transitions", "project_transitions", "CREATE TABLE project_transitions ( owner_thread_id text not null, source_key text not null, "  # noqa: ISC004
      "source_label text not null, target_key text not null, target_label text not null, effective_from text not null, "

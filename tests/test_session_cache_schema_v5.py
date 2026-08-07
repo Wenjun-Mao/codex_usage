@@ -4,7 +4,16 @@ from pathlib import Path
 from parallel_cache_test_support import normalized_sqlite_master
 
 import codex_usage.session_cache_schema as cache_schema
+from codex_usage.models import SessionMetadata
 from codex_usage.session_cache import CACHE_DB_NAME
+from codex_usage.session_cache_checkpoints import (
+    load_parser_checkpoint,
+    upsert_parser_checkpoint,
+)
+from codex_usage.session_parser_models import (
+    SessionParseCheckpoint,
+    SessionParserState,
+)
 
 
 def create_schema_four_database(db_path: Path, *, sentinel_total_tokens: int) -> None:
@@ -74,6 +83,55 @@ def test_schema_six_contains_incremental_query_and_checkpoint_contract(
     assert ("index", "usage_records_timestamp_us_idx") in names
     assert ("index", "usage_records_session_timestamp_idx") in names
     assert ("index", "transition_candidates_thread_idx") in names
+
+
+def test_checkpoint_identity_round_trips_unsigned_windows_values(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / CACHE_DB_NAME
+    session_path = tmp_path / "thread.jsonl"
+    metadata = SessionMetadata(session_id="thread", file_path=session_path)
+    state = SessionParserState(
+        metadata=metadata,
+        root_metadata=metadata,
+        previous_usage=None,
+        root_session_id="thread",
+        root_session_is_fork=False,
+        counted_root_fork_usage=False,
+        current_model="",
+        current_turn_id="",
+        current_effort="",
+        current_mode="",
+    )
+    checkpoint = SessionParseCheckpoint(
+        byte_offset=10,
+        next_record_index=1,
+        next_candidate_index=0,
+        source_device=(2**63) + 123,
+        source_inode=(2**64) - 1,
+        head_sha256="head",
+        boundary_sha256="boundary",
+        session_id="thread",
+        state=state,
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        cache_schema._ensure_schema(connection)
+        upsert_parser_checkpoint(connection, "thread", checkpoint)
+        stored = connection.execute(
+            "select source_device, source_inode, typeof(source_device), "
+            "typeof(source_inode) from parser_checkpoints"
+        ).fetchone()
+        loaded = load_parser_checkpoint(connection, "thread", session_path)
+
+    assert tuple(stored) == (
+        str(checkpoint.source_device),
+        str(checkpoint.source_inode),
+        "text",
+        "text",
+    )
+    assert loaded == checkpoint
 
 
 def test_matching_version_without_checkpoint_table_is_rebuilt(tmp_path: Path) -> None:

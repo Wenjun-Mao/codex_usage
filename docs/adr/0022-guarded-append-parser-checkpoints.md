@@ -33,6 +33,10 @@ source device and file identity, canonical task ID, a head digest, and a 64 KiB
 digest ending at the old boundary. Schema 5 is discarded and rebuilt; it is not
 migrated or dual-read.
 
+Device and file identity values are opaque equality tokens. Schema 6 stores
+their exact decimal representations as text because Windows can expose
+unsigned 64-bit values beyond SQLite's signed integer range.
+
 Only active JSONLs can use append parsing. The path, OS file identity, task ID,
 strictly increasing size, head digest, and old-boundary digest must all match.
 Missing identity, replacement, truncation, same-size modification, digest
