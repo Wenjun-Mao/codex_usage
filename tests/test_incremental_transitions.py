@@ -43,7 +43,11 @@ def test_one_changed_task_never_scans_unchanged_jsonl_for_transitions(
     )
 
     assert refreshed.stats.files_parsed == 1
-    assert opened.count(corpus.paths[2]) == 1
+    # The changed file is parsed once and receives one bounded schema-7 metadata read.
+    assert opened.count(corpus.paths[2]) == 2
+    assert all(
+        path not in opened for index, path in enumerate(corpus.paths) if index != 2
+    )
     assert not set(corpus.paths[:2] + corpus.paths[3:]).intersection(opened)
     assert refreshed.transition_run.worker_spans == ()
 
@@ -53,9 +57,7 @@ def test_duplicate_archive_generation_does_not_influence_cached_transition(
 ) -> None:
     corpus = write_multi_task_transition_corpus(tmp_path, count=1)
     archive_target = tmp_path / "archive-target"
-    write_git_config(
-        archive_target, "https://github.com/example/archive-target.git"
-    )
+    write_git_config(archive_target, "https://github.com/example/archive-target.git")
     archived_path = corpus.archive / "2026" / "08" / "03" / "thread-0.jsonl"
     archived_path.parent.mkdir(parents=True)
     write_task_session(

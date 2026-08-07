@@ -25,10 +25,10 @@ def markdown_section(path: Path, heading: str) -> str:
 
 
 @pytest.mark.parametrize("readme", READMES, ids=("repository", "extension"))
-def test_readmes_describe_schema_6_append_contract(readme: Path) -> None:
+def test_readmes_describe_current_append_contract(readme: Path) -> None:
     text = readme.read_text(encoding="utf-8").casefold()
 
-    assert "schema 6" in text
+    assert "schema 7" in text
     assert "old-boundary digest" in text
     assert "new tail" in text
     assert "append fallbacks" in text

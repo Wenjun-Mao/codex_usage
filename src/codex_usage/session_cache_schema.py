@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-CACHE_SCHEMA_VERSION = 6
+CACHE_SCHEMA_VERSION = 7
 PARSER_CACHE_VERSION = 5
 PROJECT_TRANSITION_CACHE_VERSION = 2
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
@@ -16,6 +16,7 @@ _KNOWN_CACHE_TABLES = frozenset(
         "files",
         "usage_records",
         "session_metadata",
+        "storage_files",
         "parser_checkpoints",
         "transition_candidates",
         "dirty_transition_tasks",
@@ -27,6 +28,8 @@ _KNOWN_CACHE_INDEXES = frozenset(
         "usage_records_timestamp_us_idx",
         "usage_records_session_timestamp_idx",
         "transition_candidates_thread_idx",
+        "storage_files_task_idx",
+        "storage_files_project_idx",
     }
 )
 
@@ -143,6 +146,28 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         )
         """,
         """
+        create table storage_files (
+            path text primary key,
+            session_dir text not null,
+            storage_state text not null,
+            size_bytes integer not null check (size_bytes >= 0),
+            mtime_ns integer not null,
+            last_seen_at text not null,
+            is_missing integer not null check (is_missing in (0, 1)),
+            task_id text not null,
+            parent_task_id text not null,
+            usage_role text not null check (usage_role in ('root', 'subagent')),
+            project_key text not null,
+            project_label text not null,
+            project_aliases_json text not null,
+            task_title text not null,
+            title_index_path text not null,
+            title_index_size integer not null,
+            title_index_mtime_ns integer not null,
+            metadata_diagnostic text not null
+        )
+        """,
+        """
         create table parser_checkpoints (
             file_key text primary key,
             byte_offset integer not null,
@@ -189,6 +214,8 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         "create index usage_records_timestamp_us_idx on usage_records (timestamp_us)",
         "create index usage_records_session_timestamp_idx on usage_records (session_id, timestamp_us)",
         "create index transition_candidates_thread_idx on transition_candidates (thread_id)",
+        "create index storage_files_task_idx on storage_files (task_id)",
+        "create index storage_files_project_idx on storage_files (project_key)",
     )
     for statement in statements:
         connection.execute(statement)
@@ -216,9 +243,51 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
             """
         ).fetchone()
         connection.execute("select 1 from parser_checkpoints limit 1").fetchone()
+        storage_columns = {
+            str(row["name"])
+            for row in connection.execute("pragma table_info(storage_files)")
+        }
+        storage_indexes = {
+            str(row["name"])
+            for row in connection.execute("pragma index_list(storage_files)")
+        }
+        invalid_storage_role = connection.execute(
+            """
+            select 1 from storage_files
+            where usage_role is null or usage_role not in ('root', 'subagent')
+            limit 1
+            """
+        ).fetchone()
     except sqlite3.Error:
         return False
-    return invalid_role is None
+    expected_storage_columns = {
+        "path",
+        "session_dir",
+        "storage_state",
+        "size_bytes",
+        "mtime_ns",
+        "last_seen_at",
+        "is_missing",
+        "task_id",
+        "parent_task_id",
+        "usage_role",
+        "project_key",
+        "project_label",
+        "project_aliases_json",
+        "task_title",
+        "title_index_path",
+        "title_index_size",
+        "title_index_mtime_ns",
+        "metadata_diagnostic",
+    }
+    return (
+        invalid_role is None
+        and invalid_storage_role is None
+        and storage_columns == expected_storage_columns
+        and {"storage_files_task_idx", "storage_files_project_idx"}.issubset(
+            storage_indexes
+        )
+    )
 
 
 def _existing_cache_tables(connection: sqlite3.Connection) -> set[str]:
@@ -251,6 +320,7 @@ def _drop_cache_schema(connection: sqlite3.Connection) -> None:
         "dirty_transition_tasks",
         "transition_candidates",
         "parser_checkpoints",
+        "storage_files",
         "session_metadata",
         "usage_records",
         "files",

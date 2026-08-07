@@ -40,6 +40,9 @@ def test_synthetic_report_uses_production_role_model_markup(tmp_path: Path) -> N
     screenshot_module.render_synthetic_report(destination)
 
     html = destination.read_text(encoding="utf-8")
+    assert 'data-report-section="task-storage"' in html
+    assert "Root task JSONL" in html
+    assert "Structured subagents" in html
     assert 'data-report-section="project-breakdown"' in html
     assert ">Root tasks<" in html
     assert ">Subagents<" in html
@@ -47,6 +50,19 @@ def test_synthetic_report_uses_production_role_model_markup(tmp_path: Path) -> N
     assert "<script" not in html
     assert " src=" not in html
     assert " href=" not in html
+
+
+def test_synthetic_storage_snapshot_covers_root_and_descendant_sizes() -> None:
+    screenshot_module = _load_screenshot_module()
+
+    snapshot = screenshot_module.build_synthetic_storage_snapshot()
+
+    assert snapshot.task_tree_count == 4
+    assert snapshot.corpus_bytes == sum(tree.total_bytes for tree in snapshot.task_trees)
+    assert any(tree.is_large_root for tree in snapshot.task_trees)
+    assert any(tree.is_large_tree for tree in snapshot.task_trees)
+    assert all(tree.root_bytes and tree.descendant_bytes for tree in snapshot.task_trees)
+    assert sum(tree.share for tree in snapshot.task_trees) == 1.0
 
 
 def test_check_mode_does_not_replace_tracked_screenshot(monkeypatch) -> None:

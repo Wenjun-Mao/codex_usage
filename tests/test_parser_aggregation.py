@@ -73,6 +73,47 @@ def test_parser_tracks_model_changes_within_session(tmp_path: Path) -> None:
     }
 
 
+def test_side_chat_turn_remains_root_usage_in_parent_session(tmp_path: Path) -> None:
+    path = _write_session(
+        tmp_path,
+        [
+            _session_meta(cwd="/repo/demo", session_id="root-task"),
+            _turn_context(model="gpt-5.6-sol"),
+            {
+                "timestamp": "2026-08-07T10:00:00Z",
+                "type": "event_msg",
+                "payload": {"type": "task_started", "turn_id": "main-turn"},
+            },
+            _token("2026-08-07T10:01:00Z", _usage(total=100)),
+            {
+                "timestamp": "2026-08-07T10:02:00Z",
+                "type": "event_msg",
+                "payload": {"type": "task_complete", "turn_id": "main-turn"},
+            },
+            _turn_context(model="gpt-5.6-terra"),
+            {
+                "timestamp": "2026-08-07T10:03:00Z",
+                "type": "event_msg",
+                "payload": {"type": "task_started", "turn_id": "side-turn"},
+            },
+            _token("2026-08-07T10:04:00Z", _usage(total=160)),
+            {
+                "timestamp": "2026-08-07T10:05:00Z",
+                "type": "event_msg",
+                "payload": {"type": "task_complete", "turn_id": "side-turn"},
+            },
+        ],
+    )
+
+    records = parse_session_file(path)
+
+    assert [record.session_id for record in records] == ["root-task", "root-task"]
+    assert [record.usage.total_tokens for record in records] == [100, 60]
+    assert [record.model for record in records] == ["gpt-5.6-sol", "gpt-5.6-terra"]
+    assert {record.usage_role for record in records} == {ROOT_USAGE_ROLE}
+    assert summarize_records(records).usage.total_tokens == 160
+
+
 def test_parser_ignores_imported_parent_usage_in_forked_session_file(
     tmp_path: Path,
 ) -> None:

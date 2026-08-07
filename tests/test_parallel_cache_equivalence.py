@@ -5,9 +5,11 @@ import sqlite3
 from pathlib import Path
 
 import project_transition_serial_oracle as serial_oracle
-from parallel_cache_test_support import (
+from parallel_cache_schema_expectations import (
     EXPECTED_SCHEMA_META,
     EXPECTED_SQLITE_MASTER,
+)
+from parallel_cache_test_support import (
     attach_transition_evidence,
     complete_schema_metadata,
     load_parallel,

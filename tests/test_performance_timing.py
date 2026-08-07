@@ -173,6 +173,7 @@ def test_direct_cache_fallback_sidecar_has_complete_phases_and_diagnostics(
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert set(payload["phases_seconds"]) == {
         "inventory",
+        "storage_refresh",
         "usage_refresh",
         "transition_refresh",
         "range_query",
@@ -180,6 +181,7 @@ def test_direct_cache_fallback_sidecar_has_complete_phases_and_diagnostics(
         "total_cli",
     }
     assert payload["phases_seconds"]["usage_refresh"] == 1.0
+    assert payload["phases_seconds"]["storage_refresh"] == 1.0
     assert payload["phases_seconds"]["transition_refresh"] == 1.0
     assert payload["phases_seconds"]["range_query"] == 1.0
     assert payload["cache"]["direct_fallback"] is True

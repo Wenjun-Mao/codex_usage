@@ -26,8 +26,13 @@ from codex_usage.reporting import (
 )
 from codex_usage.session_cache import CacheStats
 from codex_usage.session_cache_transitions import load_cached_transition_observations
-from codex_usage.session_inventory import find_session_dirs, storage_snapshots
+from codex_usage.session_inventory import find_session_dirs
 from codex_usage.settings import get_settings
+from codex_usage.storage_cli_reporting import (
+    render_storage_terminal,
+    storage_snapshot_payload,
+)
+from codex_usage.storage_insights import build_task_storage_snapshot
 from codex_usage.sync.local_session_probe import load_local_transfer_probe
 from codex_usage.sync_cli import (
     add_sync_common_options,
@@ -133,6 +138,10 @@ def build_parser() -> argparse.ArgumentParser:
     storage_snapshot_parser = storage_subparsers.add_parser(
         "snapshot", help="Print a local Codex storage snapshot."
     )
+    _add_common_options(
+        storage_snapshot_parser,
+        project_help="Filter task storage to a canonical project key. Repeat to include multiple projects.",
+    )
     storage_snapshot_parser.add_argument(
         "--json", action="store_true", help="Print machine-readable JSON."
     )
@@ -226,6 +235,7 @@ def handle_report(args: argparse.Namespace) -> int:
         valued_records = value_records(context.records)
         total = summarize_valued_records(valued_records)
         breakdown = build_report_breakdown_from_valued(valued_records)
+        storage_snapshot = _report_storage_snapshot(context.session_data, context.project_keys)
         output_path = render_html_report(
             output_path=args.output,
             generated_at=datetime.now(context.timezone),
@@ -249,6 +259,7 @@ def handle_report(args: argparse.Namespace) -> int:
             files_retained_missing=context.storage_stats.files_missing_retained,
             project_keys=context.project_keys,
             project_transitions=_transition_dicts(context.project_transitions),
+            storage_snapshot=storage_snapshot,
             theme=normalize_report_theme(args.theme or get_settings().theme),
         )
         print(f"Wrote {output_path}")
@@ -313,27 +324,31 @@ def handle_subparser_help(args: argparse.Namespace) -> int:
 
 
 def handle_storage_snapshot(args: argparse.Namespace) -> int:
-    roots = [
-        {
-            "path": str(snapshot.path),
-            "storage_state": snapshot.storage_state,
-            "exists": snapshot.exists,
-            "jsonl_count": snapshot.jsonl_count,
-            "total_bytes": snapshot.total_bytes,
-        }
-        for snapshot in storage_snapshots()
-    ]
-    payload = {"roots": roots}
+    timer = getattr(args, "_phase_timer", None)
+    with timer.measure("inventory") if timer else nullcontext():
+        session_dirs = find_session_dirs()
+    project_keys = normalize_project_keys(args.project_key)
+    data = load_session_data(
+        session_dirs,
+        auto_transitions=False,
+        timer=timer,
+    )
+    args._timing_cache_stats = data.stats
+    write_requested_parallel_audit(args, data)
+    with timer.measure("aggregation_render") if timer else nullcontext():
+        snapshot = build_task_storage_snapshot(data, project_keys=project_keys)
+        payload = storage_snapshot_payload(snapshot)
     if args.json:
         print_json(payload)
     else:
-        for root in roots:
-            exists = "yes" if root["exists"] else "no"
-            print(
-                f"{root['storage_state']:>12} {exists:>3} {root['jsonl_count']:>5} files "
-                f"{root['total_bytes']:>12} bytes {root['path']}"
-            )
+        print(render_storage_terminal(payload))
     return 0
+
+
+def _report_storage_snapshot(data, project_keys: list[str] | None) -> object | None:
+    if data is None:
+        return None
+    return build_task_storage_snapshot(data, project_keys=project_keys)
 
 
 def handle_sync_pull(args: argparse.Namespace) -> int:
@@ -352,7 +367,11 @@ def handle_sync_status(args: argparse.Namespace) -> int:
     return sync_status_command(args, load_local_transfer_probe)
 
 
-def _add_common_options(parser: argparse.ArgumentParser) -> None:
+def _add_common_options(
+    parser: argparse.ArgumentParser,
+    *,
+    project_help: str = "Filter usage to a project key. Repeat to include multiple projects.",
+) -> None:
     parser.add_argument(
         "--parallel-audit",
         type=Path,
@@ -369,7 +388,7 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--project-key",
         action="append",
-        help="Filter usage to a project key. Repeat to include multiple projects.",
+        help=project_help,
     )
     parser.add_argument(
         "--no-auto-transitions",

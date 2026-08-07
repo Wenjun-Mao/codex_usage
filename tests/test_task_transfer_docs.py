@@ -223,7 +223,7 @@ def test_current_task_transfer_fixtures_use_task_language() -> None:
 def test_current_docs_describe_guarded_append_recovery(readme: Path) -> None:
     text = readme.read_text(encoding="utf-8").casefold()
     for phrase in (
-        "schema 6",
+        "schema 7",
         "unchanged refreshes open no session jsonls",
         "at most four read-only workers",
         "sqlite remains in the parent process",

@@ -33,7 +33,10 @@ from codex_usage.session_cache import (
     load_cached_session_data,
     uncached_session_data,
 )
+from codex_usage.session_inventory import collect_session_file_inventory
 from codex_usage.settings import get_settings
+from codex_usage.storage_insights import build_task_storage_insights
+from codex_usage.storage_metadata import inspect_storage_files
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +48,7 @@ class UsageContext:
     project_keys: list[str]
     project_transitions: list[ProjectTransition]
     storage_stats: CacheStats
+    session_data: CachedSessionData | None = None
 
 
 def load_usage_context(args: argparse.Namespace) -> UsageContext:
@@ -62,8 +66,11 @@ def load_usage_context(args: argparse.Namespace) -> UsageContext:
         records=records,
         timezone=timezone,
         project_keys=project_keys,
-        project_transitions=filter_project_transitions(data.project_transitions, records),
+        project_transitions=filter_project_transitions(
+            data.project_transitions, records
+        ),
         storage_stats=data.stats,
+        session_data=data,
     )
 
 
@@ -108,7 +115,14 @@ def load_session_data(
             file=sys.stderr,
         )
         with timer.measure("inventory") if timer else nullcontext():
+            physical_inventory = collect_session_file_inventory(
+                session_dirs, read_metadata=False
+            )
             files = collect_jsonl_files(session_dirs)
+        with timer.measure("storage_refresh") if timer else nullcontext():
+            storage_insights = build_task_storage_insights(
+                inspect_storage_files(physical_inventory), session_dirs
+            )
         with timer.measure("usage_refresh") if timer else nullcontext():
             records = parse_session_files(files)
         project_transitions: list[ProjectTransition] = []
@@ -120,7 +134,9 @@ def load_session_data(
         with timer.measure("range_query") if timer else nullcontext():
             if range_bounds is not None:
                 if timezone is None:
-                    raise ValueError("timezone is required for a range-selected fallback")
+                    raise ValueError(
+                        "timezone is required for a range-selected fallback"
+                    )
                 records = filter_records_by_range(
                     records,
                     range_name,
@@ -133,6 +149,7 @@ def load_session_data(
             records=records,
             project_transitions=project_transitions,
             direct_fallback=True,
+            storage_insights=storage_insights,
         )
 
 
@@ -162,7 +179,9 @@ def normalize_project_keys(values: list[str] | None) -> list[str]:
     return selected
 
 
-def auto_project_transitions_enabled(args: argparse.Namespace, settings: object) -> bool:
+def auto_project_transitions_enabled(
+    args: argparse.Namespace, settings: object
+) -> bool:
     return settings.auto_project_transitions and not getattr(
         args, "no_auto_transitions", False
     )

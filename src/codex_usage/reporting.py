@@ -17,6 +17,10 @@ from codex_usage.charts import (
 )
 from codex_usage.pricing import PRICING_AS_OF, PRICING_METHOD
 from codex_usage.report_breakdown import ReportBreakdown
+from codex_usage.report_storage import (
+    build_task_storage_view,
+    render_task_storage_section,
+)
 from codex_usage.report_tables import (
     format_credits,
     format_int,
@@ -25,6 +29,7 @@ from codex_usage.report_tables import (
 )
 from codex_usage.report_theme import normalize_report_theme, report_css
 from codex_usage.report_view import ReportViewModel, build_report_view_model
+from codex_usage.storage_insights import TaskStorageInsights
 
 
 def summary_payload(
@@ -145,6 +150,7 @@ def render_html_report(
     files_retained_missing: int = 0,
     project_keys: list[str] | None = None,
     project_transitions: list[dict[str, object]] | None = None,
+    storage_snapshot: TaskStorageInsights | None = None,
     theme: str = "auto",
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -165,6 +171,7 @@ def render_html_report(
     pricing_notice_html = _pricing_notice(view_model)
     project_filter_label = _project_filter_label(project_keys)
     project_transitions_html = _project_transitions_section(project_transitions)
+    task_storage_html = render_task_storage_section(build_task_storage_view(storage_snapshot))
     storage_summary = " | ".join(
         _storage_bits(
             files_scanned=view_model.files_scanned,
@@ -194,10 +201,11 @@ def render_html_report(
     {pricing_notice_html}
     {_empty_report_notice(view_model)}
     {project_transitions_html}
+    {task_storage_html}
     <div class="dashboard-grid">
       {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), render_aggregate_table("Daily Details", view_model.daily_rows, section_id="daily-details"), section_id="daily-cost", scroll_class="tooltip-chart-scroll")}
       {_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table("Hourly Details", view_model.hourly_rows, section_id="hourly-details"), section_id="hourly-heatmap", scroll_class="heatmap-chart-scroll")}
-      {_chart_section("Project Breakdown", render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table("Project Details", view_model.project_detail_points, section_id="project-details"), section_id="project-breakdown", scroll_class="tooltip-chart-scroll")}
+      {_chart_section("Project Breakdown", render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table("Project Details", view_model.project_detail_points, section_id="project-details"), section_id="project-breakdown", scroll_class="tooltip-chart-scroll", help_text="Root task token usage includes side chats stored in the parent task.")}
       {_chart_section("Model Mix", render_model_mix_chart(view_model.model_points), render_aggregate_table("Model Details", view_model.model_rows, section_id="model-details"), section_id="model-mix", scroll_class="tooltip-chart-scroll")}
     </div>
   </main>
@@ -346,13 +354,20 @@ def _chart_section(
     *,
     section_id: str,
     scroll_class: str = "",
+    help_text: str = "",
 ) -> str:
     classes = "chart-scroll"
     if scroll_class:
         classes = f"{classes} {html.escape(scroll_class, quote=True)}"
+    help_html = (
+        f'<p class="muted section-help">{html.escape(help_text)}</p>'
+        if help_text
+        else ""
+    )
     return (
         f'<section class="section" data-report-section="{html.escape(section_id, quote=True)}">'
         f"<h2>{html.escape(title)}</h2>"
+        f"{help_html}"
         f'<div class="{classes}">{chart_html}</div>'
         f"{table_html}"
         "</section>"

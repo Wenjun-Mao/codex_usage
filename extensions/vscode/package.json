@@ -1,9 +1,9 @@
 {
   "name": "codex-usage-dashboard",
   "displayName": "Codex Usage Dashboard",
-  "description": "Local Codex token usage dashboard with optional cross-computer Codex task transfer.",
+  "description": "Local Codex usage dashboard with read-only Task Storage insights and optional cross-computer task transfer.",
   "publisher": "wenjun-mao",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {

@@ -1,6 +1,7 @@
 from argparse import Namespace
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from codex_usage import cli
 from codex_usage.aggregation import aggregate_valued_records
@@ -67,6 +68,7 @@ def test_handle_report_builds_one_breakdown_without_project_or_model_aggregation
         files_retained_missing=0,
         project_keys=None,
         project_transitions=None,
+        storage_snapshot=None,
         theme="auto",
     ):
         captured["breakdown"] = breakdown
@@ -88,3 +90,53 @@ def test_handle_report_builds_one_breakdown_without_project_or_model_aggregation
     assert aggregate_groups == ["day", "hour"]
     assert breakdown_calls == 1
     assert captured["breakdown"].project_rows[0].key == "repo"  # type: ignore[union-attr]
+
+
+def test_handle_report_passes_cached_data_and_one_storage_snapshot(
+    monkeypatch, tmp_path: Path
+) -> None:
+    record = UsageRecord(
+        timestamp=datetime(2026, 4, 29, tzinfo=UTC),
+        usage=TokenUsage(input_tokens=10, total_tokens=10),
+        session_id="session-1",
+        file_path=tmp_path / "session.jsonl",
+        usage_role="root",
+        model="gpt-5.6-sol",
+        project_key="repo",
+        project_label="repo",
+    )
+    data = SimpleNamespace(session_dirs=[tmp_path])
+    context = UsageContext(
+        session_dirs=[tmp_path],
+        files=[record.file_path],
+        records=[record],
+        timezone=UTC,
+        project_keys=["repo"],
+        project_transitions=[],
+        storage_stats=CacheStats(),
+        session_data=data,
+    )
+    args = Namespace(output=tmp_path / "report.html", range_name="all", theme="night")
+    snapshot = object()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(cli, "load_usage_context", lambda args: context)
+    monkeypatch.setattr(
+        cli,
+        "build_task_storage_snapshot",
+        lambda received_data, *, project_keys=None: captured.update(
+            received_data=received_data, project_keys=project_keys
+        )
+        or snapshot,
+    )
+
+    def capture_report(**kwargs):
+        captured.update(kwargs)
+        return kwargs["output_path"]
+
+    monkeypatch.setattr(cli, "render_html_report", capture_report)
+
+    assert cli.handle_report(args) == 0
+    assert captured["received_data"] is data
+    assert captured["project_keys"] == ["repo"]
+    assert captured["storage_snapshot"] is snapshot

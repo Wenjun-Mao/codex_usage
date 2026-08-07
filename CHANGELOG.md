@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.4.0 - 2026-08-07 - Task Storage Insights
+
+- Added a read-only Task Storage dashboard section and expanded `codex-usage storage snapshot` to show current local bytes by user-visible root task tree, separating root files from nested structured descendants and including active plus archived files.
+- Added project-filtered, date-independent storage reporting with logical-byte totals, complete task-tree inventory, 1 GiB root and 10 GiB tree visibility badges, and disposable cache schema 7 rebuild behavior.
+- Documented the release-validation corpus of 196.08 GiB across 2,525 files, including 187.63 GiB of structured descendants, as the reason task-tree visibility precedes future backup or restore workflows; 1.4.0 does not delete, back up, restore, or compress data.
+- Counted side-chat bytes and token usage under Root task because local evidence stores them in the parent JSONL without a durable discriminator; the report discloses this rather than inventing a third role.
+
 ## 1.3.0 - 2026-08-07 - Guarded Append Performance
 
 - Added disposable cache schema 6 with guarded active-file parser checkpoints, tail-only ordinary append refreshes, and atomic fallback to the prior complete generation.

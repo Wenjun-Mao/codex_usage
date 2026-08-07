@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -18,6 +19,7 @@ from codex_usage.models import (
 )
 from codex_usage.report_breakdown import build_report_breakdown
 from codex_usage.reporting import render_html_report
+from codex_usage.storage_insights import TaskStorageInsights, TaskStorageTree
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCREENSHOT_PATH = REPOSITORY_ROOT / "docs" / "marketplace" / "dashboard-synthetic.png"
@@ -31,6 +33,7 @@ _SCREENSHOT_CSS = """
   [data-report-section="hourly-heatmap"],
   [data-report-section="project-details"],
   [data-report-section="model-details"],
+  [data-report-section="task-storage-details"],
   .summary-line { display: none !important; }
   main {
     width: 100% !important;
@@ -39,6 +42,7 @@ _SCREENSHOT_CSS = """
     padding: 24px !important;
   }
   .dashboard-grid { gap: 16px !important; margin-top: 16px !important; }
+  .task-storage-section { padding-bottom: 14px !important; }
 """
 
 _SYNTHETIC_RECORDS: tuple[tuple[str, str, UsageRole, str, int], ...] = (
@@ -79,6 +83,64 @@ def build_synthetic_records() -> list[UsageRecord]:
     return records
 
 
+def build_synthetic_storage_snapshot() -> TaskStorageInsights:
+    gib = 1024**3
+    mib = 1024**2
+    trees = (
+        _synthetic_storage_tree(
+            task_id="storage-codex-main",
+            title="Codex Usage main",
+            project="Codex Usage",
+            root_bytes=5 * gib + 410 * mib,
+            descendant_bytes=38 * gib + 630 * mib,
+            descendant_count=112,
+            active_files=113,
+        ),
+        _synthetic_storage_tree(
+            task_id="storage-transfer",
+            title="Cross-platform Task Transfer",
+            project="Codex Usage",
+            root_bytes=780 * mib,
+            descendant_bytes=12 * gib + 240 * mib,
+            descendant_count=37,
+            active_files=36,
+            archived_files=2,
+        ),
+        _synthetic_storage_tree(
+            task_id="storage-translation",
+            title="Batch translation pipeline",
+            project="Translation Tools",
+            root_bytes=1 * gib + 205 * mib,
+            descendant_bytes=6 * gib + 820 * mib,
+            descendant_count=19,
+            active_files=20,
+        ),
+        _synthetic_storage_tree(
+            task_id="storage-glossary",
+            title="Glossary cleanup",
+            project="Translation Tools",
+            root_bytes=320 * mib,
+            descendant_bytes=680 * mib,
+            descendant_count=4,
+            active_files=5,
+        ),
+    )
+    corpus_bytes = sum(tree.total_bytes for tree in trees)
+    trees = tuple(
+        replace(tree, share=tree.total_bytes / corpus_bytes) for tree in trees
+    )
+    return TaskStorageInsights(
+        corpus_bytes=corpus_bytes,
+        root_bytes=sum(tree.root_bytes for tree in trees),
+        descendant_bytes=sum(tree.descendant_bytes for tree in trees),
+        active_bytes=sum(tree.active_bytes for tree in trees),
+        archived_bytes=sum(tree.archived_bytes for tree in trees),
+        physical_file_count=sum(tree.physical_file_count for tree in trees),
+        task_tree_count=len(trees),
+        task_trees=trees,
+    )
+
+
 def render_synthetic_report(destination: Path) -> Path:
     records = build_synthetic_records()
     breakdown = build_report_breakdown(records)
@@ -90,6 +152,7 @@ def render_synthetic_report(destination: Path) -> Path:
         daily_rows=aggregate_records(records, "day", UTC),
         hourly_rows=aggregate_records(records, "hour", UTC),
         breakdown=breakdown,
+        storage_snapshot=build_synthetic_storage_snapshot(),
         sessions_dirs=[SYNTHETIC_SESSIONS_DIR],
         files_scanned=len({record.file_path for record in records}),
         theme="night",
@@ -160,6 +223,44 @@ def _usage(total_tokens: int) -> TokenUsage:
     )
 
 
+def _synthetic_storage_tree(
+    *,
+    task_id: str,
+    title: str,
+    project: str,
+    root_bytes: int,
+    descendant_bytes: int,
+    descendant_count: int,
+    active_files: int,
+    archived_files: int = 0,
+) -> TaskStorageTree:
+    total_bytes = root_bytes + descendant_bytes
+    archived_bytes = total_bytes // 12 if archived_files else 0
+    return TaskStorageTree(
+        root_task_id=task_id,
+        title=title,
+        project_key=project.casefold().replace(" ", "-"),
+        project_label=project,
+        project_aliases=(),
+        root_bytes=root_bytes,
+        descendant_bytes=descendant_bytes,
+        descendant_count=descendant_count,
+        active_file_count=active_files,
+        archived_file_count=archived_files,
+        active_bytes=total_bytes - archived_bytes,
+        archived_bytes=archived_bytes,
+        physical_file_count=active_files + archived_files,
+        total_bytes=total_bytes,
+        share=0.0,
+        has_missing_root=False,
+        has_relationship_cycle=False,
+        duplicate_file_count=0,
+        metadata_diagnostics=(),
+        is_large_root=root_bytes >= 1024**3,
+        is_large_tree=total_bytes >= 10 * 1024**3,
+    )
+
+
 def _render_capture_and_validate(report_path: Path, screenshot_path: Path) -> None:
     render_synthetic_report(report_path)
     capture_marketplace_screenshot(report_path, screenshot_path)
@@ -167,6 +268,9 @@ def _render_capture_and_validate(report_path: Path, screenshot_path: Path) -> No
 
 
 def _wait_for_landmarks(page: Page) -> None:
+    page.get_by_role("heading", name="Task Storage", exact=True).wait_for()
+    page.get_by_text("Root task JSONL", exact=True).wait_for()
+    page.get_by_text("Structured subagents", exact=True).wait_for()
     page.get_by_role("heading", name="Project Breakdown", exact=True).wait_for()
     page.get_by_text("Root tasks", exact=True).first.wait_for()
     page.get_by_text("Subagents", exact=True).first.wait_for()
@@ -177,6 +281,7 @@ def _wait_for_landmarks(page: Page) -> None:
 
 def _validate_browser_layout(page: Page, viewport_width: int) -> None:
     _validate_focused_tooltips(page, viewport_width)
+    _validate_storage_tooltips(page, viewport_width)
     _validate_role_group_geometry(page)
     _validate_scroll_containers(page)
 
@@ -193,6 +298,20 @@ def _validate_focused_tooltips(page: Page, viewport_width: int) -> None:
         segment.focus()
         page.wait_for_timeout(50)
         _validate_visible_tooltip(segment, viewport_width, interaction="focused")
+
+
+def _validate_storage_tooltips(page: Page, viewport_width: int) -> None:
+    stacks = page.locator(".storage-stack")
+    stack_count = stacks.count()
+    if stack_count < 2:
+        raise RuntimeError("expected at least two task storage bars")
+    for index in (0, stack_count - 1):
+        stack = stacks.nth(index)
+        stack.hover()
+        _validate_visible_tooltip(stack, viewport_width, interaction="hovered storage")
+        stack.focus()
+        page.wait_for_timeout(50)
+        _validate_visible_tooltip(stack, viewport_width, interaction="focused storage")
 
 
 def _validate_visible_tooltip(
@@ -301,6 +420,14 @@ def _validate_scroll_containers(page: Page) -> None:
         item["scrollWidth"] < item["clientWidth"] for item in visible_metrics
     ):
         raise RuntimeError("chart tooltip scroll containers have invalid geometry")
+    storage_metrics = page.locator(".storage-chart-scroll").evaluate_all(
+        "elements => elements.map(({clientWidth, scrollWidth}) => ({clientWidth, scrollWidth}))"
+    )
+    visible_storage_metrics = _visible_scroll_metrics(storage_metrics)
+    if len(visible_storage_metrics) != 1 or any(
+        item["scrollWidth"] < item["clientWidth"] for item in visible_storage_metrics
+    ):
+        raise RuntimeError("task storage scroll container has invalid geometry")
 
 
 def _ancestor(locator: Locator, class_name: str) -> Locator:
