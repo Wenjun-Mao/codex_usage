@@ -461,15 +461,16 @@ def report_css() -> str:
     .storage-segment { display: block; flex: 0 0 auto; min-width: 0; height: 100%; }
     .storage-root-segment { background: var(--accent); border-radius: 4px 0 0 4px; }
     .storage-descendant-segment { background: var(--highlight); border-radius: 0 4px 4px 0; }
-    .storage-stack:not(.storage-has-boundary) .storage-root-segment:only-child,
-    .storage-stack:not(.storage-has-boundary) .storage-descendant-segment:only-child { border-radius: 4px; }
+    .storage-root-only .storage-root-segment,
+    .storage-descendant-only .storage-descendant-segment { border-radius: 4px; }
     .storage-has-boundary .storage-root-segment { box-shadow: inset -2px 0 0 var(--surface-strong); }
     .storage-stack:hover .storage-root-segment,
     .storage-stack:focus-visible .storage-root-segment { filter: brightness(1.12); }
     .storage-stack:hover .storage-descendant-segment,
     .storage-stack:focus-visible .storage-descendant-segment { filter: brightness(1.12); }
+    .storage-stack .chart-tooltip { left: 0; transform: translate(0, 2px); }
     .storage-stack:hover .chart-tooltip,
-    .storage-stack:focus-visible .chart-tooltip { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s; }
+    .storage-stack:focus-visible .chart-tooltip { opacity: 1; visibility: visible; transform: translate(0, 0); transition-delay: 0s; }
     .storage-bar-value { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .storage-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 2px 0 0 210px; color: var(--muted); font-size: 12px; }
     .storage-legend > span { display: inline-flex; align-items: center; gap: 5px; }

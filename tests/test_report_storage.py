@@ -22,8 +22,8 @@ def test_task_storage_section_is_full_width_and_discloses_side_chats(tmp_path: P
                 project_key="repo",
                 project_label="Repo",
                 project_aliases=(),
-                root_bytes=10,
-                descendant_bytes=20,
+                root_bytes=0,
+                descendant_bytes=30,
                 descendant_count=1,
                 total_bytes=30,
                 share=0.0001,
@@ -64,8 +64,8 @@ def test_task_storage_section_is_full_width_and_discloses_side_chats(tmp_path: P
             ),
         ),
         corpus_bytes=13 * 1024**3 + 30,
-        root_bytes=2 * 1024**3 + 10,
-        descendant_bytes=11 * 1024**3 + 20,
+        root_bytes=2 * 1024**3,
+        descendant_bytes=11 * 1024**3 + 30,
         active_bytes=10 * 1024**3 + 30,
         archived_bytes=3 * 1024**3,
         physical_file_count=35,
@@ -84,6 +84,7 @@ def test_task_storage_section_is_full_width_and_discloses_side_chats(tmp_path: P
     assert html.count("Root task token usage includes side chats stored in the parent task.") == 2
     assert 'role="group" aria-label="Largest task storage trees"' in html
     assert "storage-has-boundary" in html
+    assert "storage-descendant-only" in html
     assert "Root task JSONL" in html
     assert "Structured subagents" in html
     assert "Task Storage Details" in html

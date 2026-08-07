@@ -17,9 +17,6 @@ from codex_usage.performance_timing import PhaseTimer, write_timing_sidecar
 from codex_usage.project_transitions import ProjectTransition
 from codex_usage.report_breakdown import build_report_breakdown_from_valued
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
-from codex_usage.report_storage import (
-    format_bytes,
-)
 from codex_usage.reporting import (
     print_json,
     render_html_report,
@@ -31,11 +28,11 @@ from codex_usage.session_cache import CacheStats
 from codex_usage.session_cache_transitions import load_cached_transition_observations
 from codex_usage.session_inventory import find_session_dirs
 from codex_usage.settings import get_settings
-from codex_usage.storage_insights import (
-    TaskStorageInsights,
-    TaskStorageTree,
-    build_task_storage_snapshot,
+from codex_usage.storage_cli_reporting import (
+    render_storage_terminal,
+    storage_snapshot_payload,
 )
+from codex_usage.storage_insights import build_task_storage_snapshot
 from codex_usage.sync.local_session_probe import load_local_transfer_probe
 from codex_usage.sync_cli import (
     add_sync_common_options,
@@ -352,127 +349,6 @@ def _report_storage_snapshot(data, project_keys: list[str] | None) -> object | N
     if data is None:
         return None
     return build_task_storage_snapshot(data, project_keys=project_keys)
-
-
-def storage_snapshot_payload(snapshot: TaskStorageInsights) -> dict[str, object]:
-    trees = [_storage_tree_payload(tree) for tree in snapshot.task_trees]
-    trees.sort(
-        key=lambda tree: (
-            -int(tree["total_bytes"]),
-            str(tree["title"]).casefold(),
-            str(tree["root_task_id"]),
-        )
-    )
-    roots = [
-        {
-            "path": str(root.path),
-            "storage_state": root.storage_state,
-            "exists": root.exists,
-            "jsonl_count": root.jsonl_count,
-            "total_bytes": root.total_bytes,
-        }
-        for root in snapshot.roots
-    ]
-    return {
-        "schema_version": 2,
-        "totals": {
-            "total_bytes": snapshot.corpus_bytes,
-            "root_bytes": snapshot.root_bytes,
-            "descendant_bytes": snapshot.descendant_bytes,
-            "active_bytes": snapshot.active_bytes,
-            "archived_bytes": snapshot.archived_bytes,
-            "physical_file_count": snapshot.physical_file_count,
-            "task_tree_count": snapshot.task_tree_count,
-        },
-        "thresholds": {
-            "high_inherited_root_bytes": snapshot.high_inherited_root_bytes,
-            "large_task_tree_bytes": snapshot.large_task_tree_bytes,
-        },
-        "roots": roots,
-        "task_trees": trees,
-        "diagnostics": list(snapshot.diagnostics),
-    }
-
-
-def render_storage_terminal(payload: dict[str, object]) -> str:
-    totals = payload["totals"]
-    assert isinstance(totals, dict)
-    roots = payload["roots"]
-    trees = payload["task_trees"]
-    assert isinstance(roots, list)
-    assert isinstance(trees, list)
-    total_bytes = int(totals.get("total_bytes", 0))
-    file_count = int(totals.get("physical_file_count", 0))
-    lines = [
-        "Codex task storage snapshot",
-        f"Corpus: {format_bytes(total_bytes)} | Files: {file_count:,} | "
-        f"Root {format_bytes(int(totals.get('root_bytes', 0)))} | "
-        f"Descendants {format_bytes(int(totals.get('descendant_bytes', 0)))}",
-        "",
-        "Roots:",
-    ]
-    for root in roots:
-        assert isinstance(root, dict)
-        exists = "yes" if root.get("exists", True) else "no"
-        lines.append(
-            f"{str(root.get('storage_state', 'unknown')):>12} {exists:>3} "
-            f"{int(root.get('jsonl_count', 0)):>5} files "
-            f"{format_bytes(int(root.get('total_bytes', 0))):>12} {root.get('path', '')}"
-        )
-    lines.extend(("", "Task trees:"))
-    for tree in trees:
-        assert isinstance(tree, dict)
-        flags = _terminal_tree_flags(tree)
-        suffix = f" | {flags}" if flags else ""
-        lines.append(
-            f"{format_bytes(int(tree.get('total_bytes', 0))):>12} total | "
-            f"root {format_bytes(int(tree.get('root_bytes', 0))):>12} | "
-            f"desc {format_bytes(int(tree.get('descendant_bytes', 0))):>12} "
-            f"({int(tree.get('descendant_count', 0)):,}) | "
-            f"{tree.get('project_label') or tree.get('project_key') or 'Unassigned'} | "
-            f"{tree.get('title') or tree.get('root_task_id')}{suffix}"
-        )
-    return "\n".join(lines)
-
-
-def _storage_tree_payload(tree: TaskStorageTree) -> dict[str, object]:
-    return {
-        "root_task_id": tree.root_task_id,
-        "title": tree.title,
-        "project_key": tree.project_key,
-        "project_label": tree.project_label,
-        "project_aliases": list(tree.project_aliases),
-        "root_bytes": tree.root_bytes,
-        "descendant_bytes": tree.descendant_bytes,
-        "descendant_count": tree.descendant_count,
-        "active_file_count": tree.active_file_count,
-        "archived_file_count": tree.archived_file_count,
-        "active_bytes": tree.active_bytes,
-        "archived_bytes": tree.archived_bytes,
-        "physical_file_count": tree.physical_file_count,
-        "total_bytes": tree.total_bytes,
-        "share": tree.share,
-        "has_missing_root": tree.has_missing_root,
-        "has_relationship_cycle": tree.has_relationship_cycle,
-        "duplicate_file_count": tree.duplicate_file_count,
-        "has_duplicate_task_id": tree.has_duplicate_task_id,
-        "metadata_diagnostics": list(tree.metadata_diagnostics),
-        "is_large_root": tree.is_large_root,
-        "is_large_tree": tree.is_large_tree,
-    }
-def _terminal_tree_flags(tree: dict[str, object]) -> str:
-    flags: list[str] = []
-    if tree.get("is_large_root"):
-        flags.append("high inherited root")
-    if tree.get("is_large_tree"):
-        flags.append("large task tree")
-    if tree.get("has_missing_root"):
-        flags.append("root missing")
-    if tree.get("has_relationship_cycle"):
-        flags.append("relationship cycle")
-    if int(tree.get("duplicate_file_count", 0)):
-        flags.append(f"{int(tree['duplicate_file_count']):,} duplicate files")
-    return ", ".join(flags)
 
 
 def handle_sync_pull(args: argparse.Namespace) -> int:

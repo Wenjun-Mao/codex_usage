@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import codex_usage.storage_insights as storage_insights
+import codex_usage.storage_metadata as storage_metadata
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.session_cache_schema import _ensure_schema
 
@@ -19,14 +20,14 @@ def test_storage_metadata_reads_only_new_or_changed_paths(
     first = _write_session(sessions, "first", "/repo/one")
     second = _write_session(sessions, "second", "/repo/two")
     cache_dir = tmp_path / "cache"
-    original_read = storage_insights.read_session_metadata_bounded
+    original_read = storage_metadata.read_session_metadata_bounded
     reads: list[Path] = []
 
     def record_read(path: Path):
         reads.append(path)
         return original_read(path)
 
-    monkeypatch.setattr(storage_insights, "read_session_metadata_bounded", record_read)
+    monkeypatch.setattr(storage_metadata, "read_session_metadata_bounded", record_read)
 
     cold = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1

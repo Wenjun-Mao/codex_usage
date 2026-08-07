@@ -145,12 +145,17 @@ def _render_storage_bar(tree: StorageTreePoint, max_bytes: int) -> str:
         f"Total {format_bytes(tree.total_bytes)}"
     )
     aria = f"{tree.title}, {detail.replace(' | ', ', ')}"
-    boundary = " storage-has-boundary" if tree.root_bytes and tree.descendant_bytes else ""
+    if tree.root_bytes and tree.descendant_bytes:
+        role_shape = " storage-has-boundary"
+    elif tree.root_bytes:
+        role_shape = " storage-root-only"
+    else:
+        role_shape = " storage-descendant-only"
     return (
         '<div class="storage-bar-row">'
         f'<span class="storage-bar-label" title="{_esc(tree.title)}">{_esc(tree.title)}</span>'
         '<div class="storage-track">'
-        f'<span class="storage-stack{boundary}" style="width:{outer_width:.4f}%" '
+        f'<span class="storage-stack{role_shape}" style="width:{outer_width:.4f}%" '
         f'tabindex="0" aria-label="{_esc(aria)}">'
         f'<span class="storage-segment storage-root-segment" style="width:{root_width:.4f}%"></span>'
         f'<span class="storage-segment storage-descendant-segment" style="width:{descendant_width:.4f}%"></span>'

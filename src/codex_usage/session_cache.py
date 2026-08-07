@@ -19,6 +19,7 @@ import codex_usage.session_cache_schema as _schema
 import codex_usage.session_cache_store as _store
 import codex_usage.session_cache_transitions as _cache_transitions
 import codex_usage.storage_insights as _storage_insights
+import codex_usage.storage_metadata as _storage_metadata
 from codex_usage.aggregation import RangeBounds
 from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import EMPTY_PARALLEL_RUN_REPORT
@@ -175,7 +176,7 @@ def load_cached_session_data(
                     rebuilt=schema_state.created or schema_state.reset,
                     max_workers=max_workers,
                 )
-        storage_refresh = _storage_insights.refresh_storage_file_metadata(
+        storage_refresh = _storage_metadata.refresh_storage_file_metadata(
             connection, physical_inventory
         )
         session_files = [entry.path for entry in inventory]
