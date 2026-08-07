@@ -68,6 +68,12 @@ class UsageSummary:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ValuedUsageRecord:
+    record: UsageRecord
+    summary: UsageSummary
+
+
 def resolve_timezone(name: str | None) -> tzinfo:
     if not name:
         return datetime.now().astimezone().tzinfo or UTC
@@ -157,14 +163,23 @@ def filter_records_by_project_keys(records: list[UsageRecord], project_keys: Seq
 
 
 def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinfo) -> list[AggregateRow]:
+    return aggregate_valued_records(value_records(records), group_by, timezone)
+
+
+def aggregate_valued_records(
+    valued_records: Sequence[ValuedUsageRecord],
+    group_by: str,
+    timezone: tzinfo,
+) -> list[AggregateRow]:
     if group_by not in GROUP_CHOICES:
         raise ValueError(f"Unknown grouping: {group_by}")
 
     buckets: dict[str, tuple[str, UsageSummary]] = {}
-    for record in records:
+    for valued in valued_records:
+        record = valued.record
         key, label = _bucket_key(record, group_by, timezone)
         existing_label, existing_summary = buckets.get(key, (label, _empty_summary()))
-        buckets[key] = (existing_label, existing_summary.add(summarize_record(record)))
+        buckets[key] = (existing_label, existing_summary.add(valued.summary))
 
     rows = [
         AggregateRow(
@@ -183,10 +198,23 @@ def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinf
 
 
 def summarize_records(records: list[UsageRecord]) -> UsageSummary:
+    return summarize_valued_records(value_records(records))
+
+
+def summarize_valued_records(
+    valued_records: Sequence[ValuedUsageRecord],
+) -> UsageSummary:
     summary = _empty_summary()
-    for record in records:
-        summary = summary.add(summarize_record(record))
+    for valued in valued_records:
+        summary = summary.add(valued.summary)
     return summary
+
+
+def value_records(records: Sequence[UsageRecord]) -> tuple[ValuedUsageRecord, ...]:
+    return tuple(
+        ValuedUsageRecord(record=record, summary=summarize_record(record))
+        for record in records
+    )
 
 
 def summarize_record(record: UsageRecord) -> UsageSummary:

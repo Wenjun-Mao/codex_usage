@@ -186,9 +186,10 @@ test("buildCodexUsageEnv passes internal cache directory without removing proces
 test("cacheDbPath points at the Python cache database under extension storage", () => {
   assert.equal(
     cacheDbPath("C:/global-storage"),
-    path.join("C:/global-storage", "cache", "usage-cache-v5.sqlite3"),
+    path.join("C:/global-storage", "cache", "usage-cache-v6.sqlite3"),
   );
   assert.deepEqual(legacyCacheDbPaths("C:/global-storage"), [
+    path.join("C:/global-storage", "cache", "usage-cache-v5.sqlite3"),
     path.join("C:/global-storage", "cache", "usage-cache-v4.sqlite3"),
     path.join("C:/global-storage", "cache", "usage-cache.sqlite3"),
   ]);
@@ -454,7 +455,7 @@ test("native release jobs gate direct Codex registration before VSIX packaging",
 test("package metadata is ready for stable Marketplace publishing", () => {
   assert.equal(packageJson.publisher, "wenjun-mao");
   assert.equal(packageJson.private, undefined);
-  assert.equal(packageJson.version, "1.2.0");
+  assert.equal(packageJson.version, "1.3.0");
   assert.equal(packageJson.preview, undefined);
   assert.equal(packageJson.repository.url, "https://github.com/Wenjun-Mao/codex_usage.git");
   assert.match(packageJson.description, /local/i);

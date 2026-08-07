@@ -40,6 +40,10 @@ def test_phase_timer_writes_versioned_atomic_sidecar(tmp_path: Path) -> None:
         cache_stats=CacheStats(
             rebuilt=True,
             files_parsed=2,
+            files_full_parsed=1,
+            files_appended=1,
+            append_fallbacks=1,
+            source_bytes_read=131_072,
             files_reused=3,
             file_errors=1,
             legacy_cleanup_errors=1,
@@ -48,7 +52,7 @@ def test_phase_timer_writes_versioned_atomic_sidecar(tmp_path: Path) -> None:
     )
 
     payload = json.loads(output.read_text(encoding="utf-8"))
-    assert payload["version"] == 1
+    assert payload["version"] == 2
     assert payload["command"] == "report"
     assert payload["cache"] == {
         "rebuilt": True,
@@ -56,6 +60,10 @@ def test_phase_timer_writes_versioned_atomic_sidecar(tmp_path: Path) -> None:
         "files_current": 0,
         "files_archived": 0,
         "files_parsed": 2,
+        "files_full_parsed": 1,
+        "files_appended": 1,
+        "append_fallbacks": 1,
+        "source_bytes_read": 131_072,
         "files_reused": 3,
         "files_removed": 0,
         "files_missing_retained": 0,
@@ -177,6 +185,10 @@ def test_direct_cache_fallback_sidecar_has_complete_phases_and_diagnostics(
     assert payload["cache"]["direct_fallback"] is True
     assert payload["cache"]["cache_errors"] == 1
     assert payload["cache"]["files_parsed"] == 1
+    assert payload["cache"]["files_full_parsed"] == 1
+    assert payload["cache"]["files_appended"] == 0
+    assert payload["cache"]["append_fallbacks"] == 0
+    assert payload["cache"]["source_bytes_read"] == 0
     assert payload["cache"]["worker_infrastructure_errors"] == 0
     assert payload["cache"]["worker_serial_fallbacks"] == 0
 

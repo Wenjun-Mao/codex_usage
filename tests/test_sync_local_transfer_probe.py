@@ -138,6 +138,62 @@ def test_local_probe_never_calls_usage_parser_or_hasher(
     assert list(load_local_transfer_probe([sessions]).inventory.threads) == ["root"]
 
 
+def test_local_probe_stops_reading_after_first_valid_session_meta(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tmp_path / ".codex" / "sessions"
+    sessions.mkdir(parents=True)
+    path = sessions / "root.jsonl"
+    _write_meta(path, "root", trailing_bytes=4_000_000)
+    first_line_bytes = len(path.read_bytes().splitlines(keepends=True)[0])
+    original_open = Path.open
+    observed = [0]
+    observed_buffering: list[int] = []
+
+    def budgeted_open(candidate: Path, *args: object, **kwargs: object) -> Any:
+        handle = original_open(candidate, *args, **kwargs)
+        if candidate == path:
+            observed_buffering.append(int(kwargs.get("buffering", -1)))
+            return _ReadBudgetFile(
+                handle,
+                _TRANSFER_METADATA_HEADER_READ_LIMIT,
+                observed,
+            )
+        return handle
+
+    monkeypatch.setattr(Path, "open", budgeted_open)
+
+    probe = load_local_transfer_probe([sessions])
+
+    assert list(probe.inventory.threads) == ["root"]
+    assert observed[0] == first_line_bytes
+    assert observed_buffering and observed_buffering[0] > 0
+
+
+def test_local_probe_finds_metadata_after_irrelevant_rows(tmp_path: Path) -> None:
+    sessions = tmp_path / ".codex" / "sessions"
+    sessions.mkdir(parents=True)
+    path = sessions / "root.jsonl"
+    metadata = {
+        "timestamp": "2026-07-31T12:00:00Z",
+        "type": "session_meta",
+        "payload": {"id": "root", "cwd": "/repo/demo", "source": "cli"},
+    }
+    path.write_text(
+        json.dumps({"type": "event_msg", "payload": {}})
+        + "\nnot-json\n"
+        + json.dumps(metadata)
+        + "\n"
+        + ("x" * 2_000_000),
+        encoding="utf-8",
+    )
+
+    probe = load_local_transfer_probe([sessions])
+
+    assert list(probe.inventory.threads) == ["root"]
+
+
 @pytest.mark.parametrize(
     "payload",
     [

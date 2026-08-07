@@ -36,6 +36,7 @@ def test_changed_file_replaces_usage_metadata_and_candidates_atomically(
     )
 
     assert second.stats.files_parsed == 1
+    assert second.stats.files_appended == 1
     with sqlite3.connect(corpus.cache / CACHE_DB_NAME) as connection:
         assert connection.execute(
             "select count(*) from transition_candidates"
@@ -151,6 +152,7 @@ def generation_snapshot(cache_dir: Path) -> dict[str, tuple[tuple[object, ...], 
         "usage": "select * from usage_records order by file_key, record_index",
         "metadata": "select * from session_metadata order by file_key",
         "candidates": "select * from transition_candidates order by file_key, candidate_index",
+        "checkpoints": "select * from parser_checkpoints order by file_key",
         "fingerprints": "select * from files order by file_key",
         "dirty_tasks": "select * from dirty_transition_tasks order by thread_id",
     }

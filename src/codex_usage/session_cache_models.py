@@ -17,6 +17,10 @@ class CacheStats:
     files_current: int = 0
     files_archived: int = 0
     files_parsed: int = 0
+    files_full_parsed: int = 0
+    files_appended: int = 0
+    append_fallbacks: int = 0
+    source_bytes_read: int = 0
     files_reused: int = 0
     files_removed: int = 0
     files_missing_retained: int = 0

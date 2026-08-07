@@ -87,7 +87,7 @@ def test_cache_connection_closes_before_loader_returns(
 
 
 def test_legacy_cache_files_are_removed_after_schema_opens(tmp_path: Path) -> None:
-    assert CACHE_DB_NAME == "usage-cache-v5.sqlite3"
+    assert CACHE_DB_NAME == "usage-cache-v6.sqlite3"
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     legacy_paths = tuple(
@@ -108,7 +108,7 @@ def test_legacy_cache_files_are_removed_after_schema_opens(tmp_path: Path) -> No
 def test_legacy_cleanup_failure_is_counted_without_removing_new_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert CACHE_DB_NAME == "usage-cache-v5.sqlite3"
+    assert CACHE_DB_NAME == "usage-cache-v6.sqlite3"
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     legacy_path = cache_dir / LEGACY_CACHE_DB_NAMES[0]
@@ -165,6 +165,9 @@ def test_changed_file_reparses_when_size_or_mtime_changes(tmp_path: Path) -> Non
     data = load_cached_session_data([sessions], cache_dir=cache_dir, auto_transitions=False)
 
     assert data.stats.files_parsed == 1
+    assert data.stats.files_appended == 1
+    assert data.stats.files_full_parsed == 0
+    assert data.stats.append_fallbacks == 0
     assert [record.usage.total_tokens for record in data.records] == [100, 50]
 
 
@@ -420,10 +423,10 @@ def test_parse_failure_keeps_previous_cached_records(tmp_path: Path, monkeypatch
     _append_token_count(session_path, "2026-04-29T10:05:00Z", 150)
     os.utime(session_path, None)
 
-    def fail_parse(_path: Path):
+    def fail_parse(*_args: object, **_kwargs: object):
         raise OSError("transient read failure")
 
-    monkeypatch.setattr(usage_module, "parse_session_generation", fail_parse)
+    monkeypatch.setattr(usage_module, "parse_session_append", fail_parse)
 
     data = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1

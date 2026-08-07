@@ -18,6 +18,7 @@ from codex_usage.sync.io import _is_transient_filesystem_error
 # Real session_meta records are normally the first JSONL row. One MiB leaves room for
 # unusually large base instructions while keeping browse work independent of history size.
 TRANSFER_METADATA_HEADER_MAX_BYTES = 1024 * 1024
+TRANSFER_METADATA_READ_BUFFER_BYTES = 64 * 1024
 
 
 @retry(
@@ -28,13 +29,27 @@ TRANSFER_METADATA_HEADER_MAX_BYTES = 1024 * 1024
 )
 def read_transfer_metadata(path: Path) -> SessionMetadata | None:
     try:
-        with path.open("rb", buffering=0) as handle:
-            header = handle.read(TRANSFER_METADATA_HEADER_MAX_BYTES)
+        with path.open(
+            "rb",
+            buffering=TRANSFER_METADATA_READ_BUFFER_BYTES,
+        ) as handle:
+            remaining = TRANSFER_METADATA_HEADER_MAX_BYTES
+            while remaining:
+                raw_line = handle.readline(remaining)
+                if not raw_line:
+                    break
+                remaining -= len(raw_line)
+                is_session_meta, metadata = _parse_transfer_metadata_line(
+                    path,
+                    raw_line,
+                )
+                if is_session_meta:
+                    return metadata
     except OSError as error:
         if _is_transient_filesystem_error(error):
             raise
         return None
-    return parse_transfer_metadata_bytes(path, header)
+    return None
 
 
 def parse_transfer_metadata_bytes(
@@ -43,20 +58,29 @@ def parse_transfer_metadata_bytes(
 ) -> SessionMetadata | None:
     header = contents[:TRANSFER_METADATA_HEADER_MAX_BYTES]
     for raw_line in header.splitlines():
-        try:
-            value = json.loads(raw_line)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            continue
-        if not isinstance(value, dict) or value.get("type") != "session_meta":
-            continue
-        payload = value.get("payload")
-        if not isinstance(payload, dict):
-            return None
-        thread_id = payload.get("id")
-        if not is_canonical_thread_id(thread_id):
-            return None
-        return _metadata_from_payload(path, value, payload, thread_id)
+        is_session_meta, metadata = _parse_transfer_metadata_line(path, raw_line)
+        if is_session_meta:
+            return metadata
     return None
+
+
+def _parse_transfer_metadata_line(
+    path: Path,
+    raw_line: bytes,
+) -> tuple[bool, SessionMetadata | None]:
+    try:
+        value = json.loads(raw_line)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return False, None
+    if not isinstance(value, dict) or value.get("type") != "session_meta":
+        return False, None
+    payload = value.get("payload")
+    if not isinstance(payload, dict):
+        return True, None
+    thread_id = payload.get("id")
+    if not is_canonical_thread_id(thread_id):
+        return True, None
+    return True, _metadata_from_payload(path, value, payload, thread_id)
 
 
 def _metadata_from_payload(

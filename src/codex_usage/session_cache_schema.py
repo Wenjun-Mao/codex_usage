@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-CACHE_SCHEMA_VERSION = 5
-PARSER_CACHE_VERSION = 4
+CACHE_SCHEMA_VERSION = 6
+PARSER_CACHE_VERSION = 5
 PROJECT_TRANSITION_CACHE_VERSION = 2
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
 _PROJECT_TRANSITIONS_DIRTY_KEY = "project_transitions_dirty"
@@ -16,6 +16,7 @@ _KNOWN_CACHE_TABLES = frozenset(
         "files",
         "usage_records",
         "session_metadata",
+        "parser_checkpoints",
         "transition_candidates",
         "dirty_transition_tasks",
         "project_transitions",
@@ -142,6 +143,20 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         )
         """,
         """
+        create table parser_checkpoints (
+            file_key text primary key,
+            byte_offset integer not null,
+            next_record_index integer not null,
+            next_candidate_index integer not null,
+            source_device integer not null,
+            source_inode integer not null,
+            head_sha256 text not null,
+            boundary_sha256 text not null,
+            session_id text not null,
+            state_json text not null
+        )
+        """,
+        """
         create table transition_candidates (
             file_key text not null,
             candidate_index integer not null,
@@ -200,6 +215,7 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
             limit 1
             """
         ).fetchone()
+        connection.execute("select 1 from parser_checkpoints limit 1").fetchone()
     except sqlite3.Error:
         return False
     return invalid_role is None
@@ -234,6 +250,7 @@ def _drop_cache_schema(connection: sqlite3.Connection) -> None:
         "project_transitions",
         "dirty_transition_tasks",
         "transition_candidates",
+        "parser_checkpoints",
         "session_metadata",
         "usage_records",
         "files",

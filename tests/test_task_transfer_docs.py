@@ -220,17 +220,20 @@ def test_current_task_transfer_fixtures_use_task_language() -> None:
 
 
 @pytest.mark.parametrize("readme", CURRENT_DOCS, ids=("repository", "extension"))
-def test_current_docs_describe_parallel_complete_file_recovery(readme: Path) -> None:
-    text = readme.read_text(encoding="utf-8")
+def test_current_docs_describe_guarded_append_recovery(readme: Path) -> None:
+    text = readme.read_text(encoding="utf-8").casefold()
     for phrase in (
-        "complete files from byte zero",
-        "at most four worker processes",
-        "SQLite remains in the parent process",
-        "eight complete-file replacements",
-        "committed batches are reusable after interruption",
-        "no within-file checkpoint or range pruning",
+        "schema 6",
+        "unchanged refreshes open no session jsonls",
+        "at most four read-only workers",
+        "sqlite remains in the parent process",
+        "groups of eight files",
+        "parser checkpoint",
+        "new tail",
     ):
-        assert phrase in text
+        assert phrase in text, (readme, phrase)
+
+    assert "reparsing complete files from byte zero" not in text
 
 
 def test_release_docs_require_parallel_audit_and_prepublish_native_gate() -> None:

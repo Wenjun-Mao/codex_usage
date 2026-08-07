@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted.
+Accepted. The no-checkpoint portions are partially superseded by
+[ADR 0022](0022-guarded-append-parser-checkpoints.md). The bounded worker pool,
+parent-only SQLite ownership, eight-file transaction groups, deterministic
+commit ordering, and prior-generation rollback contract remain in force.
 
 ## Context
 
@@ -35,14 +38,17 @@ pool fallback. A pool construction, submission, or result-transport failure
 is infrastructure-only and activates one observable serial fallback for the
 current and remaining work.
 
-There is no byte offset checkpoint. The recovery unit is a complete file
-generation: after interruption, committed generations are reused and the
-unfinished generation is reparsed. Preserve schema version 3 and the existing
-cache identity and ordering contracts. Canonical session IDs are authoritative
-cache keys. Files whose metadata cannot be read use deterministic SHA-256 keys
-in an explicit path-fallback namespace; allocate those keys against all
-canonical and fallback keys in the inventory so neither mtimes nor discovery
-order can hide a valid session or an unreadable-file error.
+At the time of this decision there was no byte offset checkpoint. The recovery
+unit was a complete file generation: after interruption, committed generations
+were reused and the unfinished generation was reparsed. Schema version 3 was
+the recovery compatibility marker. ADR 0022 replaces that part of the contract
+with atomically committed parser checkpoints while keeping the last complete
+generation recoverable. The cache identity and ordering contracts remain:
+canonical session IDs are authoritative cache keys. Files whose metadata cannot
+be read use deterministic SHA-256 keys in an explicit path-fallback namespace;
+allocate those keys against all canonical and fallback keys in the inventory so
+neither mtimes nor discovery order can hide a valid session or an
+unreadable-file error.
 
 Native packaged-smoke commands use durable process-tree ownership. POSIX uses
 a new session and process-group termination. Windows creates a Job Object with
@@ -67,8 +73,9 @@ tag as a pre-publish gate on macOS Apple Silicon and Windows x64.
   observe stale cross-file state.
 - Worker path verification would duplicate mutable-file reads and break the
   parent-owned one global verification cache contract.
-- Append checkpoints would expose partial generations and make interruption
-  recovery mix old and new file records.
+- Append checkpoints without atomic generation ownership would expose partial
+  generations and make interruption recovery mix old and new file records.
+  ADR 0022 adds checkpoints only inside the existing parent-owned transaction.
 - Windows console process groups plus `taskkill` do not retain ownership after
   a target root exits. Assigning the target after `Popen` also leaves a race in
   which it can spawn an unowned descendant before Job assignment.
@@ -83,9 +90,8 @@ remain in the parent process, including read-only access to `state_5.sqlite`;
 children must satisfy the SQLite guards.
 
 The eight-file commit group bounds the amount of work that can be replayed
-after interruption without pretending that an append checkpoint exists.
-Complete file generation replacement preserves the last known-good rows, and
-schema version 3 remains the recovery compatibility marker. Source/frozen
+after interruption. Complete file generation replacement and the atomic append
+contract in ADR 0022 preserve the last known-good rows. Source/frozen
 PID-overlap proof must show real spawned overlap without the parent PID;
 oracle equivalence must show the same aggregate result as the serial path.
 Windows CI must additionally prove that a root can exit while a pipe-inheriting

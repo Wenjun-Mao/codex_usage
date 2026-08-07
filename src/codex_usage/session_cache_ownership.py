@@ -21,6 +21,13 @@ def is_reusable(
         and int(cached["size_bytes"]) == entry.size_bytes
         and int(cached["mtime_ns"]) == entry.mtime_ns
         and int(cached["is_missing"]) == 0
+        and (
+            bool(cached["error"])
+            or (
+                cached["checkpoint_offset"] is not None
+                and int(cached["checkpoint_offset"]) == entry.size_bytes
+            )
+        )
     )
 
 

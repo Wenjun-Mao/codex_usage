@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from codex_usage.models import SessionMetadata, UsageRecord
+from codex_usage.session_parser_models import SessionParseCheckpoint
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,3 +20,14 @@ class ParsedSessionGeneration:
     records: tuple[UsageRecord, ...]
     metadata: SessionMetadata
     candidates: tuple[RawRepoPathCandidate, ...]
+    checkpoint: SessionParseCheckpoint
+    bytes_read: int
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedSessionAppend:
+    records: tuple[UsageRecord, ...]
+    metadata: SessionMetadata
+    candidates: tuple[RawRepoPathCandidate, ...]
+    checkpoint: SessionParseCheckpoint
+    bytes_read: int

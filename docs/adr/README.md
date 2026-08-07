@@ -30,3 +30,4 @@ The current Task Transfer inventory contract is recorded in [ADR 0018](0018-user
 The bounded parallel cache refresh recovery contract is recorded in [ADR 0019](0019-bounded-parallel-cache-refresh.md).
 The incremental range-aware usage-cache contract is recorded in [ADR 0020](0020-incremental-range-aware-usage-cache.md).
 The explicit root-task/subagent usage-role contract is recorded in [ADR 0021](0021-explicit-usage-role-breakdown.md).
+The guarded append-parser checkpoint contract is recorded in [ADR 0022](0022-guarded-append-parser-checkpoints.md).

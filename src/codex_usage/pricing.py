@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import cache
 
 from codex_usage.models import TokenUsage
 
@@ -85,6 +87,12 @@ class EffectiveModelRate:
 
     def rate_for_usage(self, usage: TokenUsage) -> ModelRate:
         return self.request_pricing_contract.rate_for_usage(self.rate, usage)
+
+
+@dataclass(frozen=True, slots=True)
+class _EffectiveRateTimeline:
+    effective_from: tuple[datetime, ...]
+    entries: tuple[EffectiveModelRate, ...]
 
 
 @dataclass(frozen=True)
@@ -284,19 +292,45 @@ def _schedule_entry_for_model(
     at: datetime | None = None,
 ) -> EffectiveModelRate | None:
     normalized = _normalize_model_id(model)
+    timeline = _compiled_schedule(schedule).get(normalized)
+    if timeline is None:
+        return None
     effective_at = _normalize_effective_at(at)
-    candidates = [
-        entry
-        for entry in schedule
-        if _matches_model(entry, normalized)
-        and (effective_at is None or _normalize_effective_at(entry.effective_from) <= effective_at)
-    ]
-    if candidates:
-        return max(
-            candidates,
-            key=lambda entry: _normalize_effective_at(entry.effective_from) or BASELINE_EFFECTIVE_FROM,
+    if effective_at is None:
+        return timeline.entries[-1]
+    index = bisect_right(timeline.effective_from, effective_at) - 1
+    return None if index < 0 else timeline.entries[index]
+
+
+@cache
+def _compiled_schedule(
+    schedule: tuple[EffectiveModelRate, ...],
+) -> dict[str, _EffectiveRateTimeline]:
+    indexed: dict[str, list[EffectiveModelRate]] = {}
+    for entry in schedule:
+        keys = {_normalize_model_id(entry.model_key)}
+        keys.update(_normalize_model_id(alias) for alias in entry.aliases)
+        for key in keys:
+            indexed.setdefault(key, []).append(entry)
+
+    compiled: dict[str, _EffectiveRateTimeline] = {}
+    for key, entries in indexed.items():
+        ordered = tuple(
+            sorted(
+                entries,
+                key=lambda entry: _normalize_effective_at(entry.effective_from)
+                or BASELINE_EFFECTIVE_FROM,
+            )
         )
-    return None
+        compiled[key] = _EffectiveRateTimeline(
+            effective_from=tuple(
+                _normalize_effective_at(entry.effective_from)
+                or BASELINE_EFFECTIVE_FROM
+                for entry in ordered
+            ),
+            entries=ordered,
+        )
+    return compiled
 
 
 def estimate_cost(usage: TokenUsage, model: str, at: datetime | None = None) -> CostBreakdown | None:
@@ -346,8 +380,3 @@ def _normalize_effective_at(value: datetime | None) -> datetime | None:
 
 def _normalize_model_id(value: str) -> str:
     return value.strip().casefold()
-
-
-def _matches_model(entry: EffectiveModelRate, normalized_model: str) -> bool:
-    aliases = {_normalize_model_id(alias) for alias in entry.aliases}
-    return normalized_model == _normalize_model_id(entry.model_key) or normalized_model in aliases

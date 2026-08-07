@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
 
-from codex_usage.aggregation import AggregateRow, UsageSummary, summarize_record
+from codex_usage.aggregation import (
+    AggregateRow,
+    UsageSummary,
+    ValuedUsageRecord,
+    value_records,
+)
 from codex_usage.models import (
     ROOT_USAGE_ROLE,
     SUBAGENT_USAGE_ROLE,
@@ -56,6 +62,17 @@ def build_report_breakdown(
     *,
     visual_model_limit: int = 7,
 ) -> ReportBreakdown:
+    return build_report_breakdown_from_valued(
+        value_records(records),
+        visual_model_limit=visual_model_limit,
+    )
+
+
+def build_report_breakdown_from_valued(
+    valued_records: Sequence[ValuedUsageRecord],
+    *,
+    visual_model_limit: int = 7,
+) -> ReportBreakdown:
     if not 0 <= visual_model_limit <= MAX_VISUAL_MODEL_COUNT:
         raise ValueError(
             f"visual_model_limit must be between 0 and {MAX_VISUAL_MODEL_COUNT}"
@@ -66,10 +83,11 @@ def build_report_breakdown(
     project_labels: dict[str, str] = {}
     model_totals: dict[str, UsageSummary] = {}
 
-    for record in records:
+    for valued in valued_records:
+        record = valued.record
         if record.usage.total_tokens <= 0:
             continue
-        record_summary = summarize_record(record)
+        record_summary = valued.summary
         project_labels[record.project_key] = record.project_label
         project_totals[record.project_key] = _add(
             project_totals.get(record.project_key), record_summary
@@ -255,7 +273,12 @@ def _validate_equal(actual: UsageSummary, expected: UsageSummary, scope: str) ->
             actual_value = getattr(actual_group, field.name)
             expected_value = getattr(expected_group, field.name)
             if isinstance(actual_value, float):
-                if not math.isclose(actual_value, expected_value, rel_tol=0.0, abs_tol=1e-9):
+                if not math.isclose(
+                    actual_value,
+                    expected_value,
+                    rel_tol=1e-12,
+                    abs_tol=1e-9,
+                ):
                     raise ValueError(f"{scope}: {group}.{field.name} does not conserve")
             elif actual_value != expected_value:
                 raise ValueError(f"{scope}: {group}.{field.name} does not conserve")

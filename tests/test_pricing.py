@@ -342,6 +342,38 @@ def test_effective_dated_rate_lookup_uses_record_timestamp(monkeypatch) -> None:
     assert after.input_per_1m == 2.0
 
 
+def test_effective_dated_rate_lookup_is_independent_of_schedule_order(
+    monkeypatch,
+) -> None:
+    older = EffectiveModelRate(
+        model_key="example-model",
+        effective_from=datetime(1970, 1, 1, tzinfo=UTC),
+        rate=ModelRate(
+            input_per_1m=1.0,
+            cached_input_per_1m=0.1,
+            output_per_1m=10.0,
+        ),
+        aliases=("example-alias",),
+    )
+    newer = EffectiveModelRate(
+        model_key="example-model",
+        effective_from=datetime(2026, 8, 18, tzinfo=UTC),
+        rate=ModelRate(
+            input_per_1m=2.0,
+            cached_input_per_1m=0.2,
+            output_per_1m=20.0,
+        ),
+        aliases=("example-alias",),
+    )
+    monkeypatch.setattr(pricing, "API_PRICING_USD_SCHEDULE", (newer, older))
+
+    assert rate_for_model(
+        "example-alias",
+        at=datetime(2026, 8, 17, tzinfo=UTC),
+    ) == older.rate
+    assert rate_for_model("example-model") == newer.rate
+
+
 @pytest.mark.parametrize(
     "model",
     ("gpt-5.6-pro", "gpt-5.6-mini", "wrapper-gpt-5.6-sol", "wrapper-gpt-5.6"),

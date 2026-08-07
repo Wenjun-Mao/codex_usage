@@ -276,18 +276,34 @@ def test_once_reader_wraps_a_late_read_error_with_the_valid_prefix(
         + "\n",
     )
 
+    path.write_bytes("".join(valid_lines).encode() + b"x")
+    original_open = Path.open
+
     class LateFailingHandle:
+        def __init__(self, handle: object) -> None:
+            self._handle = handle
+            self._read_count = 0
+
         def __enter__(self) -> Self:
             return self
 
-        def __exit__(self, *_args: object) -> None:
-            return None
+        def __exit__(self, *args: object) -> object:
+            return self._handle.__exit__(*args)  # type: ignore[attr-defined]
 
-        def __iter__(self) -> Iterator[str]:
-            yield from valid_lines
-            raise OSError("late transition read failure")
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._handle, name)
 
-    monkeypatch.setattr(Path, "open", lambda *_args, **_kwargs: LateFailingHandle())
+        def readline(self, size: int = -1) -> bytes:
+            if self._read_count == len(valid_lines):
+                raise OSError("late transition read failure")
+            self._read_count += 1
+            return self._handle.readline(size)  # type: ignore[attr-defined,no-any-return]
+
+    def late_failing_open(candidate: Path, *args: object, **kwargs: object):
+        handle = original_open(candidate, *args, **kwargs)
+        return LateFailingHandle(handle) if candidate == path else handle
+
+    monkeypatch.setattr(Path, "open", late_failing_open)
     with pytest.raises(PartialTransitionReadError) as caught:
         read_jsonl_repo_path_candidates_once(path)
     assert len(caught.value.candidates) == 1

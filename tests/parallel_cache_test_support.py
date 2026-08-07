@@ -21,15 +21,11 @@ from codex_usage.session_cache_models import CachedSessionData
 
 type GenerationSnapshot = tuple[tuple[object, ...], ...]
 SchemaObject = tuple[str, str, str, str]
-EXPECTED_SCHEMA_META = (
-    ("parser_version", "4"),
-    ("project_transition_version", "2"),
-    ("project_transitions_dirty", "1"),
-    ("schema_version", "5"),
-)
+EXPECTED_SCHEMA_META = (("parser_version", "5"), ("project_transition_version", "2"), ("project_transitions_dirty", "1"), ("schema_version", "6"))
 EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
     ("index", "sqlite_autoindex_dirty_transition_tasks_1", "dirty_transition_tasks", ""),
     ("index", "sqlite_autoindex_files_1", "files", ""),
+    ("index", "sqlite_autoindex_parser_checkpoints_1", "parser_checkpoints", ""),
     ("index", "sqlite_autoindex_schema_meta_1", "schema_meta", ""),
     ("index", "sqlite_autoindex_session_metadata_1", "session_metadata", ""),
     ("index", "sqlite_autoindex_transition_candidates_1", "transition_candidates", ""),
@@ -41,6 +37,10 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
     ("table", "files", "files", "CREATE TABLE files ( file_key text primary key, path text not null, "  # noqa: ISC004
      "session_dir text not null, storage_state text not null, size_bytes integer not null, mtime_ns integer not null, "
      "parsed_at text not null, last_seen_at text not null, missing_since text, is_missing integer not null, session_id text, error text )"),
+    ("table", "parser_checkpoints", "parser_checkpoints", "CREATE TABLE parser_checkpoints ( file_key text primary key, "  # noqa: ISC004
+     "byte_offset integer not null, next_record_index integer not null, next_candidate_index integer not null, "
+     "source_device integer not null, source_inode integer not null, head_sha256 text not null, boundary_sha256 text not null, "
+     "session_id text not null, state_json text not null )"),
     ("table", "project_transitions", "project_transitions", "CREATE TABLE project_transitions ( owner_thread_id text not null, source_key text not null, "  # noqa: ISC004
      "source_label text not null, target_key text not null, target_label text not null, effective_from text not null, "
      "confidence integer not null, evidence_json text not null, thread_ids_json text not null )"),
@@ -259,7 +259,8 @@ def complete_generation_snapshot(cache_dir: Path) -> GenerationSnapshot:
         session_metadata = tuple(
             connection.execute("select * from session_metadata order by file_key")
         )
-    return files + usage_records + session_metadata
+        checkpoints = tuple(connection.execute("select * from parser_checkpoints order by file_key"))
+    return files + usage_records + session_metadata + checkpoints
 
 
 def normalized_sqlite_master(connection: sqlite3.Connection) -> tuple[SchemaObject, ...]:

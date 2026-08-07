@@ -62,6 +62,8 @@ def test_parallel_refresh_adr_locks_the_recovery_contract() -> None:
 
     assert "0018" in index
     assert "0019" in index
+    assert "partially superseded" in prose
+    assert "0022" in index
 
 
 def test_incremental_cache_docs_lock_the_1_1_0_contract() -> None:

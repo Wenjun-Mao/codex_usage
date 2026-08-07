@@ -59,7 +59,7 @@ def write_timing_sidecar(
     command: str,
 ) -> None:
     payload = {
-        "version": 1,
+        "version": 2,
         "command": command,
         "cache": {
             "rebuilt": cache_stats.rebuilt,
@@ -67,6 +67,10 @@ def write_timing_sidecar(
             "files_current": cache_stats.files_current,
             "files_archived": cache_stats.files_archived,
             "files_parsed": cache_stats.files_parsed,
+            "files_full_parsed": cache_stats.files_full_parsed,
+            "files_appended": cache_stats.files_appended,
+            "append_fallbacks": cache_stats.append_fallbacks,
+            "source_bytes_read": cache_stats.source_bytes_read,
             "files_reused": cache_stats.files_reused,
             "files_removed": cache_stats.files_removed,
             "files_missing_retained": cache_stats.files_missing_retained,

@@ -9,12 +9,13 @@ from pathlib import Path
 from codex_usage.aggregation import (
     GROUP_CHOICES,
     RANGE_CHOICES,
-    aggregate_records,
-    summarize_records,
+    aggregate_valued_records,
+    summarize_valued_records,
+    value_records,
 )
 from codex_usage.performance_timing import PhaseTimer, write_timing_sidecar
 from codex_usage.project_transitions import ProjectTransition
-from codex_usage.report_breakdown import build_report_breakdown
+from codex_usage.report_breakdown import build_report_breakdown_from_valued
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
 from codex_usage.reporting import (
     print_json,
@@ -176,8 +177,13 @@ def handle_summary(args: argparse.Namespace) -> int:
     context = load_usage_context(args)
     timer = getattr(args, "_phase_timer", None)
     with timer.measure("aggregation_render") if timer else nullcontext():
-        rows = aggregate_records(context.records, args.group_by, context.timezone)
-        total = summarize_records(context.records)
+        valued_records = value_records(context.records)
+        rows = aggregate_valued_records(
+            valued_records,
+            args.group_by,
+            context.timezone,
+        )
+        total = summarize_valued_records(valued_records)
         generated_at = datetime.now(context.timezone)
 
         payload = summary_payload(
@@ -217,15 +223,24 @@ def handle_report(args: argparse.Namespace) -> int:
     context = load_usage_context(args)
     timer = getattr(args, "_phase_timer", None)
     with timer.measure("aggregation_render") if timer else nullcontext():
-        total = summarize_records(context.records)
-        breakdown = build_report_breakdown(context.records)
+        valued_records = value_records(context.records)
+        total = summarize_valued_records(valued_records)
+        breakdown = build_report_breakdown_from_valued(valued_records)
         output_path = render_html_report(
             output_path=args.output,
             generated_at=datetime.now(context.timezone),
             range_name=args.range_name,
             total=total,
-            daily_rows=aggregate_records(context.records, "day", context.timezone),
-            hourly_rows=aggregate_records(context.records, "hour", context.timezone),
+            daily_rows=aggregate_valued_records(
+                valued_records,
+                "day",
+                context.timezone,
+            ),
+            hourly_rows=aggregate_valued_records(
+                valued_records,
+                "hour",
+                context.timezone,
+            ),
             breakdown=breakdown,
             sessions_dirs=context.session_dirs,
             files_scanned=len(context.files),

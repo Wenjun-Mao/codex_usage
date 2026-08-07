@@ -21,6 +21,8 @@ class SessionFileInventoryEntry:
     size_bytes: int
     mtime_ns: int
     file_key_is_fallback: bool = False
+    source_device: int = 0
+    source_inode: int = 0
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,8 @@ def collect_session_file_inventory(
                 size_bytes=stat.st_size,
                 mtime_ns=stat.st_mtime_ns,
                 file_key_is_fallback=file_key_is_fallback,
+                source_device=int(stat.st_dev),
+                source_inode=int(stat.st_ino),
             )
             candidates.append(entry)
 

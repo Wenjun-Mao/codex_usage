@@ -41,6 +41,18 @@ export type DashboardRefreshRequest = {
 export type DashboardTimingDiagnostics = {
   phaseSeconds: Record<string, number>;
   cliSeconds: number | undefined;
+  cache: DashboardCacheDiagnostics | undefined;
+};
+
+export type DashboardCacheDiagnostics = {
+  rebuilt: boolean;
+  filesTotal: number;
+  filesParsed: number;
+  filesFullParsed: number;
+  filesAppended: number;
+  appendFallbacks: number;
+  sourceBytesRead: number;
+  filesReused: number;
 };
 
 export type DashboardStatusIntent = {
@@ -213,7 +225,14 @@ async function readTimingDiagnostics(
     const cliSeconds = typeof payload.total_seconds === "number" && Number.isFinite(payload.total_seconds)
       ? payload.total_seconds
       : undefined;
-    return { timing: { phaseSeconds, cliSeconds }, warning: undefined };
+    return {
+      timing: {
+        phaseSeconds,
+        cliSeconds,
+        cache: parseCacheDiagnostics(payload.cache),
+      },
+      warning: undefined,
+    };
   } catch (error) {
     return {
       timing: undefined,
@@ -266,6 +285,15 @@ function logDiagnostics(
     if (cliSeconds !== undefined && !("total_cli" in timing.phaseSeconds)) {
       publication.commit(() => appendOutput(`[timing] total_cli: ${cliSeconds.toFixed(3)}s`));
     }
+    const cache = timing.cache;
+    if (cache) {
+      publication.commit(() => appendOutput(
+        `[cache] files=${cache.filesTotal} parsed=${cache.filesParsed} `
+        + `(full=${cache.filesFullParsed}, append=${cache.filesAppended}, `
+        + `fallback=${cache.appendFallbacks}) reused=${cache.filesReused} `
+        + `source_bytes=${cache.sourceBytesRead} rebuilt=${cache.rebuilt}`,
+      ));
+    }
   }
   publication.commit(() => appendOutput(`[timing] extension_total: ${result.elapsedSeconds.toFixed(3)}s`));
 }
@@ -295,4 +323,33 @@ function errorMessage(error: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseCacheDiagnostics(value: unknown): DashboardCacheDiagnostics | undefined {
+  if (!isRecord(value) || typeof value.rebuilt !== "boolean") {
+    return undefined;
+  }
+  const names = [
+    "files_total",
+    "files_parsed",
+    "files_full_parsed",
+    "files_appended",
+    "append_fallbacks",
+    "source_bytes_read",
+    "files_reused",
+  ] as const;
+  const values = names.map((name) => value[name]);
+  if (values.some((item) => typeof item !== "number" || !Number.isSafeInteger(item) || item < 0)) {
+    return undefined;
+  }
+  return {
+    rebuilt: value.rebuilt,
+    filesTotal: values[0] as number,
+    filesParsed: values[1] as number,
+    filesFullParsed: values[2] as number,
+    filesAppended: values[3] as number,
+    appendFallbacks: values[4] as number,
+    sourceBytesRead: values[5] as number,
+    filesReused: values[6] as number,
+  };
 }

@@ -7,8 +7,10 @@ from pathlib import Path
 
 from codex_usage.models import UsageRecord
 from codex_usage.project_identity import resolve_project_identity
+from codex_usage.session_cache_checkpoints import upsert_parser_checkpoint
 from codex_usage.session_files import owning_session_dir
 from codex_usage.session_generation_models import (
+    ParsedSessionAppend,
     ParsedSessionGeneration,
     RawRepoPathCandidate,
 )
@@ -37,7 +39,47 @@ def replace_file_generation(
     upsert_file_fingerprint(
         connection, session_dirs, entry, generation.metadata.session_id
     )
+    upsert_parser_checkpoint(connection, entry.file_key, generation.checkpoint)
     return affected | generation_task_ids(generation)
+
+
+def append_file_generation(
+    connection: sqlite3.Connection,
+    session_dirs: list[Path],
+    entry: SessionFileInventoryEntry,
+    appended: ParsedSessionAppend,
+) -> set[str]:
+    affected = affected_task_ids_for_file(connection, entry.file_key)
+    record_start = appended.checkpoint.next_record_index - len(appended.records)
+    candidate_start = (
+        appended.checkpoint.next_candidate_index - len(appended.candidates)
+    )
+    insert_usage_records(
+        connection,
+        entry,
+        appended.records,
+        start_index=record_start,
+    )
+    insert_transition_candidates(
+        connection,
+        entry.file_key,
+        appended.candidates,
+        start_index=candidate_start,
+    )
+    _update_session_metadata_after_append(
+        connection,
+        session_dirs,
+        entry,
+        appended,
+    )
+    upsert_file_fingerprint(
+        connection,
+        session_dirs,
+        entry,
+        appended.metadata.session_id,
+    )
+    upsert_parser_checkpoint(connection, entry.file_key, appended.checkpoint)
+    return affected | _append_task_ids(appended)
 
 
 def rekey_file_generation(
@@ -49,7 +91,12 @@ def rekey_file_generation(
     affected.update(affected_task_ids_for_file(connection, replacement.file_key))
     delete_file_generation(connection, replacement.file_key)
     connection.execute("delete from files where file_key = ?", (replacement.file_key,))
-    for table in ("usage_records", "session_metadata", "transition_candidates"):
+    for table in (
+        "usage_records",
+        "session_metadata",
+        "transition_candidates",
+        "parser_checkpoints",
+    ):
         connection.execute(
             f"update {table} set file_key = ? where file_key = ?",
             (replacement.file_key, entry.file_key),
@@ -134,12 +181,17 @@ def delete_file_generation(connection: sqlite3.Connection, file_key: str) -> Non
     connection.execute(
         "delete from transition_candidates where file_key = ?", (file_key,)
     )
+    connection.execute(
+        "delete from parser_checkpoints where file_key = ?", (file_key,)
+    )
 
 
 def insert_usage_records(
     connection: sqlite3.Connection,
     entry: SessionFileInventoryEntry,
     records: tuple[UsageRecord, ...],
+    *,
+    start_index: int = 0,
 ) -> None:
     for index, record in enumerate(records):
         usage = record.usage
@@ -156,7 +208,7 @@ def insert_usage_records(
             (
                 entry.file_key,
                 str(entry.path),
-                index,
+                start_index + index,
                 record.timestamp.isoformat(),
                 _timestamp_us(record.timestamp),
                 record.session_id,
@@ -232,6 +284,8 @@ def insert_transition_candidates(
     connection: sqlite3.Connection,
     file_key: str,
     candidates: tuple[RawRepoPathCandidate, ...],
+    *,
+    start_index: int = 0,
 ) -> None:
     for index, candidate in enumerate(candidates):
         connection.execute(
@@ -243,7 +297,7 @@ def insert_transition_candidates(
             """,
             (
                 file_key,
-                index,
+                start_index + index,
                 candidate.timestamp.isoformat(),
                 _timestamp_us(candidate.timestamp),
                 candidate.thread_id,
@@ -282,6 +336,75 @@ def upsert_file_fingerprint(
             "",
         ),
     )
+
+
+def _update_session_metadata_after_append(
+    connection: sqlite3.Connection,
+    session_dirs: list[Path],
+    entry: SessionFileInventoryEntry,
+    appended: ParsedSessionAppend,
+) -> None:
+    selected = appended.records[-1] if appended.records else None
+    if selected is None:
+        connection.execute(
+            """
+            update session_metadata
+            set file_path = ?, session_dir = ?, storage_state = ?, is_missing = 0,
+                session_bytes = ?, estimated_sync_bytes = ?
+            where file_key = ?
+            """,
+            (
+                str(entry.path),
+                str(owning_session_dir(entry.path, session_dirs)),
+                entry.storage_state,
+                entry.size_bytes,
+                entry.size_bytes + _ESTIMATED_SYNC_METADATA_BYTES,
+                entry.file_key,
+            ),
+        )
+        return
+
+    metadata = appended.metadata
+    connection.execute(
+        """
+        update session_metadata
+        set file_path = ?, session_dir = ?, storage_state = ?, is_missing = 0,
+            session_id = ?, cwd = ?, project_key = ?, project_label = ?,
+            project_aliases_json = ?, git_repository_url = ?, git_branch = ?,
+            memory_mode = ?, has_base_instructions = ?, session_bytes = ?,
+            estimated_sync_bytes = ?
+        where file_key = ?
+        """,
+        (
+            str(entry.path),
+            str(owning_session_dir(entry.path, session_dirs)),
+            entry.storage_state,
+            selected.session_id,
+            selected.cwd,
+            selected.project_key,
+            selected.project_label,
+            json.dumps(list(selected.project_aliases)),
+            selected.git_repository_url,
+            selected.git_branch,
+            metadata.memory_mode,
+            1 if metadata.has_base_instructions else 0,
+            entry.size_bytes,
+            entry.size_bytes + _ESTIMATED_SYNC_METADATA_BYTES,
+            entry.file_key,
+        ),
+    )
+
+
+def _append_task_ids(appended: ParsedSessionAppend) -> set[str]:
+    return {
+        task_id
+        for task_id in (
+            appended.metadata.session_id,
+            *(record.session_id for record in appended.records),
+            *(candidate.thread_id for candidate in appended.candidates),
+        )
+        if task_id
+    }
 
 
 def _same_path_alias_keys(

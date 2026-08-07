@@ -68,9 +68,19 @@ test("dashboard refresh publishes parsed timing phases with extension elapsed ti
     runCodexUsage: async () => {
       await fs.promises.writeFile(request.reportPath, "<html><head></head><body><main>Report</main></body></html>");
       await fs.promises.writeFile(request.timingOutputPath, JSON.stringify({
-        version: 1,
+        version: 2,
         phases_seconds: { inventory: 0.125, range_query: 0.25, total_cli: 0.5 },
         total_seconds: 0.5,
+        cache: {
+          rebuilt: false,
+          files_total: 10,
+          files_parsed: 2,
+          files_full_parsed: 1,
+          files_appended: 1,
+          append_fallbacks: 0,
+          source_bytes_read: 131072,
+          files_reused: 8,
+        },
       }));
       return { stdout: "", stderr: "" };
     },
@@ -82,6 +92,16 @@ test("dashboard refresh publishes parsed timing phases with extension elapsed ti
   assert.deepEqual(result.timing, {
     phaseSeconds: { inventory: 0.125, range_query: 0.25, total_cli: 0.5 },
     cliSeconds: 0.5,
+    cache: {
+      rebuilt: false,
+      filesTotal: 10,
+      filesParsed: 2,
+      filesFullParsed: 1,
+      filesAppended: 1,
+      appendFallbacks: 0,
+      sourceBytesRead: 131072,
+      filesReused: 8,
+    },
   });
   publishDashboardRefresh(request, result, {
     appendOutput: (line) => output.push(line),
@@ -98,6 +118,7 @@ test("dashboard refresh publishes parsed timing phases with extension elapsed ti
   assert.match(panel.webview.html, /Loaded in \d+\.\d seconds/);
   assert.match(output.join("\n"), /inventory: 0\.125s/);
   assert.equal(output.filter((line) => line.includes("total_cli")).length, 1);
+  assert.match(output.join("\n"), /\[cache\].*full=1, append=1, fallback=0/);
   assert.match(output.join("\n"), /extension_total: \d+\.\d{3}s/);
 });
 

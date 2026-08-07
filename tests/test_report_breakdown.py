@@ -7,7 +7,11 @@ import pytest
 from codex_usage.aggregation import UsageSummary
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
-from codex_usage.report_breakdown import OTHER_MODEL_KEY, build_report_breakdown
+from codex_usage.report_breakdown import (
+    OTHER_MODEL_KEY,
+    _validate_equal,
+    build_report_breakdown,
+)
 from codex_usage.report_breakdown_view import build_breakdown_view
 
 
@@ -243,6 +247,23 @@ def test_build_report_breakdown_conserves_effective_dated_pricing_through_other(
     assert other.cost.total_usd == pytest.approx(0.00022725, rel=0, abs=1e-9)
     assert other.credits.total_credits == pytest.approx(0.00625, rel=0, abs=1e-9)
     _assert_summary_equal(_as_summary(other), _as_summary(breakdown.model_rows[-1]))
+
+
+def test_conservation_tolerance_scales_for_observed_30_day_credit_total() -> None:
+    expected = UsageSummary(
+        usage=TokenUsage(total_tokens=1_000_000_000),
+        cost=CostBreakdown(total_usd=832.1772),
+        credits=CreditBreakdown(total_credits=20_804.0),
+        record_count=10_000,
+    )
+    actual = UsageSummary(
+        usage=expected.usage,
+        cost=CostBreakdown(total_usd=832.1772 + 2e-10),
+        credits=CreditBreakdown(total_credits=20_804.0 + 2e-9),
+        record_count=expected.record_count,
+    )
+
+    _validate_equal(actual, expected, "30-day regression")
 
 
 def _as_summary(row: object) -> UsageSummary:

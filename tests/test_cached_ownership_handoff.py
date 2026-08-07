@@ -202,12 +202,12 @@ def test_changed_active_parse_failure_keeps_previous_active_generation(
         ).fetchone()
     _append_ignored_event(corpus.active_path)
 
-    def fail_active_parse(path: Path):
+    def fail_active_parse(path: Path, *_args: object, **_kwargs: object):
         if path == corpus.active_path:
             raise OSError("active parse failure")
         raise AssertionError("unchanged archive should not be reparsed")
 
-    monkeypatch.setattr(usage_module, "parse_session_generation", fail_active_parse)
+    monkeypatch.setattr(usage_module, "parse_session_append", fail_active_parse)
     failed = load_cached_session_data(
         corpus.session_dirs,
         cache_dir=corpus.cache_dir,

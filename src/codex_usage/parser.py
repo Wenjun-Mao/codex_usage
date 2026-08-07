@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
+import hashlib
+import os
+import re
 from collections.abc import Iterable
-from dataclasses import replace
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -15,14 +16,24 @@ from codex_usage.models import (
     usage_role_from_is_subagent,
 )
 from codex_usage.project_identity import resolve_project_identity
-from codex_usage.project_transition_evidence import extract_repo_paths
 from codex_usage.session_generation_models import (
+    ParsedSessionAppend,
     ParsedSessionGeneration,
     RawRepoPathCandidate,
 )
-from codex_usage.session_provenance import (
-    is_structured_subagent,
-    parent_thread_id_from_source,
+from codex_usage.session_parser_models import (
+    SessionParseCheckpoint,
+    SessionParserState,
+)
+from codex_usage.session_parser_events import (
+    extract_collaboration_mode as _extract_collaboration_mode,
+    extract_effort as _extract_effort,
+    extract_model as _extract_model,
+    extract_repo_path_candidates as _extract_repo_path_candidates,
+    inherit_parent_project_identity as _inherit_parent_project_identity,
+    parse_json_line as _parse_json_line,
+    parse_session_metadata as _parse_session_metadata,
+    parse_timestamp,
 )
 
 _USAGE_EVENT_MARKERS = (
@@ -32,6 +43,28 @@ _USAGE_EVENT_MARKERS = (
     '"task_started"',
 )
 _FUNCTION_CALL_MARKERS = ('"response_item"', '"function_call"')
+_USAGE_EVENT_MARKERS_BYTES = tuple(marker.encode() for marker in _USAGE_EVENT_MARKERS)
+_FUNCTION_CALL_MARKERS_BYTES = tuple(marker.encode() for marker in _FUNCTION_CALL_MARKERS)
+_NORMAL_EVENT_DISCRIMINATOR = re.compile(
+    rb'"type"\s*:\s*"(response_item|event_msg)"\s*,\s*'
+    rb'"payload"\s*:\s*\{\s*"type"\s*:\s*"([^"\\]+)"'
+)
+RELEVANT_PREFIX_BYTES = 4096
+CHECKPOINT_DIGEST_BYTES = 64 * 1024
+SESSION_READ_BUFFER_BYTES = 1024 * 1024
+
+
+class AppendCheckpointMismatch(ValueError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedChunk:
+    records: tuple[UsageRecord, ...]
+    metadata: SessionMetadata
+    candidates: tuple[RawRepoPathCandidate, ...]
+    checkpoint: SessionParseCheckpoint
+    bytes_read: int
 
 
 class _PartialSessionGenerationReadError(OSError):
@@ -45,12 +78,36 @@ class _PartialSessionGenerationReadError(OSError):
         self.cause = cause
 
 
-def _line_may_affect_usage(raw_line: str) -> bool:
+def _line_bytes_may_affect_usage(raw_line: bytes) -> bool:
+    prefix = raw_line[:RELEVANT_PREFIX_BYTES]
+    if (
+        any(marker in prefix for marker in _USAGE_EVENT_MARKERS_BYTES)
+        or all(marker in prefix for marker in _FUNCTION_CALL_MARKERS_BYTES)
+        or b"\\u" in prefix
+        or b"\\U" in prefix
+    ):
+        return True
+    discriminator = _NORMAL_EVENT_DISCRIMINATOR.search(prefix)
+    if discriminator is not None:
+        outer_type, payload_type = discriminator.groups()
+        return (outer_type, payload_type) in {
+            (b"response_item", b"function_call"),
+            (b"event_msg", b"token_count"),
+            (b"event_msg", b"task_started"),
+        }
+    # A non-ASCII prefix cannot be classified without decoding it. Preserve the
+    # existing invalid-UTF-8 file error instead of silently treating it as noise.
+    if not prefix.isascii():
+        return True
+    return _legacy_line_bytes_may_affect_usage(raw_line)
+
+
+def _legacy_line_bytes_may_affect_usage(raw_line: bytes) -> bool:
     return (
-        any(marker in raw_line for marker in _USAGE_EVENT_MARKERS)
-        or all(marker in raw_line for marker in _FUNCTION_CALL_MARKERS)
-        or r"\u" in raw_line
-        or r"\U" in raw_line
+        any(marker in raw_line for marker in _USAGE_EVENT_MARKERS_BYTES)
+        or all(marker in raw_line for marker in _FUNCTION_CALL_MARKERS_BYTES)
+        or b"\\u" in raw_line
+        or b"\\U" in raw_line
     )
 
 
@@ -91,28 +148,144 @@ def parse_session_file(path: Path) -> list[UsageRecord]:
 def parse_session_generation(
     path: Path,
     *,
+    stop_offset: int | None = None,
     _capture_partial_candidates: bool = False,
 ) -> ParsedSessionGeneration:
-    metadata = SessionMetadata(session_id=path.stem, file_path=path)
-    root_metadata: SessionMetadata | None = None
+    initial_metadata = SessionMetadata(session_id=path.stem, file_path=path)
+    initial_state = SessionParserState(
+        metadata=initial_metadata,
+        root_metadata=None,
+        previous_usage=None,
+        root_session_id="",
+        root_session_is_fork=False,
+        counted_root_fork_usage=False,
+        current_model=UNKNOWN,
+        current_turn_id="",
+        current_effort="",
+        current_mode="",
+    )
+    try:
+        chunk = _parse_session_chunk(
+            path,
+            initial_state,
+            start_offset=0,
+            stop_offset=stop_offset,
+            next_record_index=0,
+            next_candidate_index=0,
+            expected_checkpoint=None,
+        )
+    except _PartialSessionGenerationReadError as error:
+        if _capture_partial_candidates:
+            raise
+        raise error.cause from error
+    return ParsedSessionGeneration(
+        records=chunk.records,
+        metadata=chunk.metadata,
+        candidates=chunk.candidates,
+        checkpoint=chunk.checkpoint,
+        bytes_read=chunk.bytes_read,
+    )
+
+
+def parse_session_append(
+    path: Path,
+    checkpoint: SessionParseCheckpoint,
+    *,
+    stop_offset: int,
+) -> ParsedSessionAppend:
+    try:
+        chunk = _parse_session_chunk(
+            path,
+            checkpoint.state,
+            start_offset=checkpoint.byte_offset,
+            stop_offset=stop_offset,
+            next_record_index=checkpoint.next_record_index,
+            next_candidate_index=checkpoint.next_candidate_index,
+            expected_checkpoint=checkpoint,
+        )
+    except _PartialSessionGenerationReadError as error:
+        raise error.cause from error
+    return ParsedSessionAppend(
+        records=chunk.records,
+        metadata=chunk.metadata,
+        candidates=chunk.candidates,
+        checkpoint=chunk.checkpoint,
+        bytes_read=chunk.bytes_read,
+    )
+
+
+def _parse_session_chunk(
+    path: Path,
+    initial_state: SessionParserState,
+    *,
+    start_offset: int,
+    stop_offset: int | None,
+    next_record_index: int,
+    next_candidate_index: int,
+    expected_checkpoint: SessionParseCheckpoint | None,
+) -> _ParsedChunk:
+    metadata = initial_state.metadata
+    root_metadata = initial_state.root_metadata
     records: list[UsageRecord] = []
     candidates: list[RawRepoPathCandidate] = []
-    previous_usage: TokenUsage | None = None
-    root_session_id = ""
-    root_session_is_fork = False
-    counted_root_fork_usage = False
-    current_model = UNKNOWN
-    current_turn_id = ""
-    current_effort = ""
-    current_mode = ""
+    previous_usage = initial_state.previous_usage
+    root_session_id = initial_state.root_session_id
+    root_session_is_fork = initial_state.root_session_is_fork
+    counted_root_fork_usage = initial_state.counted_root_fork_usage
+    current_model = initial_state.current_model
+    current_turn_id = initial_state.current_turn_id
+    current_effort = initial_state.current_effort
+    current_mode = initial_state.current_mode
+    bytes_read = 0
+    checkpoint_offset = start_offset
 
     try:
-        with path.open("r", encoding="utf-8") as handle:
-            for raw_line in handle:
-                if not _line_may_affect_usage(raw_line):
+        with path.open("rb", buffering=SESSION_READ_BUFFER_BYTES) as handle:
+            opened_stat = os.fstat(handle.fileno())
+            source_device = int(opened_stat.st_dev)
+            source_inode = int(opened_stat.st_ino)
+            captured_stop = opened_stat.st_size if stop_offset is None else stop_offset
+            if captured_stop < start_offset or opened_stat.st_size < captured_stop:
+                raise OSError("session file changed before its captured snapshot could be read")
+            if expected_checkpoint is not None:
+                bytes_read += _validate_append_checkpoint(
+                    handle,
+                    expected_checkpoint,
+                    source_device=source_device,
+                    source_inode=source_inode,
+                    stop_offset=captured_stop,
+                )
+            handle.seek(start_offset)
+            while handle.tell() < captured_stop:
+                line_start = handle.tell()
+                raw_line = handle.readline(captured_stop - line_start)
+                if not raw_line:
+                    break
+                bytes_read += len(raw_line)
+                line_end = handle.tell()
+                unterminated_tail = (
+                    line_end == captured_stop and not raw_line.endswith(b"\n")
+                )
+                if not unterminated_tail and not _line_bytes_may_affect_usage(raw_line):
+                    checkpoint_offset = line_end
                     continue
-                obj = _parse_json_line(raw_line)
+                try:
+                    decoded_line = raw_line.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    if (
+                        unterminated_tail
+                        and exc.reason == "unexpected end of data"
+                        and exc.end == len(raw_line)
+                    ):
+                        handle.seek(line_start)
+                        break
+                    raise
+                obj = _parse_json_line(decoded_line)
                 if obj is None:
+                    if unterminated_tail:
+                        handle.seek(line_start)
+                        break
+                    checkpoint_offset = line_end
                     continue
 
                 event_timestamp = parse_timestamp(obj.get("timestamp"))
@@ -125,6 +298,7 @@ def parse_session_generation(
                         root_metadata = metadata
                         root_session_id = metadata.session_id
                         root_session_is_fork = bool(metadata.forked_from_id)
+                    checkpoint_offset = line_end
                     continue
 
                 if event_type == "response_item":
@@ -135,6 +309,7 @@ def parse_session_generation(
                             metadata.session_id,
                         )
                     )
+                    checkpoint_offset = line_end
                     continue
 
                 if event_type == "turn_context":
@@ -142,21 +317,26 @@ def parse_session_generation(
                     current_model = _extract_model(payload) or current_model
                     current_effort = _extract_effort(payload) or current_effort
                     current_mode = _extract_collaboration_mode(payload) or current_mode
+                    checkpoint_offset = line_end
                     continue
 
                 if event_type != "event_msg":
+                    checkpoint_offset = line_end
                     continue
 
                 payload_type = payload.get("type")
                 if payload_type == "task_started":
                     current_turn_id = str(payload.get("turn_id") or current_turn_id)
                     current_mode = str(payload.get("collaboration_mode_kind") or current_mode)
+                    checkpoint_offset = line_end
                     continue
                 if payload_type != "token_count":
+                    checkpoint_offset = line_end
                     continue
 
                 info = payload.get("info")
                 if not isinstance(info, dict):
+                    checkpoint_offset = line_end
                     continue
 
                 total_usage = TokenUsage.from_mapping(info.get("total_token_usage"))
@@ -164,18 +344,22 @@ def parse_session_generation(
                 delta = total_usage.positive_delta(previous_usage)
                 previous_usage = total_usage
                 if delta is None:
+                    checkpoint_offset = line_end
                     continue
 
                 is_root_session = not root_session_id or metadata.session_id == root_session_id
                 if root_session_is_fork and not is_root_session:
+                    checkpoint_offset = line_end
                     continue
                 # Fork files can replay imported parent history before actual fork work. A first root
                 # snapshot without a prior baseline is inherited context, not newly consumed tokens.
                 if root_session_is_fork and is_root_session and not counted_root_fork_usage and not had_previous_usage:
+                    checkpoint_offset = line_end
                     continue
 
                 timestamp = event_timestamp or metadata.timestamp
                 if timestamp is None:
+                    checkpoint_offset = line_end
                     continue
 
                 project_identity = resolve_project_identity(metadata)
@@ -201,150 +385,110 @@ def parse_session_generation(
                 )
                 if root_session_is_fork and is_root_session:
                     counted_root_fork_usage = True
+                checkpoint_offset = line_end
+
+            current_path_stat = path.stat()
+            if (
+                int(current_path_stat.st_dev) != source_device
+                or int(current_path_stat.st_ino) != source_inode
+                or current_path_stat.st_size < captured_stop
+            ):
+                raise OSError("session file identity changed during parsing")
+            state = SessionParserState(
+                metadata=metadata,
+                root_metadata=root_metadata,
+                previous_usage=previous_usage,
+                root_session_id=root_session_id,
+                root_session_is_fork=root_session_is_fork,
+                counted_root_fork_usage=counted_root_fork_usage,
+                current_model=current_model,
+                current_turn_id=current_turn_id,
+                current_effort=current_effort,
+                current_mode=current_mode,
+            )
+            head_sha256, head_bytes = _digest_range(
+                handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint_offset)
+            )
+            boundary_start = max(0, checkpoint_offset - CHECKPOINT_DIGEST_BYTES)
+            boundary_sha256, boundary_bytes = _digest_range(
+                handle, boundary_start, checkpoint_offset
+            )
+            bytes_read += head_bytes + boundary_bytes
     except (OSError, UnicodeDecodeError) as error:
-        if _capture_partial_candidates:
-            raise _PartialSessionGenerationReadError(tuple(candidates), error) from error
-        raise
+        raise _PartialSessionGenerationReadError(tuple(candidates), error) from error
 
-    return ParsedSessionGeneration(
-        records=tuple(records),
-        metadata=root_metadata or SessionMetadata(session_id=path.stem, file_path=path),
-        candidates=tuple(candidates),
-    )
-
-
-def parse_timestamp(value: Any) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        seconds = value / 1000 if value > 2_000_000_000 else value
-        return datetime.fromtimestamp(seconds, tz=UTC)
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
-
-
-def _parse_json_line(raw_line: str) -> dict[str, Any] | None:
-    line = raw_line.strip()
-    if not line:
-        return None
-    try:
-        parsed = json.loads(line)
-    except (json.JSONDecodeError, RecursionError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
-
-
-def _extract_repo_path_candidates(
-    payload: dict[str, Any],
-    timestamp: datetime | None,
-    thread_id: str,
-) -> list[RawRepoPathCandidate]:
-    if payload.get("type") != "function_call" or timestamp is None:
-        return []
-    workdir = _function_call_workdir(payload.get("arguments"))
-    if not workdir:
-        return []
-    return [
-        RawRepoPathCandidate(
-            raw_path=raw_path,
-            timestamp=timestamp,
-            thread_id=thread_id,
-            source="jsonl:response_item:function_call_workdir",
-        )
-        for raw_path in extract_repo_paths(workdir, preserve_exact_field=True)
-    ]
-
-
-def _function_call_workdir(arguments: object) -> str:
-    if isinstance(arguments, str):
-        try:
-            parsed = json.loads(arguments)
-        except (ValueError, RecursionError):
-            return ""
-    else:
-        parsed = arguments
-    if not isinstance(parsed, dict):
-        return ""
-    workdir = parsed.get("workdir")
-    return workdir if isinstance(workdir, str) else ""
-
-
-def _parse_session_metadata(payload: dict[str, Any], path: Path, timestamp: datetime | None) -> SessionMetadata:
-    git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
-    return SessionMetadata(
-        session_id=str(payload.get("id") or path.stem),
+    selected_metadata = root_metadata or SessionMetadata(
+        session_id=path.stem,
         file_path=path,
-        timestamp=parse_timestamp(payload.get("timestamp")) or timestamp,
-        cwd=str(payload.get("cwd") or ""),
-        originator=str(payload.get("originator") or ""),
-        source=str(payload.get("source") or ""),
-        cli_version=str(payload.get("cli_version") or ""),
-        model_provider=str(payload.get("model_provider") or ""),
-        forked_from_id=str(payload.get("forked_from_id") or ""),
-        parent_thread_id=parent_thread_id_from_source(payload),
-        memory_mode=str(payload.get("memory_mode") or ""),
-        has_base_instructions=payload.get("base_instructions") is not None,
-        git_repository_url=str(git.get("repository_url") or ""),
-        git_branch=str(git.get("branch") or ""),
-        git_commit_hash=str(git.get("commit_hash") or ""),
-        is_subagent=is_structured_subagent(payload),
+    )
+    checkpoint = SessionParseCheckpoint(
+        byte_offset=checkpoint_offset,
+        next_record_index=next_record_index + len(records),
+        next_candidate_index=next_candidate_index + len(candidates),
+        source_device=source_device,
+        source_inode=source_inode,
+        head_sha256=head_sha256,
+        boundary_sha256=boundary_sha256,
+        session_id=selected_metadata.session_id,
+        state=state,
+    )
+    return _ParsedChunk(
+        records=tuple(records),
+        metadata=selected_metadata,
+        candidates=tuple(candidates),
+        checkpoint=checkpoint,
+        bytes_read=bytes_read,
     )
 
 
-def _inherit_parent_project_identity(record: UsageRecord, parent: UsageRecord) -> UsageRecord:
-    aliases = _dedupe_aliases([record.project_key, *record.project_aliases, *parent.project_aliases], parent.project_key)
-    return replace(
-        record,
-        project_key=parent.project_key,
-        project_label=parent.project_label,
-        project_aliases=aliases,
-        git_repository_url=parent.git_repository_url,
-        git_branch=parent.git_branch,
+def _validate_append_checkpoint(
+    handle: Any,
+    checkpoint: SessionParseCheckpoint,
+    *,
+    source_device: int,
+    source_inode: int,
+    stop_offset: int,
+) -> int:
+    if not source_device or not source_inode:
+        raise AppendCheckpointMismatch("source file identity is unavailable")
+    if (
+        source_device != checkpoint.source_device
+        or source_inode != checkpoint.source_inode
+    ):
+        raise AppendCheckpointMismatch("source file identity changed")
+    if stop_offset < checkpoint.byte_offset:
+        raise AppendCheckpointMismatch("source file was truncated")
+    expected_session_id = (
+        checkpoint.state.root_metadata or checkpoint.state.metadata
+    ).session_id
+    if not checkpoint.session_id or checkpoint.session_id != expected_session_id:
+        raise AppendCheckpointMismatch("checkpoint task identity is inconsistent")
+    head_sha256, head_bytes = _digest_range(
+        handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint.byte_offset)
     )
+    boundary_start = max(0, checkpoint.byte_offset - CHECKPOINT_DIGEST_BYTES)
+    boundary_sha256, boundary_bytes = _digest_range(
+        handle, boundary_start, checkpoint.byte_offset
+    )
+    if head_sha256 != checkpoint.head_sha256:
+        raise AppendCheckpointMismatch("source file header changed")
+    if boundary_sha256 != checkpoint.boundary_sha256:
+        raise AppendCheckpointMismatch("source file checkpoint boundary changed")
+    return head_bytes + boundary_bytes
 
 
-def _dedupe_aliases(values: list[str], primary_key: str) -> tuple[str, ...]:
-    aliases: list[str] = []
-    seen = {primary_key}
-    for value in values:
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        aliases.append(value)
-    return tuple(aliases)
-
-
-def _extract_model(payload: dict[str, Any]) -> str:
-    if payload.get("model"):
-        return str(payload["model"])
-    collaboration_mode = payload.get("collaboration_mode")
-    if isinstance(collaboration_mode, dict):
-        settings = collaboration_mode.get("settings")
-        if isinstance(settings, dict) and settings.get("model"):
-            return str(settings["model"])
-    return ""
-
-
-def _extract_effort(payload: dict[str, Any]) -> str:
-    if payload.get("effort"):
-        return str(payload["effort"])
-    collaboration_mode = payload.get("collaboration_mode")
-    if isinstance(collaboration_mode, dict):
-        settings = collaboration_mode.get("settings")
-        if isinstance(settings, dict) and settings.get("reasoning_effort"):
-            return str(settings["reasoning_effort"])
-    return ""
-
-
-def _extract_collaboration_mode(payload: dict[str, Any]) -> str:
-    collaboration_mode = payload.get("collaboration_mode")
-    if isinstance(collaboration_mode, dict) and collaboration_mode.get("mode"):
-        return str(collaboration_mode["mode"])
-    return ""
+def _digest_range(handle: Any, start: int, end: int) -> tuple[str, int]:
+    handle.seek(start)
+    remaining = max(0, end - start)
+    digest = hashlib.sha256()
+    total = 0
+    while remaining:
+        chunk = handle.read(min(64 * 1024, remaining))
+        if not chunk:
+            break
+        digest.update(chunk)
+        total += len(chunk)
+        remaining -= len(chunk)
+    if remaining:
+        raise OSError("session file ended before checkpoint digest range")
+    return digest.hexdigest(), total

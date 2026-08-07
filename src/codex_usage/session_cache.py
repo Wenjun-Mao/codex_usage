@@ -39,8 +39,12 @@ from codex_usage.session_cache_schema import (
 )
 from codex_usage.session_inventory import collect_session_file_inventory
 
-CACHE_DB_NAME = "usage-cache-v5.sqlite3"
-LEGACY_CACHE_DB_NAMES = ("usage-cache-v4.sqlite3", "usage-cache.sqlite3")
+CACHE_DB_NAME = "usage-cache-v6.sqlite3"
+LEGACY_CACHE_DB_NAMES = (
+    "usage-cache-v5.sqlite3",
+    "usage-cache-v4.sqlite3",
+    "usage-cache.sqlite3",
+)
 
 __all__ = (
     "CACHE_DB_NAME",
@@ -99,6 +103,7 @@ def uncached_session_data(
             files_total=len(files),
             files_current=len(files),
             files_parsed=len(files) if direct_fallback else 0,
+            files_full_parsed=len(files) if direct_fallback else 0,
             cache_errors=int(direct_fallback),
             direct_fallback=direct_fallback,
         ),

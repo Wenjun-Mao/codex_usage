@@ -19,6 +19,7 @@ from codex_usage.parallel.usage import (
     parse_usage_request,
 )
 from codex_usage.session_cache_generations import (
+    append_file_generation,
     affected_task_ids_for_file,
     rekey_file_generation,
     remove_candidate_generation,
@@ -28,6 +29,10 @@ from codex_usage.session_cache_models import CacheRefreshOutcome, CacheStats
 from codex_usage.session_cache_ownership import (
     is_reusable,
     promote_cached_session_owners,
+)
+from codex_usage.session_cache_requests import (
+    eligible_append_checkpoint as _eligible_append_checkpoint,
+    load_cached_rows as _load_cached_rows,
 )
 from codex_usage.session_cache_schema import _REPARSE_REQUIRED_ERROR
 from codex_usage.session_cache_store import record_file_error
@@ -56,18 +61,28 @@ def refresh_files(
         cached_rows,
         rebuilt=rebuilt,
     )
-    requests = [
-        UsageParseRequest(
-            ordinal=ordinal,
-            file_key=entry.file_key,
-            path=entry.path,
-            size_bytes=entry.size_bytes,
-            mtime_ns=entry.mtime_ns,
+    refreshed_rows = _load_cached_rows(connection)
+    requests = []
+    for ordinal, entry in parse_entries:
+        checkpoint = _eligible_append_checkpoint(
+            connection,
+            entry,
+            refreshed_rows.get(entry.file_key),
+            rebuilt=rebuilt,
         )
-        for ordinal, entry in parse_entries
-    ]
+        requests.append(
+            UsageParseRequest(
+                ordinal=ordinal,
+                file_key=entry.file_key,
+                path=entry.path,
+                size_bytes=entry.size_bytes,
+                mtime_ns=entry.mtime_ns,
+                checkpoint=checkpoint,
+            )
+        )
 
     worker_spans: list[WorkerSpan] = []
+    all_results: list[UsageParseResult] = []
     file_errors = 0
     identity_replacements = 0
     resolved_max_workers = DEFAULT_MAX_WORKERS if max_workers is None else max_workers
@@ -77,9 +92,15 @@ def refresh_files(
         max_workers=resolved_max_workers,
     ) as mapper:
         for request_group in batched(requests, _COMMIT_GROUP_SIZE):
+            scheduled_group = tuple(
+                sorted(
+                    request_group,
+                    key=lambda request: (-request.estimated_bytes, request.ordinal),
+                )
+            )
             results = _validated_results(
-                request_group,
-                mapper.map_batch(request_group),
+                scheduled_group,
+                mapper.map_batch(scheduled_group),
             )
             group_affected_task_ids, group_identity_replacements = (
                 _commit_result_group(
@@ -90,6 +111,7 @@ def refresh_files(
                 )
             )
             affected_task_ids.update(group_affected_task_ids)
+            all_results.extend(results)
             identity_replacements += group_identity_replacements
             worker_spans.extend(result.span for result in results)
             file_errors += sum(bool(result.error) for result in results)
@@ -108,6 +130,15 @@ def refresh_files(
         files_current=len(inventory),
         files_archived=sum(entry.storage_state == "archived" for entry in inventory),
         files_parsed=len(requests),
+        files_full_parsed=sum(
+            result.outcome in {"full", "full_fallback"}
+            for result in all_results
+        ),
+        files_appended=sum(result.outcome == "append" for result in all_results),
+        append_fallbacks=sum(
+            result.outcome == "full_fallback" for result in all_results
+        ),
+        source_bytes_read=sum(result.bytes_read for result in all_results),
         files_reused=reused,
         files_removed=missing_marked + identity_replacements,
         files_missing_retained=missing_count,
@@ -126,20 +157,6 @@ def refresh_files(
         usage_run=report,
         affected_task_ids=frozenset(affected_task_ids),
     )
-
-
-def _load_cached_rows(
-    connection: sqlite3.Connection,
-) -> dict[str, sqlite3.Row]:
-    return {
-        str(row["file_key"]): row
-        for row in connection.execute(
-            """
-            select file_key, path, size_bytes, mtime_ns, is_missing, session_id, error
-            from files
-            """
-        )
-    }
 
 
 def _reconcile_fallback_file_keys(
@@ -263,9 +280,9 @@ def _commit_result_group(
     identity_replacements = 0
     group_winners = _group_canonical_winners(results, inventory)
     successful_task_ids = {
-        result.generation.metadata.session_id
+        result.metadata.session_id
         for result in results
-        if result.error == "" and result.generation is not None
+        if not result.error
     }
     errors = sorted(
         (result for result in results if result.error),
@@ -293,8 +310,18 @@ def _commit_result_group(
                     result.error,
                 )
             else:
+                if result.appended is not None:
+                    affected_task_ids.update(
+                        append_file_generation(
+                            connection,
+                            session_dirs,
+                            entry,
+                            result.appended,
+                        )
+                    )
+                    continue
                 if result.generation is None:
-                    raise ValueError("successful usage parse result lacks generation")
+                    raise ValueError("successful usage parse result lacks parsed data")
                 entry, duplicate_affected = _entry_for_successful_generation(
                     connection,
                     inventory,

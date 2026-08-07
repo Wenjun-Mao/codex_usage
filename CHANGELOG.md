@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.3.0 - 2026-08-07 - Guarded Append Performance
+
+- Added disposable cache schema 6 with guarded active-file parser checkpoints, tail-only ordinary append refreshes, and atomic fallback to the prior complete generation.
+- Shared one buffered byte-oriented parser across full and append work, skipped JSON decoding for large known-irrelevant payloads after a bounded 4 KiB classification, and scheduled eight-file groups by unread bytes.
+- Made Task Transfer metadata discovery stop after valid `session_meta`, compiled effective-dated pricing indexes, and valued each usage record once per report.
+- Added timing-sidecar and VS Code Output diagnostics for full parses, append parses, append fallbacks, and source bytes read.
+
 ## 1.2.0 - 2026-08-04 - Project Role And Model Insights
 
 - Split each Project Breakdown row into user-visible root-task and structured-subagent groups, then stacked both groups by model with shared Model Mix colors.

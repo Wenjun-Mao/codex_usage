@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted
+Accepted. Partially superseded by
+[ADR 0022](0022-guarded-append-parser-checkpoints.md) for whole-file refresh
+and no-checkpoint behavior. Per-task
+transition ownership, range-aware queries, latest-request serialization, and
+parent-only SQLite ownership remain in force.
 
 ## Context
 
@@ -22,11 +26,13 @@ Schema 4 is the only supported internal cache format and uses
 only known plugin-cache objects and recreating the schema; old rows are not
 migrated. The first 1.1.0 report therefore performs one intentional rebuild.
 
-Each changed JSONL is parsed in one pass by a usage worker that also returns
-raw workdir candidates and source metadata. The parent process owns candidate
-verification and SQLite transactions, so no worker opens SQLite or verifies a
-mutable repository path. A failed parse, transport, or verification preserves
-the previous complete file generation.
+Each changed JSONL was originally parsed from byte zero in one pass by a usage
+worker that also returned raw workdir candidates and source metadata. ADR 0022
+allows a guarded active-file append to resume from a serialized parser
+checkpoint. The parent process still owns candidate verification and SQLite
+transactions, so no worker opens SQLite or verifies a mutable repository path.
+A failed parse, transport, or verification preserves the previous complete
+file generation.
 
 Dirty transition ownership is per task. The parent refreshes transitions only
 for tasks affected by changed, new, removed, or repaired generations; it keeps
@@ -42,8 +48,10 @@ request is replaced by newer settings, and obsolete results are not rendered.
 
 - Caching rendered HTML: every report setting and source-generation change
   would create another invalidation key without improving source freshness.
-- Byte offsets or append checkpoints: truncation, partial-line recovery, and
-  interruption semantics would add a new generation contract.
+- Unguarded byte offsets or independently committed append checkpoints:
+  truncation, partial-line recovery, and interruption semantics would create an
+  unsafe second generation contract. ADR 0022 incorporates those concerns into
+  the existing atomic generation contract.
 - Schema migration or dual reads: preserving unsupported derived rows would
   retain incomplete candidate history and multiply test paths.
 - Cancelling obsolete processes: cross-platform worker-tree termination could
@@ -51,9 +59,9 @@ request is replaced by newer settings, and obsolete results are not rendered.
 
 ## Consequences And Guardrails
 
-The first report rebuilds schema 4 from source, while later reports inspect
-only changed files. Cache commits retain complete file generation recovery and
-the parent remains the only SQLite writer. Source and frozen acceptance prove
-cold combined-worker parallelism, zero warm transition spans, one changed-file
-span, and a separate cold semantic oracle. Native pre-publish gates cover
-macOS Apple Silicon and Windows x64 packages.
+The first 1.1.0 report rebuilt schema 4 from source. Schema 6 now replaces that
+disposable format as described by ADR 0022. Cache commits retain complete file
+generation recovery and the parent remains the only SQLite writer. Source and
+frozen acceptance prove cold combined-worker parallelism, zero warm transition
+spans, one changed-file span, and a separate cold semantic oracle. Native
+pre-publish gates cover macOS Apple Silicon and Windows x64 packages.

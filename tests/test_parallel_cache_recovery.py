@@ -29,7 +29,7 @@ from codex_usage.session_cache import (
     CACHE_DB_NAME,
     load_cached_session_data,
 )
-from codex_usage.session_generation_models import ParsedSessionGeneration
+from codex_usage.session_generation_models import ParsedSessionAppend
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     collect_session_file_inventory,
@@ -341,7 +341,7 @@ def test_fallback_reconciliation_preserves_current_metadata_key_owner(
     assert file_rows[fallback_key][2].startswith("UnicodeDecodeError: ")
 
 
-def test_insert_failure_rolls_back_all_eight_replacements(
+def test_insert_failure_rolls_back_all_eight_appends(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -359,13 +359,13 @@ def test_insert_failure_rolls_back_all_eight_replacements(
         )
 
     calls = 0
-    original = refresh_module.replace_file_generation
+    original = refresh_module.append_file_generation
 
-    def fail_second_replacement(
+    def fail_second_append(
         connection: sqlite3.Connection,
         session_dirs: list[Path],
         entry: SessionFileInventoryEntry,
-        generation: ParsedSessionGeneration,
+        appended: ParsedSessionAppend,
     ) -> set[str]:
         nonlocal calls
         calls += 1
@@ -373,10 +373,10 @@ def test_insert_failure_rolls_back_all_eight_replacements(
             raise sqlite3.IntegrityError(
                 "injected second replacement failure"
             )
-        return original(connection, session_dirs, entry, generation)
+        return original(connection, session_dirs, entry, appended)
 
     monkeypatch.setattr(
-        refresh_module, "replace_file_generation", fail_second_replacement
+        refresh_module, "append_file_generation", fail_second_append
     )
     with pytest.raises(
         sqlite3.IntegrityError,
@@ -431,10 +431,10 @@ def test_interrupt_after_first_group_reuses_exactly_eight_files(
         assert tuple(
             connection.execute("select key, value from schema_meta order by key")
         ) == (
-            ("parser_version", "4"),
+            ("parser_version", "5"),
             ("project_transition_version", "2"),
             ("project_transitions_dirty", "1"),
-            ("schema_version", "5"),
+            ("schema_version", "6"),
         )
 
 
