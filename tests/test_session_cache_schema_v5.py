@@ -60,14 +60,33 @@ def test_schema_four_is_discarded_instead_of_migrated(tmp_path: Path) -> None:
         assert connection.execute("select count(*) from usage_records").fetchone()[0] == 0
         assert connection.execute(
             "select value from schema_meta where key = 'schema_version'"
-        ).fetchone()[0] == "6"
+        ).fetchone()[0] == "7"
         columns = {
             row[1]: row for row in connection.execute("pragma table_info(usage_records)")
         }
     assert columns["usage_role"][3] == 1
 
 
-def test_schema_six_contains_incremental_query_and_checkpoint_contract(
+def test_schema_six_is_discarded_and_rebuilt_as_seven(tmp_path: Path) -> None:
+    db_path = tmp_path / CACHE_DB_NAME
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        cache_schema._ensure_schema(connection)
+        connection.execute(
+            "update schema_meta set value = '6' where key = 'schema_version'"
+        )
+        connection.commit()
+        state = cache_schema._ensure_schema(connection)
+
+    assert state.reset is True
+    assert state.reset_reason == "schema 6"
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute(
+            "select value from schema_meta where key = 'schema_version'"
+        ).fetchone() == ("7",)
+
+
+def test_schema_seven_contains_incremental_and_storage_contract(
     tmp_path: Path,
 ) -> None:
     db_path = tmp_path / CACHE_DB_NAME
@@ -78,11 +97,13 @@ def test_schema_six_contains_incremental_query_and_checkpoint_contract(
 
     names = {(kind, name) for kind, name, _table, _sql in objects}
     assert ("table", "parser_checkpoints") in names
+    assert ("table", "storage_files") in names
     assert ("table", "transition_candidates") in names
     assert ("table", "dirty_transition_tasks") in names
     assert ("index", "usage_records_timestamp_us_idx") in names
     assert ("index", "usage_records_session_timestamp_idx") in names
     assert ("index", "transition_candidates_thread_idx") in names
+    assert ("index", "storage_files_task_idx") in names
 
 
 def test_checkpoint_identity_round_trips_unsigned_windows_values(
@@ -148,6 +169,22 @@ def test_matching_version_without_checkpoint_table_is_rebuilt(tmp_path: Path) ->
         assert connection.execute(
             "select 1 from parser_checkpoints limit 1"
         ).fetchone() is None
+
+
+def test_matching_version_without_storage_index_is_rebuilt(tmp_path: Path) -> None:
+    db_path = tmp_path / CACHE_DB_NAME
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        cache_schema._ensure_schema(connection)
+        connection.execute("drop index storage_files_task_idx")
+        connection.commit()
+        state = cache_schema._ensure_schema(connection)
+
+    assert state.reset is True
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute(
+            "select 1 from sqlite_master where type = 'index' and name = 'storage_files_task_idx'"
+        ).fetchone() is not None
 
 
 def test_matching_schema_returns_empty_state(tmp_path: Path) -> None:

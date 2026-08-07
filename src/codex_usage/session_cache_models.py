@@ -9,6 +9,7 @@ from codex_usage.parallel.execution import (
     ParallelRunReport,
 )
 from codex_usage.project_transitions import ProjectTransition
+from codex_usage.storage_insights import TaskStorageInsights
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,9 @@ class CacheStats:
     files_reused: int = 0
     files_removed: int = 0
     files_missing_retained: int = 0
+    storage_metadata_reads: int = 0
+    storage_files_reused: int = 0
+    storage_files_missing_marked: int = 0
     file_errors: int = 0
     rebuilt: bool = False
     legacy_cleanup_errors: int = 0
@@ -72,3 +76,4 @@ class CachedSessionData:
     retained_missing_files: list[Path] = field(default_factory=list)
     usage_run: ParallelRunReport = EMPTY_PARALLEL_RUN_REPORT
     transition_run: ParallelRunReport = EMPTY_PARALLEL_RUN_REPORT
+    storage_insights: TaskStorageInsights | None = None

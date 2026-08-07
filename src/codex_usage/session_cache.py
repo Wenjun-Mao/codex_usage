@@ -18,6 +18,7 @@ import codex_usage.session_cache_refresh as _refresh
 import codex_usage.session_cache_schema as _schema
 import codex_usage.session_cache_store as _store
 import codex_usage.session_cache_transitions as _cache_transitions
+import codex_usage.storage_insights as _storage_insights
 from codex_usage.aggregation import RangeBounds
 from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import EMPTY_PARALLEL_RUN_REPORT
@@ -39,8 +40,9 @@ from codex_usage.session_cache_schema import (
 )
 from codex_usage.session_inventory import collect_session_file_inventory
 
-CACHE_DB_NAME = "usage-cache-v6.sqlite3"
+CACHE_DB_NAME = "usage-cache-v7.sqlite3"
 LEGACY_CACHE_DB_NAMES = (
+    "usage-cache-v6.sqlite3",
     "usage-cache-v5.sqlite3",
     "usage-cache-v4.sqlite3",
     "usage-cache.sqlite3",
@@ -155,6 +157,7 @@ def load_cached_session_data(
         connection.row_factory = sqlite3.Row
         schema_state = _schema._ensure_schema(connection)
         legacy_cleanup_errors = _cleanup_legacy_cache_files(resolved_cache_dir)
+        physical_inventory = list(inventory)
         if timer is None:
             refresh_outcome = _refresh.refresh_files(
                 connection,
@@ -172,6 +175,9 @@ def load_cached_session_data(
                     rebuilt=schema_state.created or schema_state.reset,
                     max_workers=max_workers,
                 )
+        storage_refresh = _storage_insights.refresh_storage_file_metadata(
+            connection, physical_inventory
+        )
         session_files = [entry.path for entry in inventory]
         stats = refresh_outcome.stats
         usage_run = refresh_outcome.usage_run
@@ -230,7 +236,16 @@ def load_cached_session_data(
         summaries = _store._load_file_summaries(connection, inventory, session_dirs)
         errors = _store._load_file_errors(connection)
         retained_missing_files = _store._retained_missing_files(connection)
-    stats = replace(stats, legacy_cleanup_errors=legacy_cleanup_errors)
+        storage_insights = _storage_insights.load_task_storage_insights(
+            connection, session_dirs
+        )
+    stats = replace(
+        stats,
+        legacy_cleanup_errors=legacy_cleanup_errors,
+        storage_metadata_reads=storage_refresh.metadata_reads,
+        storage_files_reused=storage_refresh.files_reused,
+        storage_files_missing_marked=storage_refresh.files_missing_marked,
+    )
     return CachedSessionData(
         session_dirs=session_dirs,
         files=session_files,
@@ -242,4 +257,5 @@ def load_cached_session_data(
         retained_missing_files=retained_missing_files,
         usage_run=usage_run,
         transition_run=EMPTY_PARALLEL_RUN_REPORT,
+        storage_insights=storage_insights,
     )
