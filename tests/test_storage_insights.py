@@ -9,6 +9,7 @@ import pytest
 
 import codex_usage.storage_insights as storage_insights
 import codex_usage.storage_metadata as storage_metadata
+from codex_usage import usage_context
 from codex_usage.session_cache import load_cached_session_data
 from codex_usage.session_cache_schema import _ensure_schema
 
@@ -21,35 +22,49 @@ def test_storage_metadata_reads_only_new_or_changed_paths(
     second = _write_session(sessions, "second", "/repo/two")
     cache_dir = tmp_path / "cache"
     original_read = storage_metadata.read_session_metadata_bounded
+    original_index_read = storage_metadata.load_all_index_entries
     reads: list[Path] = []
+    index_reads: list[tuple[Path, ...]] = []
 
     def record_read(path: Path):
         reads.append(path)
         return original_read(path)
 
     monkeypatch.setattr(storage_metadata, "read_session_metadata_bounded", record_read)
+    monkeypatch.setattr(
+        storage_metadata,
+        "load_all_index_entries",
+        lambda session_dirs: (
+            index_reads.append(tuple(session_dirs)) or original_index_read(session_dirs)
+        ),
+    )
 
     cold = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
     )
     assert reads == [first, second]
+    assert index_reads == [(sessions,)]
     assert cold.stats.storage_metadata_reads == 2
 
     reads.clear()
+    index_reads.clear()
     warm = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
     )
     assert reads == []
+    assert index_reads == []
     assert warm.stats.storage_metadata_reads == 0
     assert warm.stats.storage_files_reused == 2
 
     _append_side_chat_turn(second)
     os.utime(second, None)
     reads.clear()
+    index_reads.clear()
     changed = load_cached_session_data(
         [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
     )
     assert reads == [second]
+    assert index_reads == [(sessions,)]
     assert changed.stats.storage_metadata_reads == 1
 
 
@@ -63,14 +78,19 @@ def test_storage_insights_conserve_duplicate_active_and_archived_paths(
     archived_path = _write_session(archived, "root", "/repo/demo")
 
     data = load_cached_session_data(
-        [sessions, archived], cache_dir=tmp_path / "cache", auto_transitions=False,
+        [sessions, archived],
+        cache_dir=tmp_path / "cache",
+        auto_transitions=False,
         max_workers=1,
     )
     insights = _require_insights(data)
 
     assert len(data.files) == 1  # Canonical usage still prefers the active generation.
     assert insights.physical_file_count == 2
-    assert insights.corpus_bytes == active_path.stat().st_size + archived_path.stat().st_size
+    assert (
+        insights.corpus_bytes
+        == active_path.stat().st_size + archived_path.stat().st_size
+    )
     assert insights.active_bytes == active_path.stat().st_size
     assert insights.archived_bytes == archived_path.stat().st_size
     assert len(insights.task_trees) == 1
@@ -90,13 +110,13 @@ def test_storage_insights_roll_nested_subagents_into_root(
     sessions = tmp_path / "codex" / "sessions"
     root = _write_session(sessions, "root", "/repo/demo")
     child = _write_session(sessions, "child", "/repo/demo", parent_id="root")
-    grandchild = _write_session(
-        sessions, "grandchild", "/repo/demo", parent_id="child"
-    )
+    grandchild = _write_session(sessions, "grandchild", "/repo/demo", parent_id="child")
 
     insights = _require_insights(
         load_cached_session_data(
-            [sessions], cache_dir=tmp_path / "cache", auto_transitions=False,
+            [sessions],
+            cache_dir=tmp_path / "cache",
+            auto_transitions=False,
             max_workers=1,
         )
     )
@@ -117,13 +137,17 @@ def test_storage_insights_roll_nested_subagents_into_root(
 
 def test_storage_insights_conserve_missing_roots_and_cycles(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
-    missing = _write_session(sessions, "missing-child", "/repo/missing", parent_id="gone")
+    missing = _write_session(
+        sessions, "missing-child", "/repo/missing", parent_id="gone"
+    )
     cycle_a = _write_session(sessions, "cycle-a", "/repo/cycle", parent_id="cycle-b")
     cycle_b = _write_session(sessions, "cycle-b", "/repo/cycle", parent_id="cycle-a")
 
     insights = _require_insights(
         load_cached_session_data(
-            [sessions], cache_dir=tmp_path / "cache", auto_transitions=False,
+            [sessions],
+            cache_dir=tmp_path / "cache",
+            auto_transitions=False,
             max_workers=1,
         )
     )
@@ -166,6 +190,93 @@ def test_storage_insights_exclude_retained_missing_and_filter_projects(
     assert filtered.corpus_bytes == preserved.stat().st_size
     assert [tree.root_task_id for tree in filtered.task_trees] == ["preserved"]
     assert filtered.task_trees[0].share == 1.0
+    assert sum(root.total_bytes for root in filtered.roots) == filtered.corpus_bytes
+    assert (
+        sum(root.jsonl_count for root in filtered.roots) == filtered.physical_file_count
+    )
+
+
+def test_archive_only_task_uses_codex_index_title(tmp_path: Path) -> None:
+    codex_home = tmp_path / "codex"
+    archived = codex_home / "archived_sessions"
+    _write_session(archived, "archived", "/repo/archive")
+    (codex_home / "session_index.jsonl").write_text(
+        json.dumps(
+            {
+                "id": "archived",
+                "thread_name": "Archived task title",
+                "updated_at": "2026-08-07T12:00:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    insights = _require_insights(
+        load_cached_session_data(
+            [archived],
+            cache_dir=tmp_path / "cache",
+            auto_transitions=False,
+            max_workers=1,
+        )
+    )
+
+    assert insights.task_trees[0].title == "Archived task title"
+
+
+def test_changed_task_index_refreshes_title_without_reopening_jsonl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    codex_home = tmp_path / "codex"
+    sessions = codex_home / "sessions"
+    session_path = _write_session(sessions, "renamed", "/repo/rename")
+    index_path = codex_home / "session_index.jsonl"
+    _write_index_title(index_path, "renamed", "Original title")
+    cache_dir = tmp_path / "cache"
+
+    cold = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+    assert _require_insights(cold).task_trees[0].title == "Original title"
+
+    _write_index_title(index_path, "renamed", "Updated longer title")
+    original_read = storage_metadata.read_session_metadata_bounded
+
+    def fail_session_read(path: Path):
+        if path == session_path:
+            raise AssertionError("an index-only title change must not reopen the JSONL")
+        return original_read(path)
+
+    monkeypatch.setattr(
+        storage_metadata, "read_session_metadata_bounded", fail_session_read
+    )
+    warm = load_cached_session_data(
+        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    )
+
+    assert _require_insights(warm).task_trees[0].title == "Updated longer title"
+    assert warm.stats.storage_metadata_reads == 0
+    assert warm.stats.storage_files_reused == 1
+
+
+def test_direct_parse_fallback_preserves_physical_storage_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    path = _write_session(sessions, "fallback", "/repo/fallback")
+    monkeypatch.setattr(
+        usage_context,
+        "load_cached_session_data",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("cache broken")),
+    )
+
+    data = usage_context.load_session_data([sessions], auto_transitions=False)
+    insights = storage_insights.build_task_storage_snapshot(data)
+
+    assert data.stats.direct_fallback is True
+    assert insights.corpus_bytes == path.stat().st_size
+    assert insights.physical_file_count == 1
+    assert insights.task_trees[0].root_task_id == "fallback"
 
 
 def test_cached_storage_snapshot_filters_without_reopening_jsonls(
@@ -200,7 +311,9 @@ def test_side_chat_shaped_root_file_is_one_root_storage_row(tmp_path: Path) -> N
 
     insights = _require_insights(
         load_cached_session_data(
-            [sessions], cache_dir=tmp_path / "cache", auto_transitions=False,
+            [sessions],
+            cache_dir=tmp_path / "cache",
+            auto_transitions=False,
             max_workers=1,
         )
     )
@@ -225,8 +338,10 @@ def test_storage_warning_thresholds_are_inclusive_and_exact(tmp_path: Path) -> N
             insert into storage_files (
                 path, session_dir, storage_state, size_bytes, mtime_ns,
                 last_seen_at, is_missing, task_id, parent_task_id, usage_role,
-                project_key, project_label, project_aliases_json, metadata_diagnostic
-            ) values (?, ?, 'active', ?, 1, 'now', 0, ?, ?, ?, 'project', 'Project', '[]', '')
+                project_key, project_label, project_aliases_json, task_title,
+                title_index_path, title_index_size, title_index_mtime_ns,
+                metadata_diagnostic
+            ) values (?, ?, 'active', ?, 1, 'now', 0, ?, ?, ?, 'project', 'Project', '[]', 'Task', '', -1, -1, '')
             """,
             (
                 (
@@ -247,7 +362,9 @@ def test_storage_warning_thresholds_are_inclusive_and_exact(tmp_path: Path) -> N
                 ),
             ),
         )
-        insights = storage_insights.load_task_storage_insights(connection, [session_dir])
+        insights = storage_insights.load_task_storage_insights(
+            connection, [session_dir]
+        )
 
     tree = insights.task_trees[0]
     assert tree.root_bytes == 1 << 30
@@ -266,7 +383,9 @@ def test_storage_insights_keep_metadata_diagnostics_without_dropping_bytes(
 
     insights = _require_insights(
         load_cached_session_data(
-            [sessions], cache_dir=tmp_path / "cache", auto_transitions=False,
+            [sessions],
+            cache_dir=tmp_path / "cache",
+            auto_transitions=False,
             max_workers=1,
         )
     )
@@ -312,7 +431,10 @@ def _write_session(
             {
                 "timestamp": f"2026-08-07T12:00:{index + 3:02d}Z",
                 "type": "event_msg",
-                "payload": {"type": "user_message", "message": f"side chat turn {index}"},
+                "payload": {
+                    "type": "user_message",
+                    "message": f"side chat turn {index}",
+                },
             }
         )
         rows.append(_token_count_row(110 + index * 10))
@@ -323,6 +445,20 @@ def _write_session(
 def _append_side_chat_turn(path: Path) -> None:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(_token_count_row(150)) + "\n")
+
+
+def _write_index_title(path: Path, task_id: str, title: str) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "id": task_id,
+                "thread_name": title,
+                "updated_at": "2026-08-07T12:00:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _token_count_row(total_tokens: int) -> dict[str, object]:

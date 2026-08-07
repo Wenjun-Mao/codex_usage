@@ -8,7 +8,6 @@ from pathlib import Path
 
 from codex_usage.models import ROOT_USAGE_ROLE, UsageRole
 from codex_usage.project_identity import normalize_declared_project_key
-from codex_usage.session_files import load_all_index_entries
 from codex_usage.session_inventory import (
     StorageRootSnapshot,
     storage_state_for_session_dir,
@@ -18,6 +17,14 @@ from codex_usage.storage_metadata import StorageFile, load_present_storage_files
 
 LARGE_ROOT_BYTES = 1 << 30
 LARGE_TREE_BYTES = 10 << 30
+
+
+@dataclass(frozen=True, slots=True)
+class StorageRootContribution:
+    path: str
+    storage_state: str
+    file_count: int
+    total_bytes: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +50,7 @@ class TaskStorageTree:
     metadata_diagnostics: tuple[str, ...]
     is_large_root: bool
     is_large_tree: bool
+    storage_root_contributions: tuple[StorageRootContribution, ...] = ()
 
     @property
     def corpus_share(self) -> float:
@@ -85,15 +93,18 @@ class TaskStorageInsights:
     roots: tuple[StorageRootSnapshot, ...] = ()
     diagnostics: tuple[str, ...] = ()
 
-    def filter_projects(self, project_keys: Iterable[str] | None) -> "TaskStorageInsights":
+    def filter_projects(
+        self, project_keys: Iterable[str] | None
+    ) -> "TaskStorageInsights":
         selected = _normalize_project_keys(project_keys)
         if not selected:
             return self
-        return _summarize_trees(
+        trees = tuple(
             tree
             for tree in self.task_trees
             if selected.intersection({tree.project_key, *tree.project_aliases})
-        )._with_roots(self.roots)
+        )
+        return _summarize_trees(trees, roots=_filter_storage_roots(self.roots, trees))
 
     @property
     def total_bytes(self) -> int:
@@ -119,11 +130,6 @@ class TaskStorageInsights:
     def large_task_tree_bytes(self) -> int:
         return LARGE_TREE_BYTES
 
-    def _with_roots(
-        self, roots: tuple[StorageRootSnapshot, ...]
-    ) -> "TaskStorageInsights":
-        return replace(self, roots=roots)
-
 
 @dataclass(frozen=True, slots=True)
 class _TaskNode:
@@ -133,6 +139,7 @@ class _TaskNode:
     project_key: str
     project_label: str
     project_aliases: tuple[str, ...]
+    task_title: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +157,7 @@ def load_task_storage_insights(
 ) -> TaskStorageInsights:
     """Build immutable storage insight models from physical, present JSONL files."""
     files = load_present_storage_files(connection)
-    insights = _build_task_storage_insights(files, session_dirs)
+    insights = build_task_storage_insights(files, session_dirs)
     return insights.filter_projects(project_keys)
 
 
@@ -166,9 +173,10 @@ def build_task_storage_snapshot(
     return insights.filter_projects(project_keys)
 
 
-def _build_task_storage_insights(
-    files: tuple[StorageFile, ...], session_dirs: list[Path]
+def build_task_storage_insights(
+    files: Iterable[StorageFile], session_dirs: list[Path]
 ) -> TaskStorageInsights:
+    files = tuple(files)
     files_by_task: dict[str, list[StorageFile]] = defaultdict(list)
     for file in files:
         files_by_task[file.task_id].append(file)
@@ -177,7 +185,6 @@ def _build_task_storage_insights(
         for task_id, task_files in files_by_task.items()
     }
     resolutions = _resolve_task_roots(nodes)
-    index_entries = load_all_index_entries(session_dirs)
     groups: dict[str, list[StorageFile]] = defaultdict(list)
     group_resolutions: dict[str, _RootResolution] = {}
     for file in files:
@@ -194,7 +201,6 @@ def _build_task_storage_insights(
             group_files,
             group_resolutions[root_key],
             nodes,
-            index_entries,
             duplicate_task_ids,
         )
         for root_key, group_files in groups.items()
@@ -214,6 +220,7 @@ def _node_from_files(task_id: str, files: list[StorageFile]) -> _TaskNode:
         project_key=primary.project_key,
         project_label=primary.project_label,
         project_aliases=primary.project_aliases,
+        task_title=primary.task_title,
     )
 
 
@@ -235,9 +242,7 @@ def _resolve_task_roots(nodes: dict[str, _TaskNode]) -> dict[str, _RootResolutio
             )
         elif task_id in trail:
             cycle = trail[trail.index(task_id) :]
-            result = _RootResolution(
-                f"cycle:{min(cycle)}", has_relationship_cycle=True
-            )
+            result = _RootResolution(f"cycle:{min(cycle)}", has_relationship_cycle=True)
         else:
             result = resolve(node.parent_task_id, (*trail, task_id))
         resolutions[task_id] = result
@@ -253,23 +258,24 @@ def _build_tree(
     files: list[StorageFile],
     resolution: _RootResolution,
     nodes: dict[str, _TaskNode],
-    index_entries: dict[str, dict[str, object]],
     duplicate_task_ids: set[str],
 ) -> TaskStorageTree:
     root_node = nodes.get(root_key)
     primary = min(files, key=_file_priority)
     project_key = root_node.project_key if root_node else primary.project_key
     project_label = root_node.project_label if root_node else primary.project_label
-    project_aliases = root_node.project_aliases if root_node else primary.project_aliases
+    project_aliases = (
+        root_node.project_aliases if root_node else primary.project_aliases
+    )
     if resolution.has_missing_root:
         title = f"Root missing ({_short_id(root_key.removeprefix('missing:'))})"
     elif resolution.has_relationship_cycle:
-        title = f"Task relationship cycle ({_short_id(root_key.removeprefix('cycle:'))})"
+        title = (
+            f"Task relationship cycle ({_short_id(root_key.removeprefix('cycle:'))})"
+        )
     else:
-        index_entry = index_entries.get(root_key, {})
         title = str(
-            index_entry.get("thread_name")
-            or index_entry.get("title")
+            (root_node.task_title if root_node else primary.task_title)
             or project_label
             or root_key
         )
@@ -311,11 +317,14 @@ def _build_tree(
         has_relationship_cycle=resolution.has_relationship_cycle,
         duplicate_file_count=sum(
             sum(1 for candidate in files if candidate.task_id == task_id) - 1
-            for task_id in {file.task_id for file in files}.intersection(duplicate_task_ids)
+            for task_id in {file.task_id for file in files}.intersection(
+                duplicate_task_ids
+            )
         ),
         metadata_diagnostics=diagnostics,
         is_large_root=root_bytes >= LARGE_ROOT_BYTES,
         is_large_tree=total_bytes >= LARGE_TREE_BYTES,
+        storage_root_contributions=_storage_root_contributions(files),
     )
 
 
@@ -325,7 +334,14 @@ def _summarize_trees(
     roots: tuple[StorageRootSnapshot, ...] = (),
 ) -> TaskStorageInsights:
     ordered = tuple(
-        sorted(trees, key=lambda tree: (-tree.total_bytes, tree.title.casefold(), tree.root_task_id))
+        sorted(
+            trees,
+            key=lambda tree: (
+                -tree.total_bytes,
+                tree.title.casefold(),
+                tree.root_task_id,
+            ),
+        )
     )
     corpus_bytes = sum(tree.total_bytes for tree in ordered)
     with_shares = tuple(
@@ -333,13 +349,7 @@ def _summarize_trees(
         for tree in ordered
     )
     diagnostics = tuple(
-        sorted(
-            {
-                diagnostic
-                for tree in with_shares
-                for diagnostic in tree.diagnostics
-            }
-        )
+        sorted({diagnostic for tree in with_shares for diagnostic in tree.diagnostics})
     )
     return TaskStorageInsights(
         corpus_bytes=corpus_bytes,
@@ -378,6 +388,45 @@ def _build_storage_roots(
     return tuple(sorted(roots, key=lambda root: str(root.path).casefold()))
 
 
+def _storage_root_contributions(
+    files: list[StorageFile],
+) -> tuple[StorageRootContribution, ...]:
+    grouped: dict[tuple[str, str], list[StorageFile]] = defaultdict(list)
+    for file in files:
+        grouped[(file.session_dir, file.storage_state)].append(file)
+    return tuple(
+        StorageRootContribution(
+            path=path,
+            storage_state=storage_state,
+            file_count=len(root_files),
+            total_bytes=sum(file.size_bytes for file in root_files),
+        )
+        for (path, storage_state), root_files in sorted(grouped.items())
+    )
+
+
+def _filter_storage_roots(
+    roots: tuple[StorageRootSnapshot, ...],
+    trees: tuple[TaskStorageTree, ...],
+) -> tuple[StorageRootSnapshot, ...]:
+    totals: dict[str, tuple[int, int]] = {}
+    for tree in trees:
+        for contribution in tree.storage_root_contributions:
+            count, total_bytes = totals.get(contribution.path, (0, 0))
+            totals[contribution.path] = (
+                count + contribution.file_count,
+                total_bytes + contribution.total_bytes,
+            )
+    return tuple(
+        replace(
+            root,
+            jsonl_count=totals.get(str(root.path), (0, 0))[0],
+            total_bytes=totals.get(str(root.path), (0, 0))[1],
+        )
+        for root in roots
+    )
+
+
 def _normalize_project_keys(project_keys: Iterable[str] | None) -> frozenset[str]:
     return frozenset(
         key
@@ -387,7 +436,13 @@ def _normalize_project_keys(project_keys: Iterable[str] | None) -> frozenset[str
 
 
 def _file_priority(file: StorageFile) -> tuple[int, int, str]:
-    state_priority = 0 if file.storage_state == "active" else 1 if file.storage_state == "archived" else 2
+    state_priority = (
+        0
+        if file.storage_state == "active"
+        else 1
+        if file.storage_state == "archived"
+        else 2
+    )
     return (state_priority, -file.mtime_ns, file.path.casefold())
 
 

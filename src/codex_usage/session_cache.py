@@ -95,6 +95,7 @@ def uncached_session_data(
     project_transitions: list[ProjectTransition],
     *,
     direct_fallback: bool = False,
+    storage_insights: _storage_insights.TaskStorageInsights | None = None,
 ) -> CachedSessionData:
     return CachedSessionData(
         session_dirs=session_dirs,
@@ -111,6 +112,7 @@ def uncached_session_data(
             direct_fallback=direct_fallback,
         ),
         file_errors={},
+        storage_insights=storage_insights,
     )
 
 

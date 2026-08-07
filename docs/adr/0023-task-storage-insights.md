@@ -8,7 +8,7 @@ Accepted
 
 Codex session storage can grow far beyond the visible root task history because
 structured descendants append large amounts of context and output. A storage
-audit on 2026-08-07 observed 151.71 GiB across 2,511 JSONL files; 143.56 GiB
+release-validation audit on 2026-08-07 observed 196.08 GiB across 2,525 JSONL files; 187.63 GiB
 was in structured descendants. The largest trees were therefore not obvious
 from a root-task list alone.
 
@@ -84,4 +84,3 @@ The schema 6 cache is disposable and is rebuilt as schema 7 for the first
 - Adding delete or backup actions to the first storage view would combine
   inventory with irreversible or recovery-sensitive behavior before the
   underlying contracts are tested.
-

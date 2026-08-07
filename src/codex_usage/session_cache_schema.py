@@ -160,6 +160,10 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
             project_key text not null,
             project_label text not null,
             project_aliases_json text not null,
+            task_title text not null,
+            title_index_path text not null,
+            title_index_size integer not null,
+            title_index_mtime_ns integer not null,
             metadata_diagnostic text not null
         )
         """,
@@ -270,6 +274,10 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
         "project_key",
         "project_label",
         "project_aliases_json",
+        "task_title",
+        "title_index_path",
+        "title_index_size",
+        "title_index_mtime_ns",
         "metadata_diagnostic",
     }
     return (

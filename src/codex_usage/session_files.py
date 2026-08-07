@@ -8,7 +8,10 @@ from typing import Any
 
 from codex_usage.models import SessionMetadata
 from codex_usage.parser import parse_timestamp
-from codex_usage.session_provenance import is_structured_subagent, parent_thread_id_from_source
+from codex_usage.session_provenance import (
+    is_structured_subagent,
+    parent_thread_id_from_source,
+)
 
 
 _MAX_SESSION_METADATA_BYTES = 1_048_576
@@ -50,13 +53,16 @@ def read_session_metadata_bounded(
                 obj = _parse_json_line(line)
                 if obj is None or obj.get("type") != "session_meta":
                     continue
-                payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+                payload = (
+                    obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+                )
                 git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
                 return SessionMetadataRead(
                     SessionMetadata(
                         session_id=str(payload.get("id") or path.stem),
                         file_path=path,
-                        timestamp=parse_timestamp(payload.get("timestamp")) or parse_timestamp(obj.get("timestamp")),
+                        timestamp=parse_timestamp(payload.get("timestamp"))
+                        or parse_timestamp(obj.get("timestamp")),
                         cwd=str(payload.get("cwd") or ""),
                         originator=str(payload.get("originator") or ""),
                         source=str(payload.get("source") or ""),
@@ -65,7 +71,8 @@ def read_session_metadata_bounded(
                         forked_from_id=str(payload.get("forked_from_id") or ""),
                         parent_thread_id=parent_thread_id_from_source(payload),
                         memory_mode=str(payload.get("memory_mode") or ""),
-                        has_base_instructions=payload.get("base_instructions") is not None,
+                        has_base_instructions=payload.get("base_instructions")
+                        is not None,
                         git_repository_url=str(git.get("repository_url") or ""),
                         git_branch=str(git.get("branch") or ""),
                         git_commit_hash=str(git.get("commit_hash") or ""),
@@ -79,15 +86,18 @@ def read_session_metadata_bounded(
 
 def load_all_index_entries(session_dirs: list[Path]) -> dict[str, dict[str, Any]]:
     entries: dict[str, dict[str, Any]] = {}
-    for session_dir in session_dirs:
-        for entry in read_index_entries(codex_home_from_session_dir(session_dir) / "session_index.jsonl"):
+    index_paths = dict.fromkeys(
+        session_index_path_for_session_dir(session_dir) for session_dir in session_dirs
+    )
+    for index_path in index_paths:
+        for entry in read_index_entries(index_path):
             thread_id = str(entry.get("id") or "")
             if not thread_id:
                 continue
             existing = entries.get(thread_id)
-            if existing is None or timestamp_key(str(entry.get("updated_at") or "")) >= timestamp_key(
-                str(existing.get("updated_at") or "")
-            ):
+            if existing is None or timestamp_key(
+                str(entry.get("updated_at") or "")
+            ) >= timestamp_key(str(existing.get("updated_at") or "")):
                 entries[thread_id] = entry
     return entries
 
@@ -117,7 +127,15 @@ def owning_session_dir(path: Path, session_dirs: list[Path]) -> Path:
 
 
 def codex_home_from_session_dir(session_dir: Path) -> Path:
-    return session_dir.parent if session_dir.name.casefold() == "sessions" else session_dir
+    return (
+        session_dir.parent
+        if session_dir.name.casefold() in {"sessions", "archived_sessions"}
+        else session_dir
+    )
+
+
+def session_index_path_for_session_dir(session_dir: Path) -> Path:
+    return codex_home_from_session_dir(session_dir) / "session_index.jsonl"
 
 
 def file_size(path: Path) -> int:
@@ -130,7 +148,11 @@ def file_size(path: Path) -> int:
 def session_updated_at(path: Path, timestamp: datetime | None) -> str:
     if timestamp is not None:
         return timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z")
-    return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def timestamp_key(value: str) -> datetime:
