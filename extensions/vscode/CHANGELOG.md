@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.1 - 2026-08-08 - Documentation Accuracy
+
+- Clarified that corpus-size measurements are dated audit snapshots rather than expected installation sizes.
+- Documented the complete native packaged release gates, including report/cache, Task Transfer, verified-backup, and storage-analysis smoke checks.
+- Disclosed disposable SQLite caches and user-requested Task Transfer and verified-backup outputs in Marketplace privacy copy.
+
 ## 1.7.0 - 2026-08-08 - Storage Amplification And Rollover
 
 - Added per-tree **Analyze** actions for repeated compacted-history bytes, inline-media markers, large descendants, and active-root history risk, with cancellable selected-tree progress and no model calls.

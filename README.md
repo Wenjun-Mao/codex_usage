@@ -23,7 +23,7 @@ This repository contains:
 
 ## VS Code Packages
 
-The stable packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
+The stable packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, one on Windows x64 and one on macOS Apple Silicon, and requires them to pass before publication. Additional packaged gates cover report and cache behavior, verified task backups, and storage analysis, including zero-byte warm-analysis reuse; they must also pass. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
 
 Build and install the local macOS Apple Silicon VSIX:
 
@@ -112,7 +112,7 @@ Codex guardian approval logs are preserved as structured descendants of their ex
 
 ![Synthetic Task Storage screenshot](docs/marketplace/task-storage-synthetic.png)
 
-The release-validation corpus observed on 2026-08-07 was 196.08 GiB across 2,525 files, with 187.63 GiB in structured descendants. Size alone does not explain that growth. Run **Analyze** on one selected tree to measure repeated compacted-history rows, inline-media markers, large descendants, and active-root history risk. Analysis uses at most four local read-only workers and updates guarded diagnostics atomically; it does not invoke a model or scan unrelated trees.
+These measurements are dated audit snapshots, not expected installation sizes. The 2026-08-07 audit measured 196.08 GiB across 2,525 files, with 187.63 GiB in structured descendants; a 2026-08-08 follow-up had reached 383.00 GiB across 2,563 files, with 372.60 GiB in structured descendants. Size alone does not explain that growth. Run **Analyze** on one selected tree to measure repeated compacted-history rows, inline-media markers, large descendants, and active-root history risk. Analysis uses at most four local read-only workers and updates guarded diagnostics atomically; it does not invoke a model or scan unrelated trees.
 
 A positive **History amplification** label requires complete analysis, at least 1 GiB of compacted rows, and compacted history representing at least 50% of the tree. **Inline media** additionally requires media markers inside that amplified history. `not analyzed` or `partial` is intentionally shown as unknown, never as evidence that amplification is absent. Marker counts are diagnostic clues rather than decoded media size or reclaimable-space estimates. The investigation behind these rules is recorded in [Task Storage Amplification](docs/knowledge/task-storage-amplification.md).
 
@@ -234,7 +234,8 @@ Codex Usage Dashboard is local-first:
 
 - It reads local Codex session JSONL files.
 - Project transition detection can also read local Codex project paths and timestamps as read-only evidence.
-- It writes local reports.
+- It writes reports and disposable SQLite caches to local paths.
+- It writes Task Transfer files and verified backups only when requested, to folders the user selects.
 - It does not upload session logs.
 - It does not include telemetry.
 - It does not fetch live pricing.

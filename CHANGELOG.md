@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.1 - 2026-08-08 - Documentation Accuracy
+
+- Reframed live-corpus sizes as dated audit snapshots and recorded the 2026-08-08 follow-up without implying that either measurement is an expected installation size.
+- Updated release documentation to cover the packaged report/cache, Task Transfer, verified-backup, and storage-analysis smoke gates on both supported platforms.
+- Expanded privacy wording to disclose local SQLite caches and user-requested Task Transfer and verified-backup artifacts.
+
 ## 1.7.0 - 2026-08-08 - Storage Amplification And Rollover
 
 - Added opt-in, selected-tree content analysis that measures repeated compacted-history bytes, inline-media markers, large descendants, and active-root history risk without invoking a model or scanning unrelated task trees.

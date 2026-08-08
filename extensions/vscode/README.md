@@ -22,7 +22,7 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 
 ## Supported Platforms
 
-The stable Marketplace release supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, Windows x64 and macOS Apple Silicon, and requires them to pass before publication. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
+The stable Marketplace release supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, one on Windows x64 and one on macOS Apple Silicon, and requires them to pass before publication. Additional packaged gates cover report and cache behavior, verified task backups, and storage analysis, including zero-byte warm-analysis reuse; they must also pass. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
 
 ## Commands
 
@@ -130,7 +130,7 @@ Codex guardian approval logs remain visible as structured descendants of their e
 
 ![Synthetic Task Storage screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/task-storage-synthetic.png)
 
-The purpose is visibility before starting a fresh root task. A 2026-08-07 corpus audit measured 196.08 GiB across 2,525 files, including 187.63 GiB in structured descendants. Size alone does not explain that growth. Choose **Analyze** on one task tree to measure repeated compacted-history rows, inline-media markers, large descendants, and active-root history risk. The selected-tree scan uses at most four local read-only workers; it neither invokes a model nor scans unrelated trees.
+The purpose is visibility before starting a fresh root task. These measurements are dated audit snapshots, not expected installation sizes. The 2026-08-07 audit measured 196.08 GiB across 2,525 files, including 187.63 GiB in structured descendants; a 2026-08-08 follow-up had reached 383.00 GiB across 2,563 files, including 372.60 GiB in structured descendants. Size alone does not explain that growth. Choose **Analyze** on one task tree to measure repeated compacted-history rows, inline-media markers, large descendants, and active-root history risk. The selected-tree scan uses at most four local read-only workers; it neither invokes a model nor scans unrelated trees.
 
 A positive **History amplification** label requires complete analysis, at least 1 GiB of compacted rows, and compacted history representing at least 50% of the tree. **Inline media** additionally requires media markers inside that amplified history. `not analyzed` or `partial` remains visibly unknown rather than becoming a false negative. Marker counts are diagnostic clues, not decoded media size or reclaimable-space estimates.
 
@@ -154,7 +154,7 @@ Codex Usage does not create, archive, restore, or delete Codex tasks. Create a f
 
 ## Privacy
 
-The extension reads local Codex session JSONL files and writes local HTML reports under VS Code extension storage. Automatic project transition detection can also read local Codex project paths and timestamps as read-only evidence. It does not upload session logs, does not include telemetry, does not fetch live pricing, and does not include or mutate SQLite databases in Task Transfer.
+The extension reads local Codex session JSONL files and writes local HTML reports and disposable SQLite caches under VS Code extension storage. When requested, it also writes Task Transfer files and verified backups to folders the user selects. Automatic project transition detection can read local Codex project paths and timestamps as read-only evidence. The extension does not upload session logs, include telemetry, fetch live pricing, or include or mutate SQLite databases in Task Transfer.
 
 Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. See the repository `PRIVACY.md` for details.
 
@@ -194,7 +194,7 @@ Codex fast mode is counted through the token usage that Codex records. At the mo
 
 ## Development
 
-Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, executes the native version-3 packaged Task Transfer smoke, and requires it to pass before publication.
+Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, and executes the native packaged report/cache, version-3 Task Transfer, verified-backup, and storage-analysis smoke gates before publication.
 
 macOS Apple Silicon on macOS/bash from `extensions/vscode`:
 
