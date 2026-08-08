@@ -194,9 +194,10 @@ test("buildCodexUsageEnv passes internal cache directory without removing proces
 test("cacheDbPath points at the Python cache database under extension storage", () => {
   assert.equal(
     cacheDbPath("C:/global-storage"),
-    path.join("C:/global-storage", "cache", "usage-cache-v7.sqlite3"),
+    path.join("C:/global-storage", "cache", "usage-cache-v8.sqlite3"),
   );
   assert.deepEqual(legacyCacheDbPaths("C:/global-storage"), [
+    path.join("C:/global-storage", "cache", "usage-cache-v7.sqlite3"),
     path.join("C:/global-storage", "cache", "usage-cache-v6.sqlite3"),
     path.join("C:/global-storage", "cache", "usage-cache-v5.sqlite3"),
     path.join("C:/global-storage", "cache", "usage-cache-v4.sqlite3"),
@@ -296,6 +297,8 @@ test("webview command allowlist includes dashboard commands", () => {
     "codexUsage.showTaskStorageView",
     "codexUsage.openSyncMenu",
     "codexUsage.backupTask",
+    "codexUsage.analyzeTaskStorage",
+    "codexUsage.prepareTaskRollover",
     "codexUsage.refreshDashboard",
     "codexUsage.openSettings",
   ]);
@@ -303,7 +306,6 @@ test("webview command allowlist includes dashboard commands", () => {
 
 test("package metadata no longer contributes removed manual settings", () => {
   const properties = packageJson.contributes.configuration.properties;
-
   assert.equal(properties["codexUsage.sessionsDir"], undefined);
   assert.equal(properties["codexUsage.subscriptionUsd"], undefined);
   assert.equal(properties["codexUsage.projectKeys"], undefined);
@@ -325,7 +327,6 @@ test("current Task Transfer product source rejects setup-era and background work
       .map((name) => fs.readFileSync(path.join(sourceRoot, name), "utf8")),
     JSON.stringify(packageJson),
   ].join("\n");
-
   for (const forbidden of [
     "Setup required",
     "Pause Sync",
@@ -345,7 +346,6 @@ test("current Task Transfer product source rejects setup-era and background work
 
 test("package metadata keeps command ids with exact Task Transfer titles", () => {
   const commands = new Map(packageJson.contributes.commands.map((item) => [item.command, item.title]));
-
   assert.equal(commands.get("codexUsage.openSyncMenu"), "Codex Usage: Task Transfer");
   assert.equal(commands.get("codexUsage.configureSync"), "Codex Usage: Choose Transfer Folder");
   assert.equal(commands.get("codexUsage.selectSyncTasks"), "Codex Usage: Task Transfer");
@@ -354,6 +354,8 @@ test("package metadata keeps command ids with exact Task Transfer titles", () =>
   assert.equal(commands.get("codexUsage.syncStatus"), "Codex Usage: Review Transfer Status");
   assert.equal(commands.get("codexUsage.openSyncFolder"), "Codex Usage: Open Transfer Folder");
   assert.equal(commands.get("codexUsage.backupTask"), "Codex Usage: Back Up Task");
+  assert.equal(commands.get("codexUsage.analyzeTaskStorage"), "Codex Usage: Analyze Task Storage");
+  assert.equal(commands.get("codexUsage.prepareTaskRollover"), "Codex Usage: Prepare Task Rollover");
   assert.equal(commands.has("codexUsage.syncNow"), false);
   assert.equal(commands.has("codexUsage.selectSyncProjects"), false);
   assert.equal(commands.has("codexUsage.selectSyncThreads"), false);
@@ -361,6 +363,8 @@ test("package metadata keeps command ids with exact Task Transfer titles", () =>
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.pullTasks"), true);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.pushTasks"), true);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.backupTask"), true);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.analyzeTaskStorage"), true);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.prepareTaskRollover"), true);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.syncNow"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncProjects"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncThreads"), false);
@@ -469,7 +473,7 @@ test("native release jobs gate direct Codex registration before VSIX packaging",
 test("package metadata is ready for stable Marketplace publishing", () => {
   assert.equal(packageJson.publisher, "wenjun-mao");
   assert.equal(packageJson.private, undefined);
-  assert.equal(packageJson.version, "1.6.1");
+  assert.equal(packageJson.version, "1.7.0");
   assert.equal(packageJson.preview, undefined);
   assert.equal(packageJson.repository.url, "https://github.com/Wenjun-Mao/codex_usage.git");
   assert.match(packageJson.description, /local/i);

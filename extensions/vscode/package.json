@@ -1,9 +1,9 @@
 {
   "name": "codex-usage-dashboard",
   "displayName": "Codex Usage Dashboard",
-  "description": "Local Codex usage dashboard with read-only Task Storage insights and optional cross-computer task transfer.",
+  "description": "Local Codex usage dashboard with Task Storage diagnostics, verified backups, and optional cross-computer task transfer.",
   "publisher": "wenjun-mao",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
@@ -56,6 +56,8 @@
     "onCommand:codexUsage.syncStatus",
     "onCommand:codexUsage.openSyncFolder",
     "onCommand:codexUsage.backupTask",
+    "onCommand:codexUsage.analyzeTaskStorage",
+    "onCommand:codexUsage.prepareTaskRollover",
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
@@ -120,6 +122,14 @@
       {
         "command": "codexUsage.backupTask",
         "title": "Codex Usage: Back Up Task"
+      },
+      {
+        "command": "codexUsage.analyzeTaskStorage",
+        "title": "Codex Usage: Analyze Task Storage"
+      },
+      {
+        "command": "codexUsage.prepareTaskRollover",
+        "title": "Codex Usage: Prepare Task Rollover"
       }
     ],
     "configuration": {

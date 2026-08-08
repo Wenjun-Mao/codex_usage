@@ -327,7 +327,7 @@ test("runSyncProcess reports ENOENT once even if close follows the child error",
   assert.equal(rejectionCount, 1);
 });
 
-test("dashboard loading kind distinguishes new, legacy, and schema-7 cache storage", async (t) => {
+test("dashboard loading kind distinguishes new, legacy, and schema-8 cache storage", async (t) => {
   const storagePath = fs.mkdtempSync(path.join(__dirname, "dashboard-cache-"));
   t.after(() => fs.rmSync(storagePath, { recursive: true, force: true }));
 
@@ -335,7 +335,7 @@ test("dashboard loading kind distinguishes new, legacy, and schema-7 cache stora
   fs.mkdirSync(path.dirname(legacyCacheDbPaths(storagePath)[1]), { recursive: true });
   fs.writeFileSync(legacyCacheDbPaths(storagePath)[1], "legacy");
   assert.equal(await dashboardLoadingKind(storagePath), "rebuilding");
-  fs.writeFileSync(cacheDbPath(storagePath), "schema-7");
+  fs.writeFileSync(cacheDbPath(storagePath), "schema-8");
   assert.equal(await dashboardLoadingKind(storagePath), "refreshing");
 });
 

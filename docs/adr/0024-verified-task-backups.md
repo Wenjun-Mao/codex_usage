@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted; implemented in version 1.5.0 on 2026-08-07
+Accepted; implemented in version 1.5.0 on 2026-08-07 and used as the recovery
+gate for rollover preparation by ADR 0027
 
 ## Context
 
@@ -105,9 +106,10 @@ without extracting it. The archive may contain sensitive prompts and source
 code, so users must protect it like the original Codex logs.
 
 The feature does not reduce the live Codex corpus, restore a task, delete a
-task, or estimate reclaimed space. Safe restore and deletion require separate
-follow-up contracts. Storage inventory remains read-only, and backup output is
-the only new local write made by this workflow.
+task, or estimate reclaimed space. ADR 0027 composes this verified archive with
+a text-only starter prompt and checklist, but task creation and deletion still
+require separate user actions in Codex. Storage inventory remains read-only,
+and backup output is the only new local write made by this workflow.
 
 ## Rejected Alternatives
 

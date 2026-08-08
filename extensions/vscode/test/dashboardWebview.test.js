@@ -77,18 +77,21 @@ test("loading and error documents remain escaped script-free and themeable", () 
   assert.doesNotMatch(error, /<script/i);
 });
 
-test("Task Storage backup actions use a command allowlist URI with a full task ID", () => {
-  const report = '<section data-report-section="task-storage-details"><table><thead><tr><th>Task</th><th>Flags</th></tr></thead><tbody><tr data-storage-tree-id="root-1234567890abcdef"><td>Task <code>root-1234567...</code></td><td>-</td></tr></tbody></table></section>';
+test("Task Storage actions reflect analysis and rollover eligibility with full task IDs", () => {
+  const report = '<section data-report-section="task-storage-details"><table><thead><tr><th>Task</th><th>Flags</th></tr></thead><tbody><tr data-storage-tree-id="root-incomplete" data-storage-analysis-status="partial" data-storage-can-rollover="false" data-storage-recovery-ready="true"><td>Incomplete</td><td>-</td></tr><tr data-storage-tree-id="root-ready" data-storage-analysis-status="complete" data-storage-can-rollover="true" data-storage-recovery-ready="true"><td>Ready</td><td>-</td></tr></tbody></table></section>';
   const out = injectStorageBackupActions(report);
 
-  assert.match(out, /<th>Backup<\/th>/);
-  assert.match(out, /command:codexUsage\.backupTask\?%5B%22root-1234567890abcdef%22%5D/);
-  assert.match(out, />Back Up<\/a>/);
+  assert.match(out, /<th>Actions<\/th>/);
+  assert.match(out, /command:codexUsage\.backupTask\?%5B%22root-incomplete%22%5D/);
+  assert.match(out, /command:codexUsage\.analyzeTaskStorage\?%5B%22root-incomplete%22%5D/);
+  assert.doesNotMatch(out, /prepareTaskRollover\?%5B%22root-incomplete%22%5D/);
+  assert.match(out, /command:codexUsage\.prepareTaskRollover\?%5B%22root-ready%22%5D/);
+  assert.doesNotMatch(out, /analyzeTaskStorage\?%5B%22root-ready%22%5D/);
   assert.doesNotMatch(out, /<script/i);
 });
 
 test("standalone report markup gains backup controls only during extension injection", () => {
-  const report = '<html><head></head><body><main><section data-report-section="task-storage-details"><table><thead><tr><th>Task</th><th>Flags</th></tr></thead><tbody><tr data-storage-tree-id="root-1234567890abcdef"><td>Task <code>root-1234567...</code></td><td>-</td></tr></tbody></table></section></main></body></html>';
+  const report = '<html><head></head><body><main><section data-report-section="task-storage-details"><table><thead><tr><th>Task</th><th>Flags</th></tr></thead><tbody><tr data-storage-tree-id="root-1234567890abcdef" data-storage-analysis-status="not_analyzed" data-storage-can-rollover="false" data-storage-recovery-ready="true"><td>Task <code>root-1234567...</code></td><td>-</td></tr></tbody></table></section></main></body></html>';
   const state = {
     range: "7d",
     projectKeys: [],
@@ -100,6 +103,7 @@ test("standalone report markup gains backup controls only during extension injec
 
   assert.doesNotMatch(report, /codexUsage\.backupTask/);
   assert.match(extensionShape, /codexUsage\.backupTask/);
+  assert.match(extensionShape, /codexUsage\.analyzeTaskStorage/);
 });
 
 test("report view links become allowlisted commands and update without scripts", () => {

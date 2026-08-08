@@ -153,6 +153,7 @@ def generation_snapshot(cache_dir: Path) -> dict[str, tuple[tuple[object, ...], 
         "metadata": "select * from session_metadata order by file_key",
         "candidates": "select * from transition_candidates order by file_key, candidate_index",
         "checkpoints": "select * from parser_checkpoints order by file_key",
+        "content_diagnostics": "select * from storage_content_diagnostics order by path",
         "fingerprints": "select * from files order by file_key",
         "dirty_tasks": "select * from dirty_transition_tasks order by thread_id",
     }

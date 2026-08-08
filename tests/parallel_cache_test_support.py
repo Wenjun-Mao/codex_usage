@@ -227,7 +227,12 @@ def complete_generation_snapshot(cache_dir: Path) -> GenerationSnapshot:
         checkpoints = tuple(
             connection.execute("select * from parser_checkpoints order by file_key")
         )
-    return files + usage_records + session_metadata + checkpoints
+        content_diagnostics = tuple(
+            connection.execute(
+                "select * from storage_content_diagnostics order by path"
+            )
+        )
+    return files + usage_records + session_metadata + checkpoints + content_diagnostics
 
 
 def normalized_sqlite_master(

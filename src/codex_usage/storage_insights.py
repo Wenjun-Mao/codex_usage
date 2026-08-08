@@ -10,21 +10,23 @@ from codex_usage.models import ROOT_USAGE_ROLE, UsageRole
 from codex_usage.project_identity import normalize_declared_project_key
 from codex_usage.session_inventory import (
     StorageRootSnapshot,
-    storage_state_for_session_dir,
+)
+from codex_usage.storage_amplification import (
+    HISTORY_AMPLIFICATION_BYTES,
+    HISTORY_AMPLIFICATION_SHARE,
+    summarize_storage_content,
 )
 from codex_usage.storage_metadata import StorageFile, load_present_storage_files
+from codex_usage.storage_roots import (
+    StorageRootContribution,
+    build_storage_roots,
+    filter_storage_roots,
+    storage_root_contributions,
+)
 
 
 LARGE_ROOT_BYTES = 1 << 30
 LARGE_TREE_BYTES = 10 << 30
-
-
-@dataclass(frozen=True, slots=True)
-class StorageRootContribution:
-    path: str
-    storage_state: str
-    file_count: int
-    total_bytes: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +54,22 @@ class TaskStorageTree:
     is_large_tree: bool
     storage_root_contributions: tuple[StorageRootContribution, ...] = ()
     storage_files: tuple[StorageFile, ...] = ()
+    analysis_status: str = "not_analyzed"
+    analyzed_bytes: int = 0
+    analysis_coverage: float = 0.0
+    compacted_record_count: int = 0
+    compacted_bytes: int = 0
+    compacted_share: float = 0.0
+    largest_compacted_record_bytes: int = 0
+    media_compacted_record_count: int = 0
+    embedded_media_occurrence_count: int = 0
+    large_descendant_file_count: int = 0
+    large_descendant_bytes: int = 0
+    large_descendant_share: float = 0.0
+    active_root_compacted_bytes: int = 0
+    has_history_amplification: bool = False
+    has_media_amplification: bool = False
+    has_active_root_history_risk: bool = False
 
     @property
     def corpus_share(self) -> float:
@@ -88,6 +106,16 @@ class TaskStorageTree:
             or self.metadata_diagnostics
         )
 
+    @property
+    def analysis_complete(self) -> bool:
+        return self.analysis_status == "complete"
+
+    @property
+    def can_prepare_rollover(self) -> bool:
+        return self.analysis_complete and (
+            self.is_large_tree or self.has_history_amplification
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class TaskStorageInsights:
@@ -113,7 +141,7 @@ class TaskStorageInsights:
             for tree in self.task_trees
             if selected.intersection({tree.project_key, *tree.project_aliases})
         )
-        return _summarize_trees(trees, roots=_filter_storage_roots(self.roots, trees))
+        return _summarize_trees(trees, roots=filter_storage_roots(self.roots, trees))
 
     @property
     def total_bytes(self) -> int:
@@ -216,7 +244,7 @@ def build_task_storage_insights(
     )
     return _summarize_trees(
         trees,
-        roots=_build_storage_roots(files, session_dirs),
+        roots=build_storage_roots(files, session_dirs),
     )
 
 
@@ -302,6 +330,7 @@ def _build_tree(
     diagnostics = tuple(
         sorted({file.metadata_diagnostic for file in files if file.metadata_diagnostic})
     )
+    content = summarize_storage_content(files, root_key, root_node is not None)
     return TaskStorageTree(
         root_task_id=root_key,
         title=title,
@@ -333,8 +362,41 @@ def _build_tree(
         metadata_diagnostics=diagnostics,
         is_large_root=root_bytes >= LARGE_ROOT_BYTES,
         is_large_tree=total_bytes >= LARGE_TREE_BYTES,
-        storage_root_contributions=_storage_root_contributions(files),
+        storage_root_contributions=storage_root_contributions(files),
         storage_files=tuple(sorted(files, key=lambda file: file.path.casefold())),
+        analysis_status=content.analysis_status,
+        analyzed_bytes=content.analyzed_bytes,
+        analysis_coverage=(
+            content.analyzed_bytes / total_bytes if total_bytes else 1.0
+        ),
+        compacted_record_count=content.compacted_record_count,
+        compacted_bytes=content.compacted_bytes,
+        compacted_share=(content.compacted_bytes / total_bytes if total_bytes else 0.0),
+        largest_compacted_record_bytes=content.largest_compacted_record_bytes,
+        media_compacted_record_count=content.media_compacted_record_count,
+        embedded_media_occurrence_count=content.embedded_media_occurrence_count,
+        large_descendant_file_count=content.large_descendant_file_count,
+        large_descendant_bytes=content.large_descendant_bytes,
+        large_descendant_share=(
+            content.large_descendant_bytes / total_bytes if total_bytes else 0.0
+        ),
+        active_root_compacted_bytes=content.active_root_compacted_bytes,
+        has_history_amplification=(
+            content.analysis_status == "complete"
+            and content.compacted_bytes >= HISTORY_AMPLIFICATION_BYTES
+            and content.compacted_bytes / total_bytes >= HISTORY_AMPLIFICATION_SHARE
+        )
+        if total_bytes
+        else False,
+        has_media_amplification=(
+            content.analysis_status == "complete"
+            and content.compacted_bytes >= HISTORY_AMPLIFICATION_BYTES
+            and content.compacted_bytes / total_bytes >= HISTORY_AMPLIFICATION_SHARE
+            and content.embedded_media_occurrence_count > 0
+        )
+        if total_bytes
+        else False,
+        has_active_root_history_risk=content.has_active_root_history_risk,
     )
 
 
@@ -372,68 +434,6 @@ def _summarize_trees(
         task_trees=with_shares,
         roots=roots,
         diagnostics=diagnostics,
-    )
-
-
-def _build_storage_roots(
-    files: tuple[StorageFile, ...], session_dirs: list[Path]
-) -> tuple[StorageRootSnapshot, ...]:
-    files_by_session_dir: dict[str, list[StorageFile]] = defaultdict(list)
-    for file in files:
-        files_by_session_dir[file.session_dir].append(file)
-    paths = {str(session_dir): session_dir for session_dir in session_dirs}
-    paths.update({path: Path(path) for path in files_by_session_dir})
-    roots: list[StorageRootSnapshot] = []
-    for path_text, path in paths.items():
-        root_files = files_by_session_dir.get(path_text, [])
-        roots.append(
-            StorageRootSnapshot(
-                path=path,
-                storage_state=storage_state_for_session_dir(path),
-                exists=path.is_dir(),
-                jsonl_count=len(root_files),
-                total_bytes=sum(file.size_bytes for file in root_files),
-            )
-        )
-    return tuple(sorted(roots, key=lambda root: str(root.path).casefold()))
-
-
-def _storage_root_contributions(
-    files: list[StorageFile],
-) -> tuple[StorageRootContribution, ...]:
-    grouped: dict[tuple[str, str], list[StorageFile]] = defaultdict(list)
-    for file in files:
-        grouped[(file.session_dir, file.storage_state)].append(file)
-    return tuple(
-        StorageRootContribution(
-            path=path,
-            storage_state=storage_state,
-            file_count=len(root_files),
-            total_bytes=sum(file.size_bytes for file in root_files),
-        )
-        for (path, storage_state), root_files in sorted(grouped.items())
-    )
-
-
-def _filter_storage_roots(
-    roots: tuple[StorageRootSnapshot, ...],
-    trees: tuple[TaskStorageTree, ...],
-) -> tuple[StorageRootSnapshot, ...]:
-    totals: dict[str, tuple[int, int]] = {}
-    for tree in trees:
-        for contribution in tree.storage_root_contributions:
-            count, total_bytes = totals.get(contribution.path, (0, 0))
-            totals[contribution.path] = (
-                count + contribution.file_count,
-                total_bytes + contribution.total_bytes,
-            )
-    return tuple(
-        replace(
-            root,
-            jsonl_count=totals.get(str(root.path), (0, 0))[0],
-            total_bytes=totals.get(str(root.path), (0, 0))[1],
-        )
-        for root in roots
     )
 
 

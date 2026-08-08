@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,23 +34,15 @@ from codex_usage.session_parser_events import (
     parse_session_metadata as _parse_session_metadata,
     parse_timestamp,
 )
-
-_USAGE_EVENT_MARKERS = (
-    '"session_meta"',
-    '"turn_context"',
-    '"token_count"',
-    '"task_started"',
+from codex_usage.session_row_relevance import (
+    CHECKPOINT_DIGEST_BYTES,
+    SESSION_READ_BUFFER_BYTES,
+    line_bytes_may_affect_usage as _line_bytes_may_affect_usage,
 )
-_FUNCTION_CALL_MARKERS = ('"response_item"', '"function_call"')
-_USAGE_EVENT_MARKERS_BYTES = tuple(marker.encode() for marker in _USAGE_EVENT_MARKERS)
-_FUNCTION_CALL_MARKERS_BYTES = tuple(marker.encode() for marker in _FUNCTION_CALL_MARKERS)
-_NORMAL_EVENT_DISCRIMINATOR = re.compile(
-    rb'"type"\s*:\s*"(response_item|event_msg)"\s*,\s*'
-    rb'"payload"\s*:\s*\{\s*"type"\s*:\s*"([^"\\]+)"'
+from codex_usage.storage_content import (
+    StorageContentMetrics,
+    observe_storage_row,
 )
-RELEVANT_PREFIX_BYTES = 4096
-CHECKPOINT_DIGEST_BYTES = 64 * 1024
-SESSION_READ_BUFFER_BYTES = 1024 * 1024
 
 
 class AppendCheckpointMismatch(ValueError):
@@ -65,6 +56,7 @@ class _ParsedChunk:
     candidates: tuple[RawRepoPathCandidate, ...]
     checkpoint: SessionParseCheckpoint
     bytes_read: int
+    content_metrics: StorageContentMetrics
 
 
 class _PartialSessionGenerationReadError(OSError):
@@ -76,39 +68,6 @@ class _PartialSessionGenerationReadError(OSError):
         super().__init__(str(cause))
         self.candidates = candidates
         self.cause = cause
-
-
-def _line_bytes_may_affect_usage(raw_line: bytes) -> bool:
-    prefix = raw_line[:RELEVANT_PREFIX_BYTES]
-    if (
-        any(marker in prefix for marker in _USAGE_EVENT_MARKERS_BYTES)
-        or all(marker in prefix for marker in _FUNCTION_CALL_MARKERS_BYTES)
-        or b"\\u" in prefix
-        or b"\\U" in prefix
-    ):
-        return True
-    discriminator = _NORMAL_EVENT_DISCRIMINATOR.search(prefix)
-    if discriminator is not None:
-        outer_type, payload_type = discriminator.groups()
-        return (outer_type, payload_type) in {
-            (b"response_item", b"function_call"),
-            (b"event_msg", b"token_count"),
-            (b"event_msg", b"task_started"),
-        }
-    # A non-ASCII prefix cannot be classified without decoding it. Preserve the
-    # existing invalid-UTF-8 file error instead of silently treating it as noise.
-    if not prefix.isascii():
-        return True
-    return _legacy_line_bytes_may_affect_usage(raw_line)
-
-
-def _legacy_line_bytes_may_affect_usage(raw_line: bytes) -> bool:
-    return (
-        any(marker in raw_line for marker in _USAGE_EVENT_MARKERS_BYTES)
-        or all(marker in raw_line for marker in _FUNCTION_CALL_MARKERS_BYTES)
-        or b"\\u" in raw_line
-        or b"\\U" in raw_line
-    )
 
 
 def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
@@ -184,6 +143,7 @@ def parse_session_generation(
         candidates=chunk.candidates,
         checkpoint=chunk.checkpoint,
         bytes_read=chunk.bytes_read,
+        content_metrics=chunk.content_metrics,
     )
 
 
@@ -211,6 +171,8 @@ def parse_session_append(
         candidates=chunk.candidates,
         checkpoint=chunk.checkpoint,
         bytes_read=chunk.bytes_read,
+        content_metrics=chunk.content_metrics,
+        start_offset=checkpoint.byte_offset,
     )
 
 
@@ -238,6 +200,7 @@ def _parse_session_chunk(
     current_mode = initial_state.current_mode
     bytes_read = 0
     checkpoint_offset = start_offset
+    content_metrics = StorageContentMetrics()
 
     try:
         with path.open("rb", buffering=SESSION_READ_BUFFER_BYTES) as handle:
@@ -266,7 +229,16 @@ def _parse_session_chunk(
                 unterminated_tail = (
                     line_end == captured_stop and not raw_line.endswith(b"\n")
                 )
+                observation = observe_storage_row(raw_line)
+                if (
+                    not unterminated_tail
+                    and observation.is_compacted
+                ):
+                    content_metrics += observation.metrics
+                    checkpoint_offset = line_end
+                    continue
                 if not unterminated_tail and not _line_bytes_may_affect_usage(raw_line):
+                    content_metrics += observation.metrics
                     checkpoint_offset = line_end
                     continue
                 try:
@@ -285,8 +257,11 @@ def _parse_session_chunk(
                     if unterminated_tail:
                         handle.seek(line_start)
                         break
+                    content_metrics += observation.metrics
                     checkpoint_offset = line_end
                     continue
+
+                content_metrics += observation.metrics
 
                 event_timestamp = parse_timestamp(obj.get("timestamp"))
                 event_type = obj.get("type")
@@ -438,6 +413,7 @@ def _parse_session_chunk(
         candidates=tuple(candidates),
         checkpoint=checkpoint,
         bytes_read=bytes_read,
+        content_metrics=content_metrics,
     )
 
 

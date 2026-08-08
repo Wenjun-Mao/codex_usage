@@ -2,14 +2,30 @@ import * as vscode from "vscode";
 
 import { formatStorageBytes, type StorageProject, type StorageTree } from "./storageBackupProtocol";
 
-export async function chooseStorageTree(projects: readonly StorageProject[]): Promise<StorageTree | undefined> {
+export type StorageTreePickerCopy = {
+  actionTitle: string;
+  actionVerb: string;
+};
+
+const BACKUP_PICKER_COPY: StorageTreePickerCopy = {
+  actionTitle: "Back Up Task",
+  actionVerb: "back up",
+};
+
+export async function chooseStorageTree(
+  projects: readonly StorageProject[],
+  copy: StorageTreePickerCopy = BACKUP_PICKER_COPY,
+): Promise<StorageTree | undefined> {
   const project = await vscode.window.showQuickPick(
     projects.map((item) => ({
       label: item.projectLabel,
       description: `${item.trees.length} task ${item.trees.length === 1 ? "tree" : "trees"}`,
       project: item,
     })),
-    { title: "Back Up Task: Choose a Project", placeHolder: "Choose one project to back up a task from." },
+    {
+      title: `${copy.actionTitle}: Choose a Project`,
+      placeHolder: `Choose one project to ${copy.actionVerb} a task in.`,
+    },
   );
   if (!project) {
     return undefined;
@@ -22,7 +38,7 @@ export async function chooseStorageTree(projects: readonly StorageProject[]): Pr
       tree: item,
     })),
     {
-      title: `Back Up Task: Choose a Task from ${project.project.projectLabel}`,
+      title: `${copy.actionTitle}: Choose a Task from ${project.project.projectLabel}`,
       placeHolder: `Search task trees in ${project.project.projectLabel}.`,
     },
   );

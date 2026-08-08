@@ -10,6 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
+    "1.7.0": "2026-08-08",
     "1.6.1": "2026-08-07",
     "1.6.0": "2026-08-07",
     "1.5.0": "2026-08-07",
@@ -60,6 +61,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "1.7.0",
     "1.6.1",
     "1.6.0",
     "1.5.0",
@@ -224,6 +226,23 @@ def test_1_6_1_changelogs_describe_guardian_ownership(changelog: Path) -> None:
     assert "guardian" in section and "root missing" in section
     assert "subagent" in section and "backup" in section
     assert "bounded" in section and "usage cache" in section
+
+
+@pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
+def test_1_7_0_changelogs_describe_storage_amplification_and_rollover(
+    changelog: Path,
+) -> None:
+    section = normalized_prose(
+        markdown_section(
+            changelog,
+            "## 1.7.0 - 2026-08-08 - Storage Amplification And Rollover",
+        )
+    )
+
+    assert "compacted" in section and "inline-media" in section
+    assert "schema 8" in section and "complete" in section
+    assert "prepare rollover" in section and "verified backup" in section
+    assert ("never" in section or "without" in section) and "delet" in section
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))

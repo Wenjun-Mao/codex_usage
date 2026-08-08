@@ -39,7 +39,7 @@ def test_storage_snapshot_cli_uses_storage_context_and_emits_additive_json(
     assert cli.handle_storage_snapshot(args) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["totals"]["total_bytes"] == 13 * 1024**3 + 30
     assert payload["thresholds"]["high_inherited_root_bytes"] == 1024**3
     assert payload["roots"][0]["path"] == str(tmp_path / "sessions")

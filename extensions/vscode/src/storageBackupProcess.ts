@@ -32,6 +32,28 @@ export type RunBackupProcessOptions = {
 };
 
 export function runBackupProcess(options: RunBackupProcessOptions): Promise<BackupResult> {
+  return runStorageOperation({
+    ...options,
+    parseProgressLine: parseBackupProgressLine,
+    parseResult: parseBackupResult,
+  });
+}
+
+export type RunStorageOperationOptions<Result, Progress> = {
+  executablePath: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  cancellationToken: { isCancellationRequested: boolean; onCancellationRequested(listener: () => void): { dispose(): void } };
+  onProgress(event: Progress): void;
+  onOutput(text: string): void;
+  parseProgressLine(line: string): Progress | undefined;
+  parseResult(stdout: string): Result;
+  spawnProcess?: SpawnProcess;
+};
+
+export function runStorageOperation<Result, Progress>(
+  options: RunStorageOperationOptions<Result, Progress>,
+): Promise<Result> {
   const spawnProcess = options.spawnProcess ?? spawn;
   return new Promise((resolve, reject) => {
     const child = spawnProcess(options.executablePath, options.args, {
@@ -74,7 +96,7 @@ export function runBackupProcess(options: RunBackupProcessOptions): Promise<Back
       let next = stderrLines.indexOf("\n");
       while (next >= 0) {
         const line = stderrLines.slice(0, next).replace(/\r$/, "");
-        const progress = parseBackupProgressLine(line);
+        const progress = options.parseProgressLine(line);
         if (progress) {
           options.onProgress(progress);
         } else if (line.trim()) {
@@ -106,7 +128,7 @@ export function runBackupProcess(options: RunBackupProcessOptions): Promise<Back
         return;
       }
       if (stderrLines) {
-        const progress = parseBackupProgressLine(stderrLines.replace(/\r$/, ""));
+        const progress = options.parseProgressLine(stderrLines.replace(/\r$/, ""));
         if (progress) {
           options.onProgress(progress);
         } else if (stderrLines.trim()) {
@@ -118,7 +140,7 @@ export function runBackupProcess(options: RunBackupProcessOptions): Promise<Back
         return;
       }
       try {
-        const result = parseBackupResult(stdout);
+        const result = options.parseResult(stdout);
         settle(() => resolve(result));
       } catch (error) {
         settle(() => reject(error instanceof Error ? error : new Error(String(error))));

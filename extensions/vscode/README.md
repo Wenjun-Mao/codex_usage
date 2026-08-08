@@ -5,7 +5,7 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 ## Features
 
 - Two focused views keep date-filtered **Usage** separate from current **Task Storage**. Projects and theme apply to both; the date range applies only to Usage.
-- Task Storage shows current local JSONL usage by user-visible root task tree, including root versus structured-descendant bytes, transparent large-task badges, and verified per-tree backup.
+- Task Storage shows current local JSONL usage by user-visible root task tree, diagnoses repeated compacted-history and inline-media amplification on demand, and prepares guarded rollovers through a new verified backup.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, and daily/hourly views.
@@ -38,6 +38,8 @@ The stable Marketplace release supports Windows x64 and macOS Apple Silicon only
 - `Codex Usage: Export Tasks`
 - `Codex Usage: Review Transfer Status`
 - `Codex Usage: Back Up Task`
+- `Codex Usage: Analyze Task Storage`
+- `Codex Usage: Prepare Task Rollover`
 - `Codex Usage: Open Transfer Folder`
 - `Codex Usage: Open Settings`
 
@@ -114,7 +116,7 @@ After installation, run `Codex Usage: Open Dashboard` from the command palette.
 
 ## First Run And Cache
 
-The first `1.4.0` report builds the disposable schema 7 cache once. Later reports query only the selected range from local SQLite, value each retained record once, and reuse that valuation throughout the report. The extension passes an internal cache folder to the bundled Python CLI and keeps it under VS Code global extension storage. The cache is local only and pricing still uses checked-in effective-dated rates. The toolbar displays `Loaded in X.X seconds` for the report currently shown. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
+The first `1.7.0` report builds the disposable schema 8 cache once. Later reports query only the selected range from local SQLite, value each retained record once, and reuse that valuation throughout the report. Schema 8 also retains guarded Task Storage content diagnostics whenever the usage parser has already read a file. The extension passes an internal cache folder to the bundled Python CLI and keeps it under VS Code global extension storage. The cache is local only and pricing still uses checked-in effective-dated rates. The toolbar displays `Loaded in X.X seconds` for the report currently shown. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
 
 Unchanged refreshes open no session JSONLs. A growing active JSONL can resume from an atomically committed parser checkpoint after its path, OS file identity, task ID, head digest, and 64 KiB old-boundary digest are verified, so an ordinary append reads only fixed guard windows plus the new tail. Replacement, truncation, same-size modification, unavailable identity, digest mismatch, invalid state, or an archived-file change triggers a safe full parse. The parser reads only through the size captured during inventory and defers an incomplete final row from its starting offset.
 
@@ -122,13 +124,15 @@ At most four read-only workers use buffered binary I/O to parse groups of eight 
 
 ## Task Storage
 
-The dashboard's separate **Task Storage** view reports the current local JSONL corpus without following the Usage date range. It groups physical files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes active and archived files, and follows the selected project filter. The report shows the largest trees as horizontal bars and lists every tree with logical bytes, file counts, storage state, and share. Transparent badges mark root size at 1 GiB and total tree size at 10 GiB.
+The dashboard's separate **Task Storage** view reports the current local JSONL corpus without following the Usage date range. It groups physical files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes active and archived files, and follows the selected project filter. The report shows the largest trees as horizontal bars and lists every tree with logical bytes, file counts, storage state, share, analysis coverage, and diagnostic flags. Transparent badges mark root size at 1 GiB and total tree size at 10 GiB.
 
 Codex guardian approval logs remain visible as structured descendants of their explicit owning task. Their bytes and verified backups stay with that tree, while recorded `codex-auto-review` tokens remain under **Subagents** in Usage; the extension neither hides them nor presents them as user-created roots.
 
 ![Synthetic Task Storage screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/task-storage-synthetic.png)
 
-The purpose is visibility before starting a fresh root task. A 2026-08-07 corpus audit measured 196.08 GiB across 2,525 files, including 187.63 GiB in structured descendants. Version 1.4.0 did not delete, back up, restore, or compress data, and it did not claim filesystem allocation or reclaimable space. Version 1.5.0 adds verified backup without changing the inventory's read-only behavior.
+The purpose is visibility before starting a fresh root task. A 2026-08-07 corpus audit measured 196.08 GiB across 2,525 files, including 187.63 GiB in structured descendants. Size alone does not explain that growth. Choose **Analyze** on one task tree to measure repeated compacted-history rows, inline-media markers, large descendants, and active-root history risk. The selected-tree scan uses at most four local read-only workers; it neither invokes a model nor scans unrelated trees.
+
+A positive **History amplification** label requires complete analysis, at least 1 GiB of compacted rows, and compacted history representing at least 50% of the tree. **Inline media** additionally requires media markers inside that amplified history. `not analyzed` or `partial` remains visibly unknown rather than becoming a false negative. Marker counts are diagnostic clues, not decoded media size or reclaimable-space estimates.
 
 Codex documentation describes side chats as ephemeral forks. In the observed local format, the side-chat turn is stored in the parent root JSONL without a separate task, file, or durable discriminator. Its bytes and token usage remain under **Root task**, and the report says so instead of inventing a heuristic third role. A future split requires reliable upstream metadata and will not retroactively guess older records.
 
@@ -141,6 +145,12 @@ The `.codex-task-backup` format is a streaming PAX tar compressed as exactly one
 Source identity is checked before, during, and after the copy, and the complete selected tree is inventoried again before publication. The archive is written to a sibling partial file, fully reread and verified, then atomically published. Existing backups remain in place unless verified replacement succeeds. Cancellation or failure leaves no reported final archive; a forced process termination can leave an unreported hidden sibling partial, which is never treated as the requested backup. Transient metadata reads are retried, and any still-unresolved corpus file prevents a recovery-ready claim because its parent tree cannot be proven. Missing roots, relationship cycles, or metadata diagnostics therefore produce a warning-bearing salvage archive that may be integrity-verified but is not recovery-ready.
 
 Backups can contain prompts and source code. They are compressed but not encrypted, stay local, and use neither telemetry nor the network. This feature does not restore or delete Codex tasks and does not free storage. Safe restore and deletion are follow-up work; future restore code is not promised compatibility beyond strict format-version rejection.
+
+### Prepare Rollover
+
+For a completely analyzed tree that is large or history-amplified and recovery-ready, choose **Prepare Rollover**. The extension first creates a new verified Maximum or Balanced backup at a new path. After verification, it copies a text-only starter prompt to the clipboard and writes a checklist to the Codex Usage Output channel.
+
+Codex Usage does not create, archive, restore, or delete Codex tasks. Create a fresh root task yourself in the same project, verify its context, and only then archive or delete the old task in Codex. Preparing rollover establishes a recovery point and continuity material; it does not reduce disk usage by itself.
 
 ## Privacy
 

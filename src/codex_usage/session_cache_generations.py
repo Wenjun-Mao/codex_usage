@@ -15,6 +15,10 @@ from codex_usage.session_generation_models import (
     RawRepoPathCandidate,
 )
 from codex_usage.session_inventory import SessionFileInventoryEntry
+from codex_usage.storage_content_cache import (
+    append_content_diagnostic,
+    replace_content_diagnostic,
+)
 
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
 
@@ -40,6 +44,14 @@ def replace_file_generation(
         connection, session_dirs, entry, generation.metadata.session_id
     )
     upsert_parser_checkpoint(connection, entry.file_key, generation.checkpoint)
+    replace_content_diagnostic(
+        connection,
+        entry.path,
+        generation.metadata.session_id,
+        generation.checkpoint,
+        generation.content_metrics,
+        source_mtime_ns=entry.mtime_ns,
+    )
     return affected | generation_task_ids(generation)
 
 
@@ -79,6 +91,15 @@ def append_file_generation(
         appended.metadata.session_id,
     )
     upsert_parser_checkpoint(connection, entry.file_key, appended.checkpoint)
+    append_content_diagnostic(
+        connection,
+        entry.path,
+        appended.metadata.session_id,
+        start_offset=appended.start_offset,
+        checkpoint=appended.checkpoint,
+        metrics=appended.content_metrics,
+        source_mtime_ns=entry.mtime_ns,
+    )
     return affected | _append_task_ids(appended)
 
 

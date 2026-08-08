@@ -26,7 +26,12 @@ def main(argv: list[str] | None = None) -> int:
         archived = codex_home / "archived_sessions"
         sessions.mkdir(parents=True)
         archived.mkdir(parents=True)
-        _write_task(sessions / "root.jsonl", "root", body="root side chat")
+        _write_task(
+            sessions / "root.jsonl",
+            "root",
+            body="root side chat",
+            compacted=True,
+        )
         _write_task(
             sessions / "child.jsonl",
             "child",
@@ -54,6 +59,36 @@ def main(argv: list[str] | None = None) -> int:
         tree = trees[0]
         if not isinstance(tree, dict) or tree.get("physical_file_count") != 3:
             raise RuntimeError(f"packaged storage tree omitted physical files: {tree}")
+
+        analysis = _run_json(
+            executable,
+            ["storage", "analyze", "--tree-id", "root", "--json"],
+            environment,
+        )
+        analyzed_tree = analysis.get("task_tree")
+        if (
+            not isinstance(analyzed_tree, dict)
+            or analyzed_tree.get("analysis_status") != "complete"
+            or analyzed_tree.get("compacted_record_count") != 1
+            or analyzed_tree.get("embedded_media_occurrence_count") != 1
+        ):
+            raise RuntimeError(
+                f"packaged storage analysis omitted content evidence: {analysis}"
+            )
+        warm_analysis = _run_json(
+            executable,
+            ["storage", "analyze", "--tree-id", "root", "--json"],
+            environment,
+        )
+        warm_summary = warm_analysis.get("analysis")
+        if (
+            not isinstance(warm_summary, dict)
+            or warm_summary.get("source_bytes_read") != 0
+            or warm_summary.get("files_unchanged") != 3
+        ):
+            raise RuntimeError(
+                f"packaged storage analysis missed warm reuse: {warm_analysis}"
+            )
 
         archive = root / "smoke.codex-task-backup"
         created = _run_json(
@@ -128,6 +163,7 @@ def _write_task(
     *,
     parent_task_id: str = "",
     body: str,
+    compacted: bool = False,
 ) -> None:
     metadata: dict[str, object] = {
         "id": task_id,
@@ -138,11 +174,22 @@ def _write_task(
         metadata["source"] = {
             "subagent": {"thread_spawn": {"parent_thread_id": parent_task_id}}
         }
+    rows = [
+        {"type": "session_meta", "payload": metadata},
+        {"type": "response_item", "payload": {"text": body}},
+    ]
+    if compacted:
+        rows.append(
+            {
+                "type": "compacted",
+                "payload": {
+                    "history": body,
+                    "image_url": "data:image/png;base64,c21va2U=",
+                },
+            }
+        )
     path.write_text(
-        json.dumps({"type": "session_meta", "payload": metadata})
-        + "\n"
-        + json.dumps({"type": "response_item", "payload": {"text": body}})
-        + "\n",
+        "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows),
         encoding="utf-8",
     )
 

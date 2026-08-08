@@ -26,6 +26,16 @@ class StorageTreePoint:
     high_inherited_root: bool
     large_task_tree: bool
     diagnostics: tuple[str, ...]
+    analysis_status: str
+    analysis_coverage: float
+    compacted_bytes: int
+    compacted_share: float
+    embedded_media_occurrence_count: int
+    has_history_amplification: bool
+    has_media_amplification: bool
+    has_active_root_history_risk: bool
+    recovery_ready: bool
+    can_prepare_rollover: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +104,7 @@ def render_task_storage_section(view: TaskStorageView) -> str:
         "<h2>Task Storage</h2>"
         f"{intro}"
         f'<p class="muted storage-summary">{html.escape(summary)}</p>'
+        f"{_render_amplification_callout(view.trees)}"
         f"{_render_storage_chart(view.top_trees)}"
         f"{_render_storage_table(view.trees)}"
         f"{diagnostics}"
@@ -186,7 +197,10 @@ def _render_storage_row(tree: StorageTreePoint) -> str:
     descendants = f"{format_bytes(tree.descendant_bytes)} ({tree.descendant_count:,})"
     task = f'<span class="storage-task-title">{_esc(tree.title)}</span> <code>{_esc(short_task_id(tree.root_task_id))}</code>'
     return (
-        f'<tr data-storage-tree-id="{_esc(tree.root_task_id)}">'
+        f'<tr data-storage-tree-id="{_esc(tree.root_task_id)}" '
+        f'data-storage-analysis-status="{_esc(tree.analysis_status)}" '
+        f'data-storage-can-rollover="{str(tree.can_prepare_rollover).lower()}" '
+        f'data-storage-recovery-ready="{str(tree.recovery_ready).lower()}">'
         f"<td>{task}</td>"
         f"<td>{_esc(tree.project_label)}</td>"
         f'<td class="num">{_esc(format_bytes(tree.root_bytes))}</td>'
@@ -205,6 +219,16 @@ def _render_badges(tree: StorageTreePoint) -> str:
         badges.append('<span class="storage-badge warn">High inherited root</span>')
     if tree.large_task_tree:
         badges.append('<span class="storage-badge warn">Large task tree</span>')
+    if tree.has_history_amplification:
+        badges.append('<span class="storage-badge warn">History amplification</span>')
+    if tree.has_media_amplification:
+        badges.append('<span class="storage-badge warn">Inline media</span>')
+    if tree.has_active_root_history_risk:
+        badges.append('<span class="storage-badge warn">Active root history risk</span>')
+    if tree.analysis_status != "complete":
+        badges.append(
+            f'<span class="storage-badge">Analysis {tree.analysis_status.replace("_", " ")}</span>'
+        )
     if tree.root_missing:
         badges.append('<span class="storage-badge danger">Root missing</span>')
     if tree.relationship_cycle:
@@ -250,7 +274,44 @@ def _tree_point(tree: TaskStorageTree) -> StorageTreePoint:
         high_inherited_root=tree.is_large_root,
         large_task_tree=tree.is_large_tree,
         diagnostics=tree.metadata_diagnostics,
+        analysis_status=tree.analysis_status,
+        analysis_coverage=tree.analysis_coverage,
+        compacted_bytes=tree.compacted_bytes,
+        compacted_share=tree.compacted_share,
+        embedded_media_occurrence_count=tree.embedded_media_occurrence_count,
+        has_history_amplification=tree.has_history_amplification,
+        has_media_amplification=tree.has_media_amplification,
+        has_active_root_history_risk=tree.has_active_root_history_risk,
+        recovery_ready=tree.recovery_ready,
+        can_prepare_rollover=tree.can_prepare_rollover,
     )
+
+
+def _render_amplification_callout(trees: tuple[StorageTreePoint, ...]) -> str:
+    amplified = tuple(tree for tree in trees if tree.has_history_amplification)
+    incomplete = tuple(tree for tree in trees if tree.analysis_status != "complete")
+    if amplified:
+        compacted_bytes = sum(tree.compacted_bytes for tree in amplified)
+        media_count = sum(tree.embedded_media_occurrence_count for tree in amplified)
+        media = (
+            f" Inline media appears {media_count:,} times inside compacted history."
+            if media_count
+            else ""
+        )
+        return (
+            '<p class="notice storage-amplification-callout">'
+            f"History amplification detected in {len(amplified):,} task tree"
+            f"{'s' if len(amplified) != 1 else ''}: "
+            f"{_esc(format_bytes(compacted_bytes))} is repeated compacted history."
+            f"{_esc(media)}</p>"
+        )
+    if incomplete:
+        return (
+            '<p class="notice storage-amplification-callout">'
+            f"History amplification is unknown for {len(incomplete):,} task tree"
+            f"{'s' if len(incomplete) != 1 else ''} until content analysis completes.</p>"
+        )
+    return ""
 
 
 def _state_label(tree: StorageTreePoint) -> str:

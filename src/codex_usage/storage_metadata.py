@@ -24,6 +24,11 @@ from codex_usage.session_files import (
 )
 from codex_usage.session_cache_schema import STORAGE_METADATA_CACHE_VERSION
 from codex_usage.session_inventory import SessionFileInventoryEntry
+from codex_usage.storage_content_cache import (
+    StorageContentDiagnostic,
+    content_diagnostic_from_row,
+    delete_content_diagnostic,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +53,7 @@ class StorageFile:
     project_aliases: tuple[str, ...]
     task_title: str
     metadata_diagnostic: str
+    content_diagnostic: StorageContentDiagnostic | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +131,7 @@ def refresh_storage_file_metadata(
                 """,
                 (now, path),
             )
+            delete_content_diagnostic(connection, path)
             missing_marked += 1
 
         for entry in entries:
@@ -235,7 +242,30 @@ def load_present_storage_files(
     return tuple(
         _storage_file_from_row(row)
         for row in connection.execute(
-            "select * from storage_files where is_missing = 0 order by path"
+            """
+            select storage_files.*,
+                   storage_content_diagnostics.path as content_path,
+                   storage_content_diagnostics.task_id as content_task_id,
+                   storage_content_diagnostics.analyzed_offset as content_analyzed_offset,
+                   storage_content_diagnostics.source_device as content_source_device,
+                   storage_content_diagnostics.source_inode as content_source_inode,
+                   storage_content_diagnostics.source_mtime_ns as content_source_mtime_ns,
+                   storage_content_diagnostics.head_sha256 as content_head_sha256,
+                   storage_content_diagnostics.boundary_sha256 as content_boundary_sha256,
+                   storage_content_diagnostics.compacted_record_count as content_compacted_record_count,
+                   storage_content_diagnostics.compacted_bytes as content_compacted_bytes,
+                   storage_content_diagnostics.largest_compacted_record_bytes as content_largest_compacted_record_bytes,
+                   storage_content_diagnostics.media_compacted_record_count as content_media_compacted_record_count,
+                   storage_content_diagnostics.embedded_media_occurrence_count as content_embedded_media_occurrence_count,
+                   storage_content_diagnostics.unclassified_record_count as content_unclassified_record_count,
+                   storage_content_diagnostics.last_analyzed_at as content_last_analyzed_at,
+                   storage_content_diagnostics.error as content_error
+            from storage_files
+            left join storage_content_diagnostics
+              on storage_content_diagnostics.path = storage_files.path
+            where storage_files.is_missing = 0
+            order by storage_files.path
+            """
         )
     )
 
@@ -367,6 +397,7 @@ def _storage_file_from_row(row: sqlite3.Row) -> StorageFile:
         project_aliases=tuple(json.loads(row["project_aliases_json"] or "[]")),
         task_title=str(row["task_title"]),
         metadata_diagnostic=str(row["metadata_diagnostic"]),
+        content_diagnostic=content_diagnostic_from_row(row, prefix="content_"),
     )
 
 

@@ -13,6 +13,24 @@ export type StorageTree = {
   duplicateFileCount: number;
   metadataDiagnostics: string[];
   recoveryReady: boolean;
+  analysisStatus: "not_analyzed" | "partial" | "complete";
+  analysisComplete: boolean;
+  analyzedBytes: number;
+  analysisCoverage: number;
+  compactedRecordCount: number;
+  compactedBytes: number;
+  compactedShare: number;
+  largestCompactedRecordBytes: number;
+  mediaCompactedRecordCount: number;
+  embeddedMediaOccurrenceCount: number;
+  largeDescendantFileCount: number;
+  largeDescendantBytes: number;
+  largeDescendantShare: number;
+  activeRootCompactedBytes: number;
+  hasHistoryAmplification: boolean;
+  hasMediaAmplification: boolean;
+  hasActiveRootHistoryRisk: boolean;
+  canPrepareRollover: boolean;
 };
 
 export type StorageProject = {
@@ -48,6 +66,35 @@ export type BackupResult = {
   compression: BackupCompression;
 };
 
+export type AnalysisProgress = {
+  phase: "analyzing";
+  completedFiles: number;
+  totalFiles: number;
+  completedBytes: number;
+  totalBytes: number;
+  path: string;
+};
+
+export type AnalysisResult = {
+  treeId: string;
+  filesTotal: number;
+  filesAnalyzed: number;
+  filesUnchanged: number;
+  filesAppended: number;
+  fullScans: number;
+  appendFallbacks: number;
+  sourceBytesRead: number;
+  workerCount: number;
+};
+
+export type RolloverResult = {
+  backup: BackupResult;
+  taskTitle: string;
+  projectLabel: string;
+  starterPrompt: string;
+  checklist: string[];
+};
+
 export function buildStorageSnapshotArgs(): string[] {
   return ["storage", "snapshot", "--json"];
 }
@@ -70,8 +117,28 @@ export function buildStorageBackupArgs(options: {
   return args;
 }
 
+export function buildStorageAnalyzeArgs(treeId: string): string[] {
+  return ["storage", "analyze", "--tree-id", treeId, "--json", "--progress-json"];
+}
+
+export function buildStorageRolloverArgs(options: {
+  treeId: string;
+  outputPath: string;
+  compression: BackupCompression;
+}): string[] {
+  return [
+    "storage", "rollover", "--tree-id", options.treeId,
+    "--output", options.outputPath,
+    "--compression", options.compression,
+    "--json", "--progress-json",
+  ];
+}
+
 export function parseStorageSnapshot(json: string): StorageSnapshot {
   const payload = parseJsonRecord(json, "storage snapshot");
+  if (nonnegativeIntegerField(payload, "schema_version", "storage snapshot") !== 3) {
+    throw new Error("Invalid storage snapshot: schema_version must be 3.");
+  }
   const trees = arrayField(payload, "task_trees", "storage snapshot").map((value, index) =>
     parseTree(value, `task_trees[${index}]`),
   );
@@ -131,23 +198,93 @@ export function parseBackupProgressLine(line: string): BackupProgress | undefine
 
 export function parseBackupResult(json: string): BackupResult {
   const value = parseJsonRecord(json, "backup result");
-  const compression = stringField(value, "compression", "backup result");
+  return parseBackupResultValue(value, "backup result");
+}
+
+export function parseAnalysisProgressLine(line: string): AnalysisProgress | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(value) || value.phase !== "analyzing") {
+    return undefined;
+  }
+  try {
+    return {
+      phase: "analyzing",
+      completedFiles: nonnegativeIntegerField(value, "completed_files", "analysis progress"),
+      totalFiles: nonnegativeIntegerField(value, "total_files", "analysis progress"),
+      completedBytes: nonnegativeIntegerField(value, "completed_bytes", "analysis progress"),
+      totalBytes: nonnegativeIntegerField(value, "total_bytes", "analysis progress"),
+      path: stringField(value, "path", "analysis progress"),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseAnalysisResult(json: string): AnalysisResult {
+  const payload = parseJsonRecord(json, "storage analysis result");
+  if (nonnegativeIntegerField(payload, "schema_version", "storage analysis result") !== 1) {
+    throw new Error("Invalid storage analysis result: schema_version must be 1.");
+  }
+  const value = parseJsonRecordValue(payload.analysis, "storage analysis result.analysis");
+  return {
+    treeId: stringField(value, "tree_id", "storage analysis result.analysis"),
+    filesTotal: nonnegativeIntegerField(value, "files_total", "storage analysis result.analysis"),
+    filesAnalyzed: nonnegativeIntegerField(value, "files_analyzed", "storage analysis result.analysis"),
+    filesUnchanged: nonnegativeIntegerField(value, "files_unchanged", "storage analysis result.analysis"),
+    filesAppended: nonnegativeIntegerField(value, "files_appended", "storage analysis result.analysis"),
+    fullScans: nonnegativeIntegerField(value, "full_scans", "storage analysis result.analysis"),
+    appendFallbacks: nonnegativeIntegerField(value, "append_fallbacks", "storage analysis result.analysis"),
+    sourceBytesRead: nonnegativeIntegerField(value, "source_bytes_read", "storage analysis result.analysis"),
+    workerCount: nonnegativeIntegerField(value, "worker_count", "storage analysis result.analysis"),
+  };
+}
+
+export function parseRolloverResult(json: string): RolloverResult {
+  const value = parseJsonRecord(json, "rollover result");
+  if (nonnegativeIntegerField(value, "schema_version", "rollover result") !== 1) {
+    throw new Error("Invalid rollover result: schema_version must be 1.");
+  }
+  const checklist = arrayField(value, "checklist", "rollover result").map((item, index) => {
+    if (typeof item !== "string") {
+      throw new Error(`Invalid rollover result: checklist[${index}] must be a string.`);
+    }
+    return item;
+  });
+  return {
+    backup: parseBackupResultValue(
+      parseJsonRecordValue(value.backup, "rollover result.backup"),
+      "rollover result.backup",
+    ),
+    taskTitle: stringField(value, "task_title", "rollover result"),
+    projectLabel: stringField(value, "project_label", "rollover result"),
+    starterPrompt: stringField(value, "starter_prompt", "rollover result"),
+    checklist,
+  };
+}
+
+function parseBackupResultValue(value: Record<string, unknown>, label: string): BackupResult {
+  const compression = stringField(value, "compression", label);
   if (compression !== "maximum" && compression !== "balanced") {
     throw new Error("Invalid backup result: compression must be maximum or balanced.");
   }
   return {
-    archivePath: stringField(value, "archive_path", "backup result"),
-    sourceBytes: nonnegativeIntegerField(value, "source_bytes", "backup result"),
-    archiveBytes: nonnegativeIntegerField(value, "archive_bytes", "backup result"),
-    fileCount: nonnegativeIntegerField(value, "file_count", "backup result"),
-    recoveryReady: booleanField(value, "recovery_ready", "backup result"),
-    warnings: arrayField(value, "warnings", "backup result").map((item, index) => {
+    archivePath: stringField(value, "archive_path", label),
+    sourceBytes: nonnegativeIntegerField(value, "source_bytes", label),
+    archiveBytes: nonnegativeIntegerField(value, "archive_bytes", label),
+    fileCount: nonnegativeIntegerField(value, "file_count", label),
+    recoveryReady: booleanField(value, "recovery_ready", label),
+    warnings: arrayField(value, "warnings", label).map((item, index) => {
       if (typeof item !== "string") {
         throw new Error(`Invalid backup result: warnings[${index}] must be a string.`);
       }
       return item;
     }),
-    archiveSha256: stringField(value, "archive_sha256", "backup result"),
+    archiveSha256: stringField(value, "archive_sha256", label),
     compression,
   };
 }
@@ -177,6 +314,10 @@ export function formatStorageBytes(bytes: number): string {
 
 function parseTree(value: unknown, path: string): StorageTree {
   const tree = parseJsonRecordValue(value, path);
+  const analysisStatus = stringField(tree, "analysis_status", path);
+  if (analysisStatus !== "not_analyzed" && analysisStatus !== "partial" && analysisStatus !== "complete") {
+    throw new Error(`Invalid ${path}: analysis_status is unsupported.`);
+  }
   return {
     rootTaskId: stringField(tree, "root_task_id", path),
     title: stringField(tree, "title", path),
@@ -191,6 +332,24 @@ function parseTree(value: unknown, path: string): StorageTree {
     hasRelationshipCycle: booleanField(tree, "has_relationship_cycle", path),
     duplicateFileCount: nonnegativeIntegerField(tree, "duplicate_file_count", path),
     recoveryReady: booleanField(tree, "recovery_ready", path),
+    analysisStatus,
+    analysisComplete: booleanField(tree, "analysis_complete", path),
+    analyzedBytes: nonnegativeIntegerField(tree, "analyzed_bytes", path),
+    analysisCoverage: nonnegativeNumberField(tree, "analysis_coverage", path),
+    compactedRecordCount: nonnegativeIntegerField(tree, "compacted_record_count", path),
+    compactedBytes: nonnegativeIntegerField(tree, "compacted_bytes", path),
+    compactedShare: nonnegativeNumberField(tree, "compacted_share", path),
+    largestCompactedRecordBytes: nonnegativeIntegerField(tree, "largest_compacted_record_bytes", path),
+    mediaCompactedRecordCount: nonnegativeIntegerField(tree, "media_compacted_record_count", path),
+    embeddedMediaOccurrenceCount: nonnegativeIntegerField(tree, "embedded_media_occurrence_count", path),
+    largeDescendantFileCount: nonnegativeIntegerField(tree, "large_descendant_file_count", path),
+    largeDescendantBytes: nonnegativeIntegerField(tree, "large_descendant_bytes", path),
+    largeDescendantShare: nonnegativeNumberField(tree, "large_descendant_share", path),
+    activeRootCompactedBytes: nonnegativeIntegerField(tree, "active_root_compacted_bytes", path),
+    hasHistoryAmplification: booleanField(tree, "has_history_amplification", path),
+    hasMediaAmplification: booleanField(tree, "has_media_amplification", path),
+    hasActiveRootHistoryRisk: booleanField(tree, "has_active_root_history_risk", path),
+    canPrepareRollover: booleanField(tree, "can_prepare_rollover", path),
     metadataDiagnostics: arrayField(tree, "metadata_diagnostics", path).map((item, index) => {
       if (typeof item !== "string") {
         throw new Error(`Invalid ${path}: metadata_diagnostics[${index}] must be a string.`);
@@ -246,6 +405,13 @@ function booleanField(value: Record<string, unknown>, key: string, label: string
 function nonnegativeIntegerField(value: Record<string, unknown>, key: string, label: string): number {
   if (!nonnegativeInteger(value[key])) {
     throw new Error(`Invalid ${label}: ${key} must be a nonnegative safe integer.`);
+  }
+  return value[key];
+}
+
+function nonnegativeNumberField(value: Record<string, unknown>, key: string, label: string): number {
+  if (!nonnegativeNumber(value[key])) {
+    throw new Error(`Invalid ${label}: ${key} must be a nonnegative number.`);
   }
   return value[key];
 }

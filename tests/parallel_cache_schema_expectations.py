@@ -6,7 +6,7 @@ EXPECTED_SCHEMA_META = (
     ("parser_version", "5"),
     ("project_transition_version", "2"),
     ("project_transitions_dirty", "1"),
-    ("schema_version", "7"),
+    ("schema_version", "8"),
     ("storage_metadata_version", "2"),
 )
 EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
@@ -20,9 +20,21 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
     ("index", "sqlite_autoindex_parser_checkpoints_1", "parser_checkpoints", ""),
     ("index", "sqlite_autoindex_schema_meta_1", "schema_meta", ""),
     ("index", "sqlite_autoindex_session_metadata_1", "session_metadata", ""),
+    (
+        "index",
+        "sqlite_autoindex_storage_content_diagnostics_1",
+        "storage_content_diagnostics",
+        "",
+    ),
     ("index", "sqlite_autoindex_storage_files_1", "storage_files", ""),
     ("index", "sqlite_autoindex_transition_candidates_1", "transition_candidates", ""),
     ("index", "sqlite_autoindex_usage_records_1", "usage_records", ""),
+    (
+        "index",
+        "storage_content_diagnostics_task_idx",
+        "storage_content_diagnostics",
+        "CREATE INDEX storage_content_diagnostics_task_idx on storage_content_diagnostics (task_id)",
+    ),
     (
         "index",
         "storage_files_project_idx",
@@ -98,6 +110,22 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
         "file_path text not null, session_dir text not null, storage_state text not null, is_missing integer not null, "
         "session_id text not null, cwd text, project_key text, project_label text, project_aliases_json text not null, "
         "git_repository_url text, git_branch text, memory_mode text, has_base_instructions integer not null, session_bytes integer not null, estimated_sync_bytes integer not null )",
+    ),
+    (
+        "table",
+        "storage_content_diagnostics",
+        "storage_content_diagnostics",
+        "CREATE TABLE storage_content_diagnostics ( path text primary key, "  # noqa: ISC004
+        "task_id text not null, analyzed_offset integer not null check (analyzed_offset >= 0), "
+        "source_device text not null, source_inode text not null, source_mtime_ns integer not null, "
+        "head_sha256 text not null, boundary_sha256 text not null, "
+        "compacted_record_count integer not null check (compacted_record_count >= 0), "
+        "compacted_bytes integer not null check (compacted_bytes >= 0), "
+        "largest_compacted_record_bytes integer not null check (largest_compacted_record_bytes >= 0), "
+        "media_compacted_record_count integer not null check (media_compacted_record_count >= 0), "
+        "embedded_media_occurrence_count integer not null check (embedded_media_occurrence_count >= 0), "
+        "unclassified_record_count integer not null check (unclassified_record_count >= 0), "
+        "last_analyzed_at text not null, error text not null )",
     ),
     (
         "table",

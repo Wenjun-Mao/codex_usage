@@ -34,3 +34,4 @@ The read-only Task Storage inventory contract is recorded in [ADR 0023](0023-tas
 The verified Task Storage backup contract is recorded in [ADR 0024](0024-verified-task-backups.md).
 The separate Usage and Task Storage view contract is recorded in [ADR 0025](0025-separate-usage-and-storage-views.md).
 The guardian approval ownership contract is recorded in [ADR 0026](0026-guardian-approval-ownership.md).
+The storage amplification analysis and rollover preparation contract is recorded in [ADR 0027](0027-storage-amplification-analysis-and-rollover.md).

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.7.0 - 2026-08-08 - Storage Amplification And Rollover
+
+- Added per-tree **Analyze** actions for repeated compacted-history bytes, inline-media markers, large descendants, and active-root history risk, with cancellable selected-tree progress and no model calls.
+- Added conservative complete, partial, and not-analyzed states so the dashboard never presents missing evidence as a negative amplification result.
+- Added **Prepare Rollover** for eligible recovery-ready trees. It creates a new verified backup, copies a text-only starter prompt, and provides a checklist without creating, archiving, restoring, or deleting Codex tasks.
+- Upgraded the local disposable cache to schema 8 so ordinary usage parsing and explicit storage analysis reuse the same guarded append-aware evidence.
+
 ## 1.6.1 - 2026-08-07 - Guardian Approval Ownership
 
 - Folded Codex guardian approval logs into their explicit owning task trees instead of listing them as `Root missing`, while retaining `codex-auto-review` under Subagents in Usage.

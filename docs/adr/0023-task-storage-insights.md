@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted; backup portions partially superseded by ADR 0024 and guardian
-ownership clarified by ADR 0026
+Accepted; backup portions partially superseded by ADR 0024, guardian ownership
+clarified by ADR 0026, and content analysis extended by ADR 0027
 
 ## Context
 
@@ -72,10 +72,12 @@ Task Storage can identify the large root trees and descendant-heavy projects
 that should be considered before a fresh root task is started. It can now
 provide the input to a verified backup, but it still cannot perform deletion
 or restoration. Backup verification and publication are defined separately in
-ADR 0024, and safe restore and deletion remain follow-up releases.
+ADR 0024. ADR 0027 adds opt-in content analysis and guarded rollover
+preparation without changing Codex task lifecycle state.
 
 The schema 6 cache is disposable and is rebuilt as schema 7 for the first
-1.4.0 report. There is no migration or dual-read compatibility path.
+1.4.0 report. Schema 8 later replaces it under ADR 0027; neither replacement
+has a migration or dual-read compatibility path.
 
 ## Rejected Alternatives
 

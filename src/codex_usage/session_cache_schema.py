@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-CACHE_SCHEMA_VERSION = 7
+CACHE_SCHEMA_VERSION = 8
 PARSER_CACHE_VERSION = 5
 PROJECT_TRANSITION_CACHE_VERSION = 2
 STORAGE_METADATA_CACHE_VERSION = 2
@@ -19,6 +19,7 @@ _KNOWN_CACHE_TABLES = frozenset(
         "session_metadata",
         "storage_files",
         "parser_checkpoints",
+        "storage_content_diagnostics",
         "transition_candidates",
         "dirty_transition_tasks",
         "project_transitions",
@@ -31,6 +32,7 @@ _KNOWN_CACHE_INDEXES = frozenset(
         "transition_candidates_thread_idx",
         "storage_files_task_idx",
         "storage_files_project_idx",
+        "storage_content_diagnostics_task_idx",
     }
 )
 
@@ -184,6 +186,26 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         )
         """,
         """
+        create table storage_content_diagnostics (
+            path text primary key,
+            task_id text not null,
+            analyzed_offset integer not null check (analyzed_offset >= 0),
+            source_device text not null,
+            source_inode text not null,
+            source_mtime_ns integer not null,
+            head_sha256 text not null,
+            boundary_sha256 text not null,
+            compacted_record_count integer not null check (compacted_record_count >= 0),
+            compacted_bytes integer not null check (compacted_bytes >= 0),
+            largest_compacted_record_bytes integer not null check (largest_compacted_record_bytes >= 0),
+            media_compacted_record_count integer not null check (media_compacted_record_count >= 0),
+            embedded_media_occurrence_count integer not null check (embedded_media_occurrence_count >= 0),
+            unclassified_record_count integer not null check (unclassified_record_count >= 0),
+            last_analyzed_at text not null,
+            error text not null
+        )
+        """,
+        """
         create table transition_candidates (
             file_key text not null,
             candidate_index integer not null,
@@ -218,6 +240,7 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         "create index transition_candidates_thread_idx on transition_candidates (thread_id)",
         "create index storage_files_task_idx on storage_files (task_id)",
         "create index storage_files_project_idx on storage_files (project_key)",
+        "create index storage_content_diagnostics_task_idx on storage_content_diagnostics (task_id)",
     )
     for statement in statements:
         connection.execute(statement)
@@ -247,6 +270,12 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
             """
         ).fetchone()
         connection.execute("select 1 from parser_checkpoints limit 1").fetchone()
+        diagnostic_columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "pragma table_info(storage_content_diagnostics)"
+            )
+        }
         storage_columns = {
             str(row["name"])
             for row in connection.execute("pragma table_info(storage_files)")
@@ -254,6 +283,12 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
         storage_indexes = {
             str(row["name"])
             for row in connection.execute("pragma index_list(storage_files)")
+        }
+        diagnostic_indexes = {
+            str(row["name"])
+            for row in connection.execute(
+                "pragma index_list(storage_content_diagnostics)"
+            )
         }
         invalid_storage_role = connection.execute(
             """
@@ -284,13 +319,33 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
         "title_index_mtime_ns",
         "metadata_diagnostic",
     }
+    expected_diagnostic_columns = {
+        "path",
+        "task_id",
+        "analyzed_offset",
+        "source_device",
+        "source_inode",
+        "source_mtime_ns",
+        "head_sha256",
+        "boundary_sha256",
+        "compacted_record_count",
+        "compacted_bytes",
+        "largest_compacted_record_bytes",
+        "media_compacted_record_count",
+        "embedded_media_occurrence_count",
+        "unclassified_record_count",
+        "last_analyzed_at",
+        "error",
+    }
     return (
         invalid_role is None
         and invalid_storage_role is None
         and storage_columns == expected_storage_columns
+        and diagnostic_columns == expected_diagnostic_columns
         and {"storage_files_task_idx", "storage_files_project_idx"}.issubset(
             storage_indexes
         )
+        and "storage_content_diagnostics_task_idx" in diagnostic_indexes
     )
 
 
@@ -324,6 +379,7 @@ def _drop_cache_schema(connection: sqlite3.Connection) -> None:
         "dirty_transition_tasks",
         "transition_candidates",
         "parser_checkpoints",
+        "storage_content_diagnostics",
         "storage_files",
         "session_metadata",
         "usage_records",

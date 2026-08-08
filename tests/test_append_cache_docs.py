@@ -28,7 +28,7 @@ def markdown_section(path: Path, heading: str) -> str:
 def test_readmes_describe_current_append_contract(readme: Path) -> None:
     text = readme.read_text(encoding="utf-8").casefold()
 
-    assert "schema 7" in text
+    assert "schema 8" in text
     assert "old-boundary digest" in text
     assert "new tail" in text
     assert "append fallbacks" in text

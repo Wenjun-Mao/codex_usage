@@ -71,6 +71,10 @@ def test_synthetic_storage_snapshot_covers_root_and_descendant_sizes() -> None:
     assert any(tree.is_large_tree for tree in snapshot.task_trees)
     assert all(tree.root_bytes and tree.descendant_bytes for tree in snapshot.task_trees)
     assert sum(tree.share for tree in snapshot.task_trees) == 1.0
+    assert any(tree.has_history_amplification for tree in snapshot.task_trees)
+    assert any(tree.has_media_amplification for tree in snapshot.task_trees)
+    assert any(tree.can_prepare_rollover for tree in snapshot.task_trees)
+    assert any(tree.analysis_status == "not_analyzed" for tree in snapshot.task_trees)
 
 
 def test_check_mode_does_not_replace_tracked_screenshot(monkeypatch) -> None:

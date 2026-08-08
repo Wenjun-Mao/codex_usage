@@ -24,7 +24,7 @@ def storage_snapshot_payload(snapshot: TaskStorageInsights) -> dict[str, object]
         for root in snapshot.roots
     ]
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "totals": {
             "total_bytes": snapshot.corpus_bytes,
             "root_bytes": snapshot.root_bytes,
@@ -111,6 +111,24 @@ def _storage_tree_payload(tree: TaskStorageTree) -> dict[str, object]:
         "metadata_diagnostics": list(tree.metadata_diagnostics),
         "is_large_root": tree.is_large_root,
         "is_large_tree": tree.is_large_tree,
+        "analysis_status": tree.analysis_status,
+        "analysis_complete": tree.analysis_complete,
+        "analyzed_bytes": tree.analyzed_bytes,
+        "analysis_coverage": tree.analysis_coverage,
+        "compacted_record_count": tree.compacted_record_count,
+        "compacted_bytes": tree.compacted_bytes,
+        "compacted_share": tree.compacted_share,
+        "largest_compacted_record_bytes": tree.largest_compacted_record_bytes,
+        "media_compacted_record_count": tree.media_compacted_record_count,
+        "embedded_media_occurrence_count": tree.embedded_media_occurrence_count,
+        "large_descendant_file_count": tree.large_descendant_file_count,
+        "large_descendant_bytes": tree.large_descendant_bytes,
+        "large_descendant_share": tree.large_descendant_share,
+        "active_root_compacted_bytes": tree.active_root_compacted_bytes,
+        "has_history_amplification": tree.has_history_amplification,
+        "has_media_amplification": tree.has_media_amplification,
+        "has_active_root_history_risk": tree.has_active_root_history_risk,
+        "can_prepare_rollover": tree.can_prepare_rollover,
     }
 
 
@@ -120,6 +138,14 @@ def _terminal_tree_flags(tree: dict[str, object]) -> str:
         flags.append("high inherited root")
     if tree.get("is_large_tree"):
         flags.append("large task tree")
+    if tree.get("has_history_amplification"):
+        flags.append("history amplification")
+    if tree.get("has_media_amplification"):
+        flags.append("inline media amplification")
+    if tree.get("has_active_root_history_risk"):
+        flags.append("active root history risk")
+    if tree.get("analysis_status") != "complete":
+        flags.append(f"content analysis {tree.get('analysis_status', 'unknown')}")
     if tree.get("has_missing_root"):
         flags.append("root missing")
     if tree.get("has_relationship_cycle"):

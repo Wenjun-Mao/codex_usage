@@ -92,12 +92,24 @@ export function injectStorageBackupActions(reportHtml: string): string {
         }
         actionCount += 1;
         const treeId = decodeHtmlAttribute(encodedTreeId);
-        return `<tr${attributes}>${cells}<td><a href="${backupCommandUri(treeId)}">Back Up</a></td></tr>`;
+        const analysisStatus = htmlAttribute(attributes, "data-storage-analysis-status");
+        const canRollover = htmlAttribute(attributes, "data-storage-can-rollover") === "true";
+        const recoveryReady = htmlAttribute(attributes, "data-storage-recovery-ready") === "true";
+        const actions = [
+          `<a href="${treeCommandUri("codexUsage.backupTask", treeId)}">Back Up</a>`,
+          ...(analysisStatus !== "complete"
+            ? [`<a href="${treeCommandUri("codexUsage.analyzeTaskStorage", treeId)}">Analyze</a>`]
+            : []),
+          ...(canRollover && recoveryReady
+            ? [`<a href="${treeCommandUri("codexUsage.prepareTaskRollover", treeId)}">Prepare Rollover</a>`]
+            : []),
+        ];
+        return `<tr${attributes}>${cells}<td class="storage-actions">${actions.join(" &middot; ")}</td></tr>`;
       });
       if (actionCount === 0) {
         return `${start}${rows}${end}`;
       }
-      const withHeader = start.replace("<th>Flags</th>", "<th>Flags</th><th>Backup</th>");
+      const withHeader = start.replace("<th>Flags</th>", "<th>Flags</th><th>Actions</th>");
       return `${withHeader}${withActions}${end}`;
     },
   );
@@ -254,8 +266,13 @@ function decodeHtmlAttribute(value: string): string {
     .replaceAll("&amp;", "&");
 }
 
-function backupCommandUri(treeId: string): string {
-  return `command:codexUsage.backupTask?${encodeURIComponent(JSON.stringify([treeId]))}`;
+function htmlAttribute(attributes: string, name: string): string {
+  const match = new RegExp(`\\b${name}="([^"]*)"`, "i").exec(attributes);
+  return match ? decodeHtmlAttribute(match[1]) : "";
+}
+
+function treeCommandUri(command: string, treeId: string): string {
+  return `command:${command}?${encodeURIComponent(JSON.stringify([treeId]))}`;
 }
 
 function basicWebviewCss(): string {

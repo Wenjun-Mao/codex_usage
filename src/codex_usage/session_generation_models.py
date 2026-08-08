@@ -5,6 +5,7 @@ from datetime import datetime
 
 from codex_usage.models import SessionMetadata, UsageRecord
 from codex_usage.session_parser_models import SessionParseCheckpoint
+from codex_usage.storage_content import StorageContentMetrics
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +23,7 @@ class ParsedSessionGeneration:
     candidates: tuple[RawRepoPathCandidate, ...]
     checkpoint: SessionParseCheckpoint
     bytes_read: int
+    content_metrics: StorageContentMetrics = StorageContentMetrics()
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,3 +33,5 @@ class ParsedSessionAppend:
     candidates: tuple[RawRepoPathCandidate, ...]
     checkpoint: SessionParseCheckpoint
     bytes_read: int
+    content_metrics: StorageContentMetrics = StorageContentMetrics()
+    start_offset: int = 0

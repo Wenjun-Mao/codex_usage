@@ -87,7 +87,7 @@ def test_cache_connection_closes_before_loader_returns(
 
 
 def test_legacy_cache_files_are_removed_after_schema_opens(tmp_path: Path) -> None:
-    assert CACHE_DB_NAME == "usage-cache-v7.sqlite3"
+    assert CACHE_DB_NAME == "usage-cache-v8.sqlite3"
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     legacy_paths = tuple(
@@ -108,7 +108,7 @@ def test_legacy_cache_files_are_removed_after_schema_opens(tmp_path: Path) -> No
 def test_legacy_cleanup_failure_is_counted_without_removing_new_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert CACHE_DB_NAME == "usage-cache-v7.sqlite3"
+    assert CACHE_DB_NAME == "usage-cache-v8.sqlite3"
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     legacy_path = cache_dir / LEGACY_CACHE_DB_NAMES[0]

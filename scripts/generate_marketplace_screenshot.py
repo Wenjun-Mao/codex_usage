@@ -52,7 +52,7 @@ _SCREENSHOT_CSS = """
   [data-report-section="task-storage-details"] tbody tr:nth-child(n+3) {
     display: none !important;
   }
-  .screenshot-backup-action {
+  .screenshot-storage-action {
     display: inline-flex;
     align-items: center;
     min-height: 24px;
@@ -115,6 +115,13 @@ def build_synthetic_storage_snapshot() -> TaskStorageInsights:
             descendant_bytes=38 * gib + 630 * mib,
             descendant_count=112,
             active_files=113,
+            analysis_status="complete",
+            compacted_bytes=35 * gib + 120 * mib,
+            embedded_media_occurrence_count=48,
+            active_root_compacted_bytes=4 * gib + 900 * mib,
+            has_history_amplification=True,
+            has_media_amplification=True,
+            has_active_root_history_risk=True,
         ),
         _synthetic_storage_tree(
             task_id="storage-transfer",
@@ -125,6 +132,7 @@ def build_synthetic_storage_snapshot() -> TaskStorageInsights:
             descendant_count=37,
             active_files=36,
             archived_files=2,
+            analysis_status="not_analyzed",
         ),
         _synthetic_storage_tree(
             task_id="storage-translation",
@@ -134,6 +142,8 @@ def build_synthetic_storage_snapshot() -> TaskStorageInsights:
             descendant_bytes=6 * gib + 820 * mib,
             descendant_count=19,
             active_files=20,
+            analysis_status="complete",
+            compacted_bytes=820 * mib,
         ),
         _synthetic_storage_tree(
             task_id="storage-glossary",
@@ -143,6 +153,8 @@ def build_synthetic_storage_snapshot() -> TaskStorageInsights:
             descendant_bytes=680 * mib,
             descendant_count=4,
             active_files=5,
+            analysis_status="partial",
+            compacted_bytes=210 * mib,
         ),
     )
     corpus_bytes = sum(tree.total_bytes for tree in trees)
@@ -265,6 +277,13 @@ def _synthetic_storage_tree(
     descendant_count: int,
     active_files: int,
     archived_files: int = 0,
+    analysis_status: str = "not_analyzed",
+    compacted_bytes: int = 0,
+    embedded_media_occurrence_count: int = 0,
+    active_root_compacted_bytes: int = 0,
+    has_history_amplification: bool = False,
+    has_media_amplification: bool = False,
+    has_active_root_history_risk: bool = False,
 ) -> TaskStorageTree:
     total_bytes = root_bytes + descendant_bytes
     archived_bytes = total_bytes // 12 if archived_files else 0
@@ -290,6 +309,23 @@ def _synthetic_storage_tree(
         metadata_diagnostics=(),
         is_large_root=root_bytes >= 1024**3,
         is_large_tree=total_bytes >= 10 * 1024**3,
+        analysis_status=analysis_status,
+        analyzed_bytes=total_bytes if analysis_status == "complete" else compacted_bytes,
+        analysis_coverage=(
+            1.0
+            if analysis_status == "complete"
+            else compacted_bytes / total_bytes if total_bytes else 0.0
+        ),
+        compacted_record_count=14 if compacted_bytes else 0,
+        compacted_bytes=compacted_bytes,
+        compacted_share=compacted_bytes / total_bytes if total_bytes else 0.0,
+        largest_compacted_record_bytes=compacted_bytes // 3,
+        media_compacted_record_count=6 if embedded_media_occurrence_count else 0,
+        embedded_media_occurrence_count=embedded_media_occurrence_count,
+        active_root_compacted_bytes=active_root_compacted_bytes,
+        has_history_amplification=has_history_amplification,
+        has_media_amplification=has_media_amplification,
+        has_active_root_history_risk=has_active_root_history_risk,
     )
 
 
@@ -314,6 +350,8 @@ def _wait_for_landmarks(page: Page, view: str) -> None:
         page.get_by_text("Root task JSONL", exact=True).wait_for()
         page.get_by_text("Structured subagents", exact=True).wait_for()
         page.get_by_text("Back Up", exact=True).first.wait_for()
+        page.get_by_text("Analyze", exact=True).first.wait_for()
+        page.get_by_text("Prepare Rollover", exact=True).first.wait_for()
         return
     page.get_by_role("heading", name="Project Breakdown", exact=True).wait_for()
     page.get_by_text("Root tasks", exact=True).first.wait_for()
@@ -330,14 +368,23 @@ def _inject_backup_actions(page: Page) -> None:
           const header = section.querySelector('thead tr');
           if (!header) throw new Error('Task Storage details header is missing');
           const heading = document.createElement('th');
-          heading.textContent = 'Backup';
+          heading.textContent = 'Actions';
           header.appendChild(heading);
           for (const row of section.querySelectorAll('tbody tr[data-storage-tree-id]')) {
             const cell = document.createElement('td');
-            const action = document.createElement('span');
-            action.className = 'screenshot-backup-action';
-            action.textContent = 'Back Up';
-            cell.appendChild(action);
+            cell.className = 'storage-actions';
+            const labels = ['Back Up'];
+            if (row.dataset.storageAnalysisStatus !== 'complete') labels.push('Analyze');
+            if (row.dataset.storageCanRollover === 'true' && row.dataset.storageRecoveryReady === 'true') {
+              labels.push('Prepare Rollover');
+            }
+            labels.forEach((label, index) => {
+              if (index) cell.append(' · ');
+              const action = document.createElement('span');
+              action.className = 'screenshot-storage-action';
+              action.textContent = label;
+              cell.appendChild(action);
+            });
             row.appendChild(cell);
           }
         }
