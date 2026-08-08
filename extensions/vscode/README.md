@@ -124,6 +124,8 @@ At most four read-only workers use buffered binary I/O to parse groups of eight 
 
 The dashboard's separate **Task Storage** view reports the current local JSONL corpus without following the Usage date range. It groups physical files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes active and archived files, and follows the selected project filter. The report shows the largest trees as horizontal bars and lists every tree with logical bytes, file counts, storage state, and share. Transparent badges mark root size at 1 GiB and total tree size at 10 GiB.
 
+Codex guardian approval logs remain visible as structured descendants of their explicit owning task. Their bytes and verified backups stay with that tree, while recorded `codex-auto-review` tokens remain under **Subagents** in Usage; the extension neither hides them nor presents them as user-created roots.
+
 ![Synthetic Task Storage screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/task-storage-synthetic.png)
 
 The purpose is visibility before starting a fresh root task. A 2026-08-07 corpus audit measured 196.08 GiB across 2,525 files, including 187.63 GiB in structured descendants. Version 1.4.0 did not delete, back up, restore, or compress data, and it did not claim filesystem allocation or reclaimable space. Version 1.5.0 adds verified backup without changing the inventory's read-only behavior.
@@ -132,7 +134,7 @@ Codex documentation describes side chats as ephemeral forks. In the observed loc
 
 ### Verified Task Backups
 
-Use **Back Up** on a Task Storage row or run **Codex Usage: Back Up Task** to back up exactly one task tree. The backup preserves every physical JSONL currently present under that root, including structured descendants, active and archived copies, duplicates, and side-chat content already embedded in the root JSONL.
+Use **Back Up** on a Task Storage row or run **Codex Usage: Back Up Task** to back up exactly one task tree. The backup preserves every physical JSONL currently present under that root, including structured descendants such as guardian approval logs, active and archived copies, duplicates, and side-chat content already embedded in the root JSONL.
 
 The `.codex-task-backup` format is a streaming PAX tar compressed as exactly one zstd frame with a strict format-v1 manifest. It includes canonical metadata, per-file SHA-256 values, bounded selected session-index entries, and a final whole-archive SHA-256. **Maximum** uses zstd 19 for smaller, slower archives; **Balanced** uses zstd 9 for faster, larger archives.
 

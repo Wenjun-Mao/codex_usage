@@ -6,6 +6,7 @@ from dataclasses import dataclass
 CACHE_SCHEMA_VERSION = 7
 PARSER_CACHE_VERSION = 5
 PROJECT_TRANSITION_CACHE_VERSION = 2
+STORAGE_METADATA_CACHE_VERSION = 2
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
 _PROJECT_TRANSITIONS_DIRTY_KEY = "project_transitions_dirty"
 _DIRTY_VALUE = "1"
@@ -61,6 +62,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
                     str(PROJECT_TRANSITION_CACHE_VERSION),
                 ),
                 (_PROJECT_TRANSITIONS_DIRTY_KEY, _DIRTY_VALUE),
+                ("storage_metadata_version", str(STORAGE_METADATA_CACHE_VERSION)),
             ],
         )
         connection.commit()
@@ -232,6 +234,8 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
         "parser_version": str(PARSER_CACHE_VERSION),
         "project_transition_version": str(PROJECT_TRANSITION_CACHE_VERSION),
     }
+    # Storage metadata has its own bounded refresh contract; it must not reset
+    # the much larger usage cache when only ownership extraction changes.
     if not all(metadata.get(key) == value for key, value in expected_versions.items()):
         return False
     try:

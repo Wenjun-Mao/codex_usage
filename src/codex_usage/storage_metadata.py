@@ -22,6 +22,7 @@ from codex_usage.session_files import (
     read_session_metadata_bounded,
     session_index_path_for_session_dir,
 )
+from codex_usage.session_cache_schema import STORAGE_METADATA_CACHE_VERSION
 from codex_usage.session_inventory import SessionFileInventoryEntry
 
 
@@ -66,6 +67,7 @@ def refresh_storage_file_metadata(
         str(row["path"]): row
         for row in connection.execute("select * from storage_files")
     }
+    metadata_contract_is_current = _metadata_contract_is_current(connection)
     current_paths = {str(entry.path) for entry in entries}
     fingerprints_by_index_path = {
         str(index_path): _index_fingerprint(index_path)
@@ -82,7 +84,8 @@ def refresh_storage_file_metadata(
     changed_entries = tuple(
         entry
         for entry in entries
-        if not _storage_file_is_reusable(entry, existing.get(str(entry.path)))
+        if not metadata_contract_is_current
+        or not _storage_file_is_reusable(entry, existing.get(str(entry.path)))
     )
     changed_paths = {str(entry.path) for entry in changed_entries}
     title_refresh_entries = tuple(
@@ -128,7 +131,7 @@ def refresh_storage_file_metadata(
             path = str(entry.path)
             cached = existing.get(path)
             index_fingerprint = index_fingerprints[path]
-            if _storage_file_is_reusable(entry, cached):
+            if path not in changed_paths:
                 if _title_index_is_reusable(cached, index_fingerprint):
                     connection.execute(
                         "update storage_files set last_seen_at = ? where path = ?",
@@ -208,6 +211,13 @@ def refresh_storage_file_metadata(
                     storage_file.metadata_diagnostic,
                 ),
             )
+        connection.execute(
+            """
+            insert into schema_meta (key, value) values (?, ?)
+            on conflict(key) do update set value = excluded.value
+            """,
+            ("storage_metadata_version", str(STORAGE_METADATA_CACHE_VERSION)),
+        )
         connection.commit()
     except BaseException:
         connection.rollback()
@@ -296,6 +306,15 @@ def _storage_file_is_reusable(
         and int(cached["size_bytes"]) == entry.size_bytes
         and int(cached["mtime_ns"]) == entry.mtime_ns
         and str(cached["metadata_diagnostic"]) != "session_meta_unreadable"
+    )
+
+
+def _metadata_contract_is_current(connection: sqlite3.Connection) -> bool:
+    row = connection.execute(
+        "select value from schema_meta where key = 'storage_metadata_version'"
+    ).fetchone()
+    return bool(
+        row is not None and str(row["value"]) == str(STORAGE_METADATA_CACHE_VERSION)
     )
 
 

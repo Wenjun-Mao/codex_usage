@@ -7,6 +7,7 @@ EXPECTED_SCHEMA_META = (
     ("project_transition_version", "2"),
     ("project_transitions_dirty", "1"),
     ("schema_version", "7"),
+    ("storage_metadata_version", "2"),
 )
 EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
     (

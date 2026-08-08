@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.6.1 - 2026-08-07 - Guardian Approval Ownership
+
+- Folded Codex guardian approval logs into their explicit owning task trees instead of listing them as `Root missing`, while retaining `codex-auto-review` under Subagents in Usage.
+- Included guardian files in verified backups of their owning task and preserved genuine missing-parent and cycle diagnostics.
+- Refreshed the storage ownership metadata once through bounded prefix reads without discarding or reparsing the schema 7 usage cache.
+- Validated the corrected grouping on the live corpus: 409 false missing roots became zero and physical-byte accounting remained complete.
+
 ## 1.6.0 - 2026-08-07 - Focused Dashboard Views
 
 - Split the dashboard into top-level **Usage** and **Task Storage** views, with Usage remaining the default and Task Storage retaining its full inventory and per-tree backup actions.

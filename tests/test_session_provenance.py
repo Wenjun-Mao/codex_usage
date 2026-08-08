@@ -40,13 +40,47 @@ def _write_session(path: Path, source: object) -> None:
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
 
 
-def test_structured_subagent_classifies_spawn_and_parentless_guardian() -> None:
-    spawned = {"source": {"subagent": {"thread_spawn": {"parent_thread_id": "parent"}}}}
-    guardian = {"source": {"subagent": {"other": "guardian"}}}
+def test_structured_subagent_resolves_spawn_and_guardian_ownership() -> None:
+    spawned = {
+        "source": {"subagent": {"thread_spawn": {"parent_thread_id": "parent"}}},
+        "parent_thread_id": "top-level",
+    }
+    guardian = {
+        "id": "guardian",
+        "session_id": "root",
+        "parent_thread_id": "immediate-parent",
+        "source": {"subagent": {"other": "guardian"}},
+    }
+    guardian_without_immediate_parent = {
+        "id": "guardian",
+        "session_id": "root",
+        "source": {"subagent": {"other": "guardian"}},
+    }
+    explicit_parent = {
+        "parent_thread_id": "parent",
+        "source": {"subagent": {"other": "review"}},
+    }
     assert is_structured_subagent(spawned)
     assert is_structured_subagent(guardian)
     assert parent_thread_id_from_source(spawned) == "parent"
-    assert parent_thread_id_from_source(guardian) == ""
+    assert parent_thread_id_from_source(guardian) == "immediate-parent"
+    assert parent_thread_id_from_source(guardian_without_immediate_parent) == "root"
+    assert parent_thread_id_from_source(explicit_parent) == "parent"
+
+
+def test_guardian_owner_fallback_rejects_self_and_does_not_apply_to_reviews() -> None:
+    self_owned_guardian = {
+        "id": "guardian",
+        "session_id": "guardian",
+        "source": {"subagent": {"other": "guardian"}},
+    }
+    review = {
+        "id": "review",
+        "session_id": "root",
+        "source": {"subagent": {"other": "review"}},
+    }
+    assert parent_thread_id_from_source(self_owned_guardian) == ""
+    assert parent_thread_id_from_source(review) == ""
 
 
 def test_non_object_subagent_marker_does_not_change_root_classification() -> None:

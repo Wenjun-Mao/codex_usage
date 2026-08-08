@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted; backup portions partially superseded by ADR 0024
+Accepted; backup portions partially superseded by ADR 0024 and guardian
+ownership clarified by ADR 0026
 
 ## Context
 
@@ -40,6 +41,10 @@ roots. Missing parents are represented as explicit root-missing groups, cycles
 and malformed relationships are reported as diagnostics, and no file bytes
 are silently dropped. Missing cache entries have zero physical bytes because
 the source file is no longer present.
+
+Codex guardian approval logs are structured subagents with a distinct ownership
+shape. ADR 0026 defines how their explicit immediate-parent and owner metadata
+folds them into the user-visible task tree without hiding their bytes or usage.
 
 Storage metadata is cached and refreshed with bounded reads. Unchanged files
 reuse cached metadata; new or changed files read only the bounded metadata

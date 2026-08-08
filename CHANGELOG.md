@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.6.1 - 2026-08-07 - Guardian Approval Ownership
+
+- Recognized Codex guardian approval logs as structured descendants of their explicit immediate parent or owning task instead of reporting them as `Root missing` trees.
+- Preserved guardian bytes, `codex-auto-review` subagent usage, and complete per-tree backups while keeping genuine missing parents and cycles visible.
+- Added an atomic storage-metadata contract refresh that rereads only bounded metadata prefixes and leaves the schema 7 usage cache intact.
+- Verified the fix against the live corpus: 409 false missing-root groups collapsed into their nine owning task families, leaving 32 task trees, zero missing roots, and unchanged physical-byte accounting.
+
 ## 1.6.0 - 2026-08-07 - Focused Dashboard Views
 
 - Split the dashboard into top-level **Usage** and **Task Storage** views so date-filtered token analysis no longer shares one long page with current disk inventory and backup controls.
