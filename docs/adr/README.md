@@ -32,3 +32,4 @@ The explicit root-task/subagent usage-role contract is recorded in [ADR 0021](00
 The guarded append-parser checkpoint contract is recorded in [ADR 0022](0022-guarded-append-parser-checkpoints.md).
 The read-only Task Storage inventory contract is recorded in [ADR 0023](0023-task-storage-insights.md).
 The verified Task Storage backup contract is recorded in [ADR 0024](0024-verified-task-backups.md).
+The separate Usage and Task Storage view contract is recorded in [ADR 0025](0025-separate-usage-and-storage-views.md).

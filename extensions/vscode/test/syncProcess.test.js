@@ -357,6 +357,7 @@ test("dashboard execution passes timing output and preserves a report when the s
       projectTransitions: { autoDetect: true },
     },
     versionLabel: "v1.0.0",
+    reportViewState: { current: "usage" },
     reportPath,
     timingOutputPath,
   };

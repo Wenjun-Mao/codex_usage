@@ -15,6 +15,7 @@ const {
   buildTransitionSuggestArgs,
   bundledExecutablePath,
   extensionVersionLabel,
+  normalizeReportView,
   normalizeTheme,
   normalizeRange,
   parseProjectChoices,
@@ -165,6 +166,13 @@ test("normalizeTheme falls back to auto for unknown settings", () => {
   assert.equal(normalizeTheme(undefined), "auto");
 });
 
+test("normalizeReportView keeps the two report views session-local", () => {
+  assert.equal(normalizeReportView("usage"), "usage");
+  assert.equal(normalizeReportView("task-storage"), "task-storage");
+  assert.equal(normalizeReportView("other"), "usage");
+  assert.equal(normalizeReportView(undefined), "usage");
+});
+
 test("project keys are normalized from extension global state", () => {
   const state = {
     get(key, fallback) {
@@ -284,6 +292,8 @@ test("webview command allowlist includes dashboard commands", () => {
     "codexUsage.selectRange",
     "codexUsage.selectProjects",
     "codexUsage.selectTheme",
+    "codexUsage.showUsageView",
+    "codexUsage.showTaskStorageView",
     "codexUsage.openSyncMenu",
     "codexUsage.backupTask",
     "codexUsage.refreshDashboard",
@@ -459,7 +469,7 @@ test("native release jobs gate direct Codex registration before VSIX packaging",
 test("package metadata is ready for stable Marketplace publishing", () => {
   assert.equal(packageJson.publisher, "wenjun-mao");
   assert.equal(packageJson.private, undefined);
-  assert.equal(packageJson.version, "1.5.0");
+  assert.equal(packageJson.version, "1.6.0");
   assert.equal(packageJson.preview, undefined);
   assert.equal(packageJson.repository.url, "https://github.com/Wenjun-Mao/codex_usage.git");
   assert.match(packageJson.description, /local/i);

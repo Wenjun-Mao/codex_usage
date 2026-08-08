@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.6.0 - 2026-08-07 - Focused Dashboard Views
+
+- Split the dashboard into top-level **Usage** and **Task Storage** views so date-filtered token analysis no longer shares one long page with current disk inventory and backup controls.
+- Kept project filtering and theme shared while limiting the date-range context to Usage; both datasets are still generated together and view switching never reruns the CLI.
+- Preserved the script-free CSP with local fragment navigation in standalone reports and allowlisted, session-remembered view commands in VS Code.
+- Added independent desktop and narrow-layout visual gates plus focused Usage and Task Storage Marketplace screenshots.
+
 ## 1.5.0 - 2026-08-07 - Verified Task Backups
 
 - Added read-only Task Storage backup for exactly one selected task tree, preserving every current physical JSONL, including structured descendants, active and archived copies, duplicates, and embedded side-chat content.

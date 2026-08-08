@@ -4,6 +4,7 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 
 ## Features
 
+- Two focused views keep date-filtered **Usage** separate from current **Task Storage**. Projects and theme apply to both; the date range applies only to Usage.
 - Task Storage shows current local JSONL usage by user-visible root task tree, including root versus structured-descendant bytes, transparent large-task badges, and verified per-tree backup.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
@@ -47,6 +48,7 @@ The stable Marketplace release supports Windows x64 and macOS Apple Silicon only
 - `codexUsage.projectTransitions.autoDetect`: automatically split usage after high-confidence local repository transitions.
 
 Project filtering is managed with `Codex Usage: Select Projects` and is stored as extension UI state, not as a user setting.
+The selected Usage or Task Storage view is remembered only for the current extension session. Switching views does not regenerate the report.
 Task Transfer remembers only the transfer-folder path as extension UI state. Task selections and project mappings are never saved.
 
 ## Task Transfer
@@ -120,7 +122,9 @@ At most four read-only workers use buffered binary I/O to parse groups of eight 
 
 ## Task Storage
 
-The dashboard includes a read-only **Task Storage** section for the current local JSONL corpus. It groups physical files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes active and archived files, and follows the selected project filter without following the usage date range. The report shows the largest trees as horizontal bars and lists every tree with logical bytes, file counts, storage state, and share. Transparent badges mark root size at 1 GiB and total tree size at 10 GiB.
+The dashboard's separate **Task Storage** view reports the current local JSONL corpus without following the Usage date range. It groups physical files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes active and archived files, and follows the selected project filter. The report shows the largest trees as horizontal bars and lists every tree with logical bytes, file counts, storage state, and share. Transparent badges mark root size at 1 GiB and total tree size at 10 GiB.
+
+![Synthetic Task Storage screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/task-storage-synthetic.png)
 
 The purpose is visibility before starting a fresh root task. A 2026-08-07 corpus audit measured 196.08 GiB across 2,525 files, including 187.63 GiB in structured descendants. Version 1.4.0 did not delete, back up, restore, or compress data, and it did not claim filesystem allocation or reclaimable space. Version 1.5.0 adds verified backup without changing the inventory's read-only behavior.
 

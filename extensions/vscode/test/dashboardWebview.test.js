@@ -7,6 +7,7 @@ const {
   renderErrorHtml,
   renderLoadingHtml,
   injectStorageBackupActions,
+  setWebviewReportView,
 } = require("../out/dashboardWebview");
 
 test("dashboard CSP is strict and replaces an existing policy", () => {
@@ -26,6 +27,7 @@ test("dashboard controls always expose Task Transfer without setup-derived copy"
     projectKeys: [],
     theme: "auto",
     taskTransfer: { folder: "" },
+    reportView: "usage",
     versionLabel: "v0.1.35",
   });
 
@@ -42,6 +44,7 @@ test("dashboard controls render loaded time in a shared trailing metadata region
     projectKeys: [],
     theme: "auto",
     taskTransfer: { folder: "" },
+    reportView: "usage",
     loadedSeconds: 4.24,
     versionLabel: "v1.0.0",
   });
@@ -50,6 +53,7 @@ test("dashboard controls render loaded time in a shared trailing metadata region
     projectKeys: [],
     theme: "auto",
     taskTransfer: { folder: "" },
+    reportView: "usage",
     versionLabel: "v1.0.0",
   });
 
@@ -85,9 +89,48 @@ test("Task Storage backup actions use a command allowlist URI with a full task I
 
 test("standalone report markup gains backup controls only during extension injection", () => {
   const report = '<html><head></head><body><main><section data-report-section="task-storage-details"><table><thead><tr><th>Task</th><th>Flags</th></tr></thead><tbody><tr data-storage-tree-id="root-1234567890abcdef"><td>Task <code>root-1234567...</code></td><td>-</td></tr></tbody></table></section></main></body></html>';
-  const state = { range: "7d", projectKeys: [], theme: "auto", taskTransfer: { folder: "" } };
+  const state = {
+    range: "7d",
+    projectKeys: [],
+    theme: "auto",
+    taskTransfer: { folder: "" },
+    reportView: "usage",
+  };
   const extensionShape = injectWebviewControls(report, state);
 
   assert.doesNotMatch(report, /codexUsage\.backupTask/);
   assert.match(extensionShape, /codexUsage\.backupTask/);
+});
+
+test("report view links become allowlisted commands and update without scripts", () => {
+  const report = '<html><head></head><body><main class="report-shell"><nav class="report-view-tabs"><a data-report-view-link="usage" href="#report-usage">Usage</a><a data-report-view-link="task-storage" href="#report-task-storage">Task Storage</a></nav><section id="report-usage">Usage body</section><section id="report-task-storage">Storage body</section></main></body></html>';
+
+  const usage = setWebviewReportView(report, "usage");
+  const storage = setWebviewReportView(usage, "task-storage");
+
+  assert.match(usage, /data-active-report-view="usage"/);
+  assert.match(usage, /command:codexUsage\.showUsageView[^>]*aria-current="page"/);
+  assert.match(usage, /command:codexUsage\.showTaskStorageView/);
+  assert.match(storage, /data-active-report-view="task-storage"/);
+  assert.match(storage, /command:codexUsage\.showTaskStorageView[^>]*aria-current="page"/);
+  assert.doesNotMatch(storage, /showUsageView[^>]*aria-current/);
+  assert.equal((storage.match(/data-active-report-view=/g) || []).length, 1);
+  assert.doesNotMatch(storage, /<script/i);
+});
+
+test("storage view hides only the usage-range control", () => {
+  const report = '<html><head></head><body><main class="report-shell"><a data-report-view-link="usage" href="#report-usage">Usage</a><a data-report-view-link="task-storage" href="#report-task-storage">Task Storage</a></main></body></html>';
+  const out = injectWebviewControls(report, {
+    range: "30d",
+    projectKeys: ["repo"],
+    theme: "night",
+    taskTransfer: { folder: "" },
+    reportView: "task-storage",
+  });
+
+  assert.match(out, /Usage Range: 30d/);
+  assert.match(out, /codex-usage-range-action/);
+  assert.match(out, /data-active-report-view="task-storage"/);
+  assert.match(out, /data-active-report-view="task-storage"[^}]*codex-usage-range-action/s);
+  assert.match(out, /Projects: 1 selected/);
 });

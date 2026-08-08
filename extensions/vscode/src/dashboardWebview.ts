@@ -1,7 +1,9 @@
 import {
   normalizeProjectKeys,
+  normalizeReportView,
   type ReportRange,
   type ReportTheme,
+  type ReportView,
   type TaskTransferSettings,
 } from "./core";
 import { taskTransferControlLabel } from "./transferPresentation";
@@ -11,6 +13,7 @@ export type WebviewControlState = {
   projectKeys: string[];
   theme: ReportTheme;
   taskTransfer: TaskTransferSettings;
+  reportView: ReportView;
   loadedSeconds?: number;
   versionLabel?: string;
 };
@@ -57,12 +60,16 @@ export function injectWebviewControls(reportHtml: string, state: WebviewControlS
       font-size: 12px;
       white-space: nowrap;
     }
+    .report-shell[data-active-report-view="task-storage"] .codex-usage-range-action {
+      display: none;
+    }
   </style>`;
 
   let html = reportHtml
     .replace(/<style id="codex-usage-extension-style">[\s\S]*?<\/style>\s*/i, "")
     .replace(/<nav class="codex-usage-actions"[\s\S]*?<\/nav>\s*/i, "");
   html = injectStorageBackupActions(html);
+  html = setWebviewReportView(html, state.reportView);
   html = html.replace(/<\/head>/i, `${style}\n</head>`);
   if (/<main[^>]*>/i.test(html)) {
     return html.replace(/<main[^>]*>/i, (match) => `${match}\n    ${controls}`);
@@ -94,6 +101,33 @@ export function injectStorageBackupActions(reportHtml: string): string {
       return `${withHeader}${withActions}${end}`;
     },
   );
+}
+
+export function setWebviewReportView(reportHtml: string, value: ReportView): string {
+  const reportView = normalizeReportView(value);
+  let html = reportHtml.replace(/<main\b([^>]*)>/i, (_match, attributes: string) => {
+    const cleanAttributes = attributes.replace(
+      /\sdata-active-report-view=(?:"[^"]*"|'[^']*')/i,
+      "",
+    );
+    return `<main${cleanAttributes} data-active-report-view="${reportView}">`;
+  });
+  html = html.replace(/<a\b([^>]*)>/gi, (match: string, attributes: string) => {
+    const viewMatch = /\bdata-report-view-link="(usage|task-storage)"/i.exec(attributes);
+    if (!viewMatch) {
+      return match;
+    }
+    const linkView = normalizeReportView(viewMatch[1]);
+    const cleanAttributes = attributes
+      .replace(/\shref=(?:"[^"]*"|'[^']*')/i, "")
+      .replace(/\saria-current=(?:"[^"]*"|'[^']*')/i, "");
+    const command = linkView === "usage"
+      ? "codexUsage.showUsageView"
+      : "codexUsage.showTaskStorageView";
+    const current = linkView === reportView ? ' aria-current="page"' : "";
+    return `<a${cleanAttributes} href="command:${command}"${current}>`;
+  });
+  return html;
 }
 
 export function injectWebviewCsp(reportHtml: string, cspSource: string): string {
@@ -161,7 +195,7 @@ function renderWebviewControls(state: WebviewControlState): string {
     : "";
   return (
     '<nav class="codex-usage-actions" aria-label="Codex Usage dashboard controls">' +
-    `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` +
+    `<a class="codex-usage-range-action" href="command:codexUsage.selectRange">Usage Range: ${escapeHtml(state.range)}</a>` +
     `<a href="command:codexUsage.selectProjects">Projects: ${escapeHtml(projectFilterLabel(state.projectKeys))}</a>` +
     `<a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(themeLabel(state.theme))}</a>` +
     `<a href="command:codexUsage.openSyncMenu">${escapeHtml(taskTransferControlLabel())}</a>` +

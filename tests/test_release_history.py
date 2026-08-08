@@ -10,6 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
+    "1.6.0": "2026-08-07",
     "1.5.0": "2026-08-07",
     "1.4.0": "2026-08-07",
     "1.3.0": "2026-08-07",
@@ -58,6 +59,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "1.6.0",
     "1.5.0",
     "1.4.0",
     "1.3.0",
@@ -191,6 +193,21 @@ def test_1_5_0_changelogs_describe_verified_backup_boundary(changelog: Path) -> 
     assert "verify" in section and "atomic" in section
     assert "salvage" in section and "recovery-ready" in section
     assert "does not restore" in section
+
+
+@pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
+def test_1_6_0_changelogs_describe_focused_dashboard_views(changelog: Path) -> None:
+    section = normalized_prose(
+        markdown_section(
+            changelog,
+            "## 1.6.0 - 2026-08-07 - Focused Dashboard Views",
+        )
+    )
+
+    assert "usage" in section and "task storage" in section
+    assert "date" in section and "project" in section
+    assert "script-free" in section
+    assert "view" in section and ("session" in section or "standalone" in section)
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))

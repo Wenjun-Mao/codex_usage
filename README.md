@@ -4,6 +4,7 @@ Local-first Codex usage reporting for understanding project activity, token usag
 
 ## What The Dashboard Shows
 
+- Two focused views keep date-filtered **Usage** separate from current **Task Storage**. Projects and theme apply to both; the date range applies only to Usage.
 - Task Storage shows current local JSONL usage by user-visible root task tree, including root versus structured-descendant bytes, transparent large-task badges, and verified per-tree backup.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
@@ -100,7 +101,9 @@ At most four read-only workers use buffered binary I/O to parse groups of eight 
 
 ### Task Storage
 
-The dashboard and `codex-usage storage snapshot` command include a read-only **Task Storage** view of the current local corpus. It groups physical JSONL files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes both active and archived files, and applies the selected project filter while remaining independent of the usage date range. The dashboard shows the largest trees as horizontal bars and lists the complete inventory with logical file bytes, file counts, state, and share. A root-size badge appears at 1 GiB and a tree-size badge at 10 GiB; these are visibility thresholds, not deletion recommendations or reclaimable-space estimates.
+The dashboard's **Task Storage** view and `codex-usage storage snapshot` command report the current local corpus separately from date-filtered Usage. The view groups physical JSONL files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes both active and archived files, and applies the selected project filter while remaining independent of the usage date range. The dashboard shows the largest trees as horizontal bars and lists the complete inventory with logical file bytes, file counts, state, and share. A root-size badge appears at 1 GiB and a tree-size badge at 10 GiB; these are visibility thresholds, not deletion recommendations or reclaimable-space estimates.
+
+![Synthetic Task Storage screenshot](docs/marketplace/task-storage-synthetic.png)
 
 The release-validation corpus observed on 2026-08-07 was 196.08 GiB across 2,525 files, with 187.63 GiB in structured descendants. This visibility comes before backup or restore: it lets you identify which root task tree is responsible and decide whether to start a fresh root task. Version 1.4.0 does not delete, back up, restore, compress, or estimate compressed size. It reports logical JSONL bytes and keeps missing cache entries at zero physical bytes while counting duplicate physical files where they exist.
 

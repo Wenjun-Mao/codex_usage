@@ -29,6 +29,13 @@ from codex_usage.report_tables import (
 )
 from codex_usage.report_theme import normalize_report_theme, report_css
 from codex_usage.report_view import ReportViewModel, build_report_view_model
+from codex_usage.report_views import (
+    STORAGE_REPORT_VIEW,
+    USAGE_REPORT_VIEW,
+    render_report_view,
+    render_report_view_tabs,
+    render_report_view_targets,
+)
 from codex_usage.storage_insights import TaskStorageInsights
 
 
@@ -179,6 +186,16 @@ def render_html_report(
             files_retained_missing=view_model.files_retained_missing,
         )
     )
+    usage_view_html = render_report_view(
+        USAGE_REPORT_VIEW,
+        _render_usage_view(
+            view_model=view_model,
+            range_name=range_name,
+            pricing_notice_html=pricing_notice_html,
+            project_transitions_html=project_transitions_html,
+        ),
+    )
+    storage_view_html = render_report_view(STORAGE_REPORT_VIEW, task_storage_html)
     body = f"""<!doctype html>
 <html lang="en" data-codex-theme="{html.escape(theme)}">
 <head>
@@ -190,29 +207,47 @@ def render_html_report(
   </style>
 </head>
 <body>
-  <main>
+  <main class="report-shell">
+    {render_report_view_targets()}
     <h1>Codex Usage Report</h1>
-    <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())} | Range: {html.escape(range_name)} | Pricing table as of {PRICING_AS_OF}</div>
-    <div class="muted summary-line">Pricing uses rates effective at each usage event.</div>
+    <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())}</div>
     <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
     <div class="muted summary-line">Sessions: {html.escape(", ".join(str(path) for path in sessions_dirs))}</div>
     <div class="muted summary-line">{html.escape(storage_summary)}</div>
-    {_render_kpis(view_model)}
-    {pricing_notice_html}
-    {_empty_report_notice(view_model)}
-    {project_transitions_html}
-    {task_storage_html}
-    <div class="dashboard-grid">
-      {_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), render_aggregate_table("Daily Details", view_model.daily_rows, section_id="daily-details"), section_id="daily-cost", scroll_class="tooltip-chart-scroll")}
-      {_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table("Hourly Details", view_model.hourly_rows, section_id="hourly-details"), section_id="hourly-heatmap", scroll_class="heatmap-chart-scroll")}
-      {_chart_section("Project Breakdown", render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table("Project Details", view_model.project_detail_points, section_id="project-details"), section_id="project-breakdown", scroll_class="tooltip-chart-scroll", help_text="Root task token usage includes side chats stored in the parent task.")}
-      {_chart_section("Model Mix", render_model_mix_chart(view_model.model_points), render_aggregate_table("Model Details", view_model.model_rows, section_id="model-details"), section_id="model-mix", scroll_class="tooltip-chart-scroll")}
-    </div>
+    {render_report_view_tabs()}
+    {usage_view_html}
+    {storage_view_html}
   </main>
 </body>
 </html>"""
     output_path.write_text(body, encoding="utf-8")
     return output_path
+
+
+def _render_usage_view(
+    *,
+    view_model: ReportViewModel,
+    range_name: str,
+    pricing_notice_html: str,
+    project_transitions_html: str,
+) -> str:
+    return (
+        '<div class="usage-view-context">'
+        f'<div class="muted summary-line">Usage range: {html.escape(range_name)} | '
+        f"Pricing table as of {PRICING_AS_OF}</div>"
+        '<div class="muted summary-line">Pricing uses rates effective at each usage event.</div>'
+        "</div>"
+        f"{_render_kpis(view_model)}"
+        f"{pricing_notice_html}"
+        f"{_empty_report_notice(view_model)}"
+        f"{project_transitions_html}"
+        '<div class="dashboard-grid">'
+        f'{_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), render_aggregate_table("Daily Details", view_model.daily_rows, section_id="daily-details"), section_id="daily-cost", scroll_class="tooltip-chart-scroll")}'
+        f'{_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table("Hourly Details", view_model.hourly_rows, section_id="hourly-details"), section_id="hourly-heatmap", scroll_class="heatmap-chart-scroll")}'
+        f'{_chart_section("Project Breakdown", render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table("Project Details", view_model.project_detail_points, section_id="project-details"), section_id="project-breakdown", scroll_class="tooltip-chart-scroll", help_text="Root task token usage includes side chats stored in the parent task.")}'
+        f'{_chart_section("Model Mix", render_model_mix_chart(view_model.model_points), render_aggregate_table("Model Details", view_model.model_rows, section_id="model-details"), section_id="model-mix", scroll_class="tooltip-chart-scroll")}'
+        "</div>"
+    )
 
 
 def _project_filter_label(project_keys: list[str] | None) -> str:

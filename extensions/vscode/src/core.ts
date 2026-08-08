@@ -7,10 +7,14 @@ export const RANGE_VALUES = ["today", "yesterday", "7d", "30d", "month", "all"] 
 export type ReportRange = (typeof RANGE_VALUES)[number];
 export const THEME_VALUES = ["auto", "day", "night"] as const;
 export type ReportTheme = (typeof THEME_VALUES)[number];
+export const REPORT_VIEW_VALUES = ["usage", "task-storage"] as const;
+export type ReportView = (typeof REPORT_VIEW_VALUES)[number];
 export const WEBVIEW_COMMANDS = [
   "codexUsage.selectRange",
   "codexUsage.selectProjects",
   "codexUsage.selectTheme",
+  "codexUsage.showUsageView",
+  "codexUsage.showTaskStorageView",
   "codexUsage.openSyncMenu",
   "codexUsage.backupTask",
   "codexUsage.refreshDashboard",
@@ -96,6 +100,12 @@ export function normalizeTheme(value: unknown): ReportTheme {
   return typeof value === "string" && THEME_VALUES.includes(value as ReportTheme)
     ? (value as ReportTheme)
     : "auto";
+}
+
+export function normalizeReportView(value: unknown): ReportView {
+  return typeof value === "string" && REPORT_VIEW_VALUES.includes(value as ReportView)
+    ? (value as ReportView)
+    : "usage";
 }
 
 export function normalizeProjectKeys(values: unknown): string[] {

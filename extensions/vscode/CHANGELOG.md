@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.6.0 - 2026-08-07 - Focused Dashboard Views
+
+- Split the dashboard into top-level **Usage** and **Task Storage** views, with Usage remaining the default and Task Storage retaining its full inventory and per-tree backup actions.
+- Kept project and theme controls shared, hid the usage-only date control from Task Storage, and made view switching instant without regenerating the report.
+- Remembered the selected view for the current extension session and reapplied it safely when an in-flight dashboard refresh publishes.
+- Kept the webview script-free under strict CSP and added focused Usage and Task Storage Marketplace screenshots.
+
 ## 1.5.0 - 2026-08-07 - Verified Task Backups
 
 - Added a **Back Up** action to each Task Storage row and the global **Codex Usage: Back Up Task** command, with project-first selection of exactly one task tree.

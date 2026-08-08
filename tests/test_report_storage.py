@@ -77,7 +77,11 @@ def test_task_storage_section_is_full_width_and_discloses_side_chats(tmp_path: P
     html = output.read_text(encoding="utf-8")
 
     assert 'data-report-section="task-storage"' in html
-    assert html.index('data-report-section="task-storage"') < html.index('class="dashboard-grid"')
+    assert html.index('id="report-usage"') < html.index('id="report-task-storage"')
+    assert html.index('class="dashboard-grid"') < html.index('id="report-task-storage"')
+    assert html.index('id="report-task-storage"') < html.index(
+        'data-report-section="task-storage"'
+    )
     assert "Current local storage. Date range does not affect storage; selected project filters do." in html
     assert "Root task token usage includes side chats stored in the parent task." in html
     assert 'data-report-section="project-breakdown"' in html
@@ -103,7 +107,9 @@ def test_task_storage_section_is_full_width_and_discloses_side_chats(tmp_path: P
     assert "overflow-wrap: anywhere" in html
     assert "<script" not in html
     assert " src=" not in html
-    assert " href=" not in html
+    assert 'href="#report-view-usage"' in html
+    assert 'href="#report-view-task-storage"' in html
+    assert 'href="http://' not in html and 'href="https://' not in html
 
 
 def test_task_storage_empty_state_does_not_replace_usage_empty_state(tmp_path: Path) -> None:

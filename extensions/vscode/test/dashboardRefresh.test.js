@@ -12,7 +12,12 @@ const {
 } = require("../out/dashboardRefresh");
 const { legacyCacheDbPaths } = require("../out/core");
 
-function requestFor(storagePath, requestId, panel = { webview: { html: "", cspSource: "vscode-resource:" } }) {
+function requestFor(
+  storagePath,
+  requestId,
+  panel = { webview: { html: "", cspSource: "vscode-resource:" } },
+  reportViewState = { current: "usage" },
+) {
   return createDashboardRefreshRequest({
     requestId,
     panel,
@@ -24,6 +29,7 @@ function requestFor(storagePath, requestId, panel = { webview: { html: "", cspSo
       projectTransitions: { autoDetect: true },
     },
     versionLabel: "v1.0.0",
+    reportViewState,
     globalStoragePath: storagePath,
   });
 }
@@ -103,6 +109,7 @@ test("dashboard refresh publishes parsed timing phases with extension elapsed ti
       filesReused: 8,
     },
   });
+  request.reportViewState.current = "task-storage";
   publishDashboardRefresh(request, result, {
     appendOutput: (line) => output.push(line),
     updateStatus: () => undefined,
@@ -116,6 +123,7 @@ test("dashboard refresh publishes parsed timing phases with extension elapsed ti
   });
 
   assert.match(panel.webview.html, /Loaded in \d+\.\d seconds/);
+  assert.match(panel.webview.html, /data-active-report-view="task-storage"/);
   assert.match(output.join("\n"), /inventory: 0\.125s/);
   assert.equal(output.filter((line) => line.includes("total_cli")).length, 1);
   assert.match(output.join("\n"), /\[cache\].*full=1, append=1, fallback=0/);

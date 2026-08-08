@@ -8,6 +8,7 @@ import {
   cacheDbPath,
   legacyCacheDbPaths,
   type ExtensionSettings,
+  type ReportView,
 } from "./core";
 import {
   injectWebviewControls,
@@ -34,8 +35,13 @@ export type DashboardRefreshRequest = {
   panel: DashboardPanel;
   settings: ExtensionSettings;
   versionLabel: string;
+  reportViewState: DashboardReportViewState;
   reportPath: string;
   timingOutputPath: string;
+};
+
+export type DashboardReportViewState = {
+  current: ReportView;
 };
 
 export type DashboardTimingDiagnostics = {
@@ -100,6 +106,7 @@ export function createDashboardRefreshRequest(options: {
   panel: DashboardPanel;
   settings: ExtensionSettings;
   versionLabel: string;
+  reportViewState: DashboardReportViewState;
   globalStoragePath: string;
 }): DashboardRefreshRequest {
   const artifactPrefix = `dashboard-${options.requestId}`;
@@ -108,6 +115,7 @@ export function createDashboardRefreshRequest(options: {
     panel: options.panel,
     settings: options.settings,
     versionLabel: options.versionLabel,
+    reportViewState: options.reportViewState,
     reportPath: path.join(options.globalStoragePath, `${artifactPrefix}.html`),
     timingOutputPath: path.join(options.globalStoragePath, `${artifactPrefix}.timing.json`),
   };
@@ -259,6 +267,7 @@ function renderDashboardHtml(
     projectKeys: request.settings.projectKeys,
     theme: request.settings.theme,
     taskTransfer: request.settings.taskTransfer,
+    reportView: request.reportViewState.current,
     loadedSeconds,
     versionLabel: request.versionLabel,
   }), request.panel.webview.cspSource);

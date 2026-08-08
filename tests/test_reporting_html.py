@@ -107,7 +107,47 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
     assert "No price data is available" not in html
     assert "<script" not in html
     assert " src=" not in html
-    assert " href=" not in html
+    assert 'href="#report-view-usage"' in html
+    assert 'href="#report-view-task-storage"' in html
+    assert 'href="http://' not in html and 'href="https://' not in html
+
+
+def test_dashboard_report_separates_usage_and_storage_navigation(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "views.html"
+    render_html_report(
+        output_path=output,
+        generated_at=datetime(2026, 8, 7, 12, tzinfo=UTC),
+        range_name="30d",
+        total=UsageSummary(
+            usage=TokenUsage(input_tokens=25, total_tokens=25),
+            cost=CostBreakdown(),
+            credits=CreditBreakdown(),
+            record_count=1,
+        ),
+        daily_rows=[],
+        hourly_rows=[],
+        breakdown=_breakdown([], []),
+        sessions_dirs=[Path("sessions")],
+        files_scanned=1,
+    )
+
+    html = output.read_text(encoding="utf-8")
+
+    assert '<main class="report-shell">' in html
+    assert '<nav class="report-view-tabs" aria-label="Report views">' in html
+    assert 'data-report-view-link="usage"' in html
+    assert 'data-report-view-link="task-storage"' in html
+    assert 'id="report-usage"' in html
+    assert 'id="report-task-storage"' in html
+    assert html.index("Usage range: 30d") > html.index('id="report-usage"')
+    assert html.index('data-report-section="task-storage"') > html.index(
+        'id="report-task-storage"'
+    )
+    assert ".report-view-target-storage:target" in html
+    assert 'data-active-report-view="task-storage"' in html
+    assert "<script" not in html
 
 
 def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:

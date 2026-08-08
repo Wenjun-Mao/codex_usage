@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from codex_usage.report_breakdown_theme import report_breakdown_css
+from codex_usage.report_views import report_views_css
 
 REPORT_THEME_CHOICES = ("auto", "day", "night")
 
@@ -492,4 +493,4 @@ def report_css() -> str:
       .storage-bar-label { text-align: left; }
       .storage-legend { margin-left: 104px; }
     }
-""" + report_breakdown_css()
+""" + report_views_css() + report_breakdown_css()

@@ -4,6 +4,12 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from codex_usage.marketplace_screenshot_validation import (
+    _box_values,
+    _clear_tooltip_interaction,
+    _tooltip_visibility_error,
+    _visible_scroll_metrics,
+)
 from codex_usage.report_breakdown import build_report_breakdown
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,7 +55,9 @@ def test_synthetic_report_uses_production_role_model_markup(tmp_path: Path) -> N
     assert "model-color-slot-7" in html
     assert "<script" not in html
     assert " src=" not in html
-    assert " href=" not in html
+    assert 'href="#report-view-usage"' in html
+    assert 'href="#report-view-task-storage"' in html
+    assert 'href="http://' not in html and 'href="https://' not in html
 
 
 def test_synthetic_storage_snapshot_covers_root_and_descendant_sizes() -> None:
@@ -67,10 +75,14 @@ def test_synthetic_storage_snapshot_covers_root_and_descendant_sizes() -> None:
 
 def test_check_mode_does_not_replace_tracked_screenshot(monkeypatch) -> None:
     screenshot_module = _load_screenshot_module()
-    original = screenshot_module.SCREENSHOT_PATH.read_bytes()
+    originals = {
+        screenshot_module.SCREENSHOT_PATH: screenshot_module.SCREENSHOT_PATH.read_bytes(),
+        screenshot_module.STORAGE_SCREENSHOT_PATH: screenshot_module.STORAGE_SCREENSHOT_PATH.read_bytes(),
+    }
     validated_paths: list[Path] = []
 
-    def capture(_report_path: Path, output_path: Path) -> None:
+    def capture(_report_path: Path, output_path: Path, *, view: str) -> None:
+        assert view in {"usage", "task-storage"}
         output_path.write_bytes(b"temporary screenshot")
 
     monkeypatch.setattr(screenshot_module, "capture_marketplace_screenshot", capture)
@@ -81,15 +93,13 @@ def test_check_mode_does_not_replace_tracked_screenshot(monkeypatch) -> None:
     )
 
     assert screenshot_module.main(["--check"]) == 0
-    assert screenshot_module.SCREENSHOT_PATH.read_bytes() == original
-    assert len(validated_paths) == 1
-    assert validated_paths[0] != screenshot_module.SCREENSHOT_PATH
+    assert all(path.read_bytes() == original for path, original in originals.items())
+    assert len(validated_paths) == 2
+    assert all(path not in originals for path in validated_paths)
 
 
 def test_browser_geometry_uses_playwright_box_mappings() -> None:
-    screenshot_module = _load_screenshot_module()
-
-    assert screenshot_module._box_values({"x": 10, "y": 20, "width": 30, "height": 40}) == (
+    assert _box_values({"x": 10, "y": 20, "width": 30, "height": 40}) == (
         10,
         20,
         30,
@@ -98,17 +108,15 @@ def test_browser_geometry_uses_playwright_box_mappings() -> None:
 
 
 def test_visible_scroll_metrics_ignore_hidden_sections() -> None:
-    screenshot_module = _load_screenshot_module()
     metrics = [
         {"clientWidth": 0, "scrollWidth": 0},
         {"clientWidth": 672, "scrollWidth": 672},
     ]
 
-    assert screenshot_module._visible_scroll_metrics(metrics) == [metrics[1]]
+    assert _visible_scroll_metrics(metrics) == [metrics[1]]
 
 
 def test_tooltip_visibility_gate_rejects_ancestor_clipping_and_missed_hit_tests() -> None:
-    screenshot_module = _load_screenshot_module()
     tooltip = {
         "x": 120,
         "y": 80,
@@ -118,20 +126,14 @@ def test_tooltip_visibility_gate_rejects_ancestor_clipping_and_missed_hit_tests(
         "hit_inside": True,
     }
 
-    assert "project-role-group" in screenshot_module._tooltip_visibility_error(
-        tooltip, viewport_width=720
-    )
+    assert "project-role-group" in _tooltip_visibility_error(tooltip, viewport_width=720)
 
     tooltip["clipping_ancestors"] = []
     tooltip["hit_inside"] = False
-    assert "hit-testing" in screenshot_module._tooltip_visibility_error(
-        tooltip, viewport_width=720
-    )
+    assert "hit-testing" in _tooltip_visibility_error(tooltip, viewport_width=720)
 
 
 def test_clear_tooltip_interaction_blurs_focus_and_moves_the_pointer() -> None:
-    screenshot_module = _load_screenshot_module()
-
     class FakeMouse:
         def __init__(self) -> None:
             self.positions: list[tuple[int, int]] = []
@@ -153,7 +155,7 @@ def test_clear_tooltip_interaction_blurs_focus_and_moves_the_pointer() -> None:
 
     page = FakePage()
 
-    screenshot_module._clear_tooltip_interaction(page)
+    _clear_tooltip_interaction(page)
 
     assert page.mouse.positions == [(0, 0)]
     assert page.scripts == ["document.activeElement?.blur()"]

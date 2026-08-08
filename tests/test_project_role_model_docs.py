@@ -8,6 +8,7 @@ README_PATHS = (ROOT / "README.md", ROOT / "extensions/vscode/README.md")
 CHANGELOG_PATHS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 RELEASE_CHECKLIST = ROOT / "docs/release.md"
 SCREENSHOT_PATH = ROOT / "docs/marketplace/dashboard-synthetic.png"
+STORAGE_SCREENSHOT_PATH = ROOT / "docs/marketplace/task-storage-synthetic.png"
 SCREENSHOT_MARKDOWN = "![Synthetic Codex Usage Dashboard screenshot]"
 
 README_REPORTING_SECTIONS = {
@@ -79,6 +80,7 @@ def test_readmes_lead_with_project_role_model_reporting() -> None:
 
 def test_readmes_place_tracked_screenshot_after_opening_features() -> None:
     assert SCREENSHOT_PATH.is_file()
+    assert STORAGE_SCREENSHOT_PATH.is_file()
 
     for path, details in README_REPORTING_SECTIONS.items():
         text = path.read_text(encoding="utf-8")
@@ -92,6 +94,14 @@ def test_readmes_place_tracked_screenshot_after_opening_features() -> None:
         assert screenshot_position < package_position
         assert screenshot_position < task_transfer_position
         assert preceding_line == details["final_feature_line"]
+
+
+def test_readmes_document_focused_views_and_storage_screenshot() -> None:
+    for path in README_PATHS:
+        text = path.read_text(encoding="utf-8")
+        assert "Two focused views" in text
+        assert "date range applies only to Usage" in text
+        assert "task-storage-synthetic.png" in text
 
 
 def test_release_checklist_locks_marketplace_screenshot_gate() -> None:

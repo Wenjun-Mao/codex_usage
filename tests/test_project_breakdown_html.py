@@ -126,7 +126,9 @@ def test_project_breakdown_empty_state_and_styles_are_self_contained(
     assert "@container (max-width: 120px)" in html
     assert "<script" not in html
     assert " src=" not in html
-    assert " href=" not in html
+    assert 'href="#report-view-usage"' in html
+    assert 'href="#report-view-task-storage"' in html
+    assert 'href="http://' not in html and 'href="https://' not in html
 
 
 def test_breakdown_css_keeps_high_contrast_focus_and_boundaries_distinct(

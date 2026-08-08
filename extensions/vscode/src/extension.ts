@@ -17,12 +17,15 @@ import {
   RANGE_VALUES,
   readProjectKeysState,
   THEME_VALUES,
+  type ReportView,
   WEBVIEW_COMMANDS,
 } from "./core";
 import {
   createDashboardRefreshCoordinator,
   createDashboardRefreshRequest,
+  type DashboardReportViewState,
 } from "./dashboardRefresh";
+import { setWebviewReportView } from "./dashboardWebview";
 import {
   createTaskTransferVscodePort,
   migrateVscodeTaskTransferState,
@@ -43,6 +46,7 @@ let statusItem: vscode.StatusBarItem;
 let transientStatus: TransferTransientStatus | undefined;
 let dashboardRefresh: ReturnType<typeof createDashboardRefreshCoordinator> | undefined;
 let dashboardRequestId = 0;
+const dashboardReportViewState: DashboardReportViewState = { current: "usage" };
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   output = vscode.window.createOutputChannel("Codex Usage");
@@ -107,6 +111,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.selectRange", () => selectRangeSetting(context)),
     vscode.commands.registerCommand("codexUsage.selectProjects", () => selectProjectSettings(context)),
     vscode.commands.registerCommand("codexUsage.selectTheme", () => selectThemeSetting(context)),
+    vscode.commands.registerCommand("codexUsage.showUsageView", () => selectDashboardReportView("usage")),
+    vscode.commands.registerCommand("codexUsage.showTaskStorageView", () => selectDashboardReportView("task-storage")),
     vscode.commands.registerCommand("codexUsage.reviewProjectTransitions", () =>
       reviewProjectTransitions(context)),
     vscode.commands.registerCommand("codexUsage.openSyncMenu", () => taskTransfer.showMenu()),
@@ -161,8 +167,16 @@ async function refreshDashboard(context: vscode.ExtensionContext, targetPanel: v
     panel: targetPanel,
     settings: readSettings(context),
     versionLabel: extensionVersionLabel(context.extension.packageJSON),
+    reportViewState: dashboardReportViewState,
     globalStoragePath: context.globalStorageUri.fsPath,
   }));
+}
+
+function selectDashboardReportView(view: ReportView): void {
+  dashboardReportViewState.current = view;
+  if (panel) {
+    panel.webview.html = setWebviewReportView(panel.webview.html, view);
+  }
 }
 
 function setUsageStatus(label: string): void {
