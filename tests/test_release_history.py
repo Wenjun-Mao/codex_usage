@@ -10,6 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
+    "1.5.0": "2026-08-07",
     "1.4.0": "2026-08-07",
     "1.3.0": "2026-08-07",
     "1.2.0": "2026-08-04",
@@ -57,6 +58,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "1.5.0",
     "1.4.0",
     "1.3.0",
     "1.2.0",
@@ -174,6 +176,21 @@ def test_changelogs_use_exact_historical_release_dates() -> None:
     assert release_dates(CHANGELOGS[1]) == {
         version: ROOT_RELEASE_DATES[version] for version in EXTENSION_RELEASE_VERSIONS
     }
+
+
+@pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
+def test_1_5_0_changelogs_describe_verified_backup_boundary(changelog: Path) -> None:
+    section = normalized_prose(
+        markdown_section(
+            changelog,
+            "## 1.5.0 - 2026-08-07 - Verified Task Backups",
+        )
+    )
+
+    assert ".codex-task-backup" in section
+    assert "verify" in section and "atomic" in section
+    assert "salvage" in section and "recovery-ready" in section
+    assert "does not restore" in section
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))

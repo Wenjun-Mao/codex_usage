@@ -167,7 +167,7 @@ export async function executeDashboardRefresh(
       settings: request.settings,
       elapsedSeconds: (performance.now() - startedAt) / 1000,
       timing: timingResult.timing,
-      warnings: timingResult.warning ? [timingResult.warning] : [],
+      warnings: [timingResult.warning].filter((warning): warning is string => Boolean(warning)),
       status,
     };
   } catch (error) {
@@ -189,7 +189,11 @@ export function publishDashboardRefresh(
 ): void {
   if (result.kind === "success") {
     publication.commit(() => {
-      request.panel.webview.html = renderDashboardHtml(request, result.html, result.elapsedSeconds);
+      request.panel.webview.html = renderDashboardHtml(
+        request,
+        result.html,
+        result.elapsedSeconds,
+      );
     });
     logDiagnostics(dependencies.appendOutput, result, publication);
   } else {

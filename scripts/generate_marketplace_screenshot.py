@@ -33,7 +33,6 @@ _SCREENSHOT_CSS = """
   [data-report-section="hourly-heatmap"],
   [data-report-section="project-details"],
   [data-report-section="model-details"],
-  [data-report-section="task-storage-details"],
   .summary-line { display: none !important; }
   main {
     width: 100% !important;
@@ -43,6 +42,20 @@ _SCREENSHOT_CSS = """
   }
   .dashboard-grid { gap: 16px !important; margin-top: 16px !important; }
   .task-storage-section { padding-bottom: 14px !important; }
+  [data-report-section="task-storage-details"] tbody tr:nth-child(n+3) {
+    display: none !important;
+  }
+  .screenshot-backup-action {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--accent);
+    font-size: 12px;
+    white-space: nowrap;
+  }
 """
 
 _SYNTHETIC_RECORDS: tuple[tuple[str, str, UsageRole, str, int], ...] = (
@@ -165,6 +178,7 @@ def capture_marketplace_screenshot(report_path: Path, output_path: Path) -> None
         try:
             page = browser.new_page(viewport=VIEWPORT)
             page.goto(report_path.resolve().as_uri(), wait_until="load")
+            _inject_backup_actions(page)
             page.add_style_tag(content=_SCREENSHOT_CSS)
             page.set_viewport_size(VIEWPORT)
             _wait_for_landmarks(page)
@@ -271,12 +285,35 @@ def _wait_for_landmarks(page: Page) -> None:
     page.get_by_role("heading", name="Task Storage", exact=True).wait_for()
     page.get_by_text("Root task JSONL", exact=True).wait_for()
     page.get_by_text("Structured subagents", exact=True).wait_for()
+    page.get_by_text("Back Up", exact=True).first.wait_for()
     page.get_by_role("heading", name="Project Breakdown", exact=True).wait_for()
     page.get_by_text("Root tasks", exact=True).first.wait_for()
     page.get_by_text("Subagents", exact=True).first.wait_for()
     page.get_by_role("heading", name="Model Mix", exact=True).wait_for()
     page.get_by_text("Other", exact=True).last.wait_for(state="attached")
     page.locator(".model-legend-item").filter(has_text="Other").last.wait_for()
+
+
+def _inject_backup_actions(page: Page) -> None:
+    page.locator('[data-report-section="task-storage-details"]').evaluate(
+        """
+        section => {
+          const header = section.querySelector('thead tr');
+          if (!header) throw new Error('Task Storage details header is missing');
+          const heading = document.createElement('th');
+          heading.textContent = 'Backup';
+          header.appendChild(heading);
+          for (const row of section.querySelectorAll('tbody tr[data-storage-tree-id]')) {
+            const cell = document.createElement('td');
+            const action = document.createElement('span');
+            action.className = 'screenshot-backup-action';
+            action.textContent = 'Back Up';
+            cell.appendChild(action);
+            row.appendChild(cell);
+          }
+        }
+        """
+    )
 
 
 def _validate_browser_layout(page: Page, viewport_width: int) -> None:

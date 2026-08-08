@@ -25,6 +25,7 @@ from codex_usage.reporting import (
     write_csv,
 )
 from codex_usage.session_cache import CacheStats
+from codex_usage.session_cache import resolve_cache_dir
 from codex_usage.session_cache_transitions import load_cached_transition_observations
 from codex_usage.session_inventory import find_session_dirs
 from codex_usage.settings import get_settings
@@ -32,7 +33,14 @@ from codex_usage.storage_cli_reporting import (
     render_storage_terminal,
     storage_snapshot_payload,
 )
+from codex_usage.storage_context import load_storage_context
 from codex_usage.storage_insights import build_task_storage_snapshot
+from codex_usage.task_backup import (
+    create_task_backup,
+    select_backup_tree,
+    verify_task_backup,
+)
+from codex_usage.task_backup.progress import emit_json_progress, ignore_progress
 from codex_usage.sync.local_session_probe import load_local_transfer_probe
 from codex_usage.sync_cli import (
     add_sync_common_options,
@@ -146,6 +154,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", help="Print machine-readable JSON."
     )
     storage_snapshot_parser.set_defaults(handler=handle_storage_snapshot)
+
+    storage_backup_parser = storage_subparsers.add_parser(
+        "backup", help="Create and verify one Codex task-tree backup."
+    )
+    storage_backup_parser.add_argument(
+        "--tree-id", required=True, help="Root task-tree id from storage snapshot."
+    )
+    storage_backup_parser.add_argument(
+        "--output", required=True, type=Path, help="Destination .codex-task-backup file."
+    )
+    storage_backup_parser.add_argument(
+        "--compression",
+        choices=("maximum", "balanced"),
+        default="maximum",
+        help="Compression preset; maximum is smaller and slower.",
+    )
+    storage_backup_parser.add_argument(
+        "--replace", action="store_true", help="Atomically replace an existing verified backup."
+    )
+    _add_backup_output_options(storage_backup_parser)
+    storage_backup_parser.set_defaults(handler=handle_storage_backup)
+
+    storage_verify_parser = storage_subparsers.add_parser(
+        "verify", help="Verify a Codex task backup without extracting it."
+    )
+    storage_verify_parser.add_argument("archive", type=Path)
+    _add_backup_output_options(storage_verify_parser)
+    storage_verify_parser.set_defaults(handler=handle_storage_verify)
 
     sync_parser = subparsers.add_parser(
         "sync", help="Synchronize selected Codex tasks."
@@ -328,21 +364,69 @@ def handle_storage_snapshot(args: argparse.Namespace) -> int:
     with timer.measure("inventory") if timer else nullcontext():
         session_dirs = find_session_dirs()
     project_keys = normalize_project_keys(args.project_key)
-    data = load_session_data(
-        session_dirs,
-        auto_transitions=False,
-        timer=timer,
-    )
-    args._timing_cache_stats = data.stats
-    write_requested_parallel_audit(args, data)
+    with timer.measure("storage_refresh") if timer else nullcontext():
+        context = load_storage_context(session_dirs=session_dirs)
     with timer.measure("aggregation_render") if timer else nullcontext():
-        snapshot = build_task_storage_snapshot(data, project_keys=project_keys)
+        snapshot = context.insights.filter_projects(project_keys)
         payload = storage_snapshot_payload(snapshot)
     if args.json:
         print_json(payload)
     else:
         print(render_storage_terminal(payload))
     return 0
+
+
+def handle_storage_backup(args: argparse.Namespace) -> int:
+    session_dirs = find_session_dirs()
+    context = load_storage_context(session_dirs=session_dirs)
+    selection = select_backup_tree(context, args.tree_id)
+    callback = emit_json_progress if args.progress_json else ignore_progress
+    result = create_task_backup(
+        selection,
+        args.output,
+        refresh_selection=lambda: select_backup_tree(
+            load_storage_context(session_dirs=session_dirs), args.tree_id
+        ),
+        compression=args.compression,
+        replace_existing=args.replace,
+        progress=callback,
+        lock_path=resolve_cache_dir(session_dirs) / "task-backup.lock",
+    )
+    payload = result.to_dict()
+    if args.json:
+        print_json(payload)
+    else:
+        print(_render_backup_result(payload, action="Created"))
+    return 0
+
+
+def handle_storage_verify(args: argparse.Namespace) -> int:
+    callback = emit_json_progress if args.progress_json else ignore_progress
+    result = verify_task_backup(args.archive, progress=callback)
+    payload = result.to_dict()
+    if args.json:
+        print_json(payload)
+    else:
+        print(_render_backup_result(payload, action="Verified"))
+    return 0
+
+
+def _add_backup_output_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument(
+        "--progress-json",
+        action="store_true",
+        help="Write line-delimited progress events to stderr.",
+    )
+
+
+def _render_backup_result(payload: dict[str, object], *, action: str) -> str:
+    readiness = "recovery-ready" if payload["recovery_ready"] else "salvage only"
+    return (
+        f"{action} {payload['archive_path']} | {payload['file_count']} files | "
+        f"{payload['archive_bytes']} compressed bytes | {readiness} | "
+        f"SHA-256 {payload['archive_sha256']}"
+    )
 
 
 def _report_storage_snapshot(data, project_keys: list[str] | None) -> object | None:

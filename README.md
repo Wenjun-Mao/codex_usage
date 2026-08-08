@@ -4,7 +4,7 @@ Local-first Codex usage reporting for understanding project activity, token usag
 
 ## What The Dashboard Shows
 
-- Task Storage shows current local JSONL usage by user-visible root task tree, including root versus structured-descendant bytes and transparent large-task badges.
+- Task Storage shows current local JSONL usage by user-visible root task tree, including root versus structured-descendant bytes, transparent large-task badges, and verified per-tree backup.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
 - Total tokens and usage event counts, cache hit share, and daily/hourly usage patterns.
@@ -58,6 +58,8 @@ uv run codex-usage summary --range month --by model --csv output/monthly-models.
 uv run codex-usage report --range 30d --output output/report.html
 uv run codex-usage report --range all --theme night --output output/night-report.html
 uv run codex-usage storage snapshot --json
+uv run codex-usage storage backup --tree-id <tree-id> --output task.codex-task-backup --compression balanced
+uv run codex-usage storage verify task.codex-task-backup
 uv run codex-usage transitions suggest --json
 ```
 
@@ -103,6 +105,14 @@ The dashboard and `codex-usage storage snapshot` command include a read-only **T
 The release-validation corpus observed on 2026-08-07 was 196.08 GiB across 2,525 files, with 187.63 GiB in structured descendants. This visibility comes before backup or restore: it lets you identify which root task tree is responsible and decide whether to start a fresh root task. Version 1.4.0 does not delete, back up, restore, compress, or estimate compressed size. It reports logical JSONL bytes and keeps missing cache entries at zero physical bytes while counting duplicate physical files where they exist.
 
 Codex documentation describes side chats as ephemeral forks. In the observed local format, a side-chat turn is stored in its parent root JSONL without a separate task, file, or durable discriminator. Its bytes and token usage therefore remain under **Root task**, and the report discloses that inclusion rather than inventing a heuristic third role. A future separate side-chat breakdown requires reliable upstream metadata and will not retroactively guess older records.
+
+### Verified Task Backups
+
+Task Storage can create a verified backup for exactly one selected task tree. It preserves every physical JSONL currently present in that tree, including structured descendants, active and archived copies, duplicates, and side-chat content already embedded in the root JSONL. The `.codex-task-backup` archive is a streaming PAX tar compressed as exactly one zstd frame with a strict format-v1 manifest. It records canonical metadata, per-file SHA-256 values, bounded selected session-index entries, and reports a final whole-archive SHA-256.
+
+Choose **Maximum** for zstd 19 and smaller, slower archives, or **Balanced** for zstd 9 and faster, larger archives. Source identity is checked before, during, and after copying, and the complete selected tree is inventoried again before publication. The archive is written to a sibling partial file, fully reread and verified, then atomically published; cancellation or failure leaves no reported final archive, and an existing backup is preserved unless verified replacement succeeds. Graceful failures clean partials; forced process termination can leave an unreported hidden sibling partial that is never treated as the requested backup.
+
+Missing roots, relationship cycles, or storage-metadata diagnostics are recorded as warnings in a structurally verified salvage archive. Transient metadata reads are retried; while any corpus file remains unreadable or unresolved, no backup is labeled recovery-ready because that file's parent tree cannot be proven. Such an archive is not marked recovery-ready. Backups can contain prompts and source code; they are compressed but not encrypted, remain local, and do not use telemetry or the network. Backups do not restore or delete tasks and do not free storage. Safe restore and deletion are follow-up work.
 
 ### Codex Fast Mode
 

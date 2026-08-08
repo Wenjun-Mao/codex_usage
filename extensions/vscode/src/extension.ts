@@ -29,6 +29,8 @@ import {
 } from "./taskTransferVscode";
 import { createCodexTaskRegistrar } from "./codexRegistrationVscode";
 import { TaskTransferController } from "./taskTransfer";
+import { StorageBackupController } from "./storageBackup";
+import { createStorageBackupVscodePort } from "./storageBackupVscode";
 import { readTaskTransferFolder } from "./taskTransferVscodeState";
 import {
   transientStatusLabel,
@@ -86,6 +88,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   });
   const taskTransfer = new TaskTransferController(taskTransferPort);
+  const taskBackup = new StorageBackupController(createStorageBackupVscodePort({
+    output,
+    resolveExecutable: () => resolveBundledExecutable(context),
+    processEnv: () => buildCodexUsageEnv(context.globalStorageUri.fsPath),
+    runCommand: async (args) => runCodexUsage(
+      await resolveBundledExecutable(context),
+      args,
+      buildCodexUsageEnv(context.globalStorageUri.fsPath),
+    ),
+  }));
 
   const commands = [
     vscode.commands.registerCommand("codexUsage.openDashboard", () => openOrRefreshDashboard(context)),
@@ -104,6 +116,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.pushTasks", () => taskTransfer.exportTasks()),
     vscode.commands.registerCommand("codexUsage.syncStatus", () => taskTransfer.reviewStatus()),
     vscode.commands.registerCommand("codexUsage.openSyncFolder", () => taskTransfer.openFolder()),
+    vscode.commands.registerCommand("codexUsage.backupTask", (treeId?: unknown) => taskBackup.backup(treeId)),
   ];
   const settingsWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
     if (!event.affectsConfiguration("codexUsage")) {

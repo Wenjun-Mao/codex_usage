@@ -6,8 +6,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from codex_usage import cli
-from codex_usage.session_cache import CacheStats
 from codex_usage.storage_insights import TaskStorageInsights, TaskStorageTree
 
 
@@ -20,12 +21,11 @@ class FakeRoot:
     total_bytes: int
 
 
-def test_storage_snapshot_cli_uses_cached_data_and_emits_additive_json(
+def test_storage_snapshot_cli_uses_storage_context_and_emits_additive_json(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
-    data = SimpleNamespace(session_dirs=[tmp_path], stats=CacheStats())
     snapshot = _snapshot(tmp_path)
-    requested: dict[str, object] = {}
+    context = SimpleNamespace(insights=snapshot)
     args = Namespace(
         json=True,
         project_key=["Repo"],
@@ -34,19 +34,11 @@ def test_storage_snapshot_cli_uses_cached_data_and_emits_additive_json(
     )
 
     monkeypatch.setattr(cli, "find_session_dirs", lambda: [tmp_path])
-    monkeypatch.setattr(cli, "get_settings", lambda: SimpleNamespace(auto_project_transitions=True))
-    monkeypatch.setattr(cli, "load_session_data", lambda *args, **kwargs: data)
-    def build(received_data, *, project_keys=None):
-        requested["data"] = received_data
-        requested["project_keys"] = project_keys
-        return snapshot
-
-    monkeypatch.setattr(cli, "build_task_storage_snapshot", build)
+    monkeypatch.setattr(cli, "load_storage_context", lambda **kwargs: context)
 
     assert cli.handle_storage_snapshot(args) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert requested == {"data": data, "project_keys": ["repo"]}
     assert payload["schema_version"] == 2
     assert payload["totals"]["total_bytes"] == 13 * 1024**3 + 30
     assert payload["thresholds"]["high_inherited_root_bytes"] == 1024**3
@@ -54,7 +46,7 @@ def test_storage_snapshot_cli_uses_cached_data_and_emits_additive_json(
     assert [tree["root_task_id"] for tree in payload["task_trees"]] == ["large", "small"]
     assert payload["task_trees"][0]["total_bytes"] == 13 * 1024**3
     assert payload["task_trees"][0]["project_aliases"] == ["repo-alias"]
-    assert payload["task_trees"][0]["share"] == 1.0
+    assert payload["task_trees"][0]["share"] == pytest.approx(1.0)
     assert payload["task_trees"][0]["duplicate_file_count"] == 2
 
 

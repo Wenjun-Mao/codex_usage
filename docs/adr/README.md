@@ -31,3 +31,4 @@ The incremental range-aware usage-cache contract is recorded in [ADR 0020](0020-
 The explicit root-task/subagent usage-role contract is recorded in [ADR 0021](0021-explicit-usage-role-breakdown.md).
 The guarded append-parser checkpoint contract is recorded in [ADR 0022](0022-guarded-append-parser-checkpoints.md).
 The read-only Task Storage inventory contract is recorded in [ADR 0023](0023-task-storage-insights.md).
+The verified Task Storage backup contract is recorded in [ADR 0024](0024-verified-task-backups.md).

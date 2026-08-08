@@ -6,6 +6,7 @@ const {
   injectWebviewCsp,
   renderErrorHtml,
   renderLoadingHtml,
+  injectStorageBackupActions,
 } = require("../out/dashboardWebview");
 
 test("dashboard CSP is strict and replaces an existing policy", () => {
@@ -70,4 +71,23 @@ test("loading and error documents remain escaped script-free and themeable", () 
   assert.match(error, /body\.vscode-dark/);
   assert.doesNotMatch(loading, /<script/i);
   assert.doesNotMatch(error, /<script/i);
+});
+
+test("Task Storage backup actions use a command allowlist URI with a full task ID", () => {
+  const report = '<section data-report-section="task-storage-details"><table><thead><tr><th>Task</th><th>Flags</th></tr></thead><tbody><tr data-storage-tree-id="root-1234567890abcdef"><td>Task <code>root-1234567...</code></td><td>-</td></tr></tbody></table></section>';
+  const out = injectStorageBackupActions(report);
+
+  assert.match(out, /<th>Backup<\/th>/);
+  assert.match(out, /command:codexUsage\.backupTask\?%5B%22root-1234567890abcdef%22%5D/);
+  assert.match(out, />Back Up<\/a>/);
+  assert.doesNotMatch(out, /<script/i);
+});
+
+test("standalone report markup gains backup controls only during extension injection", () => {
+  const report = '<html><head></head><body><main><section data-report-section="task-storage-details"><table><thead><tr><th>Task</th><th>Flags</th></tr></thead><tbody><tr data-storage-tree-id="root-1234567890abcdef"><td>Task <code>root-1234567...</code></td><td>-</td></tr></tbody></table></section></main></body></html>';
+  const state = { range: "7d", projectKeys: [], theme: "auto", taskTransfer: { folder: "" } };
+  const extensionShape = injectWebviewControls(report, state);
+
+  assert.doesNotMatch(report, /codexUsage\.backupTask/);
+  assert.match(extensionShape, /codexUsage\.backupTask/);
 });

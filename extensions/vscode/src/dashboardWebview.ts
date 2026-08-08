@@ -62,6 +62,7 @@ export function injectWebviewControls(reportHtml: string, state: WebviewControlS
   let html = reportHtml
     .replace(/<style id="codex-usage-extension-style">[\s\S]*?<\/style>\s*/i, "")
     .replace(/<nav class="codex-usage-actions"[\s\S]*?<\/nav>\s*/i, "");
+  html = injectStorageBackupActions(html);
   html = html.replace(/<\/head>/i, `${style}\n</head>`);
   if (/<main[^>]*>/i.test(html)) {
     return html.replace(/<main[^>]*>/i, (match) => `${match}\n    ${controls}`);
@@ -70,6 +71,29 @@ export function injectWebviewControls(reportHtml: string, state: WebviewControlS
     return html.replace(/<body[^>]*>/i, (match) => `${match}\n  ${controls}`);
   }
   return `${controls}\n${html}`;
+}
+
+export function injectStorageBackupActions(reportHtml: string): string {
+  return reportHtml.replace(
+    /(<section[^>]*data-report-section="task-storage-details"[^>]*>[\s\S]*?<thead><tr>[\s\S]*?<\/tr><\/thead><tbody>)([\s\S]*?)(<\/tbody>[\s\S]*?<\/section>)/i,
+    (_match, start: string, rows: string, end: string) => {
+      let actionCount = 0;
+      const withActions = rows.replace(/<tr\b([^>]*)>([\s\S]*?)<\/tr>/g, (row: string, attributes: string, cells: string) => {
+        const encodedTreeId = /\bdata-storage-tree-id="([^"]+)"/i.exec(attributes)?.[1];
+        if (!encodedTreeId) {
+          return row;
+        }
+        actionCount += 1;
+        const treeId = decodeHtmlAttribute(encodedTreeId);
+        return `<tr${attributes}>${cells}<td><a href="${backupCommandUri(treeId)}">Back Up</a></td></tr>`;
+      });
+      if (actionCount === 0) {
+        return `${start}${rows}${end}`;
+      }
+      const withHeader = start.replace("<th>Flags</th>", "<th>Flags</th><th>Backup</th>");
+      return `${withHeader}${withActions}${end}`;
+    },
+  );
 }
 
 export function injectWebviewCsp(reportHtml: string, cspSource: string): string {
@@ -184,6 +208,20 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function decodeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#x27;", "'")
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+function backupCommandUri(treeId: string): string {
+  return `command:codexUsage.backupTask?${encodeURIComponent(JSON.stringify([treeId]))}`;
 }
 
 function basicWebviewCss(): string {

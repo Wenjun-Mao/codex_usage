@@ -51,6 +51,7 @@ class TaskStorageTree:
     is_large_root: bool
     is_large_tree: bool
     storage_root_contributions: tuple[StorageRootContribution, ...] = ()
+    storage_files: tuple[StorageFile, ...] = ()
 
     @property
     def corpus_share(self) -> float:
@@ -78,6 +79,14 @@ class TaskStorageTree:
         if self.has_relationship_cycle:
             issues.append("task_relationship_cycle")
         return tuple(sorted(set(issues)))
+
+    @property
+    def recovery_ready(self) -> bool:
+        return not (
+            self.has_missing_root
+            or self.has_relationship_cycle
+            or self.metadata_diagnostics
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -325,6 +334,7 @@ def _build_tree(
         is_large_root=root_bytes >= LARGE_ROOT_BYTES,
         is_large_tree=total_bytes >= LARGE_TREE_BYTES,
         storage_root_contributions=_storage_root_contributions(files),
+        storage_files=tuple(sorted(files, key=lambda file: file.path.casefold())),
     )
 
 

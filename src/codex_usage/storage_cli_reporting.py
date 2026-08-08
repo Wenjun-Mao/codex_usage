@@ -105,6 +105,7 @@ def _storage_tree_payload(tree: TaskStorageTree) -> dict[str, object]:
         "share": tree.share,
         "has_missing_root": tree.has_missing_root,
         "has_relationship_cycle": tree.has_relationship_cycle,
+        "recovery_ready": tree.recovery_ready,
         "duplicate_file_count": tree.duplicate_file_count,
         "has_duplicate_task_id": tree.has_duplicate_task_id,
         "metadata_diagnostics": list(tree.metadata_diagnostics),

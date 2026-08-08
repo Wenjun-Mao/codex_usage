@@ -65,7 +65,7 @@ test("dashboard refresh publishes parsed timing phases with extension elapsed ti
   const result = await executeDashboardRefresh(request, {
     globalStoragePath: storagePath,
     resolveExecutable: async () => "/bin/codex-usage",
-    runCodexUsage: async () => {
+    runCodexUsage: async (_executablePath, args) => {
       await fs.promises.writeFile(request.reportPath, "<html><head></head><body><main>Report</main></body></html>");
       await fs.promises.writeFile(request.timingOutputPath, JSON.stringify({
         version: 2,

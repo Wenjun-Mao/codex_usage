@@ -4,7 +4,7 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 
 ## Features
 
-- Task Storage shows current local JSONL usage by user-visible root task tree, including root versus structured-descendant bytes and transparent large-task badges.
+- Task Storage shows current local JSONL usage by user-visible root task tree, including root versus structured-descendant bytes, transparent large-task badges, and verified per-tree backup.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, and daily/hourly views.
@@ -36,6 +36,7 @@ The stable Marketplace release supports Windows x64 and macOS Apple Silicon only
 - `Codex Usage: Import Tasks`
 - `Codex Usage: Export Tasks`
 - `Codex Usage: Review Transfer Status`
+- `Codex Usage: Back Up Task`
 - `Codex Usage: Open Transfer Folder`
 - `Codex Usage: Open Settings`
 
@@ -121,9 +122,19 @@ At most four read-only workers use buffered binary I/O to parse groups of eight 
 
 The dashboard includes a read-only **Task Storage** section for the current local JSONL corpus. It groups physical files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes active and archived files, and follows the selected project filter without following the usage date range. The report shows the largest trees as horizontal bars and lists every tree with logical bytes, file counts, storage state, and share. Transparent badges mark root size at 1 GiB and total tree size at 10 GiB.
 
-The purpose is visibility before starting a fresh root task. A 2026-08-07 corpus audit measured 151.71 GiB across 2,511 files, including 143.56 GiB in structured descendants. Version 1.4.0 does not delete, back up, restore, compress, or estimate compressed size, and it does not claim filesystem allocation or reclaimable space.
+The purpose is visibility before starting a fresh root task. A 2026-08-07 corpus audit measured 196.08 GiB across 2,525 files, including 187.63 GiB in structured descendants. Version 1.4.0 did not delete, back up, restore, or compress data, and it did not claim filesystem allocation or reclaimable space. Version 1.5.0 adds verified backup without changing the inventory's read-only behavior.
 
 Codex documentation describes side chats as ephemeral forks. In the observed local format, the side-chat turn is stored in the parent root JSONL without a separate task, file, or durable discriminator. Its bytes and token usage remain under **Root task**, and the report says so instead of inventing a heuristic third role. A future split requires reliable upstream metadata and will not retroactively guess older records.
+
+### Verified Task Backups
+
+Use **Back Up** on a Task Storage row or run **Codex Usage: Back Up Task** to back up exactly one task tree. The backup preserves every physical JSONL currently present under that root, including structured descendants, active and archived copies, duplicates, and side-chat content already embedded in the root JSONL.
+
+The `.codex-task-backup` format is a streaming PAX tar compressed as exactly one zstd frame with a strict format-v1 manifest. It includes canonical metadata, per-file SHA-256 values, bounded selected session-index entries, and a final whole-archive SHA-256. **Maximum** uses zstd 19 for smaller, slower archives; **Balanced** uses zstd 9 for faster, larger archives.
+
+Source identity is checked before, during, and after the copy, and the complete selected tree is inventoried again before publication. The archive is written to a sibling partial file, fully reread and verified, then atomically published. Existing backups remain in place unless verified replacement succeeds. Cancellation or failure leaves no reported final archive; a forced process termination can leave an unreported hidden sibling partial, which is never treated as the requested backup. Transient metadata reads are retried, and any still-unresolved corpus file prevents a recovery-ready claim because its parent tree cannot be proven. Missing roots, relationship cycles, or metadata diagnostics therefore produce a warning-bearing salvage archive that may be integrity-verified but is not recovery-ready.
+
+Backups can contain prompts and source code. They are compressed but not encrypted, stay local, and use neither telemetry nor the network. This feature does not restore or delete Codex tasks and does not free storage. Safe restore and deletion are follow-up work; future restore code is not promised compatibility beyond strict format-version rejection.
 
 ## Privacy
 

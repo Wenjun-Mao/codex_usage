@@ -88,6 +88,7 @@ def test_task_storage_section_is_full_width_and_discloses_side_chats(tmp_path: P
     assert "Root task JSONL" in html
     assert "Structured subagents" in html
     assert "Task Storage Details" in html
+    assert 'data-storage-tree-id="root-large-123456"' in html
     assert "Root</th>" in html
     assert "Descendants</th>" in html
     assert "High inherited root" in html

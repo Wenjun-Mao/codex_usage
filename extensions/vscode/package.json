@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local Codex usage dashboard with read-only Task Storage insights and optional cross-computer task transfer.",
   "publisher": "wenjun-mao",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
@@ -55,6 +55,7 @@
     "onCommand:codexUsage.pushTasks",
     "onCommand:codexUsage.syncStatus",
     "onCommand:codexUsage.openSyncFolder",
+    "onCommand:codexUsage.backupTask",
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
@@ -115,6 +116,10 @@
       {
         "command": "codexUsage.openSyncFolder",
         "title": "Codex Usage: Open Transfer Folder"
+      },
+      {
+        "command": "codexUsage.backupTask",
+        "title": "Codex Usage: Back Up Task"
       }
     ],
     "configuration": {

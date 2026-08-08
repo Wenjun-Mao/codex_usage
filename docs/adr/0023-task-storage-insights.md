@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; backup portions partially superseded by ADR 0024
 
 ## Context
 
@@ -14,8 +14,9 @@ from a root-task list alone.
 
 Users need to know which task tree consumes space before deciding whether to
 start a fresh root task. Direct deletion is risky, and backup, restore, and
-compression need a separate verified contract. Task Storage is consequently a
-read-only visibility feature in 1.4.0, not a storage-management operation.
+compression need a separate verified contract. Task Storage was consequently
+a read-only visibility feature in 1.4.0. ADR 0024 adds a non-mutating,
+verified backup operation; restore and deletion remain outside this ADR.
 
 ## Decision
 
@@ -48,8 +49,9 @@ resolution. Storage aggregation never requires a full usage parse.
 The dashboard shows root bytes and structured-descendant bytes separately,
 along with total bytes, counts, state, and share. A 1 GiB root-size badge and a
 10 GiB total-tree badge are transparent visibility thresholds, not deletion
-rules. Version 1.4.0 does not delete, back up, restore, compress, or estimate
-compressed size.
+rules. The original 1.4.0 inventory did not delete, back up, restore, compress,
+or estimate compressed size. The backup portion of that boundary is now
+governed by ADR 0024; the inventory remains read-only and does not free space.
 
 Codex documentation describes side chats as ephemeral forks. In the observed
 local format, a side-chat turn is stored inside its parent root JSONL without a
@@ -62,10 +64,10 @@ records.
 ## Consequences
 
 Task Storage can identify the large root trees and descendant-heavy projects
-that should be considered before a fresh root task is started. It cannot say
-how much space a future compressed backup will save, and it cannot safely
-perform deletion or restoration. Those operations remain follow-up releases
-with their own verification and recovery contracts.
+that should be considered before a fresh root task is started. It can now
+provide the input to a verified backup, but it still cannot perform deletion
+or restoration. Backup verification and publication are defined separately in
+ADR 0024, and safe restore and deletion remain follow-up releases.
 
 The schema 6 cache is disposable and is rebuilt as schema 7 for the first
 1.4.0 report. There is no migration or dual-read compatibility path.
@@ -81,6 +83,7 @@ The schema 6 cache is disposable and is rebuilt as schema 7 for the first
   data because the local format has no durable discriminator.
 - Estimating compressed size before implementing verified backup would create a
   number users could mistake for a recovery guarantee.
-- Adding delete or backup actions to the first storage view would combine
-  inventory with irreversible or recovery-sensitive behavior before the
-  underlying contracts are tested.
+- Adding delete actions to the first storage view would combine inventory with
+  irreversible behavior before a deletion contract is tested. Verified backup
+  was intentionally added later as a separate, non-mutating contract in ADR
+  0024.

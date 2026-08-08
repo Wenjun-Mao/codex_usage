@@ -186,7 +186,7 @@ def _render_storage_row(tree: StorageTreePoint) -> str:
     descendants = f"{format_bytes(tree.descendant_bytes)} ({tree.descendant_count:,})"
     task = f'<span class="storage-task-title">{_esc(tree.title)}</span> <code>{_esc(short_task_id(tree.root_task_id))}</code>'
     return (
-        "<tr>"
+        f'<tr data-storage-tree-id="{_esc(tree.root_task_id)}">'
         f"<td>{task}</td>"
         f"<td>{_esc(tree.project_label)}</td>"
         f'<td class="num">{_esc(format_bytes(tree.root_bytes))}</td>'

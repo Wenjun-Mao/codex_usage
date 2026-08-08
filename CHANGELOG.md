@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.5.0 - 2026-08-07 - Verified Task Backups
+
+- Added read-only Task Storage backup for exactly one selected task tree, preserving every current physical JSONL, including structured descendants, active and archived copies, duplicates, and embedded side-chat content.
+- Added strict `.codex-task-backup` format v1 with one-frame streaming PAX/zstd compression, canonical TAR termination, bounded session-index metadata, per-file and index SHA-256 values, final whole-archive verification, Maximum and Balanced presets, and atomic verify-before-publish safety.
+- Added transient metadata retries and conservative salvage warnings for missing roots, relationship cycles, and unresolved corpus metadata, while distinguishing integrity-verified salvage from recovery-ready archives.
+- Added `storage backup` and `storage verify` CLI commands plus the VS Code **Back Up Task** action and global command. Backup is local-only, compressed but not encrypted, and does not restore, delete, or free storage.
+
 ## 1.4.0 - 2026-08-07 - Task Storage Insights
 
 - Added a read-only Task Storage dashboard section and expanded `codex-usage storage snapshot` to show current local bytes by user-visible root task tree, separating root files from nested structured descendants and including active plus archived files.

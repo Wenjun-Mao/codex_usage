@@ -295,6 +295,7 @@ def _storage_file_is_reusable(
         and str(cached["storage_state"]) == entry.storage_state
         and int(cached["size_bytes"]) == entry.size_bytes
         and int(cached["mtime_ns"]) == entry.mtime_ns
+        and str(cached["metadata_diagnostic"]) != "session_meta_unreadable"
     )
 
 

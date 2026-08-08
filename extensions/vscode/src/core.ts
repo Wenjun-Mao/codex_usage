@@ -12,6 +12,7 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.selectProjects",
   "codexUsage.selectTheme",
   "codexUsage.openSyncMenu",
+  "codexUsage.backupTask",
   "codexUsage.refreshDashboard",
   "codexUsage.openSettings",
 ] as const;

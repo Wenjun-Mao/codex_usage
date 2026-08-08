@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.5.0 - 2026-08-07 - Verified Task Backups
+
+- Added a **Back Up** action to each Task Storage row and the global **Codex Usage: Back Up Task** command, with project-first selection of exactly one task tree.
+- Added strict `.codex-task-backup` format v1 using one-frame streaming PAX/zstd compression, canonical TAR termination, bounded session-index metadata, per-file and index hashes, whole-archive verification, and atomic verify-before-publish safety.
+- Preserved structured descendants, active and archived copies, duplicates, and embedded side-chat content; transient metadata reads retry, while missing roots, relationship cycles, and unresolved corpus metadata produce warning-bearing salvage archives that are not recovery-ready.
+- Added Maximum (zstd 19) and Balanced (zstd 9) presets plus the local-only, compressed-but-not-encrypted privacy disclosure. Backup does not restore, delete, or free storage.
+
 ## 1.4.0 - 2026-08-07 - Task Storage Insights
 
 - Added a read-only Task Storage dashboard section and expanded `codex-usage storage snapshot` to show current local bytes by user-visible root task tree, separating root files from nested structured descendants and including active plus archived files.
