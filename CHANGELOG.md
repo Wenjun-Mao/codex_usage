@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.2 - 2026-08-09 - Marketplace Workflow Guide
+
+- Removed developer-specific corpus measurements from the public READMEs and kept the product explanation focused on general storage-amplification behavior.
+- Added practical workflows for opening the report, analyzing one task tree, transferring tasks between computers, creating a verified backup, and preparing a rollover.
+- Clarified recovery-ready versus salvage results, sensitive archive handling, and the current boundary that backups can be created and verified but not restored by the extension.
+
 ## 1.7.1 - 2026-08-08 - Documentation Accuracy
 
 - Reframed live-corpus sizes as dated audit snapshots and recorded the 2026-08-08 follow-up without implying that either measurement is an expected installation size.

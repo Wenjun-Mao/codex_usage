@@ -15,6 +15,13 @@ Local-first Codex usage reporting for understanding project activity, token usag
 
 ![Synthetic Codex Usage Dashboard screenshot](docs/marketplace/dashboard-synthetic.png)
 
+## Quick Start
+
+1. Run **Codex Usage: Open Dashboard** from the VS Code Command Palette.
+2. Use **Usage** to review tokens, models, estimated API-equivalent cost, Codex credits, and root-task versus subagent activity. Change the date range or project filter from the toolbar.
+3. Use **Task Storage** to see current disk usage by task tree. Choose **Analyze**, **Back Up**, or **Prepare Rollover** from a tree row as needed.
+4. Use **Codex Usage: Task Transfer** only when you deliberately want to move selected active tasks between computers; reporting does not require it.
+
 This repository contains:
 
 - A Python CLI, `codex-usage`, for parsing local Codex session logs.
@@ -112,7 +119,14 @@ Codex guardian approval logs are preserved as structured descendants of their ex
 
 ![Synthetic Task Storage screenshot](docs/marketplace/task-storage-synthetic.png)
 
-These measurements are dated audit snapshots, not expected installation sizes. The 2026-08-07 audit measured 196.08 GiB across 2,525 files, with 187.63 GiB in structured descendants; a 2026-08-08 follow-up had reached 383.00 GiB across 2,563 files, with 372.60 GiB in structured descendants. Size alone does not explain that growth. Run **Analyze** on one selected tree to measure repeated compacted-history rows, inline-media markers, large descendants, and active-root history risk. Analysis uses at most four local read-only workers and updates guarded diagnostics atomically; it does not invoke a model or scan unrelated trees.
+Task trees can become large when compacted history or inline media is repeated across later rows and structured descendants. Visible task count, turn count, and subagent count do not explain that growth by themselves. Run **Analyze** on one selected tree to measure repeated compacted-history rows, inline-media markers, large descendants, and active-root history risk. Analysis uses at most four local read-only workers and updates guarded diagnostics atomically; it does not invoke a model or scan unrelated trees.
+
+#### Analyze One Task Tree
+
+1. Open **Task Storage** and optionally use the project filter to narrow the table.
+2. Choose **Analyze** on the task row, or run **Codex Usage: Analyze Task Storage** and choose one project and one task tree.
+3. Wait for the selected-tree scan to finish and the dashboard row to refresh.
+4. Review total size together with **History amplification**, **Inline media**, descendant concentration, and active-root history risk. A `not analyzed` or `partial` result means the evidence is incomplete, not that the risk is absent.
 
 A positive **History amplification** label requires complete analysis, at least 1 GiB of compacted rows, and compacted history representing at least 50% of the tree. **Inline media** additionally requires media markers inside that amplified history. `not analyzed` or `partial` is intentionally shown as unknown, never as evidence that amplification is absent. Marker counts are diagnostic clues rather than decoded media size or reclaimable-space estimates. The investigation behind these rules is recorded in [Task Storage Amplification](docs/knowledge/task-storage-amplification.md).
 
@@ -120,17 +134,26 @@ Codex documentation describes side chats as ephemeral forks. In the observed loc
 
 ### Verified Task Backups
 
-Task Storage can create a verified backup for exactly one selected task tree. It preserves every physical JSONL currently present in that tree, including structured descendants such as guardian approval logs, active and archived copies, duplicates, and side-chat content already embedded in the root JSONL. The `.codex-task-backup` archive is a streaming PAX tar compressed as exactly one zstd frame with a strict format-v1 manifest. It records canonical metadata, per-file SHA-256 values, bounded selected session-index entries, and reports a final whole-archive SHA-256.
+1. Open **Task Storage** and choose **Back Up** on one task row, or run **Codex Usage: Back Up Task** and choose one project and one task tree.
+2. Choose **Maximum** for the smallest, slower archive or **Balanced** for a faster, larger archive.
+3. Review the sensitive-data warning, choose a `.codex-task-backup` destination, and wait for copying and verification to finish.
+4. Trust the result only after it is reported as recovery-ready or integrity-verified salvage. Review salvage warnings in the **Codex Usage** Output channel.
+
+Task Storage backs up exactly one selected task tree. It preserves every physical JSONL currently present in that tree, including structured descendants such as guardian approval logs, active and archived copies, duplicates, and side-chat content already embedded in the root JSONL. The `.codex-task-backup` archive is a streaming PAX tar compressed as exactly one zstd frame with a strict format-v1 manifest. It records canonical metadata, per-file SHA-256 values, bounded selected session-index entries, and reports a final whole-archive SHA-256.
 
 Choose **Maximum** for zstd 19 and smaller, slower archives, or **Balanced** for zstd 9 and faster, larger archives. Source identity is checked before, during, and after copying, and the complete selected tree is inventoried again before publication. The archive is written to a sibling partial file, fully reread and verified, then atomically published; cancellation or failure leaves no reported final archive, and an existing backup is preserved unless verified replacement succeeds. Graceful failures clean partials; forced process termination can leave an unreported hidden sibling partial that is never treated as the requested backup.
 
-Missing roots, relationship cycles, or storage-metadata diagnostics are recorded as warnings in a structurally verified salvage archive. Transient metadata reads are retried; while any corpus file remains unreadable or unresolved, no backup is labeled recovery-ready because that file's parent tree cannot be proven. Such an archive is not marked recovery-ready. Backups can contain prompts and source code; they are compressed but not encrypted, remain local, and do not use telemetry or the network. Backups do not restore or delete tasks and do not free storage. Safe restore and deletion are follow-up work.
+Missing roots, relationship cycles, or storage-metadata diagnostics are recorded as warnings in a structurally verified salvage archive. Transient metadata reads are retried; while any corpus file remains unreadable or unresolved, no backup is labeled recovery-ready because that file's parent tree cannot be proven. Such an archive is not marked recovery-ready. Backups can contain prompts and source code; they are compressed but not encrypted, remain local, and do not use telemetry or the network. Store them as sensitive source material. The current extension can create and verify backups but cannot restore them. Backups do not delete tasks or free storage.
 
 ### Prepare Rollover
 
-For a completely analyzed task tree that is large or history-amplified and recovery-ready, choose **Prepare Rollover**. Codex Usage first creates a new Maximum or Balanced verified backup at a new path. Only after that archive verifies does it place a text-only starter prompt on the clipboard and print a checklist in the Output channel.
+1. In **Task Storage**, choose **Analyze** on the old task and wait for the refreshed row. Rollover is offered only when analysis is complete, the tree is large or history-amplified, and it is recovery-ready.
+2. Choose **Prepare Rollover**, choose compression, and save to a new backup filename. Rollover never replaces an existing archive.
+3. After verification, use the text-only starter prompt copied to the clipboard and follow the checklist in the **Codex Usage** Output channel.
+4. Create a fresh root task in the same Codex project, paste the starter prompt, and verify that the new task can continue the work.
+5. Only then archive or delete the old task inside Codex if you want to reclaim its local storage.
 
-The plugin does not create, archive, restore, or delete Codex tasks. Create the fresh root task yourself in the same project, verify that its context is sufficient, and only then archive or delete the old task in Codex. Preparing rollover therefore establishes a recovery point and continuity material; it does not reduce disk usage by itself.
+The plugin does not create, archive, restore, or delete Codex tasks. Preparing rollover establishes a verified recovery point and continuity material, but it does not reduce disk usage by itself. Storage is reclaimed only after you complete the final Codex-owned lifecycle step yourself.
 
 ### Codex Fast Mode
 
@@ -143,13 +166,15 @@ The dashboard uses the same tokenized day/night design system as the VS Code ext
 
 Task Transfer deliberately moves selected active Codex tasks between computers through a transfer folder managed by OneDrive, Dropbox, iCloud Drive, Syncthing, a network drive, or another filesystem provider. It is optional: token reporting works without Task Transfer and no transfer runs in the background. Codex's built-in handoff can fail on a very large task; Task Transfer preserves that task as a full JSONL so it can continue on another computer without summarizing or repackaging its context.
 
-1. On the source computer, run **Export Tasks**, choose the project, and select the active tasks to transfer.
-2. Wait for the filesystem provider to finish copying the transfer folder.
-3. Clone or copy the corresponding project checkout to the destination computer if it is not already there.
-4. When using only the Codex IDE extension, open that checkout in VS Code.
-5. Run **Import Tasks**, choose the project, and accept an automatic project match or choose a validated local folder.
-6. After successful registration, reload VS Code or open/restart Codex so the imported tasks
-   appear. In the official Codex VS Code extension, reloading VS Code refreshes a cached task list.
+1. On the source computer, run **Codex Usage: Task Transfer**, choose **Choose Transfer Folder**, and select a folder managed by your filesystem provider.
+2. Choose **Export Tasks**, select one project, then select the active tasks from that project. No tasks are selected by default.
+3. Wait until the filesystem provider has finished copying the transfer folder.
+4. On the destination computer, make sure the corresponding project checkout already exists. If you use only the Codex IDE extension, open that checkout in VS Code.
+5. Choose the same transfer folder on the destination computer, then run **Import Tasks**.
+6. Select the transferred project and tasks. Accept the automatic project match or choose a validated local folder for the project when prompted.
+7. After successful registration, reload VS Code or open/restart Codex so the imported tasks appear. In the official Codex VS Code extension, reloading VS Code refreshes its cached task list.
+
+Use **Review Transfer Status** to compare selected local and transferred tasks without copying files. Use **Open Transfer Folder** to inspect the user-managed folder.
 
 The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen folder with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer never clones a project, so its destination checkout must already exist.
 

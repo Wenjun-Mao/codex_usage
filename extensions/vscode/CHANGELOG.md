@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.2 - 2026-08-09 - Marketplace Workflow Guide
+
+- Removed developer-specific corpus measurements from the Marketplace README and replaced them with a general explanation of storage amplification.
+- Added a Quick Start, command-purpose table, and step-by-step Task Transfer, storage analysis, backup, and rollover workflows.
+- Clarified recovery-ready versus salvage results, sensitive archive handling, and that the current extension verifies backups but cannot restore them.
+
 ## 1.7.1 - 2026-08-08 - Documentation Accuracy
 
 - Clarified that corpus-size measurements are dated audit snapshots rather than expected installation sizes.

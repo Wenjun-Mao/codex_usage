@@ -65,7 +65,7 @@ def test_current_docs_define_gpt_5_6_cache_write_pricing_contract() -> None:
             assert stale_phrase not in prose
 
 
-def test_current_docs_lead_with_six_step_task_transfer_workflow() -> None:
+def test_current_docs_lead_with_seven_step_task_transfer_workflow() -> None:
     for path in CURRENT_DOCS:
         section = markdown_section(path, "## Task Transfer")
         introduction, _, _ = section.partition("1. ")
@@ -75,35 +75,62 @@ def test_current_docs_lead_with_six_step_task_transfer_workflow() -> None:
         assert "built-in handoff" in introduction
 
         numbered_steps = re.findall(r"^(\d+)\. (.+)$", section, re.MULTILINE)
-        expected_numbers = [str(number) for number in range(1, 7)]
+        expected_numbers = [str(number) for number in range(1, 8)]
         assert [number for number, _ in numbered_steps] == expected_numbers
         steps = [step.casefold() for _, step in numbered_steps]
         assert all(
             phrase in steps[0]
-            for phrase in ("source computer", "export tasks", "active tasks")
+            for phrase in ("source computer", "choose transfer folder", "filesystem provider")
         )
         assert all(
             phrase in steps[1]
-            for phrase in ("wait", "filesystem provider", "transfer folder")
+            for phrase in ("export tasks", "one project", "active tasks")
         )
         assert all(
             phrase in steps[2]
-            for phrase in ("clone or copy", "project checkout", "destination")
+            for phrase in ("wait", "filesystem provider", "transfer folder")
         )
         assert all(
             phrase in steps[3]
-            for phrase in ("open", "checkout", "vs code", "ide extension")
+            for phrase in ("destination computer", "project checkout", "vs code")
         )
         assert all(
             phrase in steps[4]
-            for phrase in (
-                "import tasks",
-                "automatic project match",
-                "validated local folder",
-            )
+            for phrase in ("same transfer folder", "destination computer", "import tasks")
         )
-        assert "after successful registration" in steps[5]
-        assert "reload vs code or open/restart codex" in steps[5]
+        assert all(
+            phrase in steps[5]
+            for phrase in ("transferred project", "automatic project match", "validated local folder")
+        )
+        assert "after successful registration" in steps[6]
+        assert "reload vs code or open/restart codex" in steps[6]
+
+
+def test_public_readmes_do_not_publish_developer_corpus_measurements() -> None:
+    for path in CURRENT_DOCS:
+        prose = normalized_prose(path.read_text(encoding="utf-8"))
+        for developer_specific_phrase in (
+            "the 2026-08-07 audit measured",
+            "a 2026-08-08 follow-up had reached",
+            "2,525 files",
+            "2,563 files",
+        ):
+            assert developer_specific_phrase not in prose
+
+
+def test_current_docs_explain_storage_actions_as_user_workflows() -> None:
+    for path in CURRENT_DOCS:
+        prose = normalized_prose(path.read_text(encoding="utf-8"))
+        for phrase in (
+            "analyze one task tree",
+            "choose **analyze** on the task row",
+            "choose **maximum** for the smallest, slower archive",
+            "recovery-ready or integrity-verified salvage",
+            "cannot restore",
+            "create a fresh root task in the same codex project",
+            "only then archive or delete the old task inside codex",
+        ):
+            assert phrase in prose
 
 
 def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:
