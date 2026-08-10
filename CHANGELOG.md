@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.3 - 2026-08-09 - Marketplace Product Guide
+
+- Reframed the Marketplace README for users who install the extension directly, removing source-build commands, CI gate details, and low-level parser internals.
+- Replaced clone-relative VSIX commands with Visual Studio Marketplace installation steps and clarified that Task Transfer needs the user's own destination project folder, not the Codex Usage source repository.
+- Kept observable cache behavior and troubleshooting guidance while adding regression coverage that preserves the boundary between product and contributor documentation.
+
 ## 1.7.2 - 2026-08-09 - Marketplace Workflow Guide
 
 - Removed developer-specific corpus measurements from the public READMEs and kept the product explanation focused on general storage-amplification behavior.

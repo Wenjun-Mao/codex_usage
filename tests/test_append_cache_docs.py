@@ -24,9 +24,8 @@ def markdown_section(path: Path, heading: str) -> str:
     return match.group("body")
 
 
-@pytest.mark.parametrize("readme", READMES, ids=("repository", "extension"))
-def test_readmes_describe_current_append_contract(readme: Path) -> None:
-    text = readme.read_text(encoding="utf-8").casefold()
+def test_repository_readme_describes_current_append_contract() -> None:
+    text = READMES[0].read_text(encoding="utf-8").casefold()
 
     assert "schema 8" in text
     assert "old-boundary digest" in text

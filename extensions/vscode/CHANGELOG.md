@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.3 - 2026-08-09 - Marketplace Product Guide
+
+- Reframed the Marketplace README around installing and using the extension without cloning its source repository.
+- Replaced repository-relative VSIX commands with Marketplace installation steps, removed development and CI internals, and rewrote cache behavior in user-facing terms.
+- Clarified that Task Transfer requires the user's own destination project folder and added regression coverage to keep contributor instructions out of Marketplace copy.
+
 ## 1.7.2 - 2026-08-09 - Marketplace Workflow Guide
 
 - Removed developer-specific corpus measurements from the Marketplace README and replaced them with a general explanation of storage amplification.

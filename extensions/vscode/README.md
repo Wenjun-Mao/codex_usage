@@ -9,7 +9,7 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, and daily/hourly views.
-- Uses checked-in effective-dated pricing tables. No live pricing fetch is performed.
+- Uses bundled effective-dated pricing tables. No live pricing fetch is performed.
 - Adds optional cross-computer Task Transfer through a user-provided folder; token reporting works without it.
 - Opens a local dashboard from Codex session JSONL logs.
 - Auto-discovers the default active and archived Codex session directories.
@@ -31,7 +31,7 @@ Everything above runs locally. Task Transfer is a separate optional workflow and
 
 ## Supported Platforms
 
-The stable Marketplace release supports Windows x64 and macOS Apple Silicon only. The installed extension bundles `codex-usage.exe` on Windows and `codex-usage` on macOS, and does not require Python, `uv`, or this repository at runtime. The release workflow runs both native packaged version-3 Task Transfer smoke gates, one on Windows x64 and one on macOS Apple Silicon, and requires them to pass before publication. Additional packaged gates cover report and cache behavior, verified task backups, and storage analysis, including zero-byte warm-analysis reuse; they must also pass. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
+The stable Marketplace release supports Windows x64 and macOS Apple Silicon. Each package is self-contained, with no separate runtime or source checkout required. Intel macOS and Windows ARM64 are not supported targets. Linux is not supported in this release.
 
 ## Commands
 
@@ -82,7 +82,7 @@ Codex's built-in handoff can fail on a very large task. Task Transfer preserves 
 
 Use **Review Transfer Status** at any time to compare selected local and transferred tasks without copying anything. Use **Open Transfer Folder** to inspect the user-managed folder itself.
 
-The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen checkout with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer does not clone repositories, so the destination checkout must already exist.
+The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen checkout with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer does not clone repositories, so the destination checkout must already exist. The required checkout is your own project folder, not the Codex Usage source repository.
 
 Each Import or Export handles one Codex project. First choose one project, then choose one or more eligible tasks from that project. No tasks are selected by default. Search on the task screen is limited to the chosen project. Use Back to discard the current task choices and choose a different project. Repeat the operation to transfer tasks from another project. The transfer folder can retain tasks from many projects across separate operations. Review Transfer Status remains cross-project and does not copy files. Neither task selections nor project mappings are saved. Imported tasks remain in the transfer folder, and changing or forgetting the remembered folder does not delete any task files.
 
@@ -115,27 +115,17 @@ The dashboard transition table shows source, target, effective timestamp, and co
 
 ## Install
 
-Windows x64:
+Install [Codex Usage Dashboard](https://marketplace.visualstudio.com/items?itemName=wenjun-mao.codex-usage-dashboard) from the Visual Studio Marketplace. You can also open the VS Code Extensions view, search for **Codex Usage Dashboard**, and choose **Install**.
 
-```powershell
-code --install-extension output\releases\codex-usage-dashboard-win32-x64.vsix --force
-```
-
-macOS Apple Silicon:
-
-```bash
-code --install-extension output/releases/codex-usage-dashboard-darwin-arm64.vsix --force
-```
-
-After installation, run `Codex Usage: Open Dashboard` from the command palette.
+After installation, open the Command Palette and run **Codex Usage: Open Dashboard**. No source clone or separate command-line setup is needed.
 
 ## First Run And Cache
 
-The first `1.7.0` report builds the disposable schema 8 cache once. Later reports query only the selected range from local SQLite, value each retained record once, and reuse that valuation throughout the report. Schema 8 also retains guarded Task Storage content diagnostics whenever the usage parser has already read a file. The extension passes an internal cache folder to the bundled Python CLI and keeps it under VS Code global extension storage. The cache is local only and pricing still uses checked-in effective-dated rates. The toolbar displays `Loaded in X.X seconds` for the report currently shown. No cache setting is exposed in VS Code Settings; deleting the extension storage folder simply causes the cache to rebuild.
+The first report can take longer while Codex Usage builds a local cache from your existing task history. Later refreshes reuse that cache, skip unchanged task files, and process only newly appended data when safety checks pass. If a task file was replaced, shortened, or changed unexpectedly, Codex Usage performs a safe full read instead.
 
-Unchanged refreshes open no session JSONLs. A growing active JSONL can resume from an atomically committed parser checkpoint after its path, OS file identity, task ID, head digest, and 64 KiB old-boundary digest are verified, so an ordinary append reads only fixed guard windows plus the new tail. Replacement, truncation, same-size modification, unavailable identity, digest mismatch, invalid state, or an archived-file change triggers a safe full parse. The parser reads only through the size captured during inventory and defers an incomplete final row from its starting offset.
+The cache stays under VS Code extension storage and is used only on this computer. Deleting it is safe, but the next report must rebuild it. The dashboard toolbar displays **Loaded in X.X seconds** for the report currently shown.
 
-At most four read-only workers use buffered binary I/O to parse groups of eight files in descending unread-byte order. SQLite remains in the parent process and atomically commits records, metadata, candidates, fingerprints, and checkpoints; a failure retains the prior generation. Task Transfer metadata discovery stops as soon as it reads valid `session_meta`. Range-aware cache queries use UTC-microsecond timestamps, refresh coordination retains only the latest request while an active process finishes, and cache diagnostics in the timing sidecar and VS Code Output channel distinguish full parses, append parses, append fallbacks, and source bytes read.
+For troubleshooting, the Codex Usage Output channel reports which files were refreshed, whether an incremental read or safe fallback was used, and how many source bytes were read.
 
 ## Task Storage
 
@@ -192,11 +182,11 @@ Codex Usage does not create, archive, restore, or delete Codex tasks. Preparing 
 
 The extension reads local Codex session JSONL files and writes local HTML reports and disposable SQLite caches under VS Code extension storage. When requested, it also writes Task Transfer files and verified backups to folders the user selects. Automatic project transition detection can read local Codex project paths and timestamps as read-only evidence. The extension does not upload session logs, include telemetry, fetch live pricing, or include or mutate SQLite databases in Task Transfer.
 
-Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. See the repository `PRIVACY.md` for details.
+Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. See the [privacy policy](https://github.com/Wenjun-Mao/codex_usage/blob/main/PRIVACY.md) for details.
 
 ## Pricing And Fast Mode Notes
 
-API-equivalent USD and Codex credit estimates are calculated from checked-in effective-dated pricing tables. The extension does not fetch live pricing, does not know your subscription price, and does not convert Codex credits to dollars. If a newly released Codex model appears before checked-in rates are added, the dashboard keeps its tokens visible and marks cost/credits as partial rather than guessing from another model.
+API-equivalent USD and Codex credit estimates are calculated from bundled effective-dated pricing tables. The extension does not fetch live pricing, does not know your subscription price, and does not convert Codex credits to dollars. If a newly released Codex model appears before its rates are available in the extension, the dashboard keeps its tokens visible and marks cost/credits as partial rather than guessing from another model.
 
 GPT-5.6 Sol, Terra, and Luna use official API rates for usage recorded from June 26, 2026 onward. Their Codex credit estimates start July 9, 2026 and remain flat across context length. Reasoning effort such as `ultra` remains separate metadata and does not change the per-token model rate.
 
@@ -206,9 +196,9 @@ The official `gpt-5.6` model alias is priced as GPT-5.6 Sol. Other variants such
 
 API-equivalent USD figures are estimates, not actual API or Codex billing. For GPT-5.6, standard cache-write rates per 1M tokens are: Sol $6.25, Terra $2.50, Luna $0.25; cache read (cached input) and ordinary input remain distinct categories. Exactly 272,000 input tokens is short-context pricing. More than 272,000 input tokens, including 272,001, prices the full retained request event at long-context API rates. Long-context rates per 1M tokens are: Sol ordinary input $10, cache read (cached input) $1, cache write $12.50, output $45; Terra ordinary input $4, cache read (cached input) $0.40, cache write $5, output $18; Luna ordinary input $0.40, cache read (cached input) $0.04, cache write $0.50, output $1.80. Codex credits do not use long-context or API cache-write categories; cache writes use the ordinary input credit rate.
 
-The parser reads cumulative token records but reports only retained positive deltas. A local audit of GPT-5.6 Sol sessions found retained positive deltas matched request-level `last_token_usage`, so pricing is per retained event and cumulative session totals cannot trigger long-context pricing.
+The parser reads cumulative token records but reports only retained positive deltas. Pricing is therefore applied per retained request event, and cumulative session totals cannot trigger long-context pricing.
 
-For GPT-5.6 and later API models, local Codex logs expose `cache_write_input_tokens`. API-equivalent USD prices those explicit cache writes at 1.25 times the ordinary input rate, including the long-context multiplier when applicable; remaining ordinary input uses the standard input rate. Codex credits have no separate cache-write category, so cache writes use the published ordinary input credit rate. Cache-contract changes reparse available source JSONL files, but retained records whose source JSONL is missing cannot gain newly observed token evidence; reports disclose that limitation.
+For GPT-5.6 and later API models, local Codex logs expose `cache_write_input_tokens`. API-equivalent USD prices those explicit cache writes at 1.25 times the ordinary input rate, including the long-context multiplier when applicable; remaining ordinary input uses the standard input rate. Codex credits have no separate cache-write category, so cache writes use the published ordinary input credit rate. Historical records whose task files no longer exist cannot gain token fields introduced by a later extension version; reports disclose that limitation.
 
 Codex fast mode is counted through the token usage that Codex records. At the moment, Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.
 
@@ -226,19 +216,4 @@ Codex fast mode is counted through the token usage that Codex records. At the mo
 - If a project split looks surprising, run `Codex Usage: Review Project Transitions` to inspect the evidence, or disable `codexUsage.projectTransitions.autoDetect`.
 - If the dashboard theme is not what you expect, run `Codex Usage: Select Theme` and choose `auto`, `day`, or `night`.
 - If the dashboard says no sessions were found, check the detected sessions path and file permissions.
-- If pricing looks stale, check the report header for the checked-in pricing table date.
-
-## Development
-
-Windows x64 packaging is CI-only. The GitHub Actions Windows job runs the extension tests, builds `codex-usage.exe`, and executes the native packaged report/cache, version-3 Task Transfer, verified-backup, and storage-analysis smoke gates before publication.
-
-macOS Apple Silicon on macOS/bash from `extensions/vscode`:
-
-```bash
-npm install
-npm run build
-npm test
-npm run package:vsix:mac
-```
-
-For the shortest loop, open this folder as the VS Code workspace and press F5. The included launch configuration starts an Extension Development Host.
+- If pricing looks stale, check the report header for the bundled pricing table date.

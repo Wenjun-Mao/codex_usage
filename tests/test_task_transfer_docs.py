@@ -3,9 +3,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
-
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DOCS = (ROOT / "README.md", ROOT / "extensions/vscode/README.md")
 ADR_0014 = ROOT / "docs/adr/0014-manual-task-transfer.md"
@@ -192,27 +189,36 @@ def test_current_docs_describe_registration_discovery_and_recovery() -> None:
         assert "Open or restart Codex" in recovery and "reload VS Code" in recovery
 
 
-def test_current_docs_require_both_native_v3_packaged_workflow_gates() -> None:
-    status_sections = (
-        markdown_section(CURRENT_DOCS[0], "## VS Code Packages"),
-        markdown_section(CURRENT_DOCS[1], "## Supported Platforms"),
+def test_repository_docs_require_both_native_v3_packaged_workflow_gates() -> None:
+    status = normalized_prose(
+        markdown_section(CURRENT_DOCS[0], "## VS Code Packages")
     )
-    for path, section in zip(CURRENT_DOCS, status_sections, strict=True):
-        status = normalized_prose(section)
-        assert "windows x64" in status
-        assert "macos apple silicon" in status
-        assert "both" in status
-        assert "native" in status and "packaged" in status
-        assert "version-3" in status or "v3" in status
-        assert "task transfer smoke gates" in status
-        assert "release workflow runs" in status
-        assert "requires them to pass before publication" in status
-        assert "linux packaging is a follow-up" in status
-        assert "not a supported target in this release" in status
+    assert "windows x64" in status
+    assert "macos apple silicon" in status
+    assert "both" in status
+    assert "native" in status and "packaged" in status
+    assert "version-3" in status or "v3" in status
+    assert "task transfer smoke gates" in status
+    assert "release workflow runs" in status
+    assert "requires them to pass before publication" in status
+    assert "linux packaging is a follow-up" in status
+    assert "not a supported target in this release" in status
 
-        text = path.read_text(encoding="utf-8").casefold()
-        assert "remain pending" not in text
-        assert "windows x64 packaged task transfer passed locally" not in text
+    text = CURRENT_DOCS[0].read_text(encoding="utf-8").casefold()
+    assert "remain pending" not in text
+    assert "windows x64 packaged task transfer passed locally" not in text
+
+
+def test_marketplace_docs_describe_supported_installed_packages() -> None:
+    status = normalized_prose(
+        markdown_section(CURRENT_DOCS[1], "## Supported Platforms")
+    )
+    assert "windows x64" in status
+    assert "macos apple silicon" in status
+    assert "self-contained" in status
+    assert "source checkout" in status
+    assert "intel macos and windows arm64 are not supported targets" in status
+    assert "linux" in status and "not supported" in status
 
 
 def test_current_docs_do_not_claim_ongoing_sync_or_persisted_selection() -> None:
@@ -246,9 +252,8 @@ def test_current_task_transfer_fixtures_use_task_language() -> None:
             assert phrase not in text, (path, phrase)
 
 
-@pytest.mark.parametrize("readme", CURRENT_DOCS, ids=("repository", "extension"))
-def test_current_docs_describe_guarded_append_recovery(readme: Path) -> None:
-    text = readme.read_text(encoding="utf-8").casefold()
+def test_repository_docs_describe_guarded_append_recovery() -> None:
+    text = CURRENT_DOCS[0].read_text(encoding="utf-8").casefold()
     for phrase in (
         "schema 8",
         "unchanged refreshes open no session jsonls",
@@ -258,9 +263,50 @@ def test_current_docs_describe_guarded_append_recovery(readme: Path) -> None:
         "parser checkpoint",
         "new tail",
     ):
-        assert phrase in text, (readme, phrase)
+        assert phrase in text, phrase
 
     assert "reparsing complete files from byte zero" not in text
+
+
+def test_marketplace_docs_explain_cache_in_user_terms() -> None:
+    section = normalized_prose(
+        markdown_section(CURRENT_DOCS[1], "## First Run And Cache")
+    )
+    assert "first report can take longer" in section
+    assert "later refreshes reuse" in section
+    assert "unchanged task files" in section
+    assert "newly appended data" in section
+    assert "safe full read" in section
+    assert "loaded in x.x seconds" in section
+    assert "codex usage output channel" in section
+
+
+def test_marketplace_readme_is_an_installed_extension_product_guide() -> None:
+    text = CURRENT_DOCS[1].read_text(encoding="utf-8")
+    prose = normalized_prose(text)
+    install = normalized_prose(markdown_section(CURRENT_DOCS[1], "## Install"))
+
+    assert "visual studio marketplace" in install
+    assert "extensions view" in install
+    assert "codex usage dashboard" in install
+    assert "command palette" in install
+    assert "your own project folder" in prose
+    assert "codex usage source repository" in prose
+
+    assert "## Development" not in text
+    for contributor_detail in (
+        "npm install",
+        "npm run",
+        "`uv`",
+        "output/releases",
+        "extension development host",
+        "release workflow",
+        "smoke gate",
+        "schema 8",
+        "groups of eight files",
+        "sqlite remains in the parent process",
+    ):
+        assert contributor_detail not in text.casefold(), contributor_detail
 
 
 def test_release_docs_require_parallel_audit_and_prepublish_native_gate() -> None:
