@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.5 - 2026-08-12 - Project Breakdown Layout
+
+- Kept every Project Breakdown background track the same length across projects.
+- Prevented Root tasks and Subagents headings from being cut off when a project or role has a small token share.
+- Kept model tooltips inside the visible chart at both role boundaries.
+
 ## 1.7.4 - 2026-08-12 - Subagent Replay Accounting
 
 - Corrected Usage reports that counted inherited parent-history replay inside newer structured subagent forks, which inflated totals and appeared under `unknown`.

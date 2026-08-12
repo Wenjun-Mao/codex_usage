@@ -117,9 +117,8 @@ def render_project_breakdown_chart(
             '<div class="project-breakdown-row">'
             f'<span class="breakdown-bar-label">{_esc(point.label)}</span>'
             '<div class="project-track">'
+            f'<div class="project-role-labels{role_gap_class}">{role_headings}</div>'
             f'<div class="project-role-stack" style="width:{outer_width:.4f}%">'
-            f'<div class="project-role-labels{role_gap_class}" '
-            f'style="grid-template-columns:{role_columns}">{role_headings}</div>'
             f'<div class="project-role-groups{role_gap_class}" '
             f'style="grid-template-columns:{role_columns}">{role_groups}</div>'
             "</div></div>"

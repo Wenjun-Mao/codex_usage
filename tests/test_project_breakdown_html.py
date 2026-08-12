@@ -32,6 +32,7 @@ def test_project_breakdown_renders_nested_roles_models_and_shared_legend(
     ):
         assert f'data-report-section="{section_id}"' in html
     assert 'class="project-role-groups has-role-gap"' in html
+    assert '<div class="project-track"><div class="project-role-labels has-role-gap">' in html
     assert ">Root tasks<" in html
     assert ">Subagents<" in html
     assert 'role="group" aria-label="demo Root tasks' in html
@@ -123,7 +124,7 @@ def test_project_breakdown_empty_state_and_styles_are_self_contained(
     assert "--model-7: #8b949f;" in html
     assert "body.vscode-high-contrast" in html
     assert ".model-segment:focus-visible" in html
-    assert "@container (max-width: 120px)" in html
+    assert "@container role-labels (max-width: 360px)" in html
     assert "<script" not in html
     assert " src=" not in html
     assert 'href="#report-view-usage"' in html
@@ -172,6 +173,8 @@ def test_project_role_fill_boundary_keeps_tooltips_outside_its_clip(tmp_path: Pa
     assert ".model-segment:first-child { border-radius: 3px 0 0 3px; }" in html
     assert ".model-segment:last-child { border-radius: 0 3px 3px 0; }" in html
     assert ".model-segment:only-child { border-radius: 3px; }" in html
+    assert ".project-role-group:first-child .model-segment:first-child .chart-tooltip" in html
+    assert ".project-role-group:last-child .model-segment:last-child .chart-tooltip" in html
 
 
 def test_project_role_stack_reserves_space_for_labels_and_groups(tmp_path: Path) -> None:
@@ -179,6 +182,31 @@ def test_project_role_stack_reserves_space_for_labels_and_groups(tmp_path: Path)
 
     assert ".project-track, .model-mix-track {" in html
     assert "height: 62px;" in html
+    assert ".project-role-stack { min-width: 0; height: 34px; }" in html
+
+
+def test_project_rows_share_track_columns_and_labels_do_not_use_role_widths(
+    tmp_path: Path,
+) -> None:
+    html = _render_report(
+        tmp_path,
+        [
+            _record("root", "gpt-5.6-sol", 9_999),
+            _record("subagent", "gpt-5.6-terra", 1),
+        ],
+    )
+
+    assert ".project-breakdown-row { display: contents; }" in html
+    assert "grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;" in html
+    labels_html = html.split('<div class="project-role-labels has-role-gap">', 1)[1].split(
+        "</div>", 1
+    )[0]
+    assert "grid-template-columns" not in labels_html
+    assert ">Root tasks<" in labels_html
+    assert ">Subagents<" in labels_html
+    assert "overflow: hidden" not in html.split(".project-role-heading {", 1)[1].split(
+        "}", 1
+    )[0]
 
 
 def test_model_details_keeps_all_exact_models_beyond_two_hundred_rows(

@@ -193,13 +193,13 @@ def test_release_metadata_is_stable_1_7_4():
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "1.7.4"
-    assert __version__ == "1.7.4"
-    assert codex_usage_lock["version"] == "1.7.4"
-    assert extension_package["version"] == "1.7.4"
+    assert pyproject["project"]["version"] == "1.7.5"
+    assert __version__ == "1.7.5"
+    assert codex_usage_lock["version"] == "1.7.5"
+    assert extension_package["version"] == "1.7.5"
     assert "preview" not in extension_package
-    assert extension_lock["version"] == "1.7.4"
-    assert extension_lock["packages"][""]["version"] == "1.7.4"
+    assert extension_lock["version"] == "1.7.5"
+    assert extension_lock["packages"][""]["version"] == "1.7.5"
 
 
 @pytest.mark.parametrize(

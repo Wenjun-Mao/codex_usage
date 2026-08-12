@@ -37,12 +37,18 @@ _MODEL_COLOR_CSS = """
 _PROJECT_BREAKDOWN_CSS = """
     .project-breakdown-chart, .model-mix-chart {
       display: grid;
-      gap: 12px;
       min-width: 680px;
       max-width: 920px;
       width: 100%;
     }
-    .project-breakdown-row, .model-mix-row {
+    .project-breakdown-chart {
+      grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;
+      gap: 12px 10px;
+      align-items: center;
+    }
+    .project-breakdown-row { display: contents; }
+    .model-mix-chart { gap: 12px; }
+    .model-mix-row {
       display: grid;
       grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;
       gap: 10px;
@@ -69,17 +75,21 @@ _PROJECT_BREAKDOWN_CSS = """
       background: var(--surface-soft);
     }
     .project-track { height: 62px; }
-    .project-role-stack { min-width: 0; height: 100%; }
+    .project-role-stack { min-width: 0; height: 34px; }
     .project-role-labels {
-      display: grid;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       min-width: 0;
       height: 24px;
       margin-bottom: 4px;
+      container-name: role-labels;
+      container-type: inline-size;
     }
     .project-role-groups { display: grid; height: 34px; min-width: 0; }
-    .project-role-groups.has-role-gap,
-    .project-role-labels.has-role-gap { gap: 8px; }
-    .project-role-heading { container-type: inline-size; overflow: hidden; min-width: 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .project-role-groups.has-role-gap { gap: 8px; }
+    .project-role-heading { flex: 0 0 auto; min-width: max-content; color: var(--muted); font-size: 11px; white-space: nowrap; }
     .project-role-heading-label { color: var(--text); font-weight: 650; }
     .project-role-heading-detail { margin-left: 4px; font-variant-numeric: tabular-nums; }
     .project-role-group { position: relative; display: flex; overflow: visible; min-width: 0; border: 1px solid var(--border); border-radius: 4px; }
@@ -94,19 +104,25 @@ _PROJECT_BREAKDOWN_CSS = """
       filter: brightness(1.12);
       z-index: 3;
     }
-    .model-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 2px 0 0 210px; color: var(--muted); font-size: 12px; }
+    .model-legend { display: flex; flex-wrap: wrap; grid-column: 2 / -1; gap: 6px 12px; margin-top: 2px; color: var(--muted); font-size: 12px; }
     .model-legend-item { display: inline-flex; align-items: center; gap: 5px; }
     .model-swatch { display: inline-block; width: 10px; height: 10px; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
     .model-swatch > span { display: block; width: 100%; height: 100%; }
     .model-segment .chart-tooltip { left: 50%; }
     .model-segment:hover .chart-tooltip,
     .model-segment:focus-visible .chart-tooltip { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s; }
-    @container (max-width: 120px) { .project-role-heading-detail { display: none; } }
+    .project-role-group:first-child .model-segment:first-child .chart-tooltip { left: 0; transform: translate(0, 2px); }
+    .project-role-group:last-child .model-segment:last-child .chart-tooltip { right: 0; left: auto; transform: translate(0, 2px); }
+    .project-role-group:first-child .model-segment:first-child:hover .chart-tooltip,
+    .project-role-group:first-child .model-segment:first-child:focus-visible .chart-tooltip,
+    .project-role-group:last-child .model-segment:last-child:hover .chart-tooltip,
+    .project-role-group:last-child .model-segment:last-child:focus-visible .chart-tooltip { transform: translate(0, 0); }
+    @container role-labels (max-width: 360px) { .project-role-heading-detail { display: none; } }
     @media (max-width: 720px) {
       .project-breakdown-chart, .model-mix-chart { min-width: 560px; }
-      .project-breakdown-row, .model-mix-row { grid-template-columns: 96px minmax(220px, 1fr) max-content; gap: 8px; }
+      .project-breakdown-chart { grid-template-columns: 96px minmax(220px, 1fr) max-content; gap: 12px 8px; }
+      .model-mix-row { grid-template-columns: 96px minmax(220px, 1fr) max-content; gap: 8px; }
       .breakdown-bar-label { text-align: left; }
-      .model-legend { margin-left: 104px; }
     }
     body.vscode-high-contrast {
       --model-0: var(--text);

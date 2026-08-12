@@ -7,6 +7,7 @@ from pathlib import Path
 from codex_usage.marketplace_screenshot_validation import (
     _box_values,
     _clear_tooltip_interaction,
+    _validate_project_track_geometry,
     _tooltip_visibility_error,
     _visible_scroll_metrics,
 )
@@ -109,6 +110,40 @@ def test_browser_geometry_uses_playwright_box_mappings() -> None:
         30,
         40,
     )
+
+
+def test_project_track_geometry_rejects_mismatched_track_widths() -> None:
+    class FakeLocator:
+        def __init__(self, boxes: list[dict[str, float]]) -> None:
+            self.boxes = boxes
+
+        def count(self) -> int:
+            return len(self.boxes)
+
+        def nth(self, index: int):
+            box = self.boxes[index]
+            return type("BoxLocator", (), {"bounding_box": lambda self: box})()
+
+        def evaluate_all(self, _script: str) -> list[str]:
+            return []
+
+    class FakePage:
+        def locator(self, selector: str):
+            if selector == ".project-track":
+                return FakeLocator(
+                    [
+                        {"x": 10, "y": 20, "width": 300, "height": 62},
+                        {"x": 10, "y": 94, "width": 298, "height": 62},
+                    ]
+                )
+            return FakeLocator([])
+
+    try:
+        _validate_project_track_geometry(FakePage())  # type: ignore[arg-type]
+    except RuntimeError as error:
+        assert "share one chart width" in str(error)
+    else:
+        raise AssertionError("mismatched project tracks should fail validation")
 
 
 def test_visible_scroll_metrics_ignore_hidden_sections() -> None:

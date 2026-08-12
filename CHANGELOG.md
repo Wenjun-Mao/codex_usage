@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.5 - 2026-08-12 - Project Breakdown Layout
+
+- Made every Project Breakdown row share one chart grid so gray tracks keep identical lengths regardless of value-label width.
+- Moved Root tasks and Subagents headings onto the full shared track while keeping only the colored role bars proportional, preventing labels from being clipped for small projects or role shares.
+- Anchored edge-segment tooltips inside the chart and added browser geometry checks for equal tracks and complete role labels.
+
 ## 1.7.4 - 2026-08-12 - Subagent Replay Accounting
 
 - Stopped counting inherited parent-history replay as fresh usage in newer structured subagent fork files, removing duplicated totals and the resulting oversized `unknown` model bucket.

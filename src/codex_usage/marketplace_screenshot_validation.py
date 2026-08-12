@@ -12,6 +12,7 @@ def _validate_browser_layout(page: Page, viewport_width: int, view: str) -> None
         _validate_storage_tooltips(page, viewport_width)
     else:
         _validate_focused_tooltips(page, viewport_width)
+        _validate_project_track_geometry(page)
         _validate_role_group_geometry(page)
     _validate_scroll_containers(page, view)
 
@@ -152,6 +153,33 @@ def _validate_role_group_geometry(page: Page) -> None:
             or group_y + group_height > stack_y + stack_height
         ):
             raise RuntimeError("project role group escapes its project role stack")
+
+
+def _validate_project_track_geometry(page: Page) -> None:
+    tracks = page.locator(".project-track")
+    track_widths = [
+        _box_values(box)[2]
+        for index in range(tracks.count())
+        if (box := tracks.nth(index).bounding_box()) is not None
+    ]
+    if not track_widths:
+        raise RuntimeError("expected project tracks")
+    if max(track_widths) - min(track_widths) > 0.5:
+        raise RuntimeError("project tracks do not share one chart width")
+
+    clipped_labels = page.locator(".project-role-heading-label").evaluate_all(
+        """
+        labels => labels.filter(label => {
+          const rect = label.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(label);
+          const textRect = range.getBoundingClientRect();
+          return textRect.left < rect.left - 0.5 || textRect.right > rect.right + 0.5;
+        }).map(label => label.textContent)
+        """
+    )
+    if clipped_labels:
+        raise RuntimeError(f"project role labels are clipped: {clipped_labels}")
 
 
 def _validate_scroll_containers(page: Page, view: str) -> None:
