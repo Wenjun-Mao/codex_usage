@@ -3,7 +3,7 @@ from __future__ import annotations
 type SchemaObject = tuple[str, str, str, str]
 
 EXPECTED_SCHEMA_META = (
-    ("parser_version", "5"),
+    ("parser_version", "6"),
     ("project_transition_version", "2"),
     ("project_transitions_dirty", "1"),
     ("schema_version", "8"),

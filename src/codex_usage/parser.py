@@ -118,6 +118,7 @@ def parse_session_generation(
         root_session_id="",
         root_session_is_fork=False,
         counted_root_fork_usage=False,
+        subagent_own_activity_started=False,
         current_model=UNKNOWN,
         current_turn_id="",
         current_effort="",
@@ -194,6 +195,7 @@ def _parse_session_chunk(
     root_session_id = initial_state.root_session_id
     root_session_is_fork = initial_state.root_session_is_fork
     counted_root_fork_usage = initial_state.counted_root_fork_usage
+    subagent_own_activity_started = initial_state.subagent_own_activity_started
     current_model = initial_state.current_model
     current_turn_id = initial_state.current_turn_id
     current_effort = initial_state.current_effort
@@ -273,6 +275,14 @@ def _parse_session_chunk(
                         root_metadata = metadata
                         root_session_id = metadata.session_id
                         root_session_is_fork = bool(metadata.forked_from_id)
+                        subagent_own_activity_started = not (
+                            metadata.is_subagent and root_session_is_fork
+                        )
+                    checkpoint_offset = line_end
+                    continue
+
+                if event_type == "inter_agent_communication_metadata":
+                    subagent_own_activity_started = True
                     checkpoint_offset = line_end
                     continue
 
@@ -319,6 +329,18 @@ def _parse_session_chunk(
                 delta = total_usage.positive_delta(previous_usage)
                 previous_usage = total_usage
                 if delta is None:
+                    checkpoint_offset = line_end
+                    continue
+
+                # New structured subagent forks replay their parent's cumulative
+                # usage before this file's own inter-agent activity begins. The
+                # replay establishes the baseline but is not newly consumed usage.
+                if (
+                    root_metadata is not None
+                    and root_metadata.is_subagent
+                    and root_session_is_fork
+                    and not subagent_own_activity_started
+                ):
                     checkpoint_offset = line_end
                     continue
 
@@ -376,6 +398,7 @@ def _parse_session_chunk(
                 root_session_id=root_session_id,
                 root_session_is_fork=root_session_is_fork,
                 counted_root_fork_usage=counted_root_fork_usage,
+                subagent_own_activity_started=subagent_own_activity_started,
                 current_model=current_model,
                 current_turn_id=current_turn_id,
                 current_effort=current_effort,

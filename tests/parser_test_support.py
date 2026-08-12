@@ -62,6 +62,14 @@ def turn_context(model: str, effort: str = "medium") -> dict:
     }
 
 
+def inter_agent_communication_metadata() -> dict:
+    return {
+        "timestamp": "2026-04-29T09:59:31Z",
+        "type": "inter_agent_communication_metadata",
+        "payload": {},
+    }
+
+
 def token(timestamp: str, usage: dict | None) -> dict:
     return {
         "timestamp": timestamp,

@@ -17,6 +17,7 @@ class SessionParserState:
     root_session_id: str
     root_session_is_fork: bool
     counted_root_fork_usage: bool
+    subagent_own_activity_started: bool
     current_model: str
     current_turn_id: str
     current_effort: str
@@ -53,6 +54,7 @@ def parser_state_to_json(state: SessionParserState) -> str:
             "root_session_id": state.root_session_id,
             "root_session_is_fork": state.root_session_is_fork,
             "counted_root_fork_usage": state.counted_root_fork_usage,
+            "subagent_own_activity_started": state.subagent_own_activity_started,
             "current_model": state.current_model,
             "current_turn_id": state.current_turn_id,
             "current_effort": state.current_effort,
@@ -84,6 +86,9 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
         root_session_id=_text(parsed.get("root_session_id")),
         root_session_is_fork=bool(parsed.get("root_session_is_fork")),
         counted_root_fork_usage=bool(parsed.get("counted_root_fork_usage")),
+        subagent_own_activity_started=bool(
+            parsed.get("subagent_own_activity_started")
+        ),
         current_model=_text(parsed.get("current_model")),
         current_turn_id=_text(parsed.get("current_turn_id")),
         current_effort=_text(parsed.get("current_effort")),

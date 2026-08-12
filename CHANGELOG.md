@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.4 - 2026-08-12 - Subagent Replay Accounting
+
+- Stopped counting inherited parent-history replay as fresh usage in newer structured subagent fork files, removing duplicated totals and the resulting oversized `unknown` model bucket.
+- Preserved replayed cumulative snapshots as the baseline for the subagent's actual token deltas, with model attribution beginning at the explicit inter-agent own-work boundary.
+- Bumped the disposable parser cache to version 6 for one corrective rebuild and added full, append-checkpoint, and relevance-gate regression coverage plus live-corpus verification.
+
 ## 1.7.3 - 2026-08-09 - Marketplace Product Guide
 
 - Reframed the Marketplace README for users who install the extension directly, removing source-build commands, CI gate details, and low-level parser internals.

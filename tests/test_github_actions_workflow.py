@@ -184,7 +184,7 @@ def test_release_workflow_keeps_only_supported_platform_targets() -> None:
     assert "linux-x64" not in workflow
 
 
-def test_release_metadata_is_stable_1_7_3():
+def test_release_metadata_is_stable_1_7_4():
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension_package = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -193,13 +193,13 @@ def test_release_metadata_is_stable_1_7_3():
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "1.7.3"
-    assert __version__ == "1.7.3"
-    assert codex_usage_lock["version"] == "1.7.3"
-    assert extension_package["version"] == "1.7.3"
+    assert pyproject["project"]["version"] == "1.7.4"
+    assert __version__ == "1.7.4"
+    assert codex_usage_lock["version"] == "1.7.4"
+    assert extension_package["version"] == "1.7.4"
     assert "preview" not in extension_package
-    assert extension_lock["version"] == "1.7.3"
-    assert extension_lock["packages"][""]["version"] == "1.7.3"
+    assert extension_lock["version"] == "1.7.4"
+    assert extension_lock["packages"][""]["version"] == "1.7.4"
 
 
 @pytest.mark.parametrize(

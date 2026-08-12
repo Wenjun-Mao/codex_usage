@@ -121,6 +121,7 @@ def test_checkpoint_identity_round_trips_unsigned_windows_values(
         root_session_id="thread",
         root_session_is_fork=False,
         counted_root_fork_usage=False,
+        subagent_own_activity_started=False,
         current_model="",
         current_turn_id="",
         current_effort="",

@@ -12,6 +12,7 @@ _USAGE_EVENT_MARKERS_BYTES = tuple(
     for marker in (
         '"session_meta"',
         '"turn_context"',
+        '"inter_agent_communication_metadata"',
         '"token_count"',
         '"task_started"',
     )

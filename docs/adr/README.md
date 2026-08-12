@@ -35,3 +35,4 @@ The verified Task Storage backup contract is recorded in [ADR 0024](0024-verifie
 The separate Usage and Task Storage view contract is recorded in [ADR 0025](0025-separate-usage-and-storage-views.md).
 The guardian approval ownership contract is recorded in [ADR 0026](0026-guardian-approval-ownership.md).
 The storage amplification analysis and rollover preparation contract is recorded in [ADR 0027](0027-storage-amplification-analysis-and-rollover.md).
+The structured subagent replay accounting contract is recorded in [ADR 0028](0028-structured-subagent-replay-accounting.md).

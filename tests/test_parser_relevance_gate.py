@@ -55,6 +55,7 @@ def test_parser_decodes_only_relevant_candidate_lines(tmp_path: Path, monkeypatc
     relevant = [
         {"timestamp": "2026-07-31T12:00:00Z", "type": "session_meta", "payload": {"id": "session", "cwd": "/repo/demo"}},
         {"timestamp": "2026-07-31T12:00:01Z", "type": "turn_context", "payload": {"model": "gpt-5.6-sol", "collaboration_mode": {"mode": "default"}}},
+        {"timestamp": "2026-07-31T12:00:01Z", "type": "inter_agent_communication_metadata", "payload": {}},
         {"timestamp": "2026-07-31T12:00:02Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "turn-1", "collaboration_mode_kind": "default"}},
         _token_count(),
     ]
@@ -69,6 +70,7 @@ def test_parser_decodes_only_relevant_candidate_lines(tmp_path: Path, monkeypatc
         json.dumps(relevant[1], indent=2).replace("\n", " "),
         json.dumps(relevant[2]),
         json.dumps(relevant[3]),
+        json.dumps(relevant[4]),
         '{"type":"turn_context", malformed',
         json.dumps({"type": "response_item", "payload": {"token_count": "user content, not an event type"}}),
     ]
@@ -83,7 +85,7 @@ def test_parser_decodes_only_relevant_candidate_lines(tmp_path: Path, monkeypatc
     monkeypatch.setattr(parser_events.json, "loads", counting_loads)
     records = parse_session_file(path)
 
-    assert len(decoded) == 6
+    assert len(decoded) == 7
     assert len(records) == 1
     assert records[0].usage.total_tokens == 100
     assert records[0].model == "gpt-5.6-sol"

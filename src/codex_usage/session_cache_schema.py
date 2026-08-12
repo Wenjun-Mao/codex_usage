@@ -4,7 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 
 CACHE_SCHEMA_VERSION = 8
-PARSER_CACHE_VERSION = 5
+PARSER_CACHE_VERSION = 6
 PROJECT_TRANSITION_CACHE_VERSION = 2
 STORAGE_METADATA_CACHE_VERSION = 2
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"

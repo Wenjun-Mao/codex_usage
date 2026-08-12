@@ -51,6 +51,7 @@ def test_combined_generation_matches_frozen_session_semantics(tmp_path: Path) ->
         "{malformed json",
         _session_meta("fork-session", "/repo/fork", forked_from_id="parent-session"),
         _turn_context("gpt-5.6-sol", "fork-turn-2"),
+        _subagent_boundary(),
         _token("2026-08-03T12:02:00Z", 2_100),
         _function_call("2026-08-03T12:03:00Z", target_repo),
         _token("2026-08-03T12:04:00Z", 2_300),
@@ -123,6 +124,14 @@ def _token(timestamp: str, total: int) -> dict[str, object]:
             "type": "token_count",
             "info": {"total_token_usage": {"total_tokens": total}},
         },
+    }
+
+
+def _subagent_boundary() -> dict[str, object]:
+    return {
+        "timestamp": "2026-08-03T11:59:31Z",
+        "type": "inter_agent_communication_metadata",
+        "payload": {},
     }
 
 

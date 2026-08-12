@@ -16,6 +16,7 @@ from codex_usage.parser import parse_session_file
 from codex_usage.pricing import EffectiveModelRate, ModelRate
 
 _session_meta = parser_fixtures.session_meta
+_subagent_boundary = parser_fixtures.inter_agent_communication_metadata
 _token = parser_fixtures.token
 _turn_context = parser_fixtures.turn_context
 _usage = parser_fixtures.usage
@@ -178,6 +179,35 @@ def test_parser_treats_first_root_token_count_in_forked_file_as_baseline(
 
     assert [record.session_id for record in records] == ["fork-session"]
     assert [record.usage.total_tokens for record in records] == [300]
+
+
+def test_parser_ignores_inherited_replay_in_structured_subagent_fork(
+    tmp_path: Path,
+) -> None:
+    path = _write_session(
+        tmp_path,
+        [
+            _session_meta(
+                cwd="/repo/parent",
+                session_id="subagent-task",
+                forked_from_id="parent-task",
+                parent_thread_id="parent-task",
+            ),
+            _token("2026-04-29T10:00:00Z", _usage(total=1_000)),
+            _token("2026-04-29T10:01:00Z", _usage(total=1_200)),
+            _turn_context(model="gpt-5.6-terra"),
+            _subagent_boundary(),
+            _token("2026-04-29T10:02:00Z", _usage(total=1_250)),
+            _token("2026-04-29T10:03:00Z", _usage(total=1_300)),
+        ],
+    )
+
+    records = parse_session_file(path)
+
+    assert [record.usage.total_tokens for record in records] == [50, 50]
+    assert {record.model for record in records} == {"gpt-5.6-terra"}
+    assert {record.usage_role for record in records} == {"subagent"}
+    assert summarize_records(records).usage.total_tokens == 100
 
 
 def test_aggregation_accumulates_api_cost_and_codex_credits(tmp_path: Path) -> None:

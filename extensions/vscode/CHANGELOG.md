@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.4 - 2026-08-12 - Subagent Replay Accounting
+
+- Corrected Usage reports that counted inherited parent-history replay inside newer structured subagent forks, which inflated totals and appeared under `unknown`.
+- Kept the inherited cumulative history only as a token baseline, then attributed the subagent's actual work to the model recorded at its inter-agent boundary.
+- Rebuilds the disposable parser cache once after upgrade; subsequent refreshes retain guarded append-aware performance.
+
 ## 1.7.3 - 2026-08-09 - Marketplace Product Guide
 
 - Reframed the Marketplace README around installing and using the extension without cloning its source repository.

@@ -107,6 +107,51 @@ def test_fork_state_survives_an_append_boundary(tmp_path: Path) -> None:
     assert appended.checkpoint.state == oracle.checkpoint.state
 
 
+def test_structured_subagent_replay_boundary_survives_append_checkpoint(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "subagent-replay.jsonl"
+    _write_rows(
+        path,
+        [
+            _session_meta(
+                "subagent-task",
+                "/repo/parent",
+                forked_from_id="parent-task",
+                parent_thread_id="parent-task",
+            ),
+            _token("2026-08-07T11:00:00Z", 1_000),
+            _token("2026-08-07T11:01:00Z", 1_200),
+            _turn_context("gpt-5.6-terra", "subagent-turn", "high", "default"),
+        ],
+    )
+    inherited = parse_session_generation(path)
+
+    assert inherited.records == ()
+    assert inherited.checkpoint.state.subagent_own_activity_started is False
+
+    _append_rows(
+        path,
+        [
+            _subagent_boundary(),
+            _token("2026-08-07T11:02:00Z", 1_250),
+            _token("2026-08-07T11:03:00Z", 1_300),
+        ],
+    )
+    appended = parse_session_append(
+        path,
+        inherited.checkpoint,
+        stop_offset=path.stat().st_size,
+    )
+    oracle = parse_session_generation(path)
+
+    assert appended.records == oracle.records
+    assert [record.usage.total_tokens for record in oracle.records] == [50, 50]
+    assert {record.model for record in oracle.records} == {"gpt-5.6-terra"}
+    assert appended.checkpoint.state.subagent_own_activity_started is True
+    assert appended.checkpoint.state == oracle.checkpoint.state
+
+
 def test_incomplete_final_row_is_deferred_until_completed(tmp_path: Path) -> None:
     path = tmp_path / "partial.jsonl"
     _write_rows(
@@ -292,6 +337,14 @@ def _task_started(turn_id: str, mode: str) -> dict[str, object]:
             "turn_id": turn_id,
             "collaboration_mode_kind": mode,
         },
+    }
+
+
+def _subagent_boundary() -> dict[str, object]:
+    return {
+        "timestamp": "2026-08-07T10:02:45Z",
+        "type": "inter_agent_communication_metadata",
+        "payload": {},
     }
 
 
