@@ -98,7 +98,9 @@ test("binding atomically assigns tasks cleans projectless state and preserves ro
     JSON.parse(await fs.readFile(result.backupPath, "utf8")),
     fixture.state,
   );
-  assert.equal((await fs.stat(result.backupPath)).mode & 0o777, 0o600);
+  if (process.platform !== "win32") {
+    assert.equal((await fs.stat(result.backupPath)).mode & 0o777, 0o600);
+  }
   assert.equal(await hashFile(fixture.rolloutPath), rolloutHash);
 
   const secondPlan = await binder.preflight({
