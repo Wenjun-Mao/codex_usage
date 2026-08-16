@@ -249,14 +249,24 @@ export async function canonicalPath(value: string, dependencies: BindingDependen
   if (!trimmed) {
     bindingError("destination-invalid", "The selected destination folder is invalid.");
   }
-  return normalizeDesktopProjectPath(await dependencies.realpath(trimmed), dependencies.platform);
+  return observedDesktopProjectPath(await dependencies.realpath(trimmed), dependencies.platform);
 }
 
 export function normalizeDesktopProjectPath(value: string, platform: NodeJS.Platform): string {
-  const normalized = platform === "win32"
-    ? path.win32.normalize(value).replace(/[\\/]+$/, "").toLowerCase()
-    : path.posix.normalize(value).replace(/\/+$/, "");
-  return normalized || (platform === "win32" ? path.win32.parse(value).root.toLowerCase() : "/");
+  const observed = observedDesktopProjectPath(value, platform);
+  return platform === "win32" ? observed.toLowerCase() : observed;
+}
+
+function observedDesktopProjectPath(value: string, platform: NodeJS.Platform): string {
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const normalized = pathApi.normalize(value);
+  const root = pathApi.parse(normalized).root;
+  if (normalized === root) {
+    return root;
+  }
+  return platform === "win32"
+    ? normalized.replace(/[\\/]+$/, "")
+    : normalized.replace(/\/+$/, "");
 }
 
 export async function readStableSnapshot(

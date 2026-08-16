@@ -10,6 +10,7 @@ const {
   DesktopProjectBindingError,
 } = require("../out/codexDesktopProjectBinding");
 const {
+  canonicalPath,
   desktopStatePath,
   exactlyMatchingProjectId,
   normalizeDesktopProjectPath,
@@ -201,6 +202,7 @@ test("Windows project paths normalize case separators and trailing slashes", () 
     normalizeDesktopProjectPath("C:/Users/WM/Repo/", "win32"),
     normalizeDesktopProjectPath("c:\\users\\wm\\repo", "win32"),
   );
+  assert.equal(normalizeDesktopProjectPath("C:\\", "win32"), "c:\\");
 });
 
 test("Windows project matching and custom CODEX_HOME use native path rules", async () => {
@@ -213,6 +215,10 @@ test("Windows project matching and custom CODEX_HOME use native path rules", asy
   assert.equal(
     desktopStatePath(dependencies),
     "D:\\CodexHome\\.codex-global-state.json",
+  );
+  assert.equal(
+    await canonicalPath("C:\\Users\\WM\\Repo\\", dependencies),
+    "C:\\Users\\WM\\Repo",
   );
   assert.equal(
     await exactlyMatchingProjectId({
