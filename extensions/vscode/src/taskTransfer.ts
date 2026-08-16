@@ -17,13 +17,10 @@ import type {
 import { chooseFreshTaskTransferSelection } from "./taskTransferOperation";
 import {
   requireSelectedTransferProject,
-  resolveImportProjectBindings,
+  resolveImportProjectDestination,
   TransferProjectScopeError,
 } from "./taskTransferProjectScope";
-import {
-  certifiedImportThreadIds,
-  formatTaskRegistrationFailureLog,
-} from "./taskTransferRegistration";
+import { integrateImportedTasks } from "./taskTransferImportIntegration";
 import {
   formatTransferResult,
   taskInventoryWarningMessage,
@@ -34,16 +31,20 @@ import {
   type TransferTransientStatus,
 } from "./transferPresentation";
 import type { CodexTaskRegistrationResult } from "./codexAppServer";
+import {
+  DesktopProjectBindingError,
+  type DesktopProjectBindingPlan,
+  type DesktopProjectBindingRequest,
+  type DesktopProjectBindingResult,
+} from "./codexDesktopProjectBinding";
 
 export type TransferExecutionRequest = SyncTransferCommandOptions & {
   projectLabel: string;
 };
-
 export type TransferReviewRequest = SyncCommandOptions & {
   projectKey?: never;
   projectLabel?: never;
 };
-
 type TransferRequestContext = Omit<
   TransferReviewRequest,
   "threadIds" | "projectBindings"
@@ -75,6 +76,13 @@ export interface TaskTransferPort {
   ): Promise<SyncRunResult>;
   review(request: TransferReviewRequest): Promise<SyncStatusSummary>;
   registerImportedTasks(threadIds: readonly string[]): Promise<CodexTaskRegistrationResult>;
+  preflightImportedTaskBinding(
+    request: DesktopProjectBindingRequest,
+  ): Promise<DesktopProjectBindingPlan>;
+  bindImportedTasks(
+    plan: DesktopProjectBindingPlan,
+    registeredThreadIds: readonly string[],
+  ): Promise<DesktopProjectBindingResult>;
   notify(kind: "info" | "warning" | "error", message: string): void;
   log(message: string): void;
   setTransientStatus(status: TransferTransientStatus | undefined): void;
@@ -86,7 +94,6 @@ export class TransferFolderUnavailableError extends Error {
     this.name = "TransferFolderUnavailableError";
   }
 }
-
 export class TaskTransferController {
   private operationInFlight = false;
 
@@ -255,12 +262,19 @@ export class TaskTransferController {
         operation,
         selection,
       );
-      const projectBindings = operation === "import"
-        ? await resolveImportProjectBindings(selectedProject, this.port)
-        : [];
-      if (projectBindings === undefined) {
+      const importResolution = operation === "import"
+        ? await resolveImportProjectDestination(selectedProject, this.port)
+        : undefined;
+      if (operation === "import" && importResolution === undefined) {
         return;
       }
+      const projectBindings = importResolution?.projectBindings ?? [];
+      const bindingPlan = importResolution
+        ? await this.port.preflightImportedTaskBinding({
+            destinationPath: importResolution.destinationPath,
+            threadIds: selectedProject.threadIds,
+          })
+        : undefined;
 
       stage = "execution";
       const result = await this.port.execute(operation, {
@@ -272,31 +286,14 @@ export class TaskTransferController {
         projectBindings,
       });
       this.logIssues(result);
-      let registration: CodexTaskRegistrationResult | undefined;
-      if (operation === "import") {
-        const certifiedThreadIds = certifiedImportThreadIds(
-          result,
-          selectedProject.threadIds,
-        );
-        if (certifiedThreadIds.length > 0) {
-          this.port.setTransientStatus("registering");
-          try {
-            registration = await this.port.registerImportedTasks(certifiedThreadIds);
-          } catch {
-            registration = {
-              attemptedThreadIds: [...certifiedThreadIds],
-              registeredThreadIds: [],
-              failures: certifiedThreadIds.map((threadId) => ({
-                threadId,
-                message: "Codex registration could not be completed",
-              })),
-            };
-          }
-          for (const failure of registration.failures) {
-            this.port.log(formatTaskRegistrationFailureLog(failure.threadId));
-          }
-        }
-      }
+      const integration = operation === "import" && bindingPlan
+        ? await integrateImportedTasks(
+            result,
+            selectedProject.threadIds,
+            bindingPlan,
+            this.port,
+          )
+        : {};
       if (result.outcome === "conflict") {
         this.port.setTransientStatus("conflict");
       } else if (result.outcome === "issue" || result.issues.length > 0) {
@@ -304,7 +301,8 @@ export class TaskTransferController {
       }
       const formatted = formatTransferResult(operation, result, {
         projectLabel: selectedProject.projectLabel,
-        registration,
+        registration: integration.registration,
+        binding: integration.binding,
       });
       this.port.notify(formatted.kind, formatted.message);
     } catch (error) {
@@ -361,6 +359,10 @@ export class TaskTransferController {
     this.port.log(`[error] ${detail}`);
     this.port.setTransientStatus("issue");
     if (error instanceof TransferProjectScopeError) {
+      this.port.notify("error", error.message);
+      return;
+    }
+    if (error instanceof DesktopProjectBindingError) {
       this.port.notify("error", error.message);
       return;
     }

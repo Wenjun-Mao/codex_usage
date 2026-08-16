@@ -113,6 +113,12 @@ Before publishing:
 - Confirm the extension README clearly identifies Windows x64 and macOS Apple Silicon as the supported platforms.
 - Confirm `PRIVACY.md`, `LICENSE`, `CHANGELOG.md`, and `SUPPORT.md` are current.
 - Confirm pricing notes say pricing is checked-in and effective-dated, with no live fetch.
+- Confirm Task Transfer Import blocks before copying when Desktop is running,
+  the destination does not match exactly one existing local Desktop project,
+  or a selected task has a conflicting assignment.
+- Confirm an unchanged Import still performs app-server registration and guarded
+  Desktop project binding, with a sibling state backup and post-write verification.
+- Confirm VS Code-only mode remains available when no Desktop global-state file exists.
 - Confirm Codex fast mode is documented as counted through recorded tokens but not separately labeled because Codex does not expose a durable per-turn fast-mode marker in JSONL.
 - Confirm the version in `extensions/vscode/package.json` has not already been published. Marketplace versions are immutable.
 

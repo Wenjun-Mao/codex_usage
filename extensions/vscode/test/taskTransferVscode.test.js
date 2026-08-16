@@ -164,6 +164,16 @@ function dependencies(overrides = {}) {
         failures: [],
       };
     },
+    async preflightImportedTaskBinding(request) {
+      return { mode: "not-applicable", threadIds: [...request.threadIds] };
+    },
+    async bindImportedTasks(plan, threadIds) {
+      return {
+        status: plan.mode === "not-applicable" ? "not-applicable" : "bound",
+        attempted: threadIds.length,
+        bound: plan.mode === "not-applicable" ? 0 : threadIds.length,
+      };
+    },
     setTransientStatus(status) { statuses.push(status); },
     ...overrides,
   };

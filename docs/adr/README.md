@@ -36,3 +36,4 @@ The separate Usage and Task Storage view contract is recorded in [ADR 0025](0025
 The guardian approval ownership contract is recorded in [ADR 0026](0026-guardian-approval-ownership.md).
 The storage amplification analysis and rollover preparation contract is recorded in [ADR 0027](0027-storage-amplification-analysis-and-rollover.md).
 The structured subagent replay accounting contract is recorded in [ADR 0028](0028-structured-subagent-replay-accounting.md).
+The guarded Desktop project-binding contract is recorded in [ADR 0029](0029-guarded-desktop-project-binding.md).

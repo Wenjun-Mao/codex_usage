@@ -31,6 +31,7 @@ import {
   migrateVscodeTaskTransferState,
 } from "./taskTransferVscode";
 import { createCodexTaskRegistrar } from "./codexRegistrationVscode";
+import { createCodexDesktopProjectBinder } from "./codexDesktopProjectBinding";
 import { TaskTransferController } from "./taskTransfer";
 import { StorageBackupController } from "./storageBackup";
 import { createStorageBackupVscodePort } from "./storageBackupVscode";
@@ -71,6 +72,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const registerImportedTasks = createCodexTaskRegistrar({
     extensionVersion: context.extension.packageJSON.version,
   });
+  const desktopProjectBinder = createCodexDesktopProjectBinder();
   const taskTransferPort = createTaskTransferVscodePort(context, {
     output,
     resolveExecutable: () => resolveBundledExecutable(context),
@@ -81,6 +83,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       buildCodexUsageEnv(context.globalStorageUri.fsPath),
     ),
     registerImportedTasks,
+    preflightImportedTaskBinding: (request) => desktopProjectBinder.preflight(request),
+    bindImportedTasks: (plan, threadIds) => desktopProjectBinder.bind(plan, threadIds),
     refreshUi: async () => {
       updateStatusItem(readSettings(context));
       if (panel) {

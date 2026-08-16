@@ -117,6 +117,7 @@ test("completed imports register every selected id after transfer, including unc
   await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.registrationCalls, [["task-a", "task-b"]]);
+  assert.deepEqual(port.bindingCalls[0].threadIds, ["task-a", "task-b"]);
   assert.equal(port.executions.length, 1);
 });
 
@@ -135,6 +136,7 @@ test("partial imports register only certified pulled ids", async () => {
   await new TaskTransferController(port).importTasks();
 
   assert.deepEqual(port.registrationCalls, [["task-a"]]);
+  assert.deepEqual(port.bindingCalls[0].threadIds, ["task-a"]);
 });
 
 test("export, review, conflict, and pre-copy issues never register", async () => {
@@ -239,7 +241,7 @@ test("registration is awaited, reported separately, and preserves single-flight 
   assert.equal(port.executions.length, 1);
   assert.deepEqual(executionResult, originalResult);
   assert.deepEqual(port.statuses, [
-    "checking", "importing", "registering", undefined,
+    "checking", "importing", "registering", "binding", undefined,
   ]);
   assert.deepEqual(port.logs, [
     "[task registration] task-b: Codex registration could not be completed",
@@ -271,7 +273,7 @@ test("unexpected registrar rejection stays a registration failure", async () => 
     "[task registration] task-b: Codex registration could not be completed",
   ]);
   assert.doesNotMatch(port.logs.join("\n"), /private discovery path/);
-  assert.deepEqual(port.statuses, ["checking", "registering", undefined]);
+  assert.deepEqual(port.statuses, ["checking", "registering", "binding", undefined]);
 });
 
 function importPort(threadIds, executionResult, overrides = {}) {

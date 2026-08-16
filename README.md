@@ -170,19 +170,19 @@ Task Transfer deliberately moves selected active Codex tasks between computers t
 2. Choose **Export Tasks**, select one project, then select the active tasks from that project. No tasks are selected by default.
 3. Wait until the filesystem provider has finished copying the transfer folder.
 4. On the destination computer, make sure the corresponding project checkout already exists. If you use only the Codex IDE extension, open that checkout in VS Code.
-5. Choose the same transfer folder on the destination computer, then run **Import Tasks**.
+5. On the destination computer, if you use Codex Desktop, add that checkout as an existing local project and fully quit Desktop. Then choose the same transfer folder and run **Import Tasks**.
 6. Select the transferred project and tasks. Accept the automatic project match or choose a validated local folder for the project when prompted.
-7. After successful registration, reload VS Code or open/restart Codex so the imported tasks appear. In the official Codex VS Code extension, reloading VS Code refreshes its cached task list.
+7. After a successful Desktop assignment, start Codex Desktop. In a VS Code-only workflow, reload VS Code so the imported tasks appear.
 
 Use **Review Transfer Status** to compare selected local and transferred tasks without copying files. Use **Open Transfer Folder** to inspect the user-managed folder.
 
-The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. Git-backed projects are matched and validated by normalized Git origin; a chosen folder with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer never clones a project, so its destination checkout must already exist.
+The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. When Desktop state exists, Import requires Desktop to be closed and the destination to match exactly one existing local Desktop project. Git-backed projects are matched and validated by normalized Git origin; a chosen folder with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer never clones a project, so its destination checkout must already exist.
 
 Each Import or Export handles one Codex project. First choose one project, then choose one or more eligible tasks from that project. No tasks are selected by default. Search on the task screen is limited to the chosen project. Use Back to discard the current task choices and choose a different project. Repeat the operation to transfer tasks from another project. The transfer folder can retain tasks from many projects across separate operations. Review Transfer Status remains cross-project and does not copy files. Neither task selections nor project mappings are saved. Imported tasks remain in the transfer folder, and forgetting or changing the folder does not delete any task files.
 
-The full selected batch is checked before any file is copied. Conflicts, malformed folder structures, changed source files, unsafe mappings, and tasks that need the opposite direction block the complete operation. Existing local tasks keep their current checkout path.
+The full selected batch is checked before any file is copied. Conflicts, malformed folder structures, changed source files, unsafe mappings, a running or indeterminate Desktop process, a missing or ambiguous Desktop project, conflicting assignments, and tasks that need the opposite direction block the complete operation. Existing local tasks keep their current checkout path.
 
-After certified task files are copied during Import, Codex Usage asks an installed official Codex runtime to register the selected tasks through targeted `app-server` task-read requests. Registration sends targeted reads only: it does not invoke a model, send a prompt, or start a turn. Codex Usage never writes Codex SQLite or private project registries directly; Codex owns the resulting state repair. If registration fails, the certified imported files remain safe in place, and re-running Import retries registration for the selected tasks. After successful registration, open or restart Codex, or reload VS Code when using the official Codex VS Code extension, to refresh a cached task list.
+After certified task files are copied during Import, Codex Usage asks an installed official Codex runtime to register the selected tasks through targeted `app-server` task-read requests. Registration sends targeted reads only: it does not invoke a model, send a prompt, or start a turn. Codex Usage never writes Codex SQLite or task JSONLs. When Desktop state exists, it then atomically adds only the successfully registered task-to-project assignments, removes those tasks from projectless registries, preserves a sibling state backup, and verifies the result while Desktop remains closed. It does not change project definitions, sidebar ordering, workspace hints, or rollout state. If registration or assignment fails, the certified imported files remain safe in place, and re-running even an unchanged Import retries both stages. Start Desktop after a successful assignment; reload VS Code in an IDE-only workflow.
 
 On supported Windows x64 and macOS Apple Silicon installations, official runtime discovery checks the official Codex VS Code extension, the native Codex desktop app, and `PATH`; the desktop app is not required when another official runtime is available. The packaged Codex Usage VSIX is limited to Windows x64 and macOS Apple Silicon.
 
@@ -202,9 +202,10 @@ Valid version-2 folders are migrated automatically to this version-3 layout befo
 ### Imported files exist but tasks are not visible
 
 1. Confirm an official Codex runtime is installed on the destination computer.
-2. Check the Codex Usage output for a post-import registration failure.
-3. Run **Import Tasks** again for the same project and task subset to retry registration.
-4. Open or restart Codex, or reload VS Code when using the official Codex VS Code extension.
+2. For Codex Desktop, confirm the destination checkout is already an existing local Desktop project, then fully quit Desktop.
+3. Check the Codex Usage output for a post-import registration or Desktop assignment failure.
+4. Run **Import Tasks** again for the same project and task subset. An unchanged Import still retries registration and repairs a missing project assignment.
+5. Start Codex Desktop after success, or reload VS Code in a VS Code-only workflow. If an older imported task is no longer available in the transfer folder, preserve its local files and do not edit Codex JSONL, SQLite, or Desktop state by hand.
 
 ## Archived And Deleted Tasks
 

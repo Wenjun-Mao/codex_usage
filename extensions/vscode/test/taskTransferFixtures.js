@@ -100,6 +100,12 @@ function fakePort(options = {}) {
   const registrationResults = [...(
     options.registrationResultQueue ?? [options.registrationResult]
   )];
+  const bindingPlans = [...(
+    options.bindingPlanQueue ?? [options.bindingPlan]
+  )];
+  const bindingResults = [...(
+    options.bindingResultQueue ?? [options.bindingResult]
+  )];
 
   return {
     folderWrites: [],
@@ -110,6 +116,8 @@ function fakePort(options = {}) {
     executions: [],
     reviews: [],
     registrationCalls: [],
+    bindingPreflightCalls: [],
+    bindingCalls: [],
     notifications: [],
     logs: [],
     statuses: [],
@@ -182,6 +190,28 @@ function fakePort(options = {}) {
         attemptedThreadIds: [...threadIds],
         registeredThreadIds: [...threadIds],
         failures: [],
+      };
+    },
+    async preflightImportedTaskBinding(request) {
+      this.bindingPreflightCalls.push(structuredClone(request));
+      if (options.bindingPreflightError) {
+        throw options.bindingPreflightError;
+      }
+      return bindingPlans.shift() ?? {
+        mode: "not-applicable",
+        threadIds: [...request.threadIds],
+      };
+    },
+    async bindImportedTasks(plan, threadIds) {
+      this.bindingCalls.push({ plan: structuredClone(plan), threadIds: [...threadIds] });
+      if (options.bindingError) {
+        throw options.bindingError;
+      }
+      return bindingResults.shift() ?? {
+        status: plan.mode === "not-applicable" ? "not-applicable" : "bound",
+        attempted: threadIds.length,
+        bound: plan.mode === "not-applicable" ? 0 : threadIds.length,
+        ...(plan.mode === "ready" ? { backupPath: "/backup" } : {}),
       };
     },
     notify(kind, message) {

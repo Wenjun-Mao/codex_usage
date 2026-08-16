@@ -34,6 +34,11 @@ import type {
   TransferTransientStatus,
 } from "./transferPresentation";
 import type { CodexTaskRegistrationResult } from "./codexAppServer";
+import type {
+  DesktopProjectBindingPlan,
+  DesktopProjectBindingRequest,
+  DesktopProjectBindingResult,
+} from "./codexDesktopProjectBinding";
 
 type CommandResult = { stdout: string; stderr: string };
 
@@ -44,6 +49,13 @@ export type TaskTransferVscodeDependencies = {
   runCommand(args: string[]): Promise<CommandResult>;
   runSyncProcess?: typeof runSyncProcess;
   registerImportedTasks(threadIds: readonly string[]): Promise<CodexTaskRegistrationResult>;
+  preflightImportedTaskBinding(
+    request: DesktopProjectBindingRequest,
+  ): Promise<DesktopProjectBindingPlan>;
+  bindImportedTasks(
+    plan: DesktopProjectBindingPlan,
+    registeredThreadIds: readonly string[],
+  ): Promise<DesktopProjectBindingResult>;
   refreshUi(): Promise<void>;
   setTransientStatus(status: TransferTransientStatus | undefined): void;
 };
@@ -86,6 +98,10 @@ export function createTaskTransferVscodePort(
       return parseSyncStatusSummary(result.stdout);
     },
     registerImportedTasks: (threadIds) => dependencies.registerImportedTasks(threadIds),
+    preflightImportedTaskBinding: (request) =>
+      dependencies.preflightImportedTaskBinding(request),
+    bindImportedTasks: (plan, threadIds) =>
+      dependencies.bindImportedTasks(plan, threadIds),
     notify: showMessage,
     log: (message) => dependencies.output.appendLine(message),
     setTransientStatus: dependencies.setTransientStatus,

@@ -99,8 +99,9 @@ def test_current_docs_lead_with_seven_step_task_transfer_workflow() -> None:
             phrase in steps[5]
             for phrase in ("transferred project", "automatic project match", "validated local folder")
         )
-        assert "after successful registration" in steps[6]
-        assert "reload vs code or open/restart codex" in steps[6]
+        assert "after a successful desktop assignment" in steps[6]
+        assert "start codex desktop" in steps[6]
+        assert "reload vs code" in steps[6]
 
 
 def test_public_readmes_do_not_publish_developer_corpus_measurements() -> None:
@@ -156,8 +157,11 @@ def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:
         assert re.search(r"only (?:that|the) folder path is remembered", section)
         assert "targeted `app-server` task-read requests" in section
         assert "does not invoke a model" in section
-        assert "never writes codex sqlite or private project registries directly" in section
-        assert "re-running import retries registration" in section
+        assert "never writes codex sqlite or task jsonls" in section
+        assert "successfully registered task-to-project assignments" in section
+        assert "preserves a sibling state backup" in section
+        assert "desktop to be closed" in section
+        assert "re-running even an unchanged import retries both stages" in section
 
 
 def test_current_docs_describe_registration_discovery_and_recovery() -> None:
@@ -185,8 +189,10 @@ def test_current_docs_describe_registration_discovery_and_recovery() -> None:
         recovery = recovery.split("\n## ", 1)[0]
         assert "official Codex runtime" in recovery
         assert "Codex Usage output" in recovery
-        assert "retry registration" in recovery
-        assert "Open or restart Codex" in recovery and "reload VS Code" in recovery
+        assert "retries registration" in recovery
+        assert "fully quit Desktop" in recovery
+        assert "unchanged Import" in recovery
+        assert "Start Codex Desktop" in recovery and "reload VS Code" in recovery
 
 
 def test_repository_docs_require_both_native_v3_packaged_workflow_gates() -> None:

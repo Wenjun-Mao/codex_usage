@@ -2,6 +2,7 @@ import type { SyncTaskAvailability } from "./syncInventory";
 import type { SyncRunResult } from "./syncProtocol";
 import type { CodexTaskRegistrationResult } from "./codexAppServer";
 import type { TaskRegistrationSummary } from "./taskTransferRegistration";
+import type { DesktopProjectBindingOutcome } from "./codexDesktopProjectBinding";
 
 export type TransferOperation = "import" | "export" | "review";
 export type TransferMenuAction =
@@ -18,6 +19,7 @@ export type TransferTransientStatus =
   | "importing"
   | "exporting"
   | "registering"
+  | "binding"
   | "conflict"
   | "issue";
 
@@ -36,6 +38,7 @@ export type TransferResultMessage = {
 export type TransferResultContext = {
   projectLabel: string;
   registration?: CodexTaskRegistrationResult;
+  binding?: DesktopProjectBindingOutcome;
 };
 
 export function taskTransferControlLabel(): string {
@@ -144,6 +147,7 @@ export function transientStatusLabel(value: TransferTransientStatus): string {
     importing: "Importing tasks",
     exporting: "Exporting tasks",
     registering: "Registering imported tasks",
+    binding: "Assigning imported tasks",
     conflict: "Task transfer conflict",
     issue: "Task transfer issue",
   };
@@ -171,12 +175,16 @@ export function formatTransferResult(
     return registrationFailureMessage(result, context, hasIssue);
   }
 
+  if (context.binding?.status === "failed") {
+    return bindingFailureMessage(result, context);
+  }
+
   if (hasIssue && completedIds.length > 0) {
     if (operation === "import") {
       const pronoun = transferred === 1 ? "it" : "them";
       const registered = context.registration?.registeredThreadIds.length ?? 0;
       const registrationCopy = registered > 0
-        ? ` Registered ${pronoun} with Codex. ${refreshGuidance(registered)}`
+        ? ` Registered ${pronoun} with Codex. ${refreshGuidance(registered, context.binding)}`
         : "";
       return {
         kind: "error",
@@ -245,14 +253,14 @@ export function formatTransferResult(
           message:
             `Imported ${transferred} ${taskWord(transferred)} into ${context.projectLabel} ` +
             `and registered ${registered} ${taskWord(registered)} with Codex. ` +
-            refreshGuidance(registered),
+            refreshGuidance(registered, context.binding),
         };
       }
       return {
         kind: "info",
         message:
           `Imported ${transferred} ${taskWord(transferred)} into ${context.projectLabel}. ` +
-          refreshGuidance(registered),
+          refreshGuidance(registered, context.binding),
       };
     }
     return {
@@ -271,7 +279,7 @@ export function formatTransferResult(
       message:
         `No file changes were needed for ${count} ${taskWord(count)} in ` +
         `${context.projectLabel}. Registered ${pronoun} with Codex. ` +
-        refreshGuidance(count),
+        refreshGuidance(count, context.binding),
     };
   }
 
@@ -297,10 +305,9 @@ function registrationFailureMessage(
     `Codex registered ${summary.registered} ${taskWord(summary.registered)} ` +
     `and failed to register ${summary.failed} ${taskWord(summary.failed)}.`;
   const refresh = summary.registered > 0
-    ? (
-      " Open or restart Codex to display the successfully registered " +
-      `${taskWord(summary.registered)}.`
-    )
+    ? context.binding?.status === "failed"
+      ? " Desktop project assignment also failed for the successfully registered tasks."
+      : ` ${refreshSuccessfulSubset(summary.registered, context.binding)}`
     : "";
   const safeFiles = summary.attempted === 1 ? "The file is safe." : "The files are safe.";
   const transferIssue = hasTransferIssue
@@ -312,6 +319,16 @@ function registrationFailureMessage(
       `${fileOutcome}, but ${registrationOutcome}${refresh} ${safeFiles} ` +
       `Retry Import after resolving Codex availability.${transferIssue}`,
   };
+}
+
+function refreshSuccessfulSubset(
+  count: number,
+  binding?: DesktopProjectBindingOutcome,
+): string {
+  const target = count === 1 ? "task" : "tasks";
+  return binding?.status === "bound" || binding?.status === "unchanged"
+    ? `Start Codex Desktop to display the successfully registered ${target}.`
+    : `Reload VS Code to display the successfully registered ${target}.`;
 }
 
 function summarizeRegistration(
@@ -349,9 +366,28 @@ function registrationFileOutcome(
   );
 }
 
-function refreshGuidance(count: number): string {
+function refreshGuidance(count: number, binding?: DesktopProjectBindingOutcome): string {
   const pronoun = count === 1 ? "it" : "them";
-  return `Open or restart Codex to display ${pronoun}.`;
+  return binding?.status === "bound" || binding?.status === "unchanged"
+    ? `Start Codex Desktop to display ${pronoun}.`
+    : `Reload VS Code to display ${pronoun}.`;
+}
+
+function bindingFailureMessage(
+  result: SyncRunResult,
+  context: TransferResultContext,
+): TransferResultMessage {
+  const count = context.registration?.registeredThreadIds.length ?? 0;
+  const files = result.counts.pulled > 0
+    ? `Imported files for ${result.counts.pulled} ${taskWord(result.counts.pulled)} into ${context.projectLabel}`
+    : `No file changes were needed in ${context.projectLabel}`;
+  return {
+    kind: "warning",
+    message:
+      `${files} and registered ${count} ${taskWord(count)} with Codex, but Codex Desktop ` +
+      "project assignment could not be completed. The files are safe. Keep Desktop closed " +
+      "and retry Import.",
+  };
 }
 
 function taskWord(count: number): string {

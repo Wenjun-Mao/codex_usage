@@ -1,6 +1,6 @@
 # ADR 0016: Register Imported Tasks Through Codex
 
-Status: Accepted
+Status: Accepted; Desktop project-registry guardrails partially superseded by ADR 0029
 
 Date: 2026-07-23
 
@@ -50,7 +50,9 @@ registration without requiring a migration.
 
 - Use only Codex's supported app-server protocol for registration.
 - Never write, migrate, or verify private Codex SQLite rows directly.
-- Never modify Codex desktop project registries or reset backfill state.
+- Never reset backfill state. ADR 0029 defines the only permitted Desktop
+  project-registry mutation: guarded task-to-project assignments while Desktop
+  is confirmed closed.
 - Issue only initialization and targeted task-read requests; never start a turn
   or invoke a model.
 - Register only completed Imports or certified partial `issue` results. Reject
@@ -66,5 +68,6 @@ registration without requiring a migration.
 
 This decision supersedes ADR 0014's blanket prohibition on updating Codex state.
 ADR 0014's prohibition on direct private-database and project-registry mutation
-remains in force. All manual-trigger, transfer-safety, destination-resolution,
-and portable-format decisions in ADR 0014 remain unchanged.
+remains in force except for ADR 0029's narrow Desktop assignment contract. All
+manual-trigger, transfer-safety, destination-resolution, and portable-format
+decisions in ADR 0014 remain unchanged.

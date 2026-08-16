@@ -45,7 +45,7 @@ test("inventory diagnostics show one concise warning and log every issue", async
     taskInventoryWarningMessage(),
   ], [
     "info",
-    "Imported 1 task into Repo. Open or restart Codex to display it.",
+      "Imported 1 task into Repo. Reload VS Code to display it.",
   ]]);
 });
 

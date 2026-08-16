@@ -78,10 +78,15 @@ function registration(attempted, registered = attempted) {
   };
 }
 
-function format(operation, syncResult, registrationResult) {
+function format(operation, syncResult, registrationResult, bindingResult) {
   return formatTransferResult(operation, syncResult, {
     projectLabel: PROJECT,
     registration: registrationResult,
+    binding: bindingResult ?? (registrationResult ? {
+      status: "not-applicable",
+      attempted: registrationResult.registeredThreadIds.length,
+      bound: 0,
+    } : undefined),
   });
 }
 
@@ -138,6 +143,7 @@ test("transient states use usage-status Task Transfer wording", () => {
   assert.equal(transientStatusLabel("importing"), "Importing tasks");
   assert.equal(transientStatusLabel("exporting"), "Exporting tasks");
   assert.equal(transientStatusLabel("registering"), "Registering imported tasks");
+  assert.equal(transientStatusLabel("binding"), "Assigning imported tasks");
   assert.equal(transientStatusLabel("conflict"), "Task transfer conflict");
   assert.equal(transientStatusLabel("issue"), "Task transfer issue");
 });
@@ -145,12 +151,12 @@ test("transient states use usage-status Task Transfer wording", () => {
 test("result copy distinguishes success no-op opposite direction conflict and issue", () => {
   assert.equal(
     format("import", result({ pulled: 1, selected: 1 }), registration(1)).message,
-    "Imported 1 task into Letta-Open-ADE. Open or restart Codex to display it.",
+    "Imported 1 task into Letta-Open-ADE. Reload VS Code to display it.",
   );
   assert.equal(
     format("import", result({ selected: 2, unchanged: 2 }), registration(2)).message,
     "No file changes were needed for 2 tasks in Letta-Open-ADE. " +
-      "Registered them with Codex. Open or restart Codex to display them.",
+      "Registered them with Codex. Reload VS Code to display them.",
   );
   assert.equal(
     format("export", result({ selected: 1, issues: [issue("push_requires_pull")] })).message,
@@ -169,10 +175,23 @@ test("result copy distinguishes success no-op opposite direction conflict and is
   assert.doesNotMatch(technicalIssue.message, /stack detail/i);
 });
 
+test("successful Desktop assignment tells the user to start Desktop", () => {
+  const assigned = {
+    status: "bound",
+    attempted: 1,
+    bound: 1,
+    backupPath: "/state.backup",
+  };
+  assert.equal(
+    format("import", result({ pulled: 1, selected: 1 }), registration(1), assigned).message,
+    "Imported 1 task into Letta-Open-ADE. Start Codex Desktop to display it.",
+  );
+});
+
 test("result copy pluralizes import export no-op and blocked direction exactly", () => {
   assert.equal(
     format("import", result({ pulled: 2, selected: 2 }), registration(2)).message,
-    "Imported 2 tasks into Letta-Open-ADE. Open or restart Codex to display them.",
+    "Imported 2 tasks into Letta-Open-ADE. Reload VS Code to display them.",
   );
   assert.equal(
     format("export", result({ pushed: 1, selected: 1 })).message,
@@ -206,7 +225,7 @@ test("registration failures report safe partial completion without false success
   assert.equal(
     partial.message,
     "Imported files for 2 tasks into Letta-Open-ADE, but Codex registered 1 task " +
-      "and failed to register 1 task. Open or restart Codex to display the " +
+      "and failed to register 1 task. Reload VS Code to display the " +
       "successfully registered task. The files are safe. Retry Import after " +
       "resolving Codex availability.",
   );
@@ -220,7 +239,7 @@ test("registration failures report safe partial completion without false success
   assert.equal(
     pluralPartial.message,
     "Imported files for 4 tasks into Letta-Open-ADE, but Codex registered 2 tasks " +
-      "and failed to register 2 tasks. Open or restart Codex to display the " +
+      "and failed to register 2 tasks. Reload VS Code to display the " +
       "successfully registered tasks. The files are safe. Retry Import after " +
       "resolving Codex availability.",
   );
@@ -237,7 +256,7 @@ test("registration failures report safe partial completion without false success
       "and failed to register 1 task. The file is safe. Retry Import after " +
       "resolving Codex availability.",
   );
-  assert.doesNotMatch(zero.message, /Open or restart Codex/);
+  assert.doesNotMatch(zero.message, /Reload VS Code/);
   assert.doesNotMatch(
     `${partial.message}\n${pluralPartial.message}\n${zero.message}`,
     /Imported \d+ tasks? into/,
@@ -252,7 +271,7 @@ test("singular no-op registration uses singular task and pronouns", () => {
       registration(1),
     ).message,
     "No file changes were needed for 1 task in Letta-Open-ADE. Registered it " +
-      "with Codex. Open or restart Codex to display it.",
+      "with Codex. Reload VS Code to display it.",
   );
 });
 
@@ -265,13 +284,13 @@ test("mixed imported and unchanged outcomes keep counts and grammar accurate", (
   assert.equal(
     format("import", mixedResult, registration(2)).message,
     "Imported 1 task into Letta-Open-ADE and registered 2 tasks with Codex. " +
-      "Open or restart Codex to display them.",
+      "Reload VS Code to display them.",
   );
   assert.equal(
     format("import", mixedResult, registration(2, 1)).message,
     "Imported files for 1 task into Letta-Open-ADE; 1 task was already current, " +
-      "but Codex registered 1 task and failed to register 1 task. Open or restart " +
-      "Codex to display the successfully registered task. The files are safe. " +
+      "but Codex registered 1 task and failed to register 1 task. Reload VS Code " +
+      "to display the successfully registered task. The files are safe. " +
       "Retry Import after resolving Codex availability.",
   );
 });
@@ -292,7 +311,7 @@ test("runtime import failure reports the task imported before the issue", () => 
     formatted.message,
     "Import into Letta-Open-ADE could not be completed. Imported files for 1 task " +
       "before the issue occurred. Registered it with Codex. " +
-      "Open or restart Codex to display it. " +
+      "Reload VS Code to display it. " +
       "See the Codex Usage output for details.",
   );
   assert.doesNotMatch(formatted.message, /no tasks were copied/i);

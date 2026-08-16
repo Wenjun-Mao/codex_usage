@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.6 - 2026-08-15 - Desktop Project Binding
+
+- Added a guarded Desktop project-assignment preflight that blocks Import before file transfer when Desktop is running, the destination project is missing or ambiguous, or an assignment conflicts.
+- Bound only certified, successfully registered tasks through an atomic global-state update with source rechecks, a sibling backup, post-write verification, and rollback.
+- Kept VS Code-only imports on the supported app-server registration path and made unchanged re-imports repair missing Desktop assignments without rewriting task files or Codex SQLite.
+
 ## 1.7.5 - 2026-08-12 - Project Breakdown Layout
 
 - Kept every Project Breakdown background track the same length across projects.

@@ -1,10 +1,8 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const {
-  TaskTransferController,
-  TransferFolderUnavailableError,
-} = require("../out/taskTransfer");
+const { TaskTransferController, TransferFolderUnavailableError } = require("../out/taskTransfer");
+const { DesktopProjectBindingError } = require("../out/codexDesktopProjectBinding");
 const {
   completed,
   fakePort,
@@ -32,10 +30,10 @@ test("import lazily chooses and remembers a transfer folder", async () => {
   }]);
   assert.deepEqual(port.notifications, [[
     "info",
-    "Imported 1 task into Repo. Open or restart Codex to display it.",
+    "Imported 1 task into Repo. Reload VS Code to display it.",
   ]]);
   assert.deepEqual(port.registrationCalls, [["remote-task"]]);
-  assert.deepEqual(port.statuses, ["checking", "registering", undefined]);
+  assert.deepEqual(port.statuses, ["checking", "registering", "binding", undefined]);
 });
 
 test("cancelling lazy folder choice is silent", async () => {
@@ -198,6 +196,33 @@ test("cross-project transfer selection is rejected before prompts or execution",
   assert.match(port.notifications[0][1], /one project at a time/i);
 });
 
+test("Desktop binding preflight failures stop before task files are copied", async () => {
+  const bindingError = new DesktopProjectBindingError(
+    "desktop-running",
+    "Quit Codex Desktop before importing tasks.",
+  );
+  const port = fakePort({
+    folder: "/transfer",
+    inventory: inventory([project({ candidateRoots: ["/repo"] })]),
+    selection: transferSelection(["remote-task"]),
+    bindingPreflightError: bindingError,
+  });
+
+  await new TaskTransferController(port).importTasks();
+
+  assert.deepEqual(port.bindingPreflightCalls, [{
+    destinationPath: "/repo",
+    threadIds: ["remote-task"],
+  }]);
+  assert.deepEqual(port.executions, []);
+  assert.deepEqual(port.registrationCalls, []);
+  assert.deepEqual(port.bindingCalls, []);
+  assert.deepEqual(port.notifications, [[
+    "error",
+    "Quit Codex Desktop before importing tasks.",
+  ]]);
+});
+
 test("engine destination issues stay technical while the notification stays concise", async () => {
   const port = fakePort({
     folder: "/transfer",
@@ -221,8 +246,11 @@ test("engine destination issues stay technical while the notification stays conc
   assert.deepEqual(port.statuses, ["checking", "issue", undefined]);
 });
 
-test("local counterparts and Review never prompt for destination bindings", async () => {
-  const bothProject = project({ tasks: [task("both-task", "both")] });
+test("unchanged imports retain a destination while Review never prompts for one", async () => {
+  const bothProject = project({
+    candidateRoots: ["/repo"],
+    tasks: [task("both-task", "both")],
+  });
   const importPort = fakePort({
     folder: "/transfer",
     inventory: inventory([bothProject]),
@@ -256,6 +284,10 @@ test("local counterparts and Review never prompt for destination bindings", asyn
 
   assert.deepEqual(importPort.projectRootPrompts, []);
   assert.deepEqual(importPort.executions[0].request.projectBindings, []);
+  assert.deepEqual(importPort.bindingPreflightCalls, [{
+    destinationPath: "/repo",
+    threadIds: ["both-task"],
+  }]);
   assert.deepEqual(reviewPort.projectRootPrompts, []);
   assert.deepEqual(reviewPort.reviews[0].projectBindings, []);
   assert.deepEqual(reviewPort.reviews[0].candidateProjectRoots, [

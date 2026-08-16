@@ -14,6 +14,11 @@ export type SelectedTransferProject = {
   threadIds: string[];
 };
 
+export type ImportProjectResolution = {
+  destinationPath: string;
+  projectBindings: ProjectBinding[];
+};
+
 export class TransferProjectScopeError extends Error {
   constructor(operation: "import" | "export") {
     const verb = operation === "import" ? "Import" : "Export";
@@ -50,55 +55,54 @@ export function requireSelectedTransferProject(
   };
 }
 
-export async function resolveImportProjectBindings(
+export async function resolveImportProjectDestination(
   selected: SelectedTransferProject,
   port: Pick<
     TaskTransferPort,
     "chooseProjectRoot" | "confirmUnverifiedProject"
   >,
-): Promise<ProjectBinding[] | undefined> {
+): Promise<ImportProjectResolution | undefined> {
   const selectedThreadIds = new Set(selected.threadIds);
   const requiresDestination = selected.project.tasks.some(
     (task) =>
       selectedThreadIds.has(task.threadId) &&
       task.availability === "remote",
   );
-  if (!requiresDestination) {
-    return [];
-  }
-
   const candidates = normalizedPaths(selected.project.candidateRoots);
+  let destinationPath: string;
   if (candidates.length === 1) {
-    return [{
-      projectKey: selected.projectKey,
-      path: candidates[0],
-      confirmedUnverified: false,
-    }];
-  }
-
-  const chosenPath = await port.chooseProjectRoot(selected.project, candidates);
-  if (!chosenPath) {
-    return undefined;
+    destinationPath = candidates[0];
+  } else {
+    const chosenPath = await port.chooseProjectRoot(selected.project, candidates);
+    if (!chosenPath) {
+      return undefined;
+    }
+    destinationPath = chosenPath;
   }
 
   let confirmedUnverified = false;
   if (
     selected.project.identityKind === "path" &&
-    chosenPath.trim() !== selected.projectKey.trim()
+    destinationPath.trim() !== selected.projectKey.trim()
   ) {
     confirmedUnverified = await port.confirmUnverifiedProject(
       selected.project,
-      chosenPath,
+      destinationPath,
     );
     if (!confirmedUnverified) {
       return undefined;
     }
   }
-  return [{
-    projectKey: selected.projectKey,
-    path: chosenPath,
-    confirmedUnverified,
-  }];
+  return {
+    destinationPath,
+    projectBindings: requiresDestination
+      ? [{
+          projectKey: selected.projectKey,
+          path: destinationPath,
+          confirmedUnverified,
+        }]
+      : [],
+  };
 }
 
 function normalizedPaths(paths: readonly string[]): string[] {
