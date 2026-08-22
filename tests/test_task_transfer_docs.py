@@ -45,13 +45,18 @@ def test_current_docs_define_gpt_5_6_cache_write_pricing_contract() -> None:
         prose = normalized_prose(path.read_text(encoding="utf-8"))
         assert (
             "standard cache-write rates per 1m tokens are: "
-            "sol $6.25, terra $2.50, luna $0.25"
+            "sol $5, terra $2.50, luna $0.25"
         ) in prose
         assert (
             "reduced terra and luna api rates apply from july 31, 2026; "
             "earlier usage keeps the original effective-dated rates"
         ) in prose
-        assert "sol ordinary input $10, cache read (cached input) $1, cache write $12.50, output $45" in prose
+        assert (
+            "promotional sol api rates apply from august 22, 2026; "
+            "earlier usage keeps the original effective-dated rates"
+        ) in prose
+        assert "available at least through november 21, 2026" in prose
+        assert "sol ordinary input $8, cache read (cached input) $0.80, cache write $10, output $30" in prose
         assert "terra ordinary input $4, cache read (cached input) $0.40, cache write $5, output $18" in prose
         assert "luna ordinary input $0.40, cache read (cached input) $0.04, cache write $0.50, output $1.80" in prose
         assert "exactly 272,000 input tokens is short-context pricing" in prose

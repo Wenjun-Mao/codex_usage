@@ -23,6 +23,17 @@ GPT_5_6_TERRA_LUNA_API_REDUCTION_BEFORE = datetime(
     999_999,
     tzinfo=UTC,
 )
+GPT_5_6_SOL_API_REDUCTION_AT = datetime(2026, 8, 22, tzinfo=UTC)
+GPT_5_6_SOL_API_REDUCTION_BEFORE = datetime(
+    2026,
+    8,
+    21,
+    23,
+    59,
+    59,
+    999_999,
+    tzinfo=UTC,
+)
 
 GPT_5_6_TERRA_LUNA_REDUCTION_CASES = (
     (
@@ -104,6 +115,95 @@ def test_terra_and_luna_reduction_does_not_change_sol_or_codex_credit_rates() ->
         cached_input_per_1m=2.5,
         output_per_1m=150.0,
     )
+
+
+def test_sol_api_reduction_uses_exact_effective_boundary_and_alias() -> None:
+    original_rate = ModelRate(
+        input_per_1m=5.0,
+        cached_input_per_1m=0.5,
+        output_per_1m=30.0,
+        cache_write_input_per_1m=6.25,
+    )
+    reduced_rate = ModelRate(
+        input_per_1m=4.0,
+        cached_input_per_1m=0.4,
+        output_per_1m=20.0,
+        cache_write_input_per_1m=5.0,
+    )
+
+    assert rate_for_model(
+        "gpt-5.6-sol",
+        at=GPT_5_6_SOL_API_REDUCTION_BEFORE,
+    ) == original_rate
+    assert rate_for_model(
+        "gpt-5.6-sol",
+        at=GPT_5_6_SOL_API_REDUCTION_AT,
+    ) == reduced_rate
+    assert rate_for_model("gpt-5.6-sol") == reduced_rate
+    assert rate_for_model("gpt-5.6") == reduced_rate
+
+
+def test_sol_reduction_does_not_change_codex_credit_rates() -> None:
+    expected = ModelRate(
+        input_per_1m=125.0,
+        cached_input_per_1m=12.5,
+        output_per_1m=750.0,
+    )
+
+    assert credit_rate_for_model(
+        "gpt-5.6-sol",
+        at=GPT_5_6_SOL_API_REDUCTION_AT,
+    ) == expected
+    assert credit_rate_for_model(
+        "gpt-5.6",
+        at=GPT_5_6_SOL_API_REDUCTION_AT,
+    ) == expected
+
+
+def test_sol_reduced_short_context_costs() -> None:
+    usage = TokenUsage(
+        input_tokens=272_000,
+        cached_input_tokens=72_000,
+        cache_write_input_tokens=50_000,
+        output_tokens=100_000,
+        total_tokens=372_000,
+    )
+
+    cost = estimate_cost(
+        usage,
+        "gpt-5.6-sol",
+        at=GPT_5_6_SOL_API_REDUCTION_AT,
+    )
+
+    assert cost is not None
+    assert cost.ordinary_input_usd == pytest.approx(0.6)
+    assert cost.cached_input_usd == pytest.approx(0.0288)
+    assert cost.cache_write_input_usd == pytest.approx(0.25)
+    assert cost.output_usd == pytest.approx(2.0)
+    assert cost.total_usd == pytest.approx(2.8788)
+
+
+def test_sol_reduced_long_context_costs() -> None:
+    usage = TokenUsage(
+        input_tokens=272_001,
+        cached_input_tokens=72_001,
+        cache_write_input_tokens=50_000,
+        output_tokens=100_000,
+        total_tokens=372_001,
+    )
+
+    cost = estimate_cost(
+        usage,
+        "gpt-5.6-sol",
+        at=GPT_5_6_SOL_API_REDUCTION_AT,
+    )
+
+    assert cost is not None
+    assert cost.ordinary_input_usd == pytest.approx(1.2)
+    assert cost.cached_input_usd == pytest.approx(0.0576008)
+    assert cost.cache_write_input_usd == pytest.approx(0.5)
+    assert cost.output_usd == pytest.approx(3.0)
+    assert cost.total_usd == pytest.approx(4.7576008)
 
 
 @pytest.mark.parametrize(
@@ -194,5 +294,5 @@ def test_terra_and_luna_reduced_long_context_costs(
     assert cost.total_usd == pytest.approx(expected_total)
 
 
-def test_pricing_table_date_covers_terra_and_luna_reduction() -> None:
-    assert pricing.PRICING_AS_OF == "2026-07-31"
+def test_pricing_table_date_covers_sol_reduction() -> None:
+    assert pricing.PRICING_AS_OF == "2026-08-22"

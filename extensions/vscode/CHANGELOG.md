@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.7 - 2026-08-22 - Sol Promotional Pricing
+
+- Updated GPT-5.6 Sol API-equivalent estimates to the promotional rates announced for August 22, 2026.
+- Kept earlier Sol usage on its original rates and applied the reduced rates to short- and long-context usage from the exact effective-date boundary.
+- Kept Codex credit estimates unchanged because no new credit rate was announced.
+
 ## 1.7.6 - 2026-08-15 - Desktop Project Binding
 
 - Added a guarded Desktop project-assignment preflight that blocks Import before file transfer when Desktop is running, the destination project is missing or ambiguous, or an assignment conflicts.

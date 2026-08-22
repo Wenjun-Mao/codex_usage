@@ -8,7 +8,7 @@ from functools import cache
 from codex_usage.models import TokenUsage
 
 
-PRICING_AS_OF = "2026-07-31"
+PRICING_AS_OF = "2026-08-22"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
@@ -17,6 +17,12 @@ GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM = datetime(
     2026,
     7,
     31,
+    tzinfo=UTC,
+)
+GPT_5_6_SOL_API_REDUCTION_EFFECTIVE_FROM = datetime(
+    2026,
+    8,
+    22,
     tzinfo=UTC,
 )
 
@@ -227,6 +233,16 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         output_per_1m=1.20,
         cache_write_input_per_1m=0.25,
         effective_from=GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM,
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
+    _effective_rate(
+        "gpt-5.6-sol",
+        input_per_1m=4.00,
+        cached_input_per_1m=0.40,
+        output_per_1m=20.00,
+        cache_write_input_per_1m=5.00,
+        effective_from=GPT_5_6_SOL_API_REDUCTION_EFFECTIVE_FROM,
+        aliases=("gpt-5.6",),
         request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
     ),
     _effective_rate("gpt-5.5", input_per_1m=5.00, cached_input_per_1m=0.50, output_per_1m=30.00),

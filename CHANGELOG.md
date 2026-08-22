@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.7 - 2026-08-22 - Sol Promotional Pricing
+
+- Added GPT-5.6 Sol's promotional API rates from August 22, 2026: $4 input, $0.40 cached input, $5 cache write, and $20 output per million tokens.
+- Applied the existing long-context contract to the reduced rates while preserving the original Sol rates for earlier usage.
+- Left Codex credit estimates unchanged because OpenAI's announcement changes API pricing only.
+
 ## 1.7.6 - 2026-08-15 - Desktop Project Binding
 
 - Added a guarded Desktop project-assignment preflight that blocks Import before file transfer when Desktop is running, the destination project is missing or ambiguous, or an assignment conflicts.
