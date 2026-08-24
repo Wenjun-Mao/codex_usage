@@ -103,29 +103,31 @@ def render_project_breakdown_chart(
     if not points:
         return _empty_svg(title, "No usage found for this range.")
 
-    max_tokens = max(point.total_tokens for point in points) or 1
+    role_max_tokens = {
+        "root": max(point.root_tokens for point in points) or 1,
+        "subagent": max(point.subagent_tokens for point in points) or 1,
+    }
     chunks = [
-        f'<div class="project-breakdown-chart" role="group" aria-label="{_esc(title)}">'
+        f'<div class="project-breakdown-chart" role="group" aria-label="{_esc(title)}">',
+        f'<div class="project-breakdown-matrix" role="table" aria-label="{_esc(title)}">',
+        '<div class="project-breakdown-header" role="row">',
+        '<span class="project-column-heading" role="columnheader">Project</span>',
+        '<span class="role-column-heading" role="columnheader">Root tasks</span>',
+        '<span class="role-column-heading" role="columnheader">Subagents</span>',
+        '<span class="project-total-heading" role="columnheader">Total</span>',
+        "</div>",
     ]
     for point in points:
-        outer_width = point.total_tokens / max_tokens * 100
-        role_gap_class = " has-role-gap" if len(point.roles) == 2 else ""
-        role_columns = " ".join(f"{role.total_tokens}fr" for role in point.roles)
-        role_headings = "".join(_render_role_heading(role) for role in point.roles)
-        role_groups = "".join(_render_role_group(point, role) for role in point.roles)
         row_html = (
-            '<div class="project-breakdown-row">'
-            f'<span class="breakdown-bar-label">{_esc(point.label)}</span>'
-            '<div class="project-track">'
-            f'<div class="project-role-labels{role_gap_class}">{role_headings}</div>'
-            f'<div class="project-role-stack" style="width:{outer_width:.4f}%">'
-            f'<div class="project-role-groups{role_gap_class}" '
-            f'style="grid-template-columns:{role_columns}">{role_groups}</div>'
-            "</div></div>"
-            f'<span class="breakdown-bar-value">{_esc(_breakdown_value(point))}</span>'
+            f'<div class="project-breakdown-row" role="row" data-project-key="{_esc(point.key)}">'
+            f'<span class="breakdown-bar-label" role="rowheader">{_esc(point.label)}</span>'
+            f'{_render_role_cell(point, "root", role_max_tokens["root"])}'
+            f'{_render_role_cell(point, "subagent", role_max_tokens["subagent"])}'
+            f'<span class="breakdown-bar-value" role="cell">{_esc(_breakdown_value(point))}</span>'
             "</div>"
         )
         chunks.append(row_html)
+    chunks.append("</div>")
     chunks.append(_render_model_legend(legend))
     chunks.append("</div>")
     return "".join(chunks)
@@ -157,12 +159,37 @@ def render_model_mix_chart(points: list[ModelMixPoint]) -> str:
     return "".join(chunks)
 
 
-def _render_role_heading(role: RoleGroupPoint) -> str:
+def _render_role_cell(
+    point: ProjectBreakdownPoint, role_name: str, max_tokens: int
+) -> str:
+    role = next((item for item in point.roles if item.role == role_name), None)
+    label = "Root tasks" if role_name == "root" else "Subagents"
+    role_class = f"project-role-cell-{role_name}"
+    if role is None:
+        aria = f"{point.label} {label}, no usage"
+        return (
+            f'<div class="project-role-cell {role_class}" role="cell" '
+            f'data-role-label="{_esc(label)}" aria-label="{_esc(aria)}">'
+            '<div class="project-role-metric">'
+            '<span class="project-role-metric-total">0</span>'
+            '<span aria-hidden="true">|</span><span>0.0%</span>'
+            "</div>"
+            '<div class="project-role-track"></div>'
+            "</div>"
+        )
+
+    width = role.total_tokens / max_tokens * 100 if max_tokens else 0
     return (
-        '<span class="project-role-heading">'
-        f'<span class="project-role-heading-label">{_esc(role.label)}</span>'
-        f'<span class="project-role-heading-detail">{_fmt_compact(role.total_tokens)} | {role.project_share:.1%}</span>'
-        "</span>"
+        f'<div class="project-role-cell {role_class}" role="cell" '
+        f'data-role-label="{_esc(label)}">'
+        '<div class="project-role-metric">'
+        f'<span class="project-role-metric-total">{_fmt_compact(role.total_tokens)}</span>'
+        f'<span aria-hidden="true">|</span><span>{role.project_share:.1%}</span>'
+        "</div>"
+        '<div class="project-role-track">'
+        f'<div class="project-role-fill" style="width:{width:.4f}%">'
+        f"{_render_role_group(point, role)}"
+        "</div></div></div>"
     )
 
 

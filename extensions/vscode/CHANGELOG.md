@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.8 - 2026-08-23 - Project Role Column Matrix
+
+- Replaced repeated Root tasks and Subagents labels with one shared pair of comparison columns.
+- Kept exact role totals and project shares visible while making smaller subagent differences easier to compare.
+- Stacked the two labeled role cells cleanly on narrow dashboards and retained model colors and tooltips.
+
 ## 1.7.7 - 2026-08-22 - Sol Promotional Pricing
 
 - Updated GPT-5.6 Sol API-equivalent estimates to the promotional rates announced for August 22, 2026.

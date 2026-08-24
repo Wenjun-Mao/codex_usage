@@ -1,12 +1,12 @@
 # Codex Usage Dashboard
 
-Local-first Codex usage reporting for understanding project activity, token usage, Codex credits, and API-equivalent cost from local Codex session JSONL logs. Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model so the report explains both who used tokens and which models contributed.
+Local-first Codex usage reporting for understanding project activity, token usage, Codex credits, and API-equivalent cost from local Codex session JSONL logs. Project Breakdown separates each project into user-visible root tasks and structured subagents, presents both roles in shared comparison columns, then stacks each role by model so the report explains both who used tokens and which models contributed.
 
 ## What The Dashboard Shows
 
 - Two focused views keep date-filtered **Usage** separate from current **Task Storage**. Projects and theme apply to both; the date range applies only to Usage.
 - Task Storage shows current local JSONL usage by user-visible root task tree, diagnoses repeated compacted-history and inline-media amplification on demand, and prepares guarded rollovers through a new verified backup.
-- Project Breakdown separates each project into user-visible root tasks and structured subagents, then stacks each role by model.
+- Project Breakdown separates each project into user-visible root tasks and structured subagents, presents both roles in shared comparison columns, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
 - Total tokens and usage event counts, cache hit share, and daily/hourly usage patterns.
 - API-equivalent USD using checked-in effective-dated pricing.

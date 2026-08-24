@@ -31,10 +31,13 @@ def test_project_breakdown_renders_nested_roles_models_and_shared_legend(
         "model-details",
     ):
         assert f'data-report-section="{section_id}"' in html
-    assert 'class="project-role-groups has-role-gap"' in html
-    assert '<div class="project-track"><div class="project-role-labels has-role-gap">' in html
-    assert ">Root tasks<" in html
-    assert ">Subagents<" in html
+    assert 'class="project-breakdown-chart" role="group"' in html
+    assert 'class="project-breakdown-matrix" role="table"' in html
+    assert 'class="project-breakdown-header" role="row"' in html
+    assert html.count('<span class="role-column-heading" role="columnheader">Root tasks</span>') == 1
+    assert html.count('<span class="role-column-heading" role="columnheader">Subagents</span>') == 1
+    assert 'class="project-role-cell project-role-cell-root"' in html
+    assert 'class="project-role-cell project-role-cell-subagent"' in html
     assert 'role="group" aria-label="demo Root tasks' in html
     assert 'tabindex="0"' in html
     assert "demo, Root tasks, gpt-5.6-sol" in html
@@ -69,22 +72,43 @@ def test_project_breakdown_role_edges_keep_tiny_positive_shares_accessible(
         ],
     )
 
-    assert (
-        'class="project-role-groups" style="grid-template-columns:10fr"'
-        in root_only_html
-    )
-    assert 'class="project-role-groups has-role-gap"' not in root_only_html
-    assert ">Subagents<" in subagent_only_html
-    assert (
-        'class="project-role-groups" style="grid-template-columns:10fr"'
-        in subagent_only_html
-    )
-    assert "grid-template-columns:9999fr 1fr" in tiny_share_html
-    assert 'style="width:100.0000%" tabindex="0"' in tiny_share_html
+    assert 'class="project-role-fill" style="width:100.0000%"' in root_only_html
+    assert 'aria-label="demo Subagents, no usage"' in root_only_html
+    assert 'aria-label="demo Root tasks, no usage"' in subagent_only_html
+    assert 'class="project-role-fill" style="width:100.0000%"' in subagent_only_html
+    assert tiny_share_html.count(
+        'class="project-role-fill" style="width:100.0000%"'
+    ) == 2
     assert (
         "demo, Subagents, gpt-5.6-terra, 1 tokens, 0.0% of project" in tiny_share_html
     )
     assert "width:1.0000%" not in tiny_share_html
+
+
+def test_project_breakdown_scales_each_role_column_independently(
+    tmp_path: Path,
+) -> None:
+    html = _render_report(
+        tmp_path,
+        [
+            _record("root", "gpt-5.6-sol", 1_000, project="alpha"),
+            _record("subagent", "gpt-5.6-terra", 10, project="alpha"),
+            _record("root", "gpt-5.6-sol", 500, project="beta"),
+            _record("subagent", "gpt-5.6-terra", 20, project="beta"),
+        ],
+    )
+
+    alpha = html.split('data-project-key="alpha"', 1)[1].split(
+        '<div class="project-breakdown-row"', 1
+    )[0]
+    beta = html.split('data-project-key="beta"', 1)[1].split(
+        '<div class="model-legend"', 1
+    )[0]
+
+    assert 'style="width:100.0000%"' in alpha
+    assert 'style="width:50.0000%"' in alpha
+    assert 'style="width:50.0000%"' in beta
+    assert 'style="width:100.0000%"' in beta
 
 
 def test_project_details_and_exact_model_details_keep_complete_disclosures(
@@ -124,7 +148,7 @@ def test_project_breakdown_empty_state_and_styles_are_self_contained(
     assert "--model-7: #8b949f;" in html
     assert "body.vscode-high-contrast" in html
     assert ".model-segment:focus-visible" in html
-    assert "@container role-labels (max-width: 360px)" in html
+    assert 'grid-template-areas: "project total" "root root" "subagent subagent";' in html
     assert "<script" not in html
     assert " src=" not in html
     assert 'href="#report-view-usage"' in html
@@ -173,19 +197,19 @@ def test_project_role_fill_boundary_keeps_tooltips_outside_its_clip(tmp_path: Pa
     assert ".model-segment:first-child { border-radius: 3px 0 0 3px; }" in html
     assert ".model-segment:last-child { border-radius: 0 3px 3px 0; }" in html
     assert ".model-segment:only-child { border-radius: 3px; }" in html
-    assert ".project-role-group:first-child .model-segment:first-child .chart-tooltip" in html
-    assert ".project-role-group:last-child .model-segment:last-child .chart-tooltip" in html
+    assert ".project-role-cell-root .model-segment:first-child .chart-tooltip" in html
+    assert ".project-role-cell-subagent .model-segment:last-child .chart-tooltip" in html
 
 
-def test_project_role_stack_reserves_space_for_labels_and_groups(tmp_path: Path) -> None:
+def test_project_role_cells_reserve_space_for_metrics_and_tracks(tmp_path: Path) -> None:
     html = _render_report(tmp_path, [])
 
-    assert ".project-track, .model-mix-track {" in html
-    assert "height: 62px;" in html
-    assert ".project-role-stack { min-width: 0; height: 34px; }" in html
+    assert ".project-role-metric {" in html
+    assert ".project-role-track { min-width: 0; height: 30px;" in html
+    assert ".project-role-fill { min-width: 0; height: 100%; }" in html
 
 
-def test_project_rows_share_track_columns_and_labels_do_not_use_role_widths(
+def test_project_rows_share_role_columns_and_headings_render_once(
     tmp_path: Path,
 ) -> None:
     html = _render_report(
@@ -196,17 +220,17 @@ def test_project_rows_share_track_columns_and_labels_do_not_use_role_widths(
         ],
     )
 
-    assert ".project-breakdown-row { display: contents; }" in html
-    assert "grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;" in html
-    labels_html = html.split('<div class="project-role-labels has-role-gap">', 1)[1].split(
+    assert ".project-breakdown-header, .project-breakdown-row { display: contents; }" in html
+    assert (
+        "grid-template-columns: minmax(120px, 190px) minmax(190px, 1fr) "
+        "minmax(190px, 1fr) max-content;" in html
+    )
+    header = html.split('<div class="project-breakdown-header" role="row">', 1)[1].split(
         "</div>", 1
     )[0]
-    assert "grid-template-columns" not in labels_html
-    assert ">Root tasks<" in labels_html
-    assert ">Subagents<" in labels_html
-    assert "overflow: hidden" not in html.split(".project-role-heading {", 1)[1].split(
-        "}", 1
-    )[0]
+    assert header.count('role="columnheader"') == 4
+    assert header.count("Root tasks") == 1
+    assert header.count("Subagents") == 1
 
 
 def test_model_details_keeps_all_exact_models_beyond_two_hundred_rows(
@@ -242,7 +266,9 @@ def _render_report(tmp_path: Path, records: list[UsageRecord]) -> str:
     return output.read_text(encoding="utf-8")
 
 
-def _record(role: str, model: str, total: int) -> UsageRecord:
+def _record(
+    role: str, model: str, total: int, *, project: str = "demo"
+) -> UsageRecord:
     return UsageRecord(
         timestamp=datetime(2026, 8, 1, tzinfo=UTC),
         usage=TokenUsage(
@@ -252,10 +278,10 @@ def _record(role: str, model: str, total: int) -> UsageRecord:
             output_tokens=total // 10,
             total_tokens=total,
         ),
-        session_id=f"demo-{role}-{model}",
+        session_id=f"{project}-{role}-{model}",
         file_path=Path("/tmp/session.jsonl"),
         usage_role=role,  # type: ignore[arg-type]
         model=model,
-        project_key="demo",
-        project_label="demo",
+        project_key=project,
+        project_label=project,
     )

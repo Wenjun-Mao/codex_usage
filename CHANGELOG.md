@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.7.8 - 2026-08-23 - Project Role Column Matrix
+
+- Replaced repeated per-project Root tasks and Subagents headings with one shared pair of role columns.
+- Scaled each role column independently across projects while keeping exact token totals and project shares visible in every cell.
+- Added stable equal-width role tracks, explicit zero-usage cells, and a stacked narrow layout with local role labels.
+
 ## 1.7.7 - 2026-08-22 - Sol Promotional Pricing
 
 - Added GPT-5.6 Sol's promotional API rates from August 22, 2026: $4 input, $0.40 cached input, $5 cache write, and $20 output per million tokens.

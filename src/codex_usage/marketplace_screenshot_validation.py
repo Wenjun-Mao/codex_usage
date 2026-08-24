@@ -139,24 +139,24 @@ def _validate_role_group_geometry(page: Page) -> None:
     for index in range(groups.count()):
         group = groups.nth(index)
         group_box = group.bounding_box()
-        stack_box = _ancestor(group, "project-role-stack").bounding_box()
-        if group_box is None or stack_box is None:
+        track_box = _ancestor(group, "project-role-track").bounding_box()
+        if group_box is None or track_box is None:
             raise RuntimeError("project role group is missing geometry")
         group_x, group_y, group_width, group_height = _box_values(group_box)
-        stack_x, stack_y, stack_width, stack_height = _box_values(stack_box)
+        track_x, track_y, track_width, track_height = _box_values(track_box)
         if (
             group_width <= 0
             or group_height <= 0
-            or group_x < stack_x
-            or group_y < stack_y
-            or group_x + group_width > stack_x + stack_width
-            or group_y + group_height > stack_y + stack_height
+            or group_x < track_x
+            or group_y < track_y
+            or group_x + group_width > track_x + track_width
+            or group_y + group_height > track_y + track_height
         ):
-            raise RuntimeError("project role group escapes its project role stack")
+            raise RuntimeError("project role group escapes its role column track")
 
 
 def _validate_project_track_geometry(page: Page) -> None:
-    tracks = page.locator(".project-track")
+    tracks = page.locator(".project-role-track")
     track_widths = [
         _box_values(box)[2]
         for index in range(tracks.count())
@@ -167,7 +167,7 @@ def _validate_project_track_geometry(page: Page) -> None:
     if max(track_widths) - min(track_widths) > 0.5:
         raise RuntimeError("project tracks do not share one chart width")
 
-    clipped_labels = page.locator(".project-role-heading-label").evaluate_all(
+    clipped_labels = page.locator(".role-column-heading").evaluate_all(
         """
         labels => labels.filter(label => {
           const rect = label.getBoundingClientRect();
@@ -179,7 +179,7 @@ def _validate_project_track_geometry(page: Page) -> None:
         """
     )
     if clipped_labels:
-        raise RuntimeError(f"project role labels are clipped: {clipped_labels}")
+        raise RuntimeError(f"project role column headings are clipped: {clipped_labels}")
 
 
 def _validate_scroll_containers(page: Page, view: str) -> None:

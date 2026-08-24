@@ -129,7 +129,7 @@ def test_project_track_geometry_rejects_mismatched_track_widths() -> None:
 
     class FakePage:
         def locator(self, selector: str):
-            if selector == ".project-track":
+            if selector == ".project-role-track":
                 return FakeLocator(
                     [
                         {"x": 10, "y": 20, "width": 300, "height": 62},

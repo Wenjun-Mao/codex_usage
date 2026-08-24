@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 README_PATHS = (ROOT / "README.md", ROOT / "extensions/vscode/README.md")
 CHANGELOG_PATHS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 RELEASE_CHECKLIST = ROOT / "docs/release.md"
+ROLE_MATRIX_ADR = ROOT / "docs/adr/0030-project-role-column-matrix.md"
 SCREENSHOT_PATH = ROOT / "docs/marketplace/dashboard-synthetic.png"
 STORAGE_SCREENSHOT_PATH = ROOT / "docs/marketplace/task-storage-synthetic.png"
 SCREENSHOT_MARKDOWN = "![Synthetic Codex Usage Dashboard screenshot]"
@@ -119,6 +120,28 @@ def test_release_checklist_locks_marketplace_screenshot_gate() -> None:
         "uv run python scripts/generate_marketplace_screenshot.py --check",
     ):
         assert re.search(rf"(?m)^{re.escape(command)}$", checklist), command
+
+    for phrase in (
+        "shared columns",
+        "equal widths across projects",
+        "stacks the two labeled role cells",
+    ):
+        assert phrase in checklist, phrase
+
+
+def test_role_matrix_adr_records_independent_scales_and_responsive_contract() -> None:
+    adr = normalized_prose(ROLE_MATRIX_ADR.read_text(encoding="utf-8"))
+    index = (ROOT / "docs/adr/README.md").read_text(encoding="utf-8")
+
+    assert "0030-project-role-column-matrix.md" in index
+    for phrase in (
+        "four-column comparison matrix",
+        "each role column uses a zero-based scale",
+        "exact token total",
+        "stack vertically",
+        "partially supersedes",
+    ):
+        assert phrase in adr, phrase
 
 
 def test_1_2_0_changelogs_describe_role_model_breakdown() -> None:

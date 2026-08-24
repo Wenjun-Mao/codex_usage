@@ -44,7 +44,7 @@ uv run python scripts/generate_marketplace_screenshot.py
 uv run python scripts/generate_marketplace_screenshot.py --check
 ```
 
-Visually review both tracked images at 1440 x 900. In the Usage image, confirm that both `Root tasks` and `Subagents` headings are visible where space permits, the 8 px boundary is obvious, model colors match Model Mix, and `Other` is neutral. In the Task Storage image, confirm that root and structured-subagent bytes remain distinct, amplification versus unknown-analysis badges are honest, and Back Up, Analyze, and Prepare Rollover actions fit. In both images, confirm the active view is obvious, no tooltip text is clipped, and no personal paths or data appear. Require `git diff -- docs/marketplace/dashboard-synthetic.png docs/marketplace/task-storage-synthetic.png` review whenever dashboard presentation changes.
+Visually review both tracked images at 1440 x 900. In the Usage image, confirm that `Root tasks` and `Subagents` appear once as shared columns, role tracks have equal widths across projects, exact role totals and project shares remain visible, model colors match Model Mix, and `Other` is neutral. At the narrow browser gate, confirm each project stacks the two labeled role cells without overlap. In the Task Storage image, confirm that root and structured-subagent bytes remain distinct, amplification versus unknown-analysis badges are honest, and Back Up, Analyze, and Prepare Rollover actions fit. In both images, confirm the active view is obvious, no tooltip text is clipped, and no personal paths or data appear. Require `git diff -- docs/marketplace/dashboard-synthetic.png docs/marketplace/task-storage-synthetic.png` review whenever dashboard presentation changes.
 
 ## GitHub Actions Release
 

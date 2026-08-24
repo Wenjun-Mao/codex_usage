@@ -38,16 +38,25 @@ _PROJECT_BREAKDOWN_CSS = """
     .project-breakdown-chart, .model-mix-chart {
       display: grid;
       min-width: 680px;
-      max-width: 920px;
       width: 100%;
     }
     .project-breakdown-chart {
-      grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;
+      grid-template-columns: minmax(120px, 190px) minmax(190px, 1fr) minmax(190px, 1fr) max-content;
       gap: 12px 10px;
       align-items: center;
+      max-width: 1180px;
     }
-    .project-breakdown-row { display: contents; }
-    .model-mix-chart { gap: 12px; }
+    .project-breakdown-matrix { display: contents; }
+    .project-breakdown-header, .project-breakdown-row { display: contents; }
+    .project-column-heading, .role-column-heading, .project-total-heading {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .project-column-heading { text-align: right; }
+    .model-mix-chart { gap: 12px; max-width: 920px; }
     .model-mix-row {
       display: grid;
       grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;
@@ -68,31 +77,29 @@ _PROJECT_BREAKDOWN_CSS = """
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
     }
-    .project-track, .model-mix-track {
+    .model-mix-track {
       min-width: 0;
       height: 58px;
       border-radius: 4px;
       background: var(--surface-soft);
     }
-    .project-track { height: 62px; }
-    .project-role-stack { min-width: 0; height: 34px; }
-    .project-role-labels {
+    .project-role-cell { min-width: 0; }
+    .project-role-cell::before { display: none; content: attr(data-role-label); }
+    .project-role-metric {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      min-width: 0;
-      height: 24px;
-      margin-bottom: 4px;
-      container-name: role-labels;
-      container-type: inline-size;
+      gap: 4px;
+      height: 18px;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
-    .project-role-groups { display: grid; height: 34px; min-width: 0; }
-    .project-role-groups.has-role-gap { gap: 8px; }
-    .project-role-heading { flex: 0 0 auto; min-width: max-content; color: var(--muted); font-size: 11px; white-space: nowrap; }
-    .project-role-heading-label { color: var(--text); font-weight: 650; }
-    .project-role-heading-detail { margin-left: 4px; font-variant-numeric: tabular-nums; }
-    .project-role-group { position: relative; display: flex; overflow: visible; min-width: 0; border: 1px solid var(--border); border-radius: 4px; }
+    .project-role-metric-total { color: var(--text); font-weight: 650; }
+    .project-role-track { min-width: 0; height: 30px; border-radius: 4px; background: var(--surface-soft); }
+    .project-role-fill { min-width: 0; height: 100%; }
+    .project-role-group { position: relative; display: flex; overflow: visible; width: 100%; height: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 4px; }
     .model-segment { position: relative; display: block; flex: 0 0 auto; height: 100%; outline: none; }
     .model-segment:first-child { border-radius: 3px 0 0 3px; }
     .model-segment:last-child { border-radius: 0 3px 3px 0; }
@@ -104,23 +111,41 @@ _PROJECT_BREAKDOWN_CSS = """
       filter: brightness(1.12);
       z-index: 3;
     }
-    .model-legend { display: flex; flex-wrap: wrap; grid-column: 2 / -1; gap: 6px 12px; margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .model-legend { display: flex; flex-wrap: wrap; grid-column: 2 / 4; gap: 6px 12px; margin-top: 2px; color: var(--muted); font-size: 12px; }
     .model-legend-item { display: inline-flex; align-items: center; gap: 5px; }
     .model-swatch { display: inline-block; width: 10px; height: 10px; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
     .model-swatch > span { display: block; width: 100%; height: 100%; }
     .model-segment .chart-tooltip { left: 50%; }
     .model-segment:hover .chart-tooltip,
     .model-segment:focus-visible .chart-tooltip { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s; }
-    .project-role-group:first-child .model-segment:first-child .chart-tooltip { left: 0; transform: translate(0, 2px); }
-    .project-role-group:last-child .model-segment:last-child .chart-tooltip { right: 0; left: auto; transform: translate(0, 2px); }
-    .project-role-group:first-child .model-segment:first-child:hover .chart-tooltip,
-    .project-role-group:first-child .model-segment:first-child:focus-visible .chart-tooltip,
-    .project-role-group:last-child .model-segment:last-child:hover .chart-tooltip,
-    .project-role-group:last-child .model-segment:last-child:focus-visible .chart-tooltip { transform: translate(0, 0); }
-    @container role-labels (max-width: 360px) { .project-role-heading-detail { display: none; } }
+    .project-role-cell-root .model-segment:first-child .chart-tooltip { left: 0; transform: translate(0, 2px); }
+    .project-role-cell-subagent .model-segment:last-child .chart-tooltip { right: 0; left: auto; transform: translate(0, 2px); }
+    .project-role-cell-root .model-segment:first-child:hover .chart-tooltip,
+    .project-role-cell-root .model-segment:first-child:focus-visible .chart-tooltip,
+    .project-role-cell-subagent .model-segment:last-child:hover .chart-tooltip,
+    .project-role-cell-subagent .model-segment:last-child:focus-visible .chart-tooltip { transform: translate(0, 0); }
     @media (max-width: 720px) {
-      .project-breakdown-chart, .model-mix-chart { min-width: 560px; }
-      .project-breakdown-chart { grid-template-columns: 96px minmax(220px, 1fr) max-content; gap: 12px 8px; }
+      .project-breakdown-chart { display: block; min-width: 0; }
+      .project-breakdown-matrix { display: block; }
+      .project-breakdown-header { display: none; }
+      .project-breakdown-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+        grid-template-areas: "project total" "root root" "subagent subagent";
+        gap: 8px 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .project-breakdown-row .breakdown-bar-label { grid-area: project; align-self: center; }
+      .project-breakdown-row .breakdown-bar-value { grid-area: total; max-width: 52vw; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+      .project-role-cell { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "role metric" "track track"; row-gap: 3px; }
+      .project-role-cell-root { grid-area: root; }
+      .project-role-cell-subagent { grid-area: subagent; }
+      .project-role-cell::before { display: block; grid-area: role; color: var(--text); font-size: 11px; font-weight: 650; }
+      .project-role-metric { grid-area: metric; height: auto; margin: 0; align-self: center; }
+      .project-role-track { grid-area: track; }
+      .model-legend { margin-top: 10px; }
+      .model-mix-chart { min-width: 560px; }
       .model-mix-row { grid-template-columns: 96px minmax(220px, 1fr) max-content; gap: 8px; }
       .breakdown-bar-label { text-align: left; }
     }

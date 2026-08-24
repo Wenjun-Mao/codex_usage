@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; presentation partially superseded by ADR 0030
 
 ## Context
 

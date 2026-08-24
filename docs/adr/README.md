@@ -37,3 +37,4 @@ The guardian approval ownership contract is recorded in [ADR 0026](0026-guardian
 The storage amplification analysis and rollover preparation contract is recorded in [ADR 0027](0027-storage-amplification-analysis-and-rollover.md).
 The structured subagent replay accounting contract is recorded in [ADR 0028](0028-structured-subagent-replay-accounting.md).
 The guarded Desktop project-binding contract is recorded in [ADR 0029](0029-guarded-desktop-project-binding.md).
+The Project Breakdown role-column presentation contract is recorded in [ADR 0030](0030-project-role-column-matrix.md).
