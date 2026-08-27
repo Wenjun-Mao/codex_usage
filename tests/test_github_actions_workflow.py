@@ -174,7 +174,7 @@ def test_windows_build_runs_native_descendant_lifetime_proof() -> None:
 def test_release_document_uses_current_tag_example() -> None:
     release_document = (ROOT / "docs/release.md").read_text(encoding="utf-8")
 
-    assert "such as `v1.7.0`" in release_document
+    assert "such as `v1.8.0`" in release_document
     assert "`v0.1.42`" not in release_document
     assert "`v0.1.32`" not in release_document
 
