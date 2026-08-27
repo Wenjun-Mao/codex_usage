@@ -41,15 +41,15 @@ work can continue inheriting the large root context.
    retains guarded append checkpoints for later growth.
 3. Review the compacted-history, inline-media, descendant concentration, and
    active-root flags together. Do not infer causality from total size alone.
-4. For an eligible recovery-ready tree, run **Prepare Rollover**. This creates a
-   new verified backup and copies a text-only starter prompt.
-5. Create and verify a fresh root task in the same Codex project yourself.
-6. Delete or archive the old task in Codex only after the new task and backup
-   have been checked.
+4. Use **Fork in Codex** when conversational continuity is the priority. A fork
+   is not a backup and does not guarantee lower inherited storage.
+5. Create a fresh task with a concise handoff when reducing inherited context
+   and future storage growth is the priority.
+6. Verify the replacement before manually archiving or deleting the old task
+   in Codex.
 
-Prepare Rollover does not reduce disk usage by itself. It deliberately keeps
-backup, continuity preparation, and Codex-owned task deletion as separate
-steps.
+Codex Usage keeps this workflow diagnostic-only. Task creation, forking,
+archiving, and deletion remain manual Codex-owned operations.
 
 ## Current Boundary
 

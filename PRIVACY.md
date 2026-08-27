@@ -16,7 +16,6 @@ Codex Usage Dashboard is designed as a local-first tool.
 
 - Local HTML reports under VS Code extension storage.
 - Optional local CLI outputs such as JSON, CSV, and HTML reports when you run `codex-usage` directly.
-- Optional `.codex-task-backup` archives and temporary sibling partial files created when you explicitly back up a selected Task Storage tree.
 - Optional selected-thread sync files under a user-provided local sync folder.
 - Local sync backups under `.codex-sync-backups` before imported thread files overwrite existing local files.
 - A local SQLite usage cache that may retain parsed token usage for session files that were later archived or deleted locally.
@@ -28,7 +27,7 @@ Codex Usage Dashboard is designed as a local-first tool.
 - The extension does not include telemetry.
 - The extension does not fetch live pricing data.
 - Automatic project transition detection does not upload data or make network calls.
-- Task Storage backups are created locally only; the backup operation does not upload data, call a network service, or emit telemetry.
+- Task Storage inventory and analysis are local-only and do not upload data, call a network service, or emit telemetry.
 - Experimental sync writes only to the local folder you choose through the extension. Any cloud transfer is handled by your own sync tool, not by this extension.
 - Experimental sync does not sync Codex SQLite databases, including `state_5.sqlite`.
 - API-equivalent USD and Codex credit estimates use checked-in effective-dated pricing tables.
@@ -37,7 +36,7 @@ Codex Usage Dashboard is designed as a local-first tool.
 
 Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. Project transition detection can also inspect local thread current working directories and timestamps from `state_5.sqlite`. Do not share raw logs, generated reports, or transition JSON unless you are comfortable sharing that metadata.
 
-Task backup archives preserve the selected physical JSONL files and selected session-index entries. They may contain prompts, source code, repository paths, branch names, model names, timestamps, and usage counts. Archives are compressed but not encrypted; protect them like the original Codex logs. Backup is not restore or deletion, and the extension does not free or remove the source files.
+Version 1.8.0 no longer creates, verifies, or restores custom `.codex-task-backup` archives. Existing archives are user-owned local files and remain untouched by the extension. They may contain sensitive task content, so continue to protect any archives you already have like the original Codex logs.
 
 The retained cache data stays on your machine under the extension/global Codex Usage cache and is used only for historical accounting. It cannot restore a deleted Codex conversation.
 

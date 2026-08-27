@@ -33,8 +33,6 @@ import {
 import { createCodexTaskRegistrar } from "./codexRegistrationVscode";
 import { createCodexDesktopProjectBinder } from "./codexDesktopProjectBinding";
 import { TaskTransferController } from "./taskTransfer";
-import { StorageBackupController } from "./storageBackup";
-import { createStorageBackupVscodePort } from "./storageBackupVscode";
 import { StorageDiagnosticsController } from "./storageDiagnosticsVscode";
 import { readTaskTransferFolder } from "./taskTransferVscodeState";
 import {
@@ -97,16 +95,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   });
   const taskTransfer = new TaskTransferController(taskTransferPort);
-  const taskBackup = new StorageBackupController(createStorageBackupVscodePort({
-    output,
-    resolveExecutable: () => resolveBundledExecutable(context),
-    processEnv: () => buildCodexUsageEnv(context.globalStorageUri.fsPath),
-    runCommand: async (args) => runCodexUsage(
-      await resolveBundledExecutable(context),
-      args,
-      buildCodexUsageEnv(context.globalStorageUri.fsPath),
-    ),
-  }));
   const storageDiagnostics = new StorageDiagnosticsController({
     output,
     resolveExecutable: () => resolveBundledExecutable(context),
@@ -142,11 +130,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.pushTasks", () => taskTransfer.exportTasks()),
     vscode.commands.registerCommand("codexUsage.syncStatus", () => taskTransfer.reviewStatus()),
     vscode.commands.registerCommand("codexUsage.openSyncFolder", () => taskTransfer.openFolder()),
-    vscode.commands.registerCommand("codexUsage.backupTask", (treeId?: unknown) => taskBackup.backup(treeId)),
     vscode.commands.registerCommand("codexUsage.analyzeTaskStorage", (treeId?: unknown) =>
       storageDiagnostics.analyze(treeId)),
-    vscode.commands.registerCommand("codexUsage.prepareTaskRollover", (treeId?: unknown) =>
-      storageDiagnostics.prepareRollover(treeId)),
   ];
   const settingsWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
     if (!event.affectsConfiguration("codexUsage")) {

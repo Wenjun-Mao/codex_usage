@@ -3,7 +3,10 @@ const { PassThrough } = require("node:stream");
 const EventEmitter = require("node:events");
 const test = require("node:test");
 
-const { BackupCancelledError, runBackupProcess } = require("../out/storageBackupProcess");
+const {
+  StorageOperationCancelledError,
+  runStorageOperation,
+} = require("../out/storageOperationProcess");
 
 function fakeChild() {
   const child = new EventEmitter();
@@ -34,35 +37,41 @@ function token() {
   };
 }
 
-test("backup process streams stderr progress and parses one final stdout result", async () => {
+const parseProgressLine = (line) => {
+  const value = JSON.parse(line);
+  return value.phase === "analyzing" ? value : undefined;
+};
+
+test("storage operation streams stderr progress and parses final stdout", async () => {
   const child = fakeChild();
   const progress = [];
   const output = [];
-  const result = runBackupProcess({
+  const result = runStorageOperation({
     executablePath: "codex-usage", args: [], env: {}, cancellationToken: token(),
+    parseProgressLine,
+    parseResult: JSON.parse,
     onProgress: (event) => progress.push(event), onOutput: (text) => output.push(text),
     spawnProcess: () => child,
   });
-  child.stderr.write('{"event":"progress","phase":"compressing","completed_bytes":5,"total_bytes":10}\n');
-  child.stdout.end(JSON.stringify({
-    archive_path: "/tmp/task", source_bytes: 10, archive_bytes: 5, file_count: 1,
-    recovery_ready: true, warnings: [], archive_sha256: "abc", compression: "maximum",
-  }));
+  child.stderr.write('{"phase":"analyzing","completed_bytes":5}\n');
+  child.stdout.end('{"source_bytes_read":5}');
   child.stderr.end();
   child.emit("close", 0);
-  assert.equal((await result).archiveBytes, 5);
-  assert.equal(progress[0].phase, "compressing");
+
+  assert.equal((await result).source_bytes_read, 5);
+  assert.equal(progress[0].phase, "analyzing");
   assert.doesNotMatch(output.join(""), /completed_bytes/);
 });
 
-test("backup cancellation terminates the complete spawned process tree", async () => {
+test("storage operation cancellation terminates the complete process tree", async () => {
   const child = fakeChild();
   const cancellation = token();
-  const result = runBackupProcess({
+  const result = runStorageOperation({
     executablePath: "codex-usage", args: [], env: {}, cancellationToken: cancellation,
+    parseProgressLine, parseResult: JSON.parse,
     onProgress: () => undefined, onOutput: () => undefined, spawnProcess: () => child,
   });
   cancellation.cancel();
-  await assert.rejects(result, BackupCancelledError);
+  await assert.rejects(result, StorageOperationCancelledError);
   assert.equal(child.killCalls, 1);
 });

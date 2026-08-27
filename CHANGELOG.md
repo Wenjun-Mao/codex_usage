@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.8.0 - 2026-08-27 - Codex-Owned Task Lifecycle
+
+- Removed custom compressed task backup, verification, and rollover workflows from the CLI and VS Code extension; Task Storage now exposes only read-only inventory and selected-tree analysis.
+- Replaced the storage snapshot payload with schema 4 and removed backup- and rollover-readiness fields while preserving topology diagnostics, analysis coverage, and amplification metrics.
+- Removed the zstandard runtime dependency and replaced the packaged backup gate with cross-platform Task Storage snapshot-and-analysis coverage.
+- Documented manual **Fork in Codex** for continuity and a fresh task with a concise handoff for meaningful inherited-context reduction. Existing `.codex-task-backup` files remain untouched but can no longer be created, verified, or restored by Codex Usage.
+
 ## 1.7.8 - 2026-08-23 - Project Role Column Matrix
 
 - Replaced repeated per-project Root tasks and Subagents headings with one shared pair of role columns.

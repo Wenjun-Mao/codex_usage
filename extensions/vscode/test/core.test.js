@@ -296,9 +296,7 @@ test("webview command allowlist includes dashboard commands", () => {
     "codexUsage.showUsageView",
     "codexUsage.showTaskStorageView",
     "codexUsage.openSyncMenu",
-    "codexUsage.backupTask",
     "codexUsage.analyzeTaskStorage",
-    "codexUsage.prepareTaskRollover",
     "codexUsage.refreshDashboard",
     "codexUsage.openSettings",
   ]);
@@ -353,18 +351,18 @@ test("package metadata keeps command ids with exact Task Transfer titles", () =>
   assert.equal(commands.get("codexUsage.pushTasks"), "Codex Usage: Export Tasks");
   assert.equal(commands.get("codexUsage.syncStatus"), "Codex Usage: Review Transfer Status");
   assert.equal(commands.get("codexUsage.openSyncFolder"), "Codex Usage: Open Transfer Folder");
-  assert.equal(commands.get("codexUsage.backupTask"), "Codex Usage: Back Up Task");
   assert.equal(commands.get("codexUsage.analyzeTaskStorage"), "Codex Usage: Analyze Task Storage");
-  assert.equal(commands.get("codexUsage.prepareTaskRollover"), "Codex Usage: Prepare Task Rollover");
+  assert.equal(commands.has("codexUsage.backupTask"), false);
+  assert.equal(commands.has("codexUsage.prepareTaskRollover"), false);
   assert.equal(commands.has("codexUsage.syncNow"), false);
   assert.equal(commands.has("codexUsage.selectSyncProjects"), false);
   assert.equal(commands.has("codexUsage.selectSyncThreads"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncTasks"), true);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.pullTasks"), true);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.pushTasks"), true);
-  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.backupTask"), true);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.analyzeTaskStorage"), true);
-  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.prepareTaskRollover"), true);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.backupTask"), false);
+  assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.prepareTaskRollover"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.syncNow"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncProjects"), false);
   assert.equal(packageJson.activationEvents.includes("onCommand:codexUsage.selectSyncThreads"), false);
@@ -473,7 +471,7 @@ test("native release jobs gate direct Codex registration before VSIX packaging",
 test("package metadata is ready for stable Marketplace publishing", () => {
   assert.equal(packageJson.publisher, "wenjun-mao");
   assert.equal(packageJson.private, undefined);
-  assert.equal(packageJson.version, "1.7.8");
+  assert.equal(packageJson.version, "1.8.0");
   assert.equal(packageJson.preview, undefined);
   assert.equal(packageJson.repository.url, "https://github.com/Wenjun-Mao/codex_usage.git");
   assert.match(packageJson.description, /local/i);

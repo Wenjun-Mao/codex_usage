@@ -1,20 +1,15 @@
 import * as vscode from "vscode";
 
-import { formatStorageBytes, type StorageProject, type StorageTree } from "./storageBackupProtocol";
+import { formatStorageBytes, type StorageProject, type StorageTree } from "./storageProtocol";
 
 export type StorageTreePickerCopy = {
   actionTitle: string;
   actionVerb: string;
 };
 
-const BACKUP_PICKER_COPY: StorageTreePickerCopy = {
-  actionTitle: "Back Up Task",
-  actionVerb: "back up",
-};
-
 export async function chooseStorageTree(
   projects: readonly StorageProject[],
-  copy: StorageTreePickerCopy = BACKUP_PICKER_COPY,
+  copy: StorageTreePickerCopy,
 ): Promise<StorageTree | undefined> {
   const project = await vscode.window.showQuickPick(
     projects.map((item) => ({
@@ -47,7 +42,6 @@ export async function chooseStorageTree(
 
 function treeDetail(tree: StorageTree): string {
   const flags = [
-    tree.recoveryReady ? "" : "salvage only",
     tree.hasMissingRoot ? "root missing" : "",
     tree.hasRelationshipCycle ? "relationship cycle" : "",
     tree.duplicateFileCount ? `${tree.duplicateFileCount} duplicate files` : "",

@@ -34,8 +34,6 @@ class StorageTreePoint:
     has_history_amplification: bool
     has_media_amplification: bool
     has_active_root_history_risk: bool
-    recovery_ready: bool
-    can_prepare_rollover: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,9 +196,7 @@ def _render_storage_row(tree: StorageTreePoint) -> str:
     task = f'<span class="storage-task-title">{_esc(tree.title)}</span> <code>{_esc(short_task_id(tree.root_task_id))}</code>'
     return (
         f'<tr data-storage-tree-id="{_esc(tree.root_task_id)}" '
-        f'data-storage-analysis-status="{_esc(tree.analysis_status)}" '
-        f'data-storage-can-rollover="{str(tree.can_prepare_rollover).lower()}" '
-        f'data-storage-recovery-ready="{str(tree.recovery_ready).lower()}">'
+        f'data-storage-analysis-status="{_esc(tree.analysis_status)}">'
         f"<td>{task}</td>"
         f"<td>{_esc(tree.project_label)}</td>"
         f'<td class="num">{_esc(format_bytes(tree.root_bytes))}</td>'
@@ -282,8 +278,6 @@ def _tree_point(tree: TaskStorageTree) -> StorageTreePoint:
         has_history_amplification=tree.has_history_amplification,
         has_media_amplification=tree.has_media_amplification,
         has_active_root_history_risk=tree.has_active_root_history_risk,
-        recovery_ready=tree.recovery_ready,
-        can_prepare_rollover=tree.can_prepare_rollover,
     )
 
 

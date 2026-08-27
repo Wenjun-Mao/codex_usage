@@ -5,7 +5,7 @@ Local-first Codex usage reporting for understanding project activity, token usag
 ## What The Dashboard Shows
 
 - Two focused views keep date-filtered **Usage** separate from current **Task Storage**. Projects and theme apply to both; the date range applies only to Usage.
-- Task Storage shows current local JSONL usage by user-visible root task tree, diagnoses repeated compacted-history and inline-media amplification on demand, and prepares guarded rollovers through a new verified backup.
+- Task Storage shows current local JSONL usage by user-visible root task tree and diagnoses repeated compacted-history and inline-media amplification on demand.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, presents both roles in shared comparison columns, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
 - Total tokens and usage event counts, cache hit share, and daily/hourly usage patterns.
@@ -19,7 +19,7 @@ Local-first Codex usage reporting for understanding project activity, token usag
 
 1. Run **Codex Usage: Open Dashboard** from the VS Code Command Palette.
 2. Use **Usage** to review tokens, models, estimated API-equivalent cost, Codex credits, and root-task versus subagent activity. Change the date range or project filter from the toolbar.
-3. Use **Task Storage** to see current disk usage by task tree. Choose **Analyze**, **Back Up**, or **Prepare Rollover** from a tree row as needed.
+3. Use **Task Storage** to see current disk usage by task tree. Choose **Analyze** on a tree when you need to understand its growth.
 4. Use **Codex Usage: Task Transfer** only when you deliberately want to move selected active tasks between computers; reporting does not require it.
 
 This repository contains:
@@ -30,7 +30,7 @@ This repository contains:
 
 ## VS Code Packages
 
-The stable packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, one on Windows x64 and one on macOS Apple Silicon, and requires them to pass before publication. Additional packaged gates cover report and cache behavior, verified task backups, and storage analysis, including zero-byte warm-analysis reuse; they must also pass. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
+The stable packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, one on Windows x64 and one on macOS Apple Silicon, and requires them to pass before publication. Additional packaged gates cover report and cache behavior plus Task Storage snapshot and analysis, including zero-byte warm-analysis reuse; they must also pass. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
 
 Build and install the local macOS Apple Silicon VSIX:
 
@@ -53,9 +53,7 @@ Available commands:
 - `Codex Usage: Import Tasks`
 - `Codex Usage: Export Tasks`
 - `Codex Usage: Review Transfer Status`
-- `Codex Usage: Back Up Task`
 - `Codex Usage: Analyze Task Storage`
-- `Codex Usage: Prepare Task Rollover`
 - `Codex Usage: Open Transfer Folder`
 - `Codex Usage: Open Settings`
 
@@ -70,9 +68,6 @@ uv run codex-usage report --range 30d --output output/report.html
 uv run codex-usage report --range all --theme night --output output/night-report.html
 uv run codex-usage storage snapshot --json
 uv run codex-usage storage analyze --tree-id <tree-id> --json --progress-json
-uv run codex-usage storage backup --tree-id <tree-id> --output task.codex-task-backup --compression balanced
-uv run codex-usage storage verify task.codex-task-backup
-uv run codex-usage storage rollover --tree-id <tree-id> --output task-rollover.codex-task-backup --compression maximum --json
 uv run codex-usage transitions suggest --json
 ```
 
@@ -115,7 +110,7 @@ At most four read-only workers use buffered binary I/O to parse groups of eight 
 
 The dashboard's **Task Storage** view and `codex-usage storage snapshot` command report the current local corpus separately from date-filtered Usage. The view groups physical JSONL files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes both active and archived files, and applies the selected project filter while remaining independent of the usage date range. The dashboard shows the largest trees as horizontal bars and lists the complete inventory with logical file bytes, file counts, state, share, analysis coverage, and diagnostic flags. A root-size badge appears at 1 GiB and a tree-size badge at 10 GiB; these are visibility thresholds, not deletion recommendations or reclaimable-space estimates.
 
-Codex guardian approval logs are preserved as structured descendants of their explicit owning task. Their bytes and verified backups stay with that task tree, while their recorded `codex-auto-review` tokens remain visible under **Subagents** in Usage; they are not hidden or presented as user-created roots.
+Codex guardian approval logs are preserved as structured descendants of their explicit owning task. Their bytes stay with that task tree, while their recorded `codex-auto-review` tokens remain visible under **Subagents** in Usage; they are not hidden or presented as user-created roots.
 
 ![Synthetic Task Storage screenshot](docs/marketplace/task-storage-synthetic.png)
 
@@ -132,28 +127,13 @@ A positive **History amplification** label requires complete analysis, at least 
 
 Codex documentation describes side chats as ephemeral forks. In the observed local format, a side-chat turn is stored in its parent root JSONL without a separate task, file, or durable discriminator. Its bytes and token usage therefore remain under **Root task**, and the report discloses that inclusion rather than inventing a heuristic third role. A future separate side-chat breakdown requires reliable upstream metadata and will not retroactively guess older records.
 
-### Verified Task Backups
+### Managing Large Tasks
 
-1. Open **Task Storage** and choose **Back Up** on one task row, or run **Codex Usage: Back Up Task** and choose one project and one task tree.
-2. Choose **Maximum** for the smallest, slower archive or **Balanced** for a faster, larger archive.
-3. Review the sensitive-data warning, choose a `.codex-task-backup` destination, and wait for copying and verification to finish.
-4. Trust the result only after it is reported as recovery-ready or integrity-verified salvage. Review salvage warnings in the **Codex Usage** Output channel.
+- Use **Fork in Codex** when you want conversational continuity. A fork is a Codex-owned continuation mechanism, not a backup and not a guarantee that inherited storage will shrink.
+- Use a fresh task with a concise handoff when reducing inherited context and future storage growth is the priority.
+- Verify that the replacement task has the context and files it needs before manually archiving or deleting the original in Codex.
 
-Task Storage backs up exactly one selected task tree. It preserves every physical JSONL currently present in that tree, including structured descendants such as guardian approval logs, active and archived copies, duplicates, and side-chat content already embedded in the root JSONL. The `.codex-task-backup` archive is a streaming PAX tar compressed as exactly one zstd frame with a strict format-v1 manifest. It records canonical metadata, per-file SHA-256 values, bounded selected session-index entries, and reports a final whole-archive SHA-256.
-
-Choose **Maximum** for zstd 19 and smaller, slower archives, or **Balanced** for zstd 9 and faster, larger archives. Source identity is checked before, during, and after copying, and the complete selected tree is inventoried again before publication. The archive is written to a sibling partial file, fully reread and verified, then atomically published; cancellation or failure leaves no reported final archive, and an existing backup is preserved unless verified replacement succeeds. Graceful failures clean partials; forced process termination can leave an unreported hidden sibling partial that is never treated as the requested backup.
-
-Missing roots, relationship cycles, or storage-metadata diagnostics are recorded as warnings in a structurally verified salvage archive. Transient metadata reads are retried; while any corpus file remains unreadable or unresolved, no backup is labeled recovery-ready because that file's parent tree cannot be proven. Such an archive is not marked recovery-ready. Backups can contain prompts and source code; they are compressed but not encrypted, remain local, and do not use telemetry or the network. Store them as sensitive source material. The current extension can create and verify backups but cannot restore them. Backups do not delete tasks or free storage.
-
-### Prepare Rollover
-
-1. In **Task Storage**, choose **Analyze** on the old task and wait for the refreshed row. Rollover is offered only when analysis is complete, the tree is large or history-amplified, and it is recovery-ready.
-2. Choose **Prepare Rollover**, choose compression, and save to a new backup filename. Rollover never replaces an existing archive.
-3. After verification, use the text-only starter prompt copied to the clipboard and follow the checklist in the **Codex Usage** Output channel.
-4. Create a fresh root task in the same Codex project, paste the starter prompt, and verify that the new task can continue the work.
-5. Only then archive or delete the old task inside Codex if you want to reclaim its local storage.
-
-The plugin does not create, archive, restore, or delete Codex tasks. Preparing rollover establishes a verified recovery point and continuity material, but it does not reduce disk usage by itself. Storage is reclaimed only after you complete the final Codex-owned lifecycle step yourself.
+Codex Usage keeps Task Storage read-only except for its disposable diagnostic cache. It does not create, fork, archive, restore, or delete tasks. Version 1.8.0 also removes creation and verification of custom `.codex-task-backup` archives. Existing archives are untouched, but the plugin can no longer create, verify, or restore them.
 
 ### Codex Fast Mode
 
@@ -261,7 +241,7 @@ Codex Usage Dashboard is local-first:
 - It reads local Codex session JSONL files.
 - Project transition detection can also read local Codex project paths and timestamps as read-only evidence.
 - It writes reports and disposable SQLite caches to local paths.
-- It writes Task Transfer files and verified backups only when requested, to folders the user selects.
+- It writes Task Transfer files only when requested, to folders the user selects.
 - It does not upload session logs.
 - It does not include telemetry.
 - It does not fetch live pricing.

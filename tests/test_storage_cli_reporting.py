@@ -21,7 +21,7 @@ class FakeRoot:
     total_bytes: int
 
 
-def test_storage_snapshot_cli_uses_storage_context_and_emits_additive_json(
+def test_storage_snapshot_cli_uses_storage_context_and_emits_schema_four_json(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
     snapshot = _snapshot(tmp_path)
@@ -39,7 +39,7 @@ def test_storage_snapshot_cli_uses_storage_context_and_emits_additive_json(
     assert cli.handle_storage_snapshot(args) == 0
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["totals"]["total_bytes"] == 13 * 1024**3 + 30
     assert payload["thresholds"]["high_inherited_root_bytes"] == 1024**3
     assert payload["roots"][0]["path"] == str(tmp_path / "sessions")
@@ -48,6 +48,9 @@ def test_storage_snapshot_cli_uses_storage_context_and_emits_additive_json(
     assert payload["task_trees"][0]["project_aliases"] == ["repo-alias"]
     assert payload["task_trees"][0]["share"] == pytest.approx(1.0)
     assert payload["task_trees"][0]["duplicate_file_count"] == 2
+    assert "recovery_ready" not in payload["task_trees"][0]
+    assert "analysis_complete" not in payload["task_trees"][0]
+    assert "can_prepare_rollover" not in payload["task_trees"][0]
 
 
 def test_storage_snapshot_terminal_uses_human_readable_iec_sizes(
@@ -72,6 +75,20 @@ def test_storage_snapshot_parser_accepts_project_filter() -> None:
     )
 
     assert args.project_key == ["Repo", "other"]
+
+
+def test_storage_parser_exposes_only_snapshot_and_analyze() -> None:
+    parser = cli.build_parser()
+
+    snapshot = parser.parse_args(["storage", "snapshot"])
+    analyze = parser.parse_args(["storage", "analyze", "--tree-id", "root"])
+
+    assert snapshot.storage_command == "snapshot"
+    assert analyze.storage_command == "analyze"
+    for removed in ("backup", "verify", "rollover"):
+        with pytest.raises(SystemExit) as error:
+            parser.parse_args(["storage", removed])
+        assert error.value.code == 2
 
 
 def _snapshot(tmp_path: Path) -> TaskStorageInsights:

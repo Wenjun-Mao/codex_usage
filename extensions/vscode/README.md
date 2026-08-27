@@ -5,7 +5,7 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 ## Features
 
 - Two focused views keep date-filtered **Usage** separate from current **Task Storage**. Projects and theme apply to both; the date range applies only to Usage.
-- Task Storage shows current local JSONL usage by user-visible root task tree, diagnoses repeated compacted-history and inline-media amplification on demand, and prepares guarded rollovers through a new verified backup.
+- Task Storage shows current local JSONL usage by user-visible root task tree and diagnoses repeated compacted-history and inline-media amplification on demand.
 - Project Breakdown separates each project into user-visible root tasks and structured subagents, presents both roles in shared comparison columns, then stacks each role by model.
 - Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
 - Shows total tokens, API-equivalent USD, Codex credits, cache hit share, and daily/hourly views.
@@ -25,7 +25,7 @@ Stable Windows x64 and macOS Apple Silicon VS Code extension for local-first Cod
 1. Open the VS Code Command Palette and run **Codex Usage: Open Dashboard**.
 2. Use **Usage** to review tokens, models, estimated API-equivalent cost, Codex credits, and root-task versus subagent activity. Change the date range or project filter from the dashboard toolbar.
 3. Use **Task Storage** to see which current task trees occupy disk space. The date range does not affect this view.
-4. Choose **Analyze** on a large task tree when you want to understand its growth, **Back Up** when you want a verified archive, or **Prepare Rollover** after analysis when you want to continue in a fresh root task.
+4. Choose **Analyze** on a large task tree when you want to understand its growth.
 
 Everything above runs locally. Task Transfer is a separate optional workflow and is not required for usage or storage reporting.
 
@@ -50,8 +50,6 @@ The stable Marketplace release supports Windows x64 and macOS Apple Silicon. Eac
 | `Codex Usage: Review Transfer Status` | Compares local and transferred task state without copying files. |
 | `Codex Usage: Open Transfer Folder` | Opens the currently selected transfer folder. |
 | `Codex Usage: Analyze Task Storage` | Scans one task tree for history amplification and inline-media evidence. |
-| `Codex Usage: Back Up Task` | Creates and verifies one compressed task-tree archive. |
-| `Codex Usage: Prepare Task Rollover` | Backs up an eligible analyzed tree and prepares continuity material for a fresh root task. |
 | `Codex Usage: Open Settings` | Opens the extension settings. |
 
 ## Settings
@@ -131,7 +129,7 @@ For troubleshooting, the Codex Usage Output channel reports which files were ref
 
 The dashboard's separate **Task Storage** view reports the current local JSONL corpus without following the Usage date range. It groups physical files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes active and archived files, and follows the selected project filter. The report shows the largest trees as horizontal bars and lists every tree with logical bytes, file counts, storage state, share, analysis coverage, and diagnostic flags. Transparent badges mark root size at 1 GiB and total tree size at 10 GiB.
 
-Codex guardian approval logs remain visible as structured descendants of their explicit owning task. Their bytes and verified backups stay with that tree, while recorded `codex-auto-review` tokens remain under **Subagents** in Usage; the extension neither hides them nor presents them as user-created roots.
+Codex guardian approval logs remain visible as structured descendants of their explicit owning task. Their bytes stay with that tree, while recorded `codex-auto-review` tokens remain under **Subagents** in Usage; the extension neither hides them nor presents them as user-created roots.
 
 ![Synthetic Task Storage screenshot](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/task-storage-synthetic.png)
 
@@ -148,39 +146,17 @@ A positive **History amplification** label requires complete analysis, at least 
 
 Codex documentation describes side chats as ephemeral forks. In the observed local format, the side-chat turn is stored in the parent root JSONL without a separate task, file, or durable discriminator. Its bytes and token usage remain under **Root task**, and the report says so instead of inventing a heuristic third role. A future split requires reliable upstream metadata and will not retroactively guess older records.
 
-### Back Up One Task Tree
+### Manage A Large Task
 
-1. Open **Task Storage** and optionally filter to the project you care about.
-2. Choose **Back Up** on the task row. You can instead run **Codex Usage: Back Up Task** and choose one project and one task tree.
-3. Choose **Maximum** for the smallest, slower archive or **Balanced** for a faster, larger archive.
-4. Review the sensitive-data warning, choose where to save the new `.codex-task-backup` file, and start the backup.
-5. Wait for copying and verification to finish. Trust the archive only after Codex Usage reports it as recovery-ready or integrity-verified salvage.
-6. If the result is salvage rather than recovery-ready, open the **Codex Usage** Output channel and review every warning before relying on it.
+- Use **Fork in Codex** when you want conversational continuity. A fork is a Codex-owned continuation mechanism, not a backup and not a guarantee that inherited storage will shrink.
+- Use a fresh task with a concise handoff when reducing inherited context and future storage growth is the priority.
+- Verify that the replacement task has the context and files it needs before manually archiving or deleting the original in Codex.
 
-Each backup covers exactly one task tree. It preserves every physical JSONL currently present under that root, including structured descendants such as guardian approval logs, active and archived copies, duplicates, and side-chat content already embedded in the root JSONL.
-
-The `.codex-task-backup` format is a streaming PAX tar compressed as exactly one zstd frame with a strict format-v1 manifest. It includes canonical metadata, per-file SHA-256 values, bounded selected session-index entries, and a final whole-archive SHA-256. **Maximum** uses zstd 19 for smaller, slower archives; **Balanced** uses zstd 9 for faster, larger archives.
-
-Source identity is checked before, during, and after the copy, and the complete selected tree is inventoried again before publication. The archive is written to a sibling partial file, fully reread and verified, then atomically published. Existing backups remain in place unless verified replacement succeeds. Cancellation or failure leaves no reported final archive; a forced process termination can leave an unreported hidden sibling partial, which is never treated as the requested backup. Transient metadata reads are retried, and any still-unresolved corpus file prevents a recovery-ready claim because its parent tree cannot be proven. Missing roots, relationship cycles, or metadata diagnostics therefore produce a warning-bearing salvage archive that may be integrity-verified but is not recovery-ready.
-
-Backups can contain prompts and source code. They are compressed but not encrypted, stay local, and use neither telemetry nor the network. Store them somewhere appropriate for sensitive source material. The current extension can create and verify these archives, but it cannot restore them. Backup also does not delete Codex tasks or free storage.
-
-### Prepare Rollover
-
-Use rollover when you want to stop extending a bloated task and continue its work in a fresh root task.
-
-1. In **Task Storage**, choose **Analyze** on the old task and wait for the refreshed row. Rollover is offered only when analysis is complete, the tree is large or history-amplified, and it is recovery-ready.
-2. Choose **Prepare Rollover**, select Maximum or Balanced compression, and choose a new backup filename. Rollover never replaces an existing archive.
-3. Wait for the new backup to be created and verified. Codex Usage then copies a text-only starter prompt to the clipboard and opens the **Codex Usage** Output channel with a checklist.
-4. Create a fresh root task in the same Codex project and paste the starter prompt.
-5. Confirm that the new task has enough context to continue the work and that the backup file is safely stored.
-6. Only then archive or delete the old task inside Codex if you want to reclaim its local storage.
-
-Codex Usage does not create, archive, restore, or delete Codex tasks. Preparing rollover establishes a verified recovery point and continuity material, but it does not reduce disk usage by itself. Storage is reclaimed only after you complete the final Codex-owned lifecycle step yourself.
+Codex Usage keeps Task Storage read-only except for its disposable diagnostic cache. It does not create, fork, archive, restore, or delete tasks. Version 1.8.0 also removes creation and verification of custom `.codex-task-backup` archives. Existing archives are untouched, but the extension can no longer create, verify, or restore them.
 
 ## Privacy
 
-The extension reads local Codex session JSONL files and writes local HTML reports and disposable SQLite caches under VS Code extension storage. When requested, it also writes Task Transfer files and verified backups to folders the user selects. Automatic project transition detection can read local Codex project paths and timestamps as read-only evidence. The extension does not upload session logs, include telemetry, fetch live pricing, or include or mutate SQLite databases in Task Transfer.
+The extension reads local Codex session JSONL files and writes local HTML reports and disposable SQLite caches under VS Code extension storage. When requested, it also writes Task Transfer files to a folder the user selects. Automatic project transition detection can read local Codex project paths and timestamps as read-only evidence. The extension does not upload session logs, include telemetry, fetch live pricing, or include or mutate SQLite databases in Task Transfer.
 
 Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. See the [privacy policy](https://github.com/Wenjun-Mao/codex_usage/blob/main/PRIVACY.md) for details.
 

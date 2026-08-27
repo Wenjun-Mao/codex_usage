@@ -68,7 +68,7 @@ export function injectWebviewControls(reportHtml: string, state: WebviewControlS
   let html = reportHtml
     .replace(/<style id="codex-usage-extension-style">[\s\S]*?<\/style>\s*/i, "")
     .replace(/<nav class="codex-usage-actions"[\s\S]*?<\/nav>\s*/i, "");
-  html = injectStorageBackupActions(html);
+  html = injectStorageActions(html);
   html = setWebviewReportView(html, state.reportView);
   html = html.replace(/<\/head>/i, `${style}\n</head>`);
   if (/<main[^>]*>/i.test(html)) {
@@ -80,7 +80,7 @@ export function injectWebviewControls(reportHtml: string, state: WebviewControlS
   return `${controls}\n${html}`;
 }
 
-export function injectStorageBackupActions(reportHtml: string): string {
+export function injectStorageActions(reportHtml: string): string {
   return reportHtml.replace(
     /(<section[^>]*data-report-section="task-storage-details"[^>]*>[\s\S]*?<thead><tr>[\s\S]*?<\/tr><\/thead><tbody>)([\s\S]*?)(<\/tbody>[\s\S]*?<\/section>)/i,
     (_match, start: string, rows: string, end: string) => {
@@ -93,15 +93,9 @@ export function injectStorageBackupActions(reportHtml: string): string {
         actionCount += 1;
         const treeId = decodeHtmlAttribute(encodedTreeId);
         const analysisStatus = htmlAttribute(attributes, "data-storage-analysis-status");
-        const canRollover = htmlAttribute(attributes, "data-storage-can-rollover") === "true";
-        const recoveryReady = htmlAttribute(attributes, "data-storage-recovery-ready") === "true";
         const actions = [
-          `<a href="${treeCommandUri("codexUsage.backupTask", treeId)}">Back Up</a>`,
           ...(analysisStatus !== "complete"
             ? [`<a href="${treeCommandUri("codexUsage.analyzeTaskStorage", treeId)}">Analyze</a>`]
-            : []),
-          ...(canRollover && recoveryReady
-            ? [`<a href="${treeCommandUri("codexUsage.prepareTaskRollover", treeId)}">Prepare Rollover</a>`]
             : []),
         ];
         return `<tr${attributes}>${cells}<td class="storage-actions">${actions.join(" &middot; ")}</td></tr>`;

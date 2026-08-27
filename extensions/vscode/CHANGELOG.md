@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.8.0 - 2026-08-27 - Codex-Owned Task Lifecycle
+
+- Removed **Back Up Task** and **Prepare Task Rollover**, leaving **Analyze** as the only Task Storage row operation.
+- Simplified the Task Storage protocol to schema 4 and removed backup- and rollover-readiness fields without changing inventory or amplification diagnostics.
+- Documented manual **Fork in Codex** for continuity and a fresh task with a concise handoff for meaningful inherited-context reduction.
+- Existing `.codex-task-backup` files remain untouched but can no longer be created, verified, or restored by Codex Usage.
+
 ## 1.7.8 - 2026-08-23 - Project Role Column Matrix
 
 - Replaced repeated Root tasks and Subagents labels with one shared pair of comparison columns.

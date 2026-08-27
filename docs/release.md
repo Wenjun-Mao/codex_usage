@@ -44,13 +44,13 @@ uv run python scripts/generate_marketplace_screenshot.py
 uv run python scripts/generate_marketplace_screenshot.py --check
 ```
 
-Visually review both tracked images at 1440 x 900. In the Usage image, confirm that `Root tasks` and `Subagents` appear once as shared columns, role tracks have equal widths across projects, exact role totals and project shares remain visible, model colors match Model Mix, and `Other` is neutral. At the narrow browser gate, confirm each project stacks the two labeled role cells without overlap. In the Task Storage image, confirm that root and structured-subagent bytes remain distinct, amplification versus unknown-analysis badges are honest, and Back Up, Analyze, and Prepare Rollover actions fit. In both images, confirm the active view is obvious, no tooltip text is clipped, and no personal paths or data appear. Require `git diff -- docs/marketplace/dashboard-synthetic.png docs/marketplace/task-storage-synthetic.png` review whenever dashboard presentation changes.
+Visually review both tracked images at 1440 x 900. In the Usage image, confirm that `Root tasks` and `Subagents` appear once as shared columns, role tracks have equal widths across projects, exact role totals and project shares remain visible, model colors match Model Mix, and `Other` is neutral. At the narrow browser gate, confirm each project stacks the two labeled role cells without overlap. In the Task Storage image, confirm that root and structured-subagent bytes remain distinct, amplification versus unknown-analysis badges are honest, and **Analyze** is the only row action. In both images, confirm the active view is obvious, no tooltip text is clipped, and no personal paths or data appear. Require `git diff -- docs/marketplace/dashboard-synthetic.png docs/marketplace/task-storage-synthetic.png` review whenever dashboard presentation changes.
 
 ## GitHub Actions Release
 
 The repository has a `Package and Publish VSIX` workflow that builds both platform packages on native GitHub-hosted runners.
 
-Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version and points at a commit contained in `origin/main`, such as `v1.7.0`, also builds and publishes both packages.
+Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version and points at a commit contained in `origin/main`, such as `v1.8.0`, also builds and publishes both packages.
 
 Publishing requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
 
@@ -178,7 +178,7 @@ Manual smoke checklist:
 - Run `Codex Usage: Task Transfer`.
 - Run `Codex Usage: Import Tasks`, `Codex Usage: Export Tasks`, and `Codex Usage: Review Transfer Status`.
 - In Task Storage, analyze one incomplete tree and confirm the refreshed row becomes complete without scanning unrelated trees.
-- Confirm an eligible recovery-ready row exposes Prepare Rollover, creates a new verified backup, copies the starter prompt, and never creates or deletes a Codex task.
+- Confirm an incomplete Task Storage row exposes **Analyze** as its only action and a complete row exposes no action.
 - Run `Codex Usage: Open Settings`.
 - Confirm readable behavior when no session files are found.
 - Confirm the dashboard says pricing uses rates effective at each usage event.

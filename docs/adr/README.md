@@ -31,10 +31,11 @@ The incremental range-aware usage-cache contract is recorded in [ADR 0020](0020-
 The explicit root-task/subagent usage-role contract is recorded in [ADR 0021](0021-explicit-usage-role-breakdown.md).
 The guarded append-parser checkpoint contract is recorded in [ADR 0022](0022-guarded-append-parser-checkpoints.md).
 The read-only Task Storage inventory contract is recorded in [ADR 0023](0023-task-storage-insights.md).
-The verified Task Storage backup contract is recorded in [ADR 0024](0024-verified-task-backups.md).
+The superseded verified Task Storage backup contract is recorded in [ADR 0024](0024-verified-task-backups.md).
 The separate Usage and Task Storage view contract is recorded in [ADR 0025](0025-separate-usage-and-storage-views.md).
 The guardian approval ownership contract is recorded in [ADR 0026](0026-guardian-approval-ownership.md).
-The storage amplification analysis and rollover preparation contract is recorded in [ADR 0027](0027-storage-amplification-analysis-and-rollover.md).
+The storage amplification analysis and superseded rollover preparation contract is recorded in [ADR 0027](0027-storage-amplification-analysis-and-rollover.md).
 The structured subagent replay accounting contract is recorded in [ADR 0028](0028-structured-subagent-replay-accounting.md).
 The guarded Desktop project-binding contract is recorded in [ADR 0029](0029-guarded-desktop-project-binding.md).
 The Project Breakdown role-column presentation contract is recorded in [ADR 0030](0030-project-role-column-matrix.md).
+The Codex-owned task lifecycle contract is recorded in [ADR 0031](0031-codex-owned-task-lifecycle.md).

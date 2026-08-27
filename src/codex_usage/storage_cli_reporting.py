@@ -24,7 +24,7 @@ def storage_snapshot_payload(snapshot: TaskStorageInsights) -> dict[str, object]
         for root in snapshot.roots
     ]
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "totals": {
             "total_bytes": snapshot.corpus_bytes,
             "root_bytes": snapshot.root_bytes,
@@ -105,14 +105,12 @@ def _storage_tree_payload(tree: TaskStorageTree) -> dict[str, object]:
         "share": tree.share,
         "has_missing_root": tree.has_missing_root,
         "has_relationship_cycle": tree.has_relationship_cycle,
-        "recovery_ready": tree.recovery_ready,
         "duplicate_file_count": tree.duplicate_file_count,
         "has_duplicate_task_id": tree.has_duplicate_task_id,
         "metadata_diagnostics": list(tree.metadata_diagnostics),
         "is_large_root": tree.is_large_root,
         "is_large_tree": tree.is_large_tree,
         "analysis_status": tree.analysis_status,
-        "analysis_complete": tree.analysis_complete,
         "analyzed_bytes": tree.analyzed_bytes,
         "analysis_coverage": tree.analysis_coverage,
         "compacted_record_count": tree.compacted_record_count,
@@ -128,7 +126,6 @@ def _storage_tree_payload(tree: TaskStorageTree) -> dict[str, object]:
         "has_history_amplification": tree.has_history_amplification,
         "has_media_amplification": tree.has_media_amplification,
         "has_active_root_history_risk": tree.has_active_root_history_risk,
-        "can_prepare_rollover": tree.can_prepare_rollover,
     }
 
 

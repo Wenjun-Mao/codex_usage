@@ -16,9 +16,7 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.showUsageView",
   "codexUsage.showTaskStorageView",
   "codexUsage.openSyncMenu",
-  "codexUsage.backupTask",
   "codexUsage.analyzeTaskStorage",
-  "codexUsage.prepareTaskRollover",
   "codexUsage.refreshDashboard",
   "codexUsage.openSettings",
 ] as const;

@@ -1,12 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptionsWithoutStdio } from "child_process";
 
 import { closeCodexProcessTree } from "./codexProcessCleanup";
-import {
-  parseBackupProgressLine,
-  parseBackupResult,
-  type BackupProgress,
-  type BackupResult,
-} from "./storageBackupProtocol";
 
 type SpawnProcess = (
   executablePath: string,
@@ -14,29 +8,11 @@ type SpawnProcess = (
   options: SpawnOptionsWithoutStdio,
 ) => ChildProcessWithoutNullStreams;
 
-export class BackupCancelledError extends Error {
+export class StorageOperationCancelledError extends Error {
   constructor() {
-    super("Task backup was cancelled.");
-    this.name = "BackupCancelledError";
+    super("Task Storage operation was cancelled.");
+    this.name = "StorageOperationCancelledError";
   }
-}
-
-export type RunBackupProcessOptions = {
-  executablePath: string;
-  args: string[];
-  env: NodeJS.ProcessEnv;
-  cancellationToken: { isCancellationRequested: boolean; onCancellationRequested(listener: () => void): { dispose(): void } };
-  onProgress(event: BackupProgress): void;
-  onOutput(text: string): void;
-  spawnProcess?: SpawnProcess;
-};
-
-export function runBackupProcess(options: RunBackupProcessOptions): Promise<BackupResult> {
-  return runStorageOperation({
-    ...options,
-    parseProgressLine: parseBackupProgressLine,
-    parseResult: parseBackupResult,
-  });
 }
 
 export type RunStorageOperationOptions<Result, Progress> = {
@@ -83,7 +59,7 @@ export function runStorageOperation<Result, Progress>(
       }
       cancelled = true;
       void closeCodexProcessTree(child, {}).finally(() => {
-        settle(() => reject(new BackupCancelledError()));
+        settle(() => reject(new StorageOperationCancelledError()));
       });
     };
     const cancellation = options.cancellationToken.onCancellationRequested(cancel);

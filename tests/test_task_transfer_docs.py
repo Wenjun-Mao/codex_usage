@@ -121,19 +121,27 @@ def test_public_readmes_do_not_publish_developer_corpus_measurements() -> None:
             assert developer_specific_phrase not in prose
 
 
-def test_current_docs_explain_storage_actions_as_user_workflows() -> None:
+def test_current_docs_explain_analysis_and_codex_owned_lifecycle() -> None:
     for path in CURRENT_DOCS:
         prose = normalized_prose(path.read_text(encoding="utf-8"))
         for phrase in (
             "analyze one task tree",
             "choose **analyze** on the task row",
-            "choose **maximum** for the smallest, slower archive",
-            "recovery-ready or integrity-verified salvage",
-            "cannot restore",
-            "create a fresh root task in the same codex project",
-            "only then archive or delete the old task inside codex",
+            "fork in codex",
+            "fresh task with a concise handoff",
+            "not a backup",
+            "before manually archiving or deleting the original",
+            "can no longer create, verify, or restore",
         ):
             assert phrase in prose
+        for removed_command in (
+            "codex usage: back up task",
+            "codex usage: prepare task rollover",
+            "codex-usage storage backup",
+            "codex-usage storage verify",
+            "codex-usage storage rollover",
+        ):
+            assert removed_command not in prose
 
 
 def test_current_docs_define_durable_transfer_selection_and_mapping() -> None:

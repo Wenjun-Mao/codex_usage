@@ -2,8 +2,7 @@
 
 ## Status
 
-Accepted; implemented in version 1.5.0 on 2026-08-07 and used as the recovery
-gate for rollover preparation by ADR 0027
+Superseded by ADR 0031 in version 1.8.0 on 2026-08-27
 
 ## Context
 

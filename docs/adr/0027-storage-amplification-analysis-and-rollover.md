@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted; implemented in version 1.7.0 on 2026-08-08
+Accepted for storage amplification analysis; the rollover portion was
+superseded by ADR 0031 in version 1.8.0 on 2026-08-27
 
 ## Context
 

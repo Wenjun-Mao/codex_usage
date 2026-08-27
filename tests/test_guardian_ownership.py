@@ -6,11 +6,6 @@ from pathlib import Path
 from codex_usage.models import SUBAGENT_USAGE_ROLE
 from codex_usage.parser import parse_session_file
 from codex_usage.storage_context import load_storage_context
-from codex_usage.task_backup import (
-    create_task_backup,
-    select_backup_tree,
-    verify_task_backup,
-)
 
 
 def test_guardian_is_preserved_inside_its_owning_task_tree(tmp_path: Path) -> None:
@@ -35,28 +30,6 @@ def test_guardian_is_preserved_inside_its_owning_task_tree(tmp_path: Path) -> No
     assert tree.descendant_count == 2
     assert tree.has_missing_root is False
     assert tree.total_bytes == sum(path.stat().st_size for path in (root, child, guardian))
-
-    selection = select_backup_tree(context, "root")
-    assert {source.task_id for source in selection.sources} == {
-        "root",
-        "child",
-        "guardian",
-    }
-    output = tmp_path / "root.codex-task-backup"
-    create_task_backup(
-        selection,
-        output,
-        refresh_selection=lambda: selection,
-        compression="balanced",
-        lock_path=tmp_path / "backup.lock",
-    )
-    manifest = verify_task_backup(output).manifest
-    assert {entry.task_id for entry in manifest.files} == {
-        "root",
-        "child",
-        "guardian",
-    }
-
 
 def test_guardian_usage_remains_subagent_auto_review_usage(tmp_path: Path) -> None:
     path = _write_task(

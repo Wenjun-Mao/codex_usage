@@ -10,6 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
+    "1.8.0": "2026-08-27",
     "1.7.8": "2026-08-23",
     "1.7.7": "2026-08-22",
     "1.7.6": "2026-08-15",
@@ -69,6 +70,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "1.8.0",
     "1.7.8",
     "1.7.7",
     "1.7.6",
@@ -198,6 +200,21 @@ def test_changelogs_use_exact_historical_release_dates() -> None:
     assert release_dates(CHANGELOGS[1]) == {
         version: ROOT_RELEASE_DATES[version] for version in EXTENSION_RELEASE_VERSIONS
     }
+
+
+@pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
+def test_1_8_0_changelogs_describe_codex_owned_lifecycle(changelog: Path) -> None:
+    section = normalized_prose(
+        markdown_section(
+            changelog,
+            "## 1.8.0 - 2026-08-27 - Codex-Owned Task Lifecycle",
+        )
+    )
+
+    assert "fork in codex" in section
+    assert "fresh task" in section and "concise handoff" in section
+    assert ".codex-task-backup" in section and "untouched" in section
+    assert "no longer" in section and "restored" in section
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))

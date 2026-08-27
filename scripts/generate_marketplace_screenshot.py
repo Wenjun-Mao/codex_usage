@@ -201,7 +201,7 @@ def capture_marketplace_screenshot(
         try:
             page = browser.new_page(viewport=VIEWPORT)
             page.goto(report_path.resolve().as_uri(), wait_until="load")
-            _inject_backup_actions(page)
+            _inject_storage_actions(page)
             page.add_style_tag(content=_SCREENSHOT_CSS)
             page.get_by_role(
                 "link", name="Usage" if view == "usage" else "Task Storage", exact=True
@@ -349,9 +349,7 @@ def _wait_for_landmarks(page: Page, view: str) -> None:
         page.get_by_role("heading", name="Task Storage", exact=True).wait_for()
         page.get_by_text("Root task JSONL", exact=True).wait_for()
         page.get_by_text("Structured subagents", exact=True).wait_for()
-        page.get_by_text("Back Up", exact=True).first.wait_for()
         page.get_by_text("Analyze", exact=True).first.wait_for()
-        page.get_by_text("Prepare Rollover", exact=True).first.wait_for()
         return
     page.get_by_role("heading", name="Project Breakdown", exact=True).wait_for()
     page.get_by_text("Root tasks", exact=True).first.wait_for()
@@ -361,7 +359,7 @@ def _wait_for_landmarks(page: Page, view: str) -> None:
     page.locator(".model-legend-item").filter(has_text="Other").last.wait_for()
 
 
-def _inject_backup_actions(page: Page) -> None:
+def _inject_storage_actions(page: Page) -> None:
     page.locator('[data-report-section="task-storage-details"]').evaluate(
         """
         section => {
@@ -373,11 +371,7 @@ def _inject_backup_actions(page: Page) -> None:
           for (const row of section.querySelectorAll('tbody tr[data-storage-tree-id]')) {
             const cell = document.createElement('td');
             cell.className = 'storage-actions';
-            const labels = ['Back Up'];
-            if (row.dataset.storageAnalysisStatus !== 'complete') labels.push('Analyze');
-            if (row.dataset.storageCanRollover === 'true' && row.dataset.storageRecoveryReady === 'true') {
-              labels.push('Prepare Rollover');
-            }
+            const labels = row.dataset.storageAnalysisStatus !== 'complete' ? ['Analyze'] : [];
             labels.forEach((label, index) => {
               if (index) cell.append(' · ');
               const action = document.createElement('span');

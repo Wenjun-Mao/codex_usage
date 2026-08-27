@@ -50,8 +50,10 @@ def test_unreadable_storage_metadata_is_never_reused(
     cold = load_storage_context(session_dirs=[sessions], cache_dir=cache_dir)
     warm = load_storage_context(session_dirs=[sessions], cache_dir=cache_dir)
 
-    assert cold.insights.task_trees[0].recovery_ready is False
-    assert warm.insights.task_trees[0].recovery_ready is True
+    assert cold.insights.task_trees[0].metadata_diagnostics == (
+        "session_meta_unreadable",
+    )
+    assert warm.insights.task_trees[0].metadata_diagnostics == ()
     assert warm.refresh_stats.metadata_reads == 1
     assert calls == 2
 

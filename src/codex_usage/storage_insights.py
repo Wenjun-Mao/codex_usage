@@ -98,25 +98,6 @@ class TaskStorageTree:
             issues.append("task_relationship_cycle")
         return tuple(sorted(set(issues)))
 
-    @property
-    def recovery_ready(self) -> bool:
-        return not (
-            self.has_missing_root
-            or self.has_relationship_cycle
-            or self.metadata_diagnostics
-        )
-
-    @property
-    def analysis_complete(self) -> bool:
-        return self.analysis_status == "complete"
-
-    @property
-    def can_prepare_rollover(self) -> bool:
-        return self.analysis_complete and (
-            self.is_large_tree or self.has_history_amplification
-        )
-
-
 @dataclass(frozen=True, slots=True)
 class TaskStorageInsights:
     corpus_bytes: int

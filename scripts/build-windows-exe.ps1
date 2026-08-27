@@ -17,7 +17,7 @@ $exePath = Join-Path $distDir "codex-usage.exe"
 $processTreeSmokeScript = Join-Path $repoRoot "scripts\packaged_windows_process_tree_smoke.py"
 $parallelSmokeScript = Join-Path $repoRoot "scripts\packaged_parallel_cache_smoke.py"
 $reportSmokeScript = Join-Path $repoRoot "scripts\packaged_report_smoke.py"
-$backupSmokeScript = Join-Path $repoRoot "scripts\packaged_task_backup_smoke.py"
+$storageAnalysisSmokeScript = Join-Path $repoRoot "scripts\packaged_storage_analysis_smoke.py"
 $smokeScript = Join-Path $repoRoot "scripts\smoke-test-packaged-sync.py"
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
@@ -65,9 +65,9 @@ try {
         throw "Packaged report smoke test exited with code $LASTEXITCODE"
     }
 
-    uv run python $backupSmokeScript --executable $exePath
+    uv run python $storageAnalysisSmokeScript --executable $exePath
     if ($LASTEXITCODE -ne 0) {
-        throw "Packaged Task Backup smoke test exited with code $LASTEXITCODE"
+        throw "Packaged Task Storage analysis smoke test exited with code $LASTEXITCODE"
     }
 
     uv run python $smokeScript --executable $exePath

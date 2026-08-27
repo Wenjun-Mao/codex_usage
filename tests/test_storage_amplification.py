@@ -29,7 +29,6 @@ def test_complete_threshold_analysis_marks_history_media_and_active_root_risk(
     assert tree.has_history_amplification is True
     assert tree.has_media_amplification is True
     assert tree.has_active_root_history_risk is True
-    assert tree.can_prepare_rollover is True
 
 
 def test_partial_analysis_never_claims_amplification_and_counts_large_descendants(
