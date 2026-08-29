@@ -41,6 +41,7 @@ from codex_usage.session_cache_schema import (
     PARSER_CACHE_VERSION,
     PROJECT_TRANSITION_CACHE_VERSION,
 )
+from codex_usage.session_cache_requests import StaleAppendCheckpointError
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     collect_session_file_inventory,
@@ -184,7 +185,7 @@ def _refresh_files_with_stale_checkpoint_retry(
                 rebuilt=rebuilt,
                 max_workers=max_workers,
             )
-        except _refresh.StaleAppendCheckpointError:
+        except StaleAppendCheckpointError:
             if attempt == _STALE_CHECKPOINT_RETRY_COUNT:
                 raise
     raise AssertionError("stale checkpoint retry loop exhausted unexpectedly")

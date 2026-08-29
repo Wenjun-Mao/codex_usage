@@ -8,6 +8,10 @@ from codex_usage.session_inventory import SessionFileInventoryEntry
 from codex_usage.session_parser_models import SessionParseCheckpoint
 
 
+class StaleAppendCheckpointError(RuntimeError):
+    """An append result was parsed from a checkpoint another writer replaced."""
+
+
 def load_cached_rows(
     connection: sqlite3.Connection,
 ) -> dict[str, sqlite3.Row]:
@@ -66,3 +70,21 @@ def is_current_append_checkpoint(
     if expected is None:
         return False
     return load_parser_checkpoint(connection, file_key, path) == expected
+
+
+def assert_current_append_checkpoint(
+    connection: sqlite3.Connection,
+    *,
+    file_key: str,
+    path: Path,
+    expected: SessionParseCheckpoint | None,
+) -> None:
+    if not is_current_append_checkpoint(
+        connection,
+        file_key=file_key,
+        path=path,
+        expected=expected,
+    ):
+        raise StaleAppendCheckpointError(
+            f"append checkpoint changed before commit for {file_key!r}"
+        )

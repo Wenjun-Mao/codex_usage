@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from itertools import batched
@@ -31,10 +30,11 @@ from codex_usage.session_cache_ownership import (
     promote_cached_session_owners,
 )
 from codex_usage.session_cache_requests import (
+    assert_current_append_checkpoint as _assert_current_append_checkpoint,
     eligible_append_checkpoint as _eligible_append_checkpoint,
-    is_current_append_checkpoint as _is_current_append_checkpoint,
     load_cached_rows as _load_cached_rows,
 )
+from codex_usage.session_cache_results import validated_results as _validated_results
 from codex_usage.session_cache_schema import _REPARSE_REQUIRED_ERROR
 from codex_usage.session_cache_store import record_file_error
 from codex_usage.session_generation_models import ParsedSessionGeneration
@@ -44,10 +44,6 @@ from codex_usage.session_inventory import (
 )
 
 _COMMIT_GROUP_SIZE = 8
-
-
-class StaleAppendCheckpointError(RuntimeError):
-    """An append result was parsed from a checkpoint another writer replaced."""
 
 
 def refresh_files(
@@ -252,29 +248,6 @@ def _commit_preflight(
     return parse_entries, reused, missing_marked, affected_task_ids
 
 
-def _validated_results(
-    requests: Sequence[UsageParseRequest],
-    results: Sequence[UsageParseResult],
-) -> tuple[UsageParseResult, ...]:
-    if len(results) != len(requests):
-        raise ValueError("usage parse result count does not match request count")
-    expected_by_ordinal = {request.ordinal: request for request in requests}
-    if len(expected_by_ordinal) != len(requests):
-        raise ValueError("usage parse requests contain duplicate ordinals")
-
-    seen: set[int] = set()
-    for result in results:
-        ordinal = result.request.ordinal
-        if ordinal in seen:
-            raise ValueError("usage parse results contain duplicate ordinals")
-        if expected_by_ordinal.get(ordinal) != result.request:
-            raise ValueError("usage parse result does not match its request")
-        seen.add(ordinal)
-    if seen != set(expected_by_ordinal):
-        raise ValueError("usage parse results do not cover the complete request group")
-    return tuple(sorted(results, key=lambda result: result.request.ordinal))
-
-
 def _commit_result_group(
     connection: sqlite3.Connection,
     session_dirs: list[Path],
@@ -316,16 +289,12 @@ def _commit_result_group(
                 )
             else:
                 if result.appended is not None:
-                    if not _is_current_append_checkpoint(
+                    _assert_current_append_checkpoint(
                         connection,
                         file_key=result.request.file_key,
                         path=result.request.path,
                         expected=result.request.checkpoint,
-                    ):
-                        raise StaleAppendCheckpointError(
-                            "append checkpoint changed before commit for "
-                            f"{result.request.file_key!r}"
-                        )
+                    )
                     affected_task_ids.update(
                         append_file_generation(
                             connection,

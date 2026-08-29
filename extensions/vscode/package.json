@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Dashboard",
   "description": "Local Codex usage dashboard with Task Storage diagnostics and optional cross-computer task transfer.",
   "publisher": "wenjun-mao",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {

@@ -16,11 +16,9 @@ import pytest
 import codex_usage.session_cache_refresh as refresh_module
 from codex_usage.parallel.usage import UsageParseRequest, parse_usage_request
 from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
-from codex_usage.session_cache_refresh import (
-    StaleAppendCheckpointError,
-    _commit_result_group,
-)
+from codex_usage.session_cache_refresh import _commit_result_group
 from codex_usage.session_cache_requests import (
+    StaleAppendCheckpointError,
     eligible_append_checkpoint,
     load_cached_rows,
 )

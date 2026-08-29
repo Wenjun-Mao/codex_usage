@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.8.2 - 2026-08-29 - Release Gate Hardening
+
+- Refactored internal cache result validation so native release-tag builds satisfy the focused-module guard on detached Git checkouts.
+- Includes the multi-window cache coordination and archive-relocation recovery from 1.8.1 with no dashboard or workflow changes.
+
 ## 1.8.1 - 2026-08-29 - Cross-Process Cache Recovery
 
 - Coordinated reports from separate VS Code windows through one shared cache lock instead of allowing duplicate append commits.

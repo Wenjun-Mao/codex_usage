@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.8.2 - 2026-08-29 - Release Gate Hardening
+
+- Split parser-batch result validation from the cache refresh coordinator so detached release-tag builds enforce the repository's focused-module size guard without changing cache behavior.
+- Retained the complete cross-process cache serialization, stale-checkpoint rollback, and active-to-archive fallback recovery introduced in 1.8.1.
+
 ## 1.8.1 - 2026-08-29 - Cross-Process Cache Recovery
 
 - Serialized shared usage-cache refreshes across independent VS Code extension hosts, capturing source inventory only after the reporter owns the cache lock.
