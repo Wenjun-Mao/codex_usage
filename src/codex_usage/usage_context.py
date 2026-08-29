@@ -15,6 +15,10 @@ from codex_usage.aggregation import (
     resolve_range_bounds,
     resolve_timezone,
 )
+from codex_usage.direct_parse_recovery import (
+    build_direct_parse_targets,
+    parse_direct_files,
+)
 from codex_usage.discovery import collect_jsonl_files, find_session_dirs
 from codex_usage.models import UsageRecord
 from codex_usage.parallel_audit import write_parallel_audit
@@ -119,12 +123,26 @@ def load_session_data(
                 session_dirs, read_metadata=False
             )
             files = collect_jsonl_files(session_dirs)
+            identity_inventory = collect_session_file_inventory(
+                session_dirs, read_metadata=True
+            )
+            parse_targets = build_direct_parse_targets(
+                files,
+                identity_inventory,
+                session_dirs,
+            )
         with timer.measure("storage_refresh") if timer else nullcontext():
             storage_insights = build_task_storage_insights(
                 inspect_storage_files(physical_inventory), session_dirs
             )
         with timer.measure("usage_refresh") if timer else nullcontext():
-            records = parse_session_files(files)
+            parsed = parse_direct_files(
+                parse_targets,
+                session_dirs=session_dirs,
+                parse_file=lambda path: parse_session_files([path]),
+            )
+            records = parsed.records
+            files = parsed.files
         project_transitions: list[ProjectTransition] = []
         with timer.measure("transition_refresh") if timer else nullcontext():
             if auto_transitions:
