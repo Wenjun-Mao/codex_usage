@@ -39,3 +39,4 @@ The structured subagent replay accounting contract is recorded in [ADR 0028](002
 The guarded Desktop project-binding contract is recorded in [ADR 0029](0029-guarded-desktop-project-binding.md).
 The Project Breakdown role-column presentation contract is recorded in [ADR 0030](0030-project-role-column-matrix.md).
 The Codex-owned task lifecycle contract is recorded in [ADR 0031](0031-codex-owned-task-lifecycle.md).
+The cross-process cache refresh and rollout-relocation recovery contract is recorded in [ADR 0032](0032-cross-process-cache-refresh-recovery.md).

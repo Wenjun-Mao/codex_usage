@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.8.1 - 2026-08-29 - Cross-Process Cache Recovery
+
+- Serialized shared usage-cache refreshes across independent VS Code extension hosts, capturing source inventory only after the reporter owns the cache lock.
+- Rechecked append checkpoints inside the SQLite write transaction and rolled back stale commit groups before any duplicate record indexes can be inserted.
+- Recovered direct fallback when Codex moves an intact rollout from active to archived storage during a report, retrying only the exact relocated task and keeping genuine disappearance explicit.
+
 ## 1.8.0 - 2026-08-27 - Codex-Owned Task Lifecycle
 
 - Removed custom compressed task backup, verification, and rollover workflows from the CLI and VS Code extension; Task Storage now exposes only read-only inventory and selected-tree analysis.

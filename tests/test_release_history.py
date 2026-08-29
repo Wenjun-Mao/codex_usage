@@ -10,6 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
+    "1.8.1": "2026-08-29",
     "1.8.0": "2026-08-27",
     "1.7.8": "2026-08-23",
     "1.7.7": "2026-08-22",
@@ -70,6 +71,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "1.8.1",
     "1.8.0",
     "1.7.8",
     "1.7.7",
@@ -215,6 +217,20 @@ def test_1_8_0_changelogs_describe_codex_owned_lifecycle(changelog: Path) -> Non
     assert "fresh task" in section and "concise handoff" in section
     assert ".codex-task-backup" in section and "untouched" in section
     assert "no longer" in section and "restored" in section
+
+
+@pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
+def test_1_8_1_changelogs_describe_cross_process_recovery(changelog: Path) -> None:
+    section = normalized_prose(
+        markdown_section(
+            changelog,
+            "## 1.8.1 - 2026-08-29 - Cross-Process Cache Recovery",
+        )
+    )
+
+    assert "cache" in section and ("extension host" in section or "vs code window" in section)
+    assert "append checkpoint" in section and ("duplicate" in section or "stale" in section)
+    assert "archive" in section and ("relocated" in section or "new path" in section)
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))

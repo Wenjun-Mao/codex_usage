@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted. [ADR 0032](0032-cross-process-cache-refresh-recovery.md) extends the
+atomic checkpoint contract with cross-process refresh ownership and a
+transaction-time stale-checkpoint assertion.
 
 ## Context
 

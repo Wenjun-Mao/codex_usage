@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -397,36 +397,6 @@ def test_usage_context_passes_resolved_range_to_cache_and_filters_project(
     assert captured["range_bounds"].end_us is not None
     assert context.records == [selected]
     assert context.project_keys == ["/repo/selected"]
-
-
-def test_usage_context_filters_direct_parse_fallback_with_same_range_contract(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from codex_usage import usage_context
-
-    sessions = Path("/sessions")
-    now = datetime.now(UTC)
-    today = _usage_record(now, "/repo/today")
-    yesterday = _usage_record(now - timedelta(days=1), "/repo/yesterday")
-
-    def unavailable(*_args, **_kwargs):
-        raise RuntimeError("cache unavailable")
-
-    monkeypatch.setattr(usage_context, "find_session_dirs", lambda: [sessions])
-    monkeypatch.setattr(usage_context, "load_cached_session_data", unavailable)
-    monkeypatch.setattr(usage_context, "collect_jsonl_files", lambda _dirs: [today.file_path, yesterday.file_path])
-    monkeypatch.setattr(usage_context, "parse_session_files", lambda _files: [today, yesterday])
-    args = SimpleNamespace(
-        timezone="UTC",
-        range_name="today",
-        project_key=[],
-        no_auto_transitions=True,
-        parallel_audit=None,
-    )
-
-    context = usage_context.load_usage_context(args)
-
-    assert context.records == [today]
 
 
 def _usage_record(timestamp: datetime, project_key: str) -> UsageRecord:

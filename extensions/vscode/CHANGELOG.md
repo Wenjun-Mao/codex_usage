@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.8.1 - 2026-08-29 - Cross-Process Cache Recovery
+
+- Coordinated reports from separate VS Code windows through one shared cache lock instead of allowing duplicate append commits.
+- Captured a fresh source inventory after any lock wait and rejected stale append checkpoints atomically before they can create duplicate rows.
+- Kept reports working when Codex archives a task during direct fallback by finding and parsing the same task at its new path exactly once.
+
 ## 1.8.0 - 2026-08-27 - Codex-Owned Task Lifecycle
 
 - Removed **Back Up Task** and **Prepare Task Rollover**, leaving **Analyze** as the only Task Storage row operation.

@@ -14,6 +14,7 @@ from codex_usage.parallel.execution import ParallelRunReport
 from codex_usage.performance_timing import PhaseTimer, write_timing_sidecar
 from codex_usage.session_cache import CacheStats
 from codex_usage.session_cache_models import CacheRefreshOutcome
+from codex_usage.session_inventory import SessionFileInventoryEntry
 from codex_usage.usage_context import UsageContext
 
 
@@ -153,7 +154,24 @@ def test_direct_cache_fallback_sidecar_has_complete_phases_and_diagnostics(
         "load_cached_session_data",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("cache broken")),
     )
-    monkeypatch.setattr(usage_context_module, "collect_jsonl_files", lambda _dirs: [session_file])
+    monkeypatch.setattr(
+        usage_context_module,
+        "collect_session_file_inventory",
+        lambda _dirs, *, read_metadata=True: (
+            [
+                SessionFileInventoryEntry(
+                    file_key="session",
+                    path=session_file,
+                    session_dir=session_dir,
+                    storage_state="active",
+                    size_bytes=0,
+                    mtime_ns=0,
+                )
+            ]
+            if read_metadata
+            else []
+        ),
+    )
     monkeypatch.setattr(usage_context_module, "parse_session_files", lambda _files: [])
     monkeypatch.setattr(usage_context_module, "collect_repo_path_observations", lambda *_args: [])
     monkeypatch.setattr(usage_context_module, "infer_project_transitions", lambda *_args: [])

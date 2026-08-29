@@ -6,6 +6,8 @@ Accepted. The no-checkpoint portions are partially superseded by
 [ADR 0022](0022-guarded-append-parser-checkpoints.md). The bounded worker pool,
 parent-only SQLite ownership, eight-file transaction groups, deterministic
 commit ordering, and prior-generation rollback contract remain in force.
+[ADR 0032](0032-cross-process-cache-refresh-recovery.md) extends parent
+ownership across independent extension-host processes that share one cache.
 
 ## Context
 

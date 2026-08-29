@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from pathlib import Path
@@ -146,6 +147,26 @@ def _open_cache_connection(path: Path):
         connection.close()
 
 
+@contextmanager
+def _collect_locked_inventory(
+    cache_database_path: Path,
+    session_dirs: list[Path],
+    timer: PhaseTimer | None,
+) -> Iterator[list[SessionFileInventoryEntry]]:
+    """Capture the source snapshot only after this process owns the refresh."""
+    with acquire_cache_refresh_lock(cache_database_path):
+        if timer is None:
+            inventory = collect_session_file_inventory(
+                session_dirs, read_metadata=False
+            )
+        else:
+            with timer.measure("inventory"):
+                inventory = collect_session_file_inventory(
+                    session_dirs, read_metadata=False
+                )
+        yield inventory
+
+
 def _refresh_files_with_stale_checkpoint_retry(
     connection: sqlite3.Connection,
     session_dirs: list[Path],
@@ -180,14 +201,13 @@ def load_cached_session_data(
 ) -> CachedSessionData:
     resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
     resolved_cache_dir.mkdir(parents=True, exist_ok=True)
-    if timer is None:
-        inventory = collect_session_file_inventory(session_dirs, read_metadata=False)
-    else:
-        with timer.measure("inventory"):
-            inventory = collect_session_file_inventory(session_dirs, read_metadata=False)
     cache_database_path = resolved_cache_dir / CACHE_DB_NAME
     with (
-        acquire_cache_refresh_lock(cache_database_path),
+        _collect_locked_inventory(
+            cache_database_path,
+            session_dirs,
+            timer,
+        ) as inventory,
         _open_cache_connection(cache_database_path) as connection,
     ):
         connection.row_factory = sqlite3.Row

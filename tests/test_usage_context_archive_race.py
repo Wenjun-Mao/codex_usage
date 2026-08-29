@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,7 +13,11 @@ from codex_usage.direct_parse_recovery import (
     parse_direct_files,
 )
 from codex_usage.parser import parse_session_file
-from codex_usage.session_inventory import collect_session_file_inventory
+from codex_usage.models import ROOT_USAGE_ROLE, TokenUsage, UsageRecord
+from codex_usage.session_inventory import (
+    SessionFileInventoryEntry,
+    collect_session_file_inventory,
+)
 
 
 def test_direct_parse_recovers_rename_after_inventory_without_restarting(
@@ -116,6 +122,58 @@ def test_usage_context_fallback_reparses_only_relocated_task(
     assert [record.session_id for record in data.records] == ["moving"]
 
 
+def test_usage_context_filters_direct_fallback_with_same_range_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = Path("/sessions")
+    now = datetime.now(UTC)
+    today = _usage_record(now, "/repo/today")
+    yesterday = _usage_record(now - timedelta(days=1), "/repo/yesterday")
+
+    monkeypatch.setattr(usage_context, "find_session_dirs", lambda: [sessions])
+    monkeypatch.setattr(
+        usage_context,
+        "load_cached_session_data",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("cache unavailable")
+        ),
+    )
+
+    def inventory(_dirs, *, read_metadata=True):
+        if not read_metadata:
+            return []
+        return [
+            SessionFileInventoryEntry(
+                file_key=record.session_id,
+                path=record.file_path,
+                session_dir=sessions,
+                storage_state="active",
+                size_bytes=0,
+                mtime_ns=0,
+            )
+            for record in (today, yesterday)
+        ]
+
+    monkeypatch.setattr(usage_context, "collect_session_file_inventory", inventory)
+    monkeypatch.setattr(
+        usage_context,
+        "parse_session_files",
+        lambda _files: [today, yesterday],
+    )
+
+    context = usage_context.load_usage_context(
+        SimpleNamespace(
+            timezone="UTC",
+            range_name="today",
+            project_key=[],
+            no_auto_transitions=True,
+            parallel_audit=None,
+        )
+    )
+
+    assert context.records == [today]
+
+
 def _write_session(session_dir: Path, task_id: str) -> Path:
     path = session_dir / "2026" / "08" / "29" / f"{task_id}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,3 +208,15 @@ def _write_session(session_dir: Path, task_id: str) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def _usage_record(timestamp: datetime, project_key: str) -> UsageRecord:
+    return UsageRecord(
+        timestamp=timestamp,
+        usage=TokenUsage(total_tokens=1),
+        session_id=f"session-{project_key.rsplit('/', maxsplit=1)[-1]}",
+        file_path=Path(f"{project_key}/session.jsonl"),
+        usage_role=ROOT_USAGE_ROLE,
+        project_key=project_key,
+        project_label=project_key.rsplit("/", maxsplit=1)[-1],
+    )

@@ -27,7 +27,7 @@ from codex_usage.session_cache_requests import (
 from codex_usage.session_inventory import collect_session_file_inventory
 
 
-def test_second_process_waits_for_refresh_and_reuses_committed_append(
+def test_second_process_refreshes_inventory_after_waiting_for_lock(
     tmp_path: Path,
 ) -> None:
     sessions = tmp_path / "codex" / "sessions"
@@ -45,9 +45,14 @@ def test_second_process_waits_for_refresh_and_reuses_committed_append(
         release_marker=release_marker,
     )
     second: subprocess.Popen[str] | None = None
+    second_inventory_marker = tmp_path / "second-inventory"
     try:
         _wait_for_path(parsed_marker)
-        second = _start_refresh_process(sessions, cache_dir)
+        second = _start_refresh_process(
+            sessions,
+            cache_dir,
+            inventory_marker=second_inventory_marker,
+        )
         assert second.stdout is not None
         second_output: queue.Queue[str] = queue.Queue()
         reader = threading.Thread(
@@ -56,7 +61,9 @@ def test_second_process_waits_for_refresh_and_reuses_committed_append(
         reader.start()
         with pytest.raises(queue.Empty):
             second_output.get(timeout=0.5)
+        assert not second_inventory_marker.exists()
 
+        _append_token_count(session_path, "2026-04-29T10:06:00Z", 200)
         release_marker.touch()
         first_payload = _read_refresh_result(first)
         second_line = second_output.get(timeout=10)
@@ -64,7 +71,8 @@ def test_second_process_waits_for_refresh_and_reuses_committed_append(
         second_payload = json.loads(second_line)
 
         assert first_payload == {"parsed": 1, "totals": [100, 50]}
-        assert second_payload == {"parsed": 0, "totals": [100, 50]}
+        assert second_inventory_marker.exists()
+        assert second_payload == {"parsed": 1, "totals": [100, 50, 50]}
     finally:
         release_marker.touch(exist_ok=True)
         _stop_process(first)
@@ -74,7 +82,7 @@ def test_second_process_waits_for_refresh_and_reuses_committed_append(
     with sqlite3.connect(cache_dir / CACHE_DB_NAME) as connection:
         assert connection.execute(
             "select count(*) from usage_records"
-        ).fetchone() == (2,)
+        ).fetchone() == (3,)
         assert connection.execute(
             "select count(*) from ("
             "select file_key, record_index from usage_records "
@@ -170,6 +178,7 @@ def _start_refresh_process(
     *,
     parsed_marker: Path | None = None,
     release_marker: Path | None = None,
+    inventory_marker: Path | None = None,
 ) -> subprocess.Popen[str]:
     source_root = Path(__file__).resolve().parents[1] / "src"
     environment = os.environ.copy()
@@ -187,13 +196,23 @@ def _start_refresh_process(
                 import time
                 from pathlib import Path
 
+                import codex_usage.session_cache as cache_module
                 import codex_usage.session_cache_refresh as refresh_module
-                from codex_usage.session_cache import load_cached_session_data
 
                 sessions = Path(sys.argv[1])
                 cache_dir = Path(sys.argv[2])
                 parsed_marker = Path(sys.argv[3]) if sys.argv[3] else None
                 release_marker = Path(sys.argv[4]) if sys.argv[4] else None
+                inventory_marker = Path(sys.argv[5]) if sys.argv[5] else None
+                if inventory_marker is not None:
+                    original_inventory = cache_module.collect_session_file_inventory
+
+                    def collect_then_mark(*args, **kwargs):
+                        inventory = original_inventory(*args, **kwargs)
+                        inventory_marker.touch()
+                        return inventory
+
+                    cache_module.collect_session_file_inventory = collect_then_mark
                 if parsed_marker is not None:
                     original_parse = refresh_module.parse_usage_request
 
@@ -206,7 +225,7 @@ def _start_refresh_process(
 
                     refresh_module.parse_usage_request = parse_then_wait
 
-                data = load_cached_session_data(
+                data = cache_module.load_cached_session_data(
                     [sessions],
                     cache_dir=cache_dir,
                     auto_transitions=False,
@@ -227,6 +246,7 @@ def _start_refresh_process(
             str(cache_dir),
             "" if parsed_marker is None else str(parsed_marker),
             "" if release_marker is None else str(release_marker),
+            "" if inventory_marker is None else str(inventory_marker),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

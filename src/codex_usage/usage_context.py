@@ -19,7 +19,7 @@ from codex_usage.direct_parse_recovery import (
     build_direct_parse_targets,
     parse_direct_files,
 )
-from codex_usage.discovery import collect_jsonl_files, find_session_dirs
+from codex_usage.discovery import find_session_dirs
 from codex_usage.models import UsageRecord
 from codex_usage.parallel_audit import write_parallel_audit
 from codex_usage.parser import parse_session_files
@@ -122,10 +122,10 @@ def load_session_data(
             physical_inventory = collect_session_file_inventory(
                 session_dirs, read_metadata=False
             )
-            files = collect_jsonl_files(session_dirs)
             identity_inventory = collect_session_file_inventory(
                 session_dirs, read_metadata=True
             )
+            files = [entry.path for entry in identity_inventory]
             parse_targets = build_direct_parse_targets(
                 files,
                 identity_inventory,

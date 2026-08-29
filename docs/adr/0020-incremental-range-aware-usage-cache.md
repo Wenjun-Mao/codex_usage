@@ -6,7 +6,9 @@ Accepted. Partially superseded by
 [ADR 0022](0022-guarded-append-parser-checkpoints.md) for whole-file refresh
 and no-checkpoint behavior. Per-task
 transition ownership, range-aware queries, latest-request serialization, and
-parent-only SQLite ownership remain in force.
+parent-only SQLite ownership remain in force. Latest-request serialization is
+per extension host; [ADR 0032](0032-cross-process-cache-refresh-recovery.md)
+adds the required cross-process cache boundary.
 
 ## Context
 
