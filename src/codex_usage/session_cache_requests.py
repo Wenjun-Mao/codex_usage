@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from codex_usage.session_cache_checkpoints import load_parser_checkpoint
 from codex_usage.session_inventory import SessionFileInventoryEntry
@@ -53,3 +54,15 @@ def eligible_append_checkpoint(
     ):
         return None
     return checkpoint
+
+
+def is_current_append_checkpoint(
+    connection: sqlite3.Connection,
+    *,
+    file_key: str,
+    path: Path,
+    expected: SessionParseCheckpoint | None,
+) -> bool:
+    if expected is None:
+        return False
+    return load_parser_checkpoint(connection, file_key, path) == expected
