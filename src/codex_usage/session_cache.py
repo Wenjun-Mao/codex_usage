@@ -20,6 +20,7 @@ import codex_usage.session_cache_store as _store
 import codex_usage.session_cache_transitions as _cache_transitions
 import codex_usage.storage_insights as _storage_insights
 import codex_usage.storage_metadata as _storage_metadata
+from codex_usage.cache_refresh_lock import acquire_cache_refresh_lock
 from codex_usage.aggregation import RangeBounds
 from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import EMPTY_PARALLEL_RUN_REPORT
@@ -39,7 +40,10 @@ from codex_usage.session_cache_schema import (
     PARSER_CACHE_VERSION,
     PROJECT_TRANSITION_CACHE_VERSION,
 )
-from codex_usage.session_inventory import collect_session_file_inventory
+from codex_usage.session_inventory import (
+    SessionFileInventoryEntry,
+    collect_session_file_inventory,
+)
 
 CACHE_DB_NAME = "usage-cache-v8.sqlite3"
 LEGACY_CACHE_DB_NAMES = (
@@ -49,6 +53,7 @@ LEGACY_CACHE_DB_NAMES = (
     "usage-cache-v4.sqlite3",
     "usage-cache.sqlite3",
 )
+_STALE_CHECKPOINT_RETRY_COUNT = 1
 
 __all__ = (
     "CACHE_DB_NAME",
@@ -141,6 +146,29 @@ def _open_cache_connection(path: Path):
         connection.close()
 
 
+def _refresh_files_with_stale_checkpoint_retry(
+    connection: sqlite3.Connection,
+    session_dirs: list[Path],
+    inventory: list[SessionFileInventoryEntry],
+    *,
+    rebuilt: bool,
+    max_workers: int | None,
+) -> _refresh.CacheRefreshOutcome:
+    for attempt in range(_STALE_CHECKPOINT_RETRY_COUNT + 1):
+        try:
+            return _refresh.refresh_files(
+                connection,
+                session_dirs,
+                inventory,
+                rebuilt=rebuilt,
+                max_workers=max_workers,
+            )
+        except _refresh.StaleAppendCheckpointError:
+            if attempt == _STALE_CHECKPOINT_RETRY_COUNT:
+                raise
+    raise AssertionError("stale checkpoint retry loop exhausted unexpectedly")
+
+
 def load_cached_session_data(
     session_dirs: list[Path],
     *,
@@ -157,13 +185,17 @@ def load_cached_session_data(
     else:
         with timer.measure("inventory"):
             inventory = collect_session_file_inventory(session_dirs, read_metadata=False)
-    with _open_cache_connection(resolved_cache_dir / CACHE_DB_NAME) as connection:
+    cache_database_path = resolved_cache_dir / CACHE_DB_NAME
+    with (
+        acquire_cache_refresh_lock(cache_database_path),
+        _open_cache_connection(cache_database_path) as connection,
+    ):
         connection.row_factory = sqlite3.Row
         schema_state = _schema._ensure_schema(connection)
         legacy_cleanup_errors = _cleanup_legacy_cache_files(resolved_cache_dir)
         physical_inventory = list(inventory)
         if timer is None:
-            refresh_outcome = _refresh.refresh_files(
+            refresh_outcome = _refresh_files_with_stale_checkpoint_retry(
                 connection,
                 session_dirs,
                 inventory,
@@ -172,7 +204,7 @@ def load_cached_session_data(
             )
         else:
             with timer.measure("usage_refresh"):
-                refresh_outcome = _refresh.refresh_files(
+                refresh_outcome = _refresh_files_with_stale_checkpoint_retry(
                     connection,
                     session_dirs,
                     inventory,

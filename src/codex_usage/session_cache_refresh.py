@@ -32,6 +32,7 @@ from codex_usage.session_cache_ownership import (
 )
 from codex_usage.session_cache_requests import (
     eligible_append_checkpoint as _eligible_append_checkpoint,
+    is_current_append_checkpoint as _is_current_append_checkpoint,
     load_cached_rows as _load_cached_rows,
 )
 from codex_usage.session_cache_schema import _REPARSE_REQUIRED_ERROR
@@ -43,6 +44,10 @@ from codex_usage.session_inventory import (
 )
 
 _COMMIT_GROUP_SIZE = 8
+
+
+class StaleAppendCheckpointError(RuntimeError):
+    """An append result was parsed from a checkpoint another writer replaced."""
 
 
 def refresh_files(
@@ -311,6 +316,16 @@ def _commit_result_group(
                 )
             else:
                 if result.appended is not None:
+                    if not _is_current_append_checkpoint(
+                        connection,
+                        file_key=result.request.file_key,
+                        path=result.request.path,
+                        expected=result.request.checkpoint,
+                    ):
+                        raise StaleAppendCheckpointError(
+                            "append checkpoint changed before commit for "
+                            f"{result.request.file_key!r}"
+                        )
                     affected_task_ids.update(
                         append_file_generation(
                             connection,
