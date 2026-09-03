@@ -62,6 +62,62 @@ def test_groups_schedule_largest_unread_work_first(
     )
 
 
+def test_total_parse_budget_is_shared_fairly_across_sources(tmp_path: Path) -> None:
+    quantum = 16 * 1024 * 1024
+    plans = [
+        (
+            (1, 2, "", size, ordinal),
+            UsageParseRequest(
+                ordinal=ordinal,
+                file_key=f"task-{ordinal}",
+                path=tmp_path / f"task-{ordinal}.jsonl",
+                size_bytes=size,
+                mtime_ns=ordinal,
+            ),
+        )
+        for ordinal, size in enumerate([32 * 1024 * 1024] * 5)
+    ]
+
+    selected = refresh_module._apply_total_parse_budget(
+        plans,
+        max_total_parse_bytes=64 * 1024 * 1024,
+        max_parse_bytes=quantum,
+    )
+
+    assert len(selected) == 4
+    assert [request.max_bytes for request in selected] == [quantum] * 4
+
+
+def test_dirty_source_is_selected_before_older_baseline_work(tmp_path: Path) -> None:
+    ordinary = UsageParseRequest(
+        ordinal=0,
+        file_key="ordinary",
+        path=tmp_path / "ordinary.jsonl",
+        size_bytes=32,
+        mtime_ns=1,
+    )
+    dirty = UsageParseRequest(
+        ordinal=1,
+        file_key="dirty",
+        path=tmp_path / "dirty.jsonl",
+        size_bytes=32,
+        mtime_ns=2,
+    )
+    plans = [
+        ((1, 2, "", 32, 0), ordinary),
+        ((0, 2, "", 32, 1), dirty),
+    ]
+
+    selected = refresh_module._apply_total_parse_budget(
+        plans,
+        max_total_parse_bytes=16,
+        max_parse_bytes=16,
+    )
+
+    assert [request.file_key for request in selected] == ["dirty"]
+    assert selected[0].max_bytes == 16
+
+
 def _append_irrelevant_bytes(path: Path, count: int) -> None:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(

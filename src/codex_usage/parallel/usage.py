@@ -26,7 +26,7 @@ from codex_usage.session_generation_models import (
 )
 from codex_usage.session_parser_models import SessionParseCheckpoint
 
-type ParseOutcome = Literal["full", "append", "full_fallback"]
+type ParseOutcome = Literal["full", "append", "full_fallback", "stale"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +37,9 @@ class UsageParseRequest:
     size_bytes: int
     mtime_ns: int
     checkpoint: SessionParseCheckpoint | None = None
+    max_bytes: int | None = None
+    defer_full_fallback: bool = False
+    deferred_full_parse_reason: str = ""
 
     @property
     def estimated_bytes(self) -> int:
@@ -62,6 +65,8 @@ class UsageParseResult:
         )
         if self.error and successful_values:
             raise ValueError("usage parse result cannot contain parsed data and an error")
+        if self.outcome == "stale" and not self.error and successful_values == 0:
+            return
         if not self.error and successful_values != 1:
             raise ValueError("successful usage parse result needs exactly one parsed value")
 
@@ -130,22 +135,29 @@ def _parse_usage_request_with_retry(
     ParseOutcome,
     str,
 ]:
+    if request.deferred_full_parse_reason:
+        return None, None, "stale", request.deferred_full_parse_reason
     if request.checkpoint is not None:
         try:
             appended = parse_session_append(
                 request.path,
                 request.checkpoint,
                 stop_offset=request.size_bytes,
+                max_bytes=request.max_bytes,
             )
         except AppendCheckpointMismatch as error:
+            if request.defer_full_fallback:
+                return None, None, "stale", str(error)
             generation = parse_session_generation(
                 request.path,
                 stop_offset=request.size_bytes,
+                max_bytes=request.max_bytes,
             )
             return generation, None, "full_fallback", str(error)
         return None, appended, "append", ""
     generation = parse_session_generation(
         request.path,
         stop_offset=request.size_bytes,
+        max_bytes=request.max_bytes,
     )
     return generation, None, "full", ""

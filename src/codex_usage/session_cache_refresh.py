@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -20,9 +21,17 @@ from codex_usage.parallel.usage import (
 from codex_usage.session_cache_generations import (
     append_file_generation,
     affected_task_ids_for_file,
-    rekey_file_generation,
     remove_candidate_generation,
     replace_file_generation,
+)
+from codex_usage.session_cache_refresh_identity import (
+    dedupe_inventory_by_cached_session_id as _dedupe_inventory_by_cached_session_id,
+    entry_for_successful_generation as _entry_for_successful_generation,
+    entry_priority as _entry_priority,
+    error_entry as _error_entry,
+    group_canonical_winners as _group_canonical_winners,
+    replaces_cached_identity as _replaces_cached_identity,
+    upsert_pending_inventory_rows as _upsert_pending_inventory_rows,
 )
 from codex_usage.session_cache_models import CacheRefreshOutcome, CacheStats
 from codex_usage.session_cache_ownership import (
@@ -36,11 +45,9 @@ from codex_usage.session_cache_requests import (
 )
 from codex_usage.session_cache_results import validated_results as _validated_results
 from codex_usage.session_cache_schema import _REPARSE_REQUIRED_ERROR
-from codex_usage.session_cache_store import record_file_error
-from codex_usage.session_generation_models import ParsedSessionGeneration
+from codex_usage.session_cache_store import record_file_error, record_file_stale
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
-    _path_fallback_file_key,
 )
 
 _COMMIT_GROUP_SIZE = 8
@@ -53,6 +60,10 @@ def refresh_files(
     *,
     rebuilt: bool,
     max_workers: int | None = None,
+    max_parse_bytes: int | None = None,
+    max_total_parse_bytes: int | None = None,
+    defer_full_fallback: bool = False,
+    preferred_paths: tuple[str, ...] = (),
 ) -> CacheRefreshOutcome:
     cached_rows = _load_cached_rows(connection)
     _reconcile_fallback_file_keys(inventory, cached_rows)
@@ -63,24 +74,53 @@ def refresh_files(
         rebuilt=rebuilt,
     )
     refreshed_rows = _load_cached_rows(connection)
-    requests = []
+    request_plans: list[tuple[tuple[object, ...], UsageParseRequest]] = []
+    preferred = {_normalized_path(path) for path in preferred_paths}
     for ordinal, entry in parse_entries:
+        cached = refreshed_rows.get(entry.file_key)
         checkpoint = _eligible_append_checkpoint(
             connection,
             entry,
-            refreshed_rows.get(entry.file_key),
+            cached,
             rebuilt=rebuilt,
         )
-        requests.append(
-            UsageParseRequest(
-                ordinal=ordinal,
-                file_key=entry.file_key,
-                path=entry.path,
-                size_bytes=entry.size_bytes,
-                mtime_ns=entry.mtime_ns,
-                checkpoint=checkpoint,
+        deferred_reason = ""
+        if (
+            defer_full_fallback
+            and not rebuilt
+            and cached is not None
+            and cached["checkpoint_offset"] is not None
+            and checkpoint is None
+        ):
+            deferred_reason = (
+                "source no longer satisfies the guarded append-only contract"
+            )
+        request = UsageParseRequest(
+            ordinal=ordinal,
+            file_key=entry.file_key,
+            path=entry.path,
+            size_bytes=entry.size_bytes,
+            mtime_ns=entry.mtime_ns,
+            checkpoint=checkpoint,
+            max_bytes=max_parse_bytes,
+            defer_full_fallback=defer_full_fallback,
+            deferred_full_parse_reason=deferred_reason,
+        )
+        request_plans.append(
+            (
+                _request_priority(
+                    request,
+                    cached,
+                    preferred=_normalized_path(entry.path) in preferred,
+                ),
+                request,
             )
         )
+    requests = _apply_total_parse_budget(
+        request_plans,
+        max_total_parse_bytes=max_total_parse_bytes,
+        max_parse_bytes=max_parse_bytes,
+    )
 
     worker_spans: list[WorkerSpan] = []
     all_results: list[UsageParseResult] = []
@@ -137,9 +177,19 @@ def refresh_files(
         ),
         files_appended=sum(result.outcome == "append" for result in all_results),
         append_fallbacks=sum(
-            result.outcome == "full_fallback" for result in all_results
+            result.outcome in {"full_fallback", "stale"}
+            for result in all_results
         ),
         source_bytes_read=sum(result.bytes_read for result in all_results),
+        pending_files=sum(
+            1
+            for entry in inventory
+            if _checkpoint_offset(connection, entry.file_key) < entry.size_bytes
+        ),
+        pending_bytes=sum(
+            max(0, entry.size_bytes - _checkpoint_offset(connection, entry.file_key))
+            for entry in inventory
+        ),
         files_reused=reused,
         files_removed=missing_marked + identity_replacements,
         files_missing_retained=missing_count,
@@ -158,6 +208,74 @@ def refresh_files(
         usage_run=report,
         affected_task_ids=frozenset(affected_task_ids),
     )
+
+
+def _request_priority(
+    request: UsageParseRequest,
+    cached: sqlite3.Row | None,
+    *,
+    preferred: bool,
+) -> tuple[object, ...]:
+    if request.deferred_full_parse_reason:
+        work_kind = 0
+    elif (
+        request.checkpoint is not None
+        and cached is not None
+        and int(cached["size_bytes"]) < request.size_bytes
+    ):
+        work_kind = 1
+    elif cached is None:
+        work_kind = 2
+    else:
+        work_kind = 3
+    parsed_at = str(cached["parsed_at"] or "") if cached is not None else ""
+    return (
+        0 if preferred else 1,
+        work_kind,
+        parsed_at,
+        request.estimated_bytes,
+        request.ordinal,
+    )
+
+
+def _apply_total_parse_budget(
+    request_plans: list[tuple[tuple[object, ...], UsageParseRequest]],
+    *,
+    max_total_parse_bytes: int | None,
+    max_parse_bytes: int | None,
+) -> list[UsageParseRequest]:
+    if max_total_parse_bytes is None:
+        return [request for _, request in request_plans]
+    if max_total_parse_bytes < 1:
+        raise ValueError("max_total_parse_bytes must be at least one")
+
+    remaining = max_total_parse_bytes
+    selected: list[UsageParseRequest] = []
+    for _, request in sorted(request_plans, key=lambda item: item[0]):
+        if request.deferred_full_parse_reason:
+            selected.append(request)
+            continue
+        if remaining <= 0:
+            continue
+        request_limit = remaining
+        if max_parse_bytes is not None:
+            request_limit = min(request_limit, max_parse_bytes)
+        request_limit = max(1, request_limit)
+        selected.append(replace(request, max_bytes=request_limit))
+        remaining -= min(request.estimated_bytes, request_limit)
+    return selected
+
+
+def _normalized_path(path: str | Path) -> str:
+    return os.path.normcase(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def _checkpoint_offset(connection: sqlite3.Connection, file_key: str) -> int:
+    row = connection.execute(
+        "select byte_offset from parser_checkpoints where file_key = ?",
+        (file_key,),
+    ).fetchone()
+    return int(row["byte_offset"]) if row is not None else 0
 
 
 def _reconcile_fallback_file_keys(
@@ -207,6 +325,7 @@ def _commit_preflight(
                 entry_priority=_entry_priority,
             )
         )
+        _upsert_pending_inventory_rows(connection, inventory, now)
         cached_rows = _load_cached_rows(connection)
         current_keys = {entry.file_key for entry in inventory}
         for file_key, row in cached_rows.items():
@@ -260,7 +379,7 @@ def _commit_result_group(
     successful_task_ids = {
         result.metadata.session_id
         for result in results
-        if not result.error
+        if not result.error and result.outcome != "stale"
     }
     errors = sorted(
         (result for result in results if result.error),
@@ -286,6 +405,13 @@ def _commit_result_group(
                     session_dirs,
                     entry,
                     result.error,
+                )
+            elif result.outcome == "stale":
+                record_file_stale(
+                    connection,
+                    session_dirs,
+                    entry,
+                    result.fallback_reason,
                 )
             else:
                 if result.appended is not None:
@@ -335,142 +461,6 @@ def _commit_result_group(
         connection.rollback()
         raise
     return affected_task_ids, identity_replacements
-
-
-def _group_canonical_winners(
-    results: tuple[UsageParseResult, ...],
-    inventory: list[SessionFileInventoryEntry],
-) -> dict[str, int]:
-    winners: dict[str, int] = {}
-    for result in results:
-        if result.error or result.generation is None:
-            continue
-        session_id = result.generation.metadata.session_id
-        current = winners.get(session_id)
-        if current is None or _entry_priority(
-            inventory[result.request.ordinal]
-        ) < _entry_priority(inventory[current]):
-            winners[session_id] = result.request.ordinal
-    return winners
-
-
-def _entry_for_successful_generation(
-    connection: sqlite3.Connection,
-    inventory: list[SessionFileInventoryEntry],
-    result: UsageParseResult,
-    group_winners: dict[str, int],
-) -> tuple[SessionFileInventoryEntry, set[str]]:
-    if result.generation is None:
-        raise ValueError("successful usage parse result lacks generation")
-    original_entry = inventory[result.request.ordinal]
-    session_id = result.generation.metadata.session_id
-    if group_winners[session_id] != result.request.ordinal:
-        return _fallback_duplicate_entry(original_entry), set()
-
-    canonical_entry = _entry_with_generation_identity(
-        original_entry, result.generation
-    )
-    existing_index = _canonical_duplicate_index(
-        inventory, result.request.ordinal, session_id
-    )
-    if existing_index is None:
-        return canonical_entry, set()
-
-    existing_entry = inventory[existing_index]
-    if _entry_priority(existing_entry) <= _entry_priority(canonical_entry):
-        return _fallback_duplicate_entry(original_entry), set()
-
-    replacement = _fallback_duplicate_entry(existing_entry)
-    inventory[existing_index] = replacement
-    return canonical_entry, rekey_file_generation(connection, existing_entry, replacement)
-
-
-def _entry_with_generation_identity(
-    entry: SessionFileInventoryEntry,
-    generation: ParsedSessionGeneration,
-) -> SessionFileInventoryEntry:
-    session_id = generation.metadata.session_id
-    if not session_id or session_id == entry.file_key:
-        return entry
-    return replace(entry, file_key=session_id, file_key_is_fallback=False)
-
-
-def _fallback_duplicate_entry(
-    entry: SessionFileInventoryEntry,
-) -> SessionFileInventoryEntry:
-    if entry.file_key_is_fallback:
-        return entry
-    return replace(
-        entry,
-        file_key=_path_fallback_file_key(entry.path),
-        file_key_is_fallback=True,
-    )
-
-
-def _canonical_duplicate_index(
-    inventory: list[SessionFileInventoryEntry],
-    current_index: int,
-    session_id: str,
-) -> int | None:
-    candidates = [
-        index
-        for index, entry in enumerate(inventory)
-        if index != current_index and entry.file_key == session_id
-    ]
-    if not candidates:
-        return None
-    return min(candidates, key=lambda index: _entry_priority(inventory[index]))
-
-
-def _error_entry(
-    entry: SessionFileInventoryEntry,
-    successful_task_ids: set[str],
-) -> SessionFileInventoryEntry:
-    if not entry.file_key_is_fallback or entry.file_key not in successful_task_ids:
-        return entry
-    return replace(entry, file_key=_path_fallback_file_key(entry.path))
-
-
-def _replaces_cached_identity(
-    connection: sqlite3.Connection,
-    existing_entry: SessionFileInventoryEntry,
-    replacement_entry: SessionFileInventoryEntry,
-) -> bool:
-    if existing_entry.file_key == replacement_entry.file_key:
-        return False
-    return connection.execute(
-        "select 1 from files where file_key = ? and path = ?",
-        (existing_entry.file_key, str(existing_entry.path)),
-    ).fetchone() is not None
-
-
-def _dedupe_inventory_by_cached_session_id(
-    inventory: list[SessionFileInventoryEntry],
-    cached_rows: dict[str, sqlite3.Row],
-) -> None:
-    selected: dict[str, SessionFileInventoryEntry] = {}
-    for entry in inventory:
-        cached = cached_rows.get(entry.file_key)
-        session_id = (
-            str(cached["session_id"])
-            if cached is not None and cached["session_id"] and not cached["error"]
-            else entry.file_key
-        )
-        existing = selected.get(session_id)
-        if existing is None or _entry_priority(entry) < _entry_priority(existing):
-            selected[session_id] = entry
-    inventory[:] = sorted(
-        selected.values(), key=lambda entry: str(entry.path).casefold()
-    )
-
-
-def _entry_priority(entry: SessionFileInventoryEntry) -> tuple[int, int, str]:
-    storage_priority = (
-        0
-        if entry.storage_state == "active"
-        else 1 if entry.storage_state == "archived" else 2
-    )
-    return (storage_priority, -entry.mtime_ns, str(entry.path).casefold())
 
 
 def _mark_transition_tasks_dirty(

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.0.0 - 2026-09-03 - Native App Companion
+
+- Converted the extension into a thin optional client for the Codex Usage native app and persistent local collector, with no bundled parser, Python executable, or private cache.
+- Added ledger-backed Usage, Task Storage, Task Transfer, Capture Now, project-transition review, and collector status through the authenticated loopback client.
+- Added clear install/open guidance when the native app is absent or stopped and retained a single universal VSIX for macOS Apple Silicon and Windows x64.
+- Moved capture intervals, background registration, Codex home switching, migration, reset, and signed update settings into the native app; the default collector interval is 15 minutes.
+- Removed the public Python CLI; the companion now communicates only through the native app's authenticated local collector.
+- Added guarded onboarding migration for legacy schema-8 caches, including retained deleted-task history and an explicit source choice for genuinely divergent task records.
+
 ## 1.8.2 - 2026-08-29 - Release Gate Hardening
 
 - Refactored internal cache result validation so native release-tag builds satisfy the focused-module guard on detached Git checkouts.

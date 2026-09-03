@@ -15,7 +15,7 @@ KNOWLEDGE = ROOT / "docs/knowledge/task-storage-amplification.md"
 def test_readmes_disclose_storage_analysis_and_lifecycle_boundaries(
     readme: Path,
 ) -> None:
-    text = readme.read_text(encoding="utf-8").casefold()
+    text = " ".join(readme.read_text(encoding="utf-8").casefold().split())
 
     for phrase in (
         "history amplification",

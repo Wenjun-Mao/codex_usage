@@ -34,14 +34,13 @@ from codex_usage.session_parser_events import (
     parse_session_metadata as _parse_session_metadata,
     parse_timestamp,
 )
+from codex_usage.session_chunk_reader import read_candidate_row
 from codex_usage.session_row_relevance import (
     CHECKPOINT_DIGEST_BYTES,
     SESSION_READ_BUFFER_BYTES,
-    line_bytes_may_affect_usage as _line_bytes_may_affect_usage,
 )
 from codex_usage.storage_content import (
     StorageContentMetrics,
-    observe_storage_row,
 )
 
 
@@ -108,6 +107,7 @@ def parse_session_generation(
     path: Path,
     *,
     stop_offset: int | None = None,
+    max_bytes: int | None = None,
     _capture_partial_candidates: bool = False,
 ) -> ParsedSessionGeneration:
     initial_metadata = SessionMetadata(session_id=path.stem, file_path=path)
@@ -133,6 +133,7 @@ def parse_session_generation(
             next_record_index=0,
             next_candidate_index=0,
             expected_checkpoint=None,
+            max_bytes=max_bytes,
         )
     except _PartialSessionGenerationReadError as error:
         if _capture_partial_candidates:
@@ -153,6 +154,7 @@ def parse_session_append(
     checkpoint: SessionParseCheckpoint,
     *,
     stop_offset: int,
+    max_bytes: int | None = None,
 ) -> ParsedSessionAppend:
     try:
         chunk = _parse_session_chunk(
@@ -163,6 +165,7 @@ def parse_session_append(
             next_record_index=checkpoint.next_record_index,
             next_candidate_index=checkpoint.next_candidate_index,
             expected_checkpoint=checkpoint,
+            max_bytes=max_bytes,
         )
     except _PartialSessionGenerationReadError as error:
         raise error.cause from error
@@ -186,6 +189,7 @@ def _parse_session_chunk(
     next_record_index: int,
     next_candidate_index: int,
     expected_checkpoint: SessionParseCheckpoint | None,
+    max_bytes: int | None,
 ) -> _ParsedChunk:
     metadata = initial_state.metadata
     root_metadata = initial_state.root_metadata
@@ -221,26 +225,28 @@ def _parse_session_chunk(
                     stop_offset=captured_stop,
                 )
             handle.seek(start_offset)
-            while handle.tell() < captured_stop:
+            target_stop = (
+                captured_stop
+                if max_bytes is None
+                else min(captured_stop, start_offset + max(1, max_bytes))
+            )
+            while handle.tell() < captured_stop and handle.tell() < target_stop:
                 line_start = handle.tell()
-                raw_line = handle.readline(captured_stop - line_start)
+                raw_line, complete_line, row_bytes, relevance = read_candidate_row(
+                    handle,
+                    captured_stop,
+                )
                 if not raw_line:
                     break
-                bytes_read += len(raw_line)
+                bytes_read += row_bytes
                 line_end = handle.tell()
                 unterminated_tail = (
-                    line_end == captured_stop and not raw_line.endswith(b"\n")
+                    line_end == captured_stop and not complete_line
                 )
-                observation = observe_storage_row(raw_line)
-                if (
-                    not unterminated_tail
-                    and observation.is_compacted
-                ):
-                    content_metrics += observation.metrics
-                    checkpoint_offset = line_end
-                    continue
-                if not unterminated_tail and not _line_bytes_may_affect_usage(raw_line):
-                    content_metrics += observation.metrics
+                # A definitively irrelevant row is safe to checkpoint even when the
+                # source has not written a trailing newline. Its discriminator cannot
+                # become relevant by appending more payload bytes.
+                if relevance == "irrelevant":
                     checkpoint_offset = line_end
                     continue
                 try:
@@ -259,11 +265,8 @@ def _parse_session_chunk(
                     if unterminated_tail:
                         handle.seek(line_start)
                         break
-                    content_metrics += observation.metrics
                     checkpoint_offset = line_end
                     continue
-
-                content_metrics += observation.metrics
 
                 event_timestamp = parse_timestamp(obj.get("timestamp"))
                 event_type = obj.get("type")

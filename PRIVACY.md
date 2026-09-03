@@ -1,43 +1,81 @@
 # Privacy
 
-Codex Usage Dashboard is designed as a local-first tool.
+Codex Usage is local-first. It has no telemetry, cloud backend, Codex hooks, or
+model/API calls.
 
-## What It Reads
+## Data Read Locally
 
-- Local Codex session JSONL files from the detected Codex sessions directory.
-- Local archived Codex session JSONL files from detected `archived_sessions` directories.
-- Read-only local Codex `state_5.sqlite` thread evidence for automatic project transition detection, limited to thread id/timestamps and the `threads` field `cwd` when present.
-- Local Codex `session_index.jsonl` entries when experimental selected-thread sync is used.
-- Read-only local Codex SQLite memory diagnostics when sync status is requested.
-- User settings for dashboard range, theme, transition detection, and experimental sync behavior toggles.
-- Extension UI state for selected dashboard projects, the selected sync folder, selected sync projects, sync conversation mode, and selected sync conversation ids.
+- Active and archived Codex task JSONLs under the selected `CODEX_HOME`.
+- Codex task/project metadata needed for project identity, transition evidence,
+  Task Transfer registration, and guarded Desktop assignment.
+- Existing schema-8 Codex Usage caches selected during first-run migration.
+- A user-selected Task Transfer folder during explicit Import, Export, or Review
+  Status operations.
+- App settings such as active Codex home, capture interval, background consent,
+  theme, transition detection, update preference, and transfer folder.
 
-## What It Writes
+Task content can include prompts, responses, paths, repository URLs, tool data,
+branch names, timestamps, model names, and usage counts. Do not publish raw task
+files or diagnostic logs without reviewing them.
 
-- Local HTML reports under VS Code extension storage.
-- Optional local CLI outputs such as JSON, CSV, and HTML reports when you run `codex-usage` directly.
-- Optional selected-thread sync files under a user-provided local sync folder.
-- Local sync backups under `.codex-sync-backups` before imported thread files overwrite existing local files.
-- A local SQLite usage cache that may retain parsed token usage for session files that were later archived or deleted locally.
-- It does not write to or mutate Codex SQLite databases.
+## Data Written Locally
 
-## Network And Telemetry
+- The durable ledger at
+  `CODEX_HOME/.codex-usage/usage-ledger.sqlite3`, including captured usage and
+  retained history for source files that later disappear.
+- A separate disposable Task Storage diagnostics database.
+- The owner-local authenticated collector descriptor, lock, logs, rebuild
+  staging, migration audit, and settings.
+- A per-user macOS LaunchAgent or Windows Scheduled Task only after explicit
+  background-capture consent.
+- Selected task files and transfer metadata only in a user-chosen Task Transfer
+  folder during explicit operations.
+- A temporary sibling backup of Codex Desktop project state during guarded Task
+  Transfer assignment. The state is verified and restored if commit validation
+  fails.
 
-- The extension does not upload Codex session logs.
-- The extension does not include telemetry.
-- The extension does not fetch live pricing data.
-- Automatic project transition detection does not upload data or make network calls.
-- Task Storage inventory and analysis are local-only and do not upload data, call a network service, or emit telemetry.
-- Experimental sync writes only to the local folder you choose through the extension. Any cloud transfer is handled by your own sync tool, not by this extension.
-- Experimental sync does not sync Codex SQLite databases, including `state_5.sqlite`.
-- API-equivalent USD and Codex credit estimates use checked-in effective-dated pricing tables.
+Task Transfer Import atomically installs selected task JSONLs but never edits
+their content or writes Codex SQLite databases. Outside an explicit Import or
+Export, Codex task JSONLs are read-only. Task Storage is read-only except for
+its disposable diagnostic cache. Codex Usage does not create, fork, archive,
+restore, or delete Codex tasks.
 
-## Data Sensitivity
+## Local Communication
 
-Codex session logs can include project paths, repository URLs, branch names, model names, timestamps, and usage counts. Project transition detection can also inspect local thread current working directories and timestamps from `state_5.sqlite`. Do not share raw logs, generated reports, or transition JSON unless you are comfortable sharing that metadata.
+The collector listens on a random `127.0.0.1` port and publishes a per-start
+bearer token in an owner-local descriptor. It rejects browser origins,
+non-loopback host headers, unauthenticated requests, protocol mismatches, and
+oversized requests. The Tauri Rust host and VS Code extension host proxy calls;
+webviews never receive the token. Reports and clients never write SQLite
+directly.
 
-Version 1.8.0 no longer creates, verifies, or restores custom `.codex-task-backup` archives. Existing archives are user-owned local files and remain untouched by the extension. They may contain sensitive task content, so continue to protect any archives you already have like the original Codex logs.
+## Network Activity
 
-The retained cache data stays on your machine under the extension/global Codex Usage cache and is used only for historical accounting. It cannot restore a deleted Codex conversation.
+The only optional automatic network activity is a user-enabled GitHub update
+check, limited to at most once per day. Installing an update always requires
+confirmation. The VS Code companion can open the GitHub Releases download page
+when the native app is absent.
 
-The screenshot in this repository is synthetic and does not contain real session data.
+Codex Usage does not upload task files, usage rows, project metadata, reports,
+or diagnostics. Pricing tables are checked into the application and are not
+fetched live. A cloud-storage provider may copy Task Transfer files only because
+the user chose a folder managed by that provider; Codex Usage does not connect
+to the provider itself.
+
+## Retention And Removal
+
+Captured usage is intentionally retained when a source JSONL disappears. A
+manual task deletion can lose an uncaptured tail of up to the configured
+interval, so run **Capture Now** first. The ledger cannot restore deleted task
+content.
+
+**Reset Local Data** removes Codex Usage's ledger and disposable diagnostics,
+not Codex task files or legacy migration sources. Windows uninstall asks whether
+to remove ledger and settings and defaults to preservation. On macOS,
+**Unregister Background Agent** and **Reset Local Data** are explicit settings
+actions before drag-to-trash removal.
+
+Version 1.8.0 stopped creating or verifying `.codex-task-backup` archives.
+Existing archives remain user-owned and untouched.
+
+Repository screenshots use synthetic data and contain no personal task data.

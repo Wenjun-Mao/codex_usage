@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. The no-checkpoint portions are partially superseded by
+Accepted. Cache ownership is partially superseded by
+[ADR 0033](0033-persistent-collector-and-durable-ledger.md). The no-checkpoint portions were previously partially superseded by
 [ADR 0022](0022-guarded-append-parser-checkpoints.md). The bounded worker pool,
 parent-only SQLite ownership, eight-file transaction groups, deterministic
 commit ordering, and prior-generation rollback contract remain in force.

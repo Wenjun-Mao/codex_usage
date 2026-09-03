@@ -7,9 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import codex_usage.parser as parser
 import codex_usage.storage_analysis as storage_analysis
-from codex_usage.parser import parse_session_generation
 from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
 from codex_usage.storage_analysis import (
     StorageAnalysisRequest,
@@ -19,29 +17,21 @@ from codex_usage.storage_analysis import (
 from codex_usage.storage_context import load_storage_context
 
 
-def test_compacted_rows_are_measured_without_json_decode(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = _write_root(tmp_path)
+def test_explicit_analysis_measures_large_compacted_rows(tmp_path: Path) -> None:
+    sessions = tmp_path / "codex" / "sessions"
+    path = _write_root(sessions)
     compacted = _compacted_row("data:image/png;base64,abc", padding=2_000_000)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(compacted) + "\n")
-    original = parser._parse_json_line
+    result = analyze_storage_tree(
+        "root", session_dirs=[sessions], cache_dir=tmp_path / "cache", max_workers=1
+    )
+    metrics = result.diagnostics[0].metrics
 
-    def reject_compacted(value: str):
-        if '"type": "compacted"' in value:
-            raise AssertionError("compacted row was decoded")
-        return original(value)
-
-    monkeypatch.setattr(parser, "_parse_json_line", reject_compacted)
-
-    generation = parse_session_generation(path)
-
-    assert generation.content_metrics.compacted_record_count == 1
-    assert generation.content_metrics.compacted_bytes > 2_000_000
-    assert generation.content_metrics.media_compacted_record_count == 1
-    assert generation.content_metrics.embedded_media_occurrence_count == 1
+    assert metrics.compacted_record_count == 1
+    assert metrics.compacted_bytes > 2_000_000
+    assert metrics.media_compacted_record_count == 1
+    assert metrics.embedded_media_occurrence_count == 1
 
 
 def test_selected_tree_analysis_reuses_warm_result_and_appends_tail(
@@ -110,13 +100,16 @@ def test_selected_tree_analysis_reuses_warm_result_and_appends_tail(
     assert snapshot.analysis_coverage == 1.0
 
 
-def test_usage_cache_append_keeps_content_diagnostics_complete(tmp_path: Path) -> None:
+def test_usage_capture_does_not_overwrite_explicit_content_diagnostics(
+    tmp_path: Path,
+) -> None:
     sessions = tmp_path / "codex" / "sessions"
     path = _write_root(sessions)
     cache_dir = tmp_path / "cache"
-    load_cached_session_data(
-        [sessions], cache_dir=cache_dir, auto_transitions=False, max_workers=1
+    analyzed = analyze_storage_tree(
+        "root", session_dirs=[sessions], cache_dir=cache_dir, max_workers=1
     )
+    assert analyzed.diagnostics[0].metrics.compacted_record_count == 0
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(_compacted_row("plain text")) + "\n")
 
@@ -125,9 +118,14 @@ def test_usage_cache_append_keeps_content_diagnostics_complete(tmp_path: Path) -
     )
     tree = refreshed.storage_insights.task_trees[0]
 
-    assert refreshed.stats.files_appended == 1
-    assert tree.analysis_status == "complete"
-    assert tree.compacted_record_count == 1
+    assert refreshed.stats.files_full_parsed == 1
+    assert tree.analysis_status == "partial"
+    assert tree.compacted_record_count == 0
+
+    updated = analyze_storage_tree(
+        "root", session_dirs=[sessions], cache_dir=cache_dir, max_workers=1
+    )
+    assert updated.diagnostics[0].metrics.compacted_record_count == 1
 
 
 def test_guard_change_forces_full_content_rescan(tmp_path: Path) -> None:
@@ -156,7 +154,8 @@ def test_guard_change_forces_full_content_rescan(tmp_path: Path) -> None:
 def test_misleading_media_text_outside_compacted_row_is_not_counted(
     tmp_path: Path,
 ) -> None:
-    path = _write_root(tmp_path)
+    sessions = tmp_path / "codex" / "sessions"
+    path = _write_root(sessions)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(
             json.dumps(
@@ -171,19 +170,25 @@ def test_misleading_media_text_outside_compacted_row_is_not_counted(
             )
             + "\n"
         )
-
-    metrics = parse_session_generation(path).content_metrics
+    result = analyze_storage_tree(
+        "root", session_dirs=[sessions], cache_dir=tmp_path / "cache", max_workers=1
+    )
+    metrics = result.diagnostics[0].metrics
 
     assert metrics.compacted_record_count == 0
     assert metrics.embedded_media_occurrence_count == 0
 
 
 def test_terminated_unclassified_row_keeps_analysis_honest(tmp_path: Path) -> None:
-    path = _write_root(tmp_path)
+    sessions = tmp_path / "codex" / "sessions"
+    path = _write_root(sessions)
     with path.open("a", encoding="utf-8") as handle:
         handle.write("{not-json}\n")
 
-    metrics = parse_session_generation(path).content_metrics
+    result = analyze_storage_tree(
+        "root", session_dirs=[sessions], cache_dir=tmp_path / "cache", max_workers=1
+    )
+    metrics = result.diagnostics[0].metrics
 
     assert metrics.unclassified_record_count == 1
     assert metrics.complete is False

@@ -69,8 +69,8 @@ def test_parallel_refresh_adr_locks_the_recovery_contract() -> None:
 def test_incremental_cache_docs_lock_the_1_1_0_contract() -> None:
     documents = (
         INCREMENTAL_ADR,
-        ROOT / "README.md",
-        ROOT / "extensions/vscode/README.md",
+        ROOT / "CHANGELOG.md",
+        ROOT / "extensions/vscode/CHANGELOG.md",
     )
     prose = "\n".join(path.read_text(encoding="utf-8") for path in documents)
 

@@ -1,8 +1,10 @@
 .vscode/**
 src/**
 test/**
+scripts/**
 node_modules/**
 out/**/*.map
+bin/**
 tsconfig.json
 package-lock.json
 *.vsix

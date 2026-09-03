@@ -1,226 +1,259 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+import socket
+import subprocess
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Iterator
+from urllib.error import URLError
+from urllib.request import urlopen
 
 from PIL import Image
 from playwright.sync_api import Page, sync_playwright
 
-from codex_usage.aggregation import aggregate_records, summarize_records
-from codex_usage.marketplace_screenshot_validation import (
-    _clear_tooltip_interaction,
-    _validate_browser_layout,
-)
-from codex_usage.models import (
-    ROOT_USAGE_ROLE,
-    SUBAGENT_USAGE_ROLE,
-    TokenUsage,
-    UsageRecord,
-    UsageRole,
-)
-from codex_usage.report_breakdown import build_report_breakdown
-from codex_usage.reporting import render_html_report
-from codex_usage.storage_insights import TaskStorageInsights, TaskStorageTree
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-SCREENSHOT_PATH = REPOSITORY_ROOT / "docs" / "marketplace" / "dashboard-synthetic.png"
+DESKTOP_ROOT = REPOSITORY_ROOT / "apps" / "desktop"
+USAGE_SCREENSHOT_PATH = (
+    REPOSITORY_ROOT / "docs" / "marketplace" / "native-usage-synthetic.png"
+)
 STORAGE_SCREENSHOT_PATH = (
-    REPOSITORY_ROOT / "docs" / "marketplace" / "task-storage-synthetic.png"
+    REPOSITORY_ROOT / "docs" / "marketplace" / "native-storage-synthetic.png"
 )
 VIEWPORT = {"width": 1440, "height": 900}
-NARROW_VIEWPORT = {"width": 720, "height": 900}
-FIXED_GENERATED_AT = datetime(2026, 8, 4, 12, 0, tzinfo=UTC)
-SYNTHETIC_SESSIONS_DIR = Path("/synthetic/codex/sessions")
-
-_SCREENSHOT_CSS = """
-  [data-report-section="daily-cost"],
-  [data-report-section="hourly-heatmap"],
-  [data-report-section="project-details"],
-  [data-report-section="model-details"],
-  .summary-line { display: none !important; }
-  main {
-    width: 100% !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 24px !important;
-  }
-  .dashboard-grid { gap: 16px !important; margin-top: 16px !important; }
-  .task-storage-section { padding-bottom: 14px !important; }
-  [data-report-section="task-storage-details"] tbody tr:nth-child(n+3) {
-    display: none !important;
-  }
-  .screenshot-storage-action {
-    display: inline-flex;
-    align-items: center;
-    min-height: 24px;
-    padding: 2px 8px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--accent);
-    font-size: 12px;
-    white-space: nowrap;
-  }
-"""
-
-_SYNTHETIC_RECORDS: tuple[tuple[str, str, UsageRole, str, int], ...] = (
-    ("codex-usage", "Codex Usage", ROOT_USAGE_ROLE, "gpt-5.6-sol", 400_000),
-    ("codex-usage", "Codex Usage", ROOT_USAGE_ROLE, "gpt-5.6-terra", 250_000),
-    ("codex-usage", "Codex Usage", ROOT_USAGE_ROLE, "gpt-5.5", 90_000),
-    ("codex-usage", "Codex Usage", ROOT_USAGE_ROLE, "gpt-5.3-codex", 50_000),
-    ("codex-usage", "Codex Usage", SUBAGENT_USAGE_ROLE, "gpt-5.6-luna", 220_000),
-    ("codex-usage", "Codex Usage", SUBAGENT_USAGE_ROLE, "gpt-5.4-mini", 80_000),
-    ("codex-usage", "Codex Usage", SUBAGENT_USAGE_ROLE, "synthetic-unpriced-model", 10_000),
-    ("translation-tools", "Translation Tools", ROOT_USAGE_ROLE, "gpt-5.6-sol", 350_000),
-    ("translation-tools", "Translation Tools", ROOT_USAGE_ROLE, "gpt-5.6-luna", 190_000),
-    ("translation-tools", "Translation Tools", ROOT_USAGE_ROLE, "gpt-5.4", 100_000),
-    ("translation-tools", "Translation Tools", SUBAGENT_USAGE_ROLE, "gpt-5.6-terra", 300_000),
-    ("translation-tools", "Translation Tools", SUBAGENT_USAGE_ROLE, "gpt-5.5", 70_000),
-    ("translation-tools", "Translation Tools", SUBAGENT_USAGE_ROLE, "gpt-5.4-mini", 60_000),
-    ("translation-tools", "Translation Tools", SUBAGENT_USAGE_ROLE, "gpt-5.3-codex", 45_000),
-    ("translation-tools", "Translation Tools", SUBAGENT_USAGE_ROLE, "synthetic-unpriced-model", 8_000),
-)
+NARROW_VIEWPORT = {"width": 760, "height": 900}
+PRIVATE_MARKERS = ("/Users/wjmao", "C:\\Users\\wjmao", "OneDrive-Personal")
 
 
-def build_synthetic_records() -> list[UsageRecord]:
-    records = []
-    for index, (project, label, role, model, total_tokens) in enumerate(_SYNTHETIC_RECORDS):
-        timestamp = FIXED_GENERATED_AT + timedelta(minutes=index)
-        records.append(
-            UsageRecord(
-                timestamp=timestamp,
-                usage=_usage(total_tokens),
-                session_id=f"synthetic-{index:02d}",
-                file_path=SYNTHETIC_SESSIONS_DIR / f"session-{index:02d}.jsonl",
-                usage_role=role,
-                model=model,
-                project_key=f"https://github.com/example/{project}",
-                project_label=label,
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Capture deterministic Marketplace images from the native app."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Capture and validate temporary images without changing tracked files.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.check:
+        with TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            _render_capture_and_validate(
+                temporary / "native-usage.png",
+                temporary / "native-storage.png",
             )
-        )
-    return records
+        return 0
+
+    _render_capture_and_validate(USAGE_SCREENSHOT_PATH, STORAGE_SCREENSHOT_PATH)
+    return 0
 
 
-def build_synthetic_storage_snapshot() -> TaskStorageInsights:
-    gib = 1024**3
-    mib = 1024**2
-    trees = (
-        _synthetic_storage_tree(
-            task_id="storage-codex-main",
-            title="Codex Usage main",
-            project="Codex Usage",
-            root_bytes=5 * gib + 410 * mib,
-            descendant_bytes=38 * gib + 630 * mib,
-            descendant_count=112,
-            active_files=113,
-            analysis_status="complete",
-            compacted_bytes=35 * gib + 120 * mib,
-            embedded_media_occurrence_count=48,
-            active_root_compacted_bytes=4 * gib + 900 * mib,
-            has_history_amplification=True,
-            has_media_amplification=True,
-            has_active_root_history_risk=True,
-        ),
-        _synthetic_storage_tree(
-            task_id="storage-transfer",
-            title="Cross-platform Task Transfer",
-            project="Codex Usage",
-            root_bytes=780 * mib,
-            descendant_bytes=12 * gib + 240 * mib,
-            descendant_count=37,
-            active_files=36,
-            archived_files=2,
-            analysis_status="not_analyzed",
-        ),
-        _synthetic_storage_tree(
-            task_id="storage-translation",
-            title="Batch translation pipeline",
-            project="Translation Tools",
-            root_bytes=1 * gib + 205 * mib,
-            descendant_bytes=6 * gib + 820 * mib,
-            descendant_count=19,
-            active_files=20,
-            analysis_status="complete",
-            compacted_bytes=820 * mib,
-        ),
-        _synthetic_storage_tree(
-            task_id="storage-glossary",
-            title="Glossary cleanup",
-            project="Translation Tools",
-            root_bytes=320 * mib,
-            descendant_bytes=680 * mib,
-            descendant_count=4,
-            active_files=5,
-            analysis_status="partial",
-            compacted_bytes=210 * mib,
-        ),
-    )
-    corpus_bytes = sum(tree.total_bytes for tree in trees)
-    trees = tuple(
-        replace(tree, share=tree.total_bytes / corpus_bytes) for tree in trees
-    )
-    return TaskStorageInsights(
-        corpus_bytes=corpus_bytes,
-        root_bytes=sum(tree.root_bytes for tree in trees),
-        descendant_bytes=sum(tree.descendant_bytes for tree in trees),
-        active_bytes=sum(tree.active_bytes for tree in trees),
-        archived_bytes=sum(tree.archived_bytes for tree in trees),
-        physical_file_count=sum(tree.physical_file_count for tree in trees),
-        task_tree_count=len(trees),
-        task_trees=trees,
+def _render_capture_and_validate(usage_path: Path, storage_path: Path) -> None:
+    _build_frontend()
+    with _preview_server() as url:
+        capture_marketplace_screenshots(url, usage_path, storage_path)
+    validate_screenshot(usage_path)
+    validate_screenshot(storage_path)
+
+
+def _build_frontend() -> None:
+    subprocess.run(
+        ["npm", "run", "build"],
+        cwd=DESKTOP_ROOT,
+        check=True,
     )
 
 
-def render_synthetic_report(destination: Path) -> Path:
-    records = build_synthetic_records()
-    breakdown = build_report_breakdown(records)
-    return render_html_report(
-        output_path=destination,
-        generated_at=FIXED_GENERATED_AT,
-        range_name="30d",
-        total=summarize_records(records),
-        daily_rows=aggregate_records(records, "day", UTC),
-        hourly_rows=aggregate_records(records, "hour", UTC),
-        breakdown=breakdown,
-        storage_snapshot=build_synthetic_storage_snapshot(),
-        sessions_dirs=[SYNTHETIC_SESSIONS_DIR],
-        files_scanned=len({record.file_path for record in records}),
-        theme="night",
+@contextmanager
+def _preview_server() -> Iterator[str]:
+    port = _unused_loopback_port()
+    url = f"http://127.0.0.1:{port}"
+    process = subprocess.Popen(
+        [
+            "npm",
+            "exec",
+            "vite",
+            "preview",
+            "--",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--strictPort",
+        ],
+        cwd=DESKTOP_ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
     )
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError("native frontend preview exited before becoming ready")
+            try:
+                with urlopen(url, timeout=0.5) as response:  # noqa: S310
+                    if response.status == 200:
+                        break
+            except (URLError, OSError):
+                time.sleep(0.1)
+        else:
+            raise RuntimeError("native frontend preview did not become ready")
+        yield url
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
 
 
-def capture_marketplace_screenshot(
-    report_path: Path, output_path: Path, *, view: str
+def _unused_loopback_port() -> int:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def capture_marketplace_screenshots(
+    url: str,
+    usage_path: Path,
+    storage_path: Path,
 ) -> None:
-    if view not in {"usage", "task-storage"}:
-        raise ValueError(f"unknown screenshot view: {view}")
+    usage_path.parent.mkdir(parents=True, exist_ok=True)
+    storage_path.parent.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         try:
-            page = browser.new_page(viewport=VIEWPORT)
-            page.goto(report_path.resolve().as_uri(), wait_until="load")
-            _inject_storage_actions(page)
-            page.add_style_tag(content=_SCREENSHOT_CSS)
-            page.get_by_role(
-                "link", name="Usage" if view == "usage" else "Task Storage", exact=True
-            ).click()
-            page.set_viewport_size(VIEWPORT)
-            _wait_for_landmarks(page, view)
-            _validate_browser_layout(page, VIEWPORT["width"], view)
-            page.set_viewport_size(NARROW_VIEWPORT)
-            _validate_browser_layout(page, NARROW_VIEWPORT["width"], view)
-            page.set_viewport_size(VIEWPORT)
-            _clear_tooltip_interaction(page)
-            page.screenshot(path=str(output_path), full_page=False)
+            page = browser.new_page(
+                viewport=VIEWPORT,
+                locale="en-US",
+                timezone_id="UTC",
+                color_scheme="dark",
+            )
+            page.goto(url, wait_until="networkidle")
+            _wait_for_usage(page)
+            _reject_private_fixture_data(page)
+            _validate_layout(page, view="usage", viewport=VIEWPORT)
+            _set_viewport(page, NARROW_VIEWPORT)
+            _validate_layout(page, view="usage", viewport=NARROW_VIEWPORT)
+            _set_viewport(page, VIEWPORT)
+            page.screenshot(path=str(usage_path), full_page=False)
+
+            page.get_by_role("button", name="Task Storage", exact=True).click()
+            _wait_for_storage(page)
+            _reject_private_fixture_data(page)
+            _validate_layout(page, view="storage", viewport=VIEWPORT)
+            _set_viewport(page, NARROW_VIEWPORT)
+            _validate_layout(page, view="storage", viewport=NARROW_VIEWPORT)
+            _set_viewport(page, VIEWPORT)
+            page.screenshot(path=str(storage_path), full_page=False)
         finally:
             browser.close()
 
 
+def _wait_for_usage(page: Page) -> None:
+    page.get_by_role("heading", name="Token Usage", exact=True).wait_for()
+    page.get_by_text("Collector active", exact=True).wait_for()
+    page.get_by_role("button", name="Capture Now", exact=True).wait_for()
+    page.frame_locator("#usage-report").get_by_role(
+        "heading", name="Usage Summary", exact=True
+    ).wait_for()
+    page.get_by_text("Loaded in", exact=False).wait_for()
+
+
+def _wait_for_storage(page: Page) -> None:
+    page.get_by_role("heading", name="Task Storage", exact=True).wait_for()
+    page.get_by_role("heading", name="Largest Task Trees", exact=True).wait_for()
+    page.get_by_text("Ship native persistent collector", exact=True).wait_for()
+    page.get_by_role("button", name="Analyze Ship native persistent collector").wait_for()
+
+
+def _set_viewport(page: Page, viewport: dict[str, int]) -> None:
+    page.set_viewport_size(viewport)
+    page.wait_for_function(
+        "width => window.innerWidth === width", arg=viewport["width"]
+    )
+    page.evaluate(
+        "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+    )
+
+
+def _reject_private_fixture_data(page: Page) -> None:
+    text = page.locator("body").inner_text()
+    for marker in PRIVATE_MARKERS:
+        if marker.casefold() in text.casefold():
+            raise RuntimeError(f"native fixture leaked a private marker: {marker}")
+
+
+def _validate_layout(page: Page, *, view: str, viewport: dict[str, int]) -> None:
+    metrics = page.evaluate(
+        """
+        () => {
+          const selectors = ['html', 'body', '#app', '.app-shell', '.main-shell', '.topbar'];
+          return selectors.map(selector => {
+            const element = document.querySelector(selector);
+            if (!element) throw new Error(`Missing ${selector}`);
+            const rect = element.getBoundingClientRect();
+            return {selector, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
+                    left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom};
+          });
+        }
+        """
+    )
+    for metric in metrics:
+        if metric["scrollWidth"] > metric["clientWidth"] + 1:
+            raise RuntimeError(
+                f"{view} overflows horizontally at {viewport['width']}px: "
+                f"{metric['selector']} {metric['scrollWidth']} > {metric['clientWidth']}"
+            )
+        if metric["left"] < -1 or metric["right"] > viewport["width"] + 1:
+            raise RuntimeError(
+                f"{view} escapes the viewport at {viewport['width']}px: "
+                f"{metric['selector']}"
+            )
+
+    _assert_no_overlap(page, ".capture-summary", ".button-capture", view, viewport)
+    if view == "usage":
+        frame = page.frame_locator("#usage-report")
+        report_metrics = frame.locator("html").evaluate(
+            "element => ({clientWidth: element.clientWidth, scrollWidth: element.scrollWidth})"
+        )
+        if report_metrics["scrollWidth"] > report_metrics["clientWidth"] + 1:
+            raise RuntimeError(
+                f"usage report overflows at {viewport['width']}px: "
+                f"{report_metrics['scrollWidth']} > {report_metrics['clientWidth']}"
+            )
+
+
+def _assert_no_overlap(
+    page: Page,
+    first_selector: str,
+    second_selector: str,
+    view: str,
+    viewport: dict[str, int],
+) -> None:
+    first = page.locator(first_selector).bounding_box()
+    second = page.locator(second_selector).bounding_box()
+    if first is None or second is None:
+        raise RuntimeError(f"{view} is missing a required top-bar control")
+    separated = (
+        first["x"] + first["width"] <= second["x"]
+        or second["x"] + second["width"] <= first["x"]
+        or first["y"] + first["height"] <= second["y"]
+        or second["y"] + second["height"] <= first["y"]
+    )
+    if not separated:
+        raise RuntimeError(
+            f"{view} top-bar controls overlap at {viewport['width']}px"
+        )
+
+
 def validate_screenshot(path: Path) -> None:
     with Image.open(path) as image:
-        if image.size != (1440, 900):
+        if image.size != (VIEWPORT["width"], VIEWPORT["height"]):
             raise RuntimeError(f"unexpected screenshot dimensions for {path}: {image.size}")
         rgb = image.convert("RGB")
         extrema = rgb.getextrema()
@@ -229,161 +262,6 @@ def validate_screenshot(path: Path) -> None:
         colors = rgb.resize((180, 112)).getcolors(maxcolors=180 * 112)
         if colors is None or len(colors) < 32:
             raise RuntimeError(f"screenshot lacks meaningful visual variation: {path}")
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Render the Marketplace dashboard screenshot.")
-    parser.add_argument("--check", action="store_true", help="Validate a temporary screenshot.")
-    args = parser.parse_args(argv)
-    if args.check:
-        with TemporaryDirectory() as temporary_directory:
-            temporary_path = Path(temporary_directory)
-            _render_capture_and_validate(
-                temporary_path / "dashboard.html",
-                temporary_path / "dashboard.png",
-                temporary_path / "task-storage.png",
-            )
-        return 0
-
-    with TemporaryDirectory() as temporary_directory:
-        report_path = Path(temporary_directory) / "dashboard.html"
-        _render_capture_and_validate(
-            report_path, SCREENSHOT_PATH, STORAGE_SCREENSHOT_PATH
-        )
-    return 0
-
-
-def _usage(total_tokens: int) -> TokenUsage:
-    input_tokens = total_tokens * 3 // 4
-    cached_input_tokens = input_tokens // 3
-    cache_write_input_tokens = input_tokens // 12
-    return TokenUsage(
-        input_tokens=input_tokens,
-        cached_input_tokens=cached_input_tokens,
-        cache_write_input_tokens=cache_write_input_tokens,
-        output_tokens=total_tokens - input_tokens,
-        reasoning_output_tokens=total_tokens // 20,
-        total_tokens=total_tokens,
-    )
-
-
-def _synthetic_storage_tree(
-    *,
-    task_id: str,
-    title: str,
-    project: str,
-    root_bytes: int,
-    descendant_bytes: int,
-    descendant_count: int,
-    active_files: int,
-    archived_files: int = 0,
-    analysis_status: str = "not_analyzed",
-    compacted_bytes: int = 0,
-    embedded_media_occurrence_count: int = 0,
-    active_root_compacted_bytes: int = 0,
-    has_history_amplification: bool = False,
-    has_media_amplification: bool = False,
-    has_active_root_history_risk: bool = False,
-) -> TaskStorageTree:
-    total_bytes = root_bytes + descendant_bytes
-    archived_bytes = total_bytes // 12 if archived_files else 0
-    return TaskStorageTree(
-        root_task_id=task_id,
-        title=title,
-        project_key=project.casefold().replace(" ", "-"),
-        project_label=project,
-        project_aliases=(),
-        root_bytes=root_bytes,
-        descendant_bytes=descendant_bytes,
-        descendant_count=descendant_count,
-        active_file_count=active_files,
-        archived_file_count=archived_files,
-        active_bytes=total_bytes - archived_bytes,
-        archived_bytes=archived_bytes,
-        physical_file_count=active_files + archived_files,
-        total_bytes=total_bytes,
-        share=0.0,
-        has_missing_root=False,
-        has_relationship_cycle=False,
-        duplicate_file_count=0,
-        metadata_diagnostics=(),
-        is_large_root=root_bytes >= 1024**3,
-        is_large_tree=total_bytes >= 10 * 1024**3,
-        analysis_status=analysis_status,
-        analyzed_bytes=total_bytes if analysis_status == "complete" else compacted_bytes,
-        analysis_coverage=(
-            1.0
-            if analysis_status == "complete"
-            else compacted_bytes / total_bytes if total_bytes else 0.0
-        ),
-        compacted_record_count=14 if compacted_bytes else 0,
-        compacted_bytes=compacted_bytes,
-        compacted_share=compacted_bytes / total_bytes if total_bytes else 0.0,
-        largest_compacted_record_bytes=compacted_bytes // 3,
-        media_compacted_record_count=6 if embedded_media_occurrence_count else 0,
-        embedded_media_occurrence_count=embedded_media_occurrence_count,
-        active_root_compacted_bytes=active_root_compacted_bytes,
-        has_history_amplification=has_history_amplification,
-        has_media_amplification=has_media_amplification,
-        has_active_root_history_risk=has_active_root_history_risk,
-    )
-
-
-def _render_capture_and_validate(
-    report_path: Path, usage_screenshot_path: Path, storage_screenshot_path: Path
-) -> None:
-    render_synthetic_report(report_path)
-    capture_marketplace_screenshot(
-        report_path, usage_screenshot_path, view="usage"
-    )
-    capture_marketplace_screenshot(
-        report_path, storage_screenshot_path, view="task-storage"
-    )
-    validate_screenshot(usage_screenshot_path)
-    validate_screenshot(storage_screenshot_path)
-
-
-def _wait_for_landmarks(page: Page, view: str) -> None:
-    page.get_by_role("navigation", name="Report views").wait_for()
-    if view == "task-storage":
-        page.get_by_role("heading", name="Task Storage", exact=True).wait_for()
-        page.get_by_text("Root task JSONL", exact=True).wait_for()
-        page.get_by_text("Structured subagents", exact=True).wait_for()
-        page.get_by_text("Analyze", exact=True).first.wait_for()
-        return
-    page.get_by_role("heading", name="Project Breakdown", exact=True).wait_for()
-    page.get_by_text("Root tasks", exact=True).first.wait_for()
-    page.get_by_text("Subagents", exact=True).first.wait_for()
-    page.get_by_role("heading", name="Model Mix", exact=True).wait_for()
-    page.get_by_text("Other", exact=True).last.wait_for(state="attached")
-    page.locator(".model-legend-item").filter(has_text="Other").last.wait_for()
-
-
-def _inject_storage_actions(page: Page) -> None:
-    page.locator('[data-report-section="task-storage-details"]').evaluate(
-        """
-        section => {
-          const header = section.querySelector('thead tr');
-          if (!header) throw new Error('Task Storage details header is missing');
-          const heading = document.createElement('th');
-          heading.textContent = 'Actions';
-          header.appendChild(heading);
-          for (const row of section.querySelectorAll('tbody tr[data-storage-tree-id]')) {
-            const cell = document.createElement('td');
-            cell.className = 'storage-actions';
-            const labels = row.dataset.storageAnalysisStatus !== 'complete' ? ['Analyze'] : [];
-            labels.forEach((label, index) => {
-              if (index) cell.append(' · ');
-              const action = document.createElement('span');
-              action.className = 'screenshot-storage-action';
-              action.textContent = label;
-              cell.appendChild(action);
-            });
-            row.appendChild(cell);
-          }
-        }
-        """
-    )
 
 
 if __name__ == "__main__":

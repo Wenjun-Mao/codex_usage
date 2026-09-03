@@ -108,11 +108,16 @@ def analyze_storage_tree(
     *,
     session_dirs: list[Path] | None = None,
     cache_dir: Path | None = None,
+    cache_database_path: Path | None = None,
     max_workers: int = DEFAULT_MAX_WORKERS,
     progress: ProgressCallback | None = None,
     cancelled: Callable[[], bool] | None = None,
 ) -> StorageAnalysisSummary:
-    context = load_storage_context(session_dirs=session_dirs, cache_dir=cache_dir)
+    context = load_storage_context(
+        session_dirs=session_dirs,
+        cache_dir=cache_dir,
+        cache_database_path=cache_database_path,
+    )
     tree = next(
         (candidate for candidate in context.insights.task_trees if candidate.root_task_id == tree_id),
         None,
@@ -120,8 +125,11 @@ def analyze_storage_tree(
     if tree is None:
         raise StorageAnalysisError(f"Task tree not found: {tree_id}")
     entries = _selected_inventory(context, {file.path for file in tree.storage_files})
+    if cache_dir is not None and cache_database_path is not None:
+        raise ValueError("cache_dir and cache_database_path are mutually exclusive")
     resolved_cache = resolve_cache_dir(list(context.session_dirs), cache_dir)
-    connection = sqlite3.connect(resolved_cache / CACHE_DB_NAME)
+    database_path = cache_database_path or resolved_cache / CACHE_DB_NAME
+    connection = sqlite3.connect(database_path)
     connection.row_factory = sqlite3.Row
     try:
         _ensure_schema(connection)

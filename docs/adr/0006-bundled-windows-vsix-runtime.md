@@ -1,6 +1,6 @@
 # ADR 0006: Bundled Windows VSIX Runtime
 
-Status: Accepted
+Status: Superseded by ADR 0034 in version 2.0.0
 
 Date: 2026-06-16
 
@@ -25,4 +25,3 @@ The VSIX is larger but self-contained on Windows x64. Linux and macOS need separ
 ## Guardrails
 
 The extension should report a clear unsupported-platform error when the bundled executable is unavailable.
-

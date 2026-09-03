@@ -1,17 +1,22 @@
 # Support
 
-Use GitHub Issues for Codex Usage Dashboard bug reports, feature requests, and support:
+Use [GitHub Issues](https://github.com/Wenjun-Mao/codex_usage/issues) for Codex
+Usage bug reports and feature requests.
 
-https://github.com/Wenjun-Mao/codex_usage/issues
+Include:
 
-Please include:
+- Codex Usage native app version and optional companion version.
+- Operating system and architecture: macOS Apple Silicon or Windows x64.
+- Whether background capture is enabled and the configured interval.
+- Last capture, pending files/bytes, baseline coverage, and stale-source state.
+- The affected workflow: Usage, Task Storage, Task Transfer, onboarding, or
+  update.
+- Relevant redacted collector/app output and reproducible steps.
 
-- VS Code version.
-- Codex Usage Dashboard version.
-- Operating system and CPU architecture, for example Windows x64 or macOS Apple Silicon.
-- Whether Codex session files exist under `CODEX_HOME/sessions`, `CODEX_HOME/archived_sessions`, `%USERPROFILE%\.codex\sessions`, `%USERPROFILE%\.codex\archived_sessions`, `~/.codex/sessions`, or `~/.codex/archived_sessions`.
-- Relevant `Codex Usage` output-channel errors, with private paths or project names redacted if needed.
+For Task Transfer, also include the operation, transfer-folder provider, both
+computers' operating systems, whether Codex Desktop was fully closed for Import,
+and whether the destination checkout already existed.
 
-Do not attach raw Codex JSONL session logs publicly. They can contain local paths, repository URLs, prompts, and other private project context.
-
-For Task Transfer issues, include the operation you ran, the transfer-folder provider, both computers' operating systems, and the relevant `Codex Usage` output-channel error.
+Never attach raw Codex JSONLs, the usage ledger, `agent.json`, Desktop state,
+Task Transfer content, or unredacted logs publicly. They may contain prompts,
+responses, local paths, repository URLs, task identifiers, and credentials.

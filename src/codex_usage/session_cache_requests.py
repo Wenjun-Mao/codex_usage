@@ -20,7 +20,7 @@ def load_cached_rows(
         for row in connection.execute(
             """
             select files.file_key, files.path, files.size_bytes, files.mtime_ns,
-                   files.is_missing, files.session_id, files.error,
+                   files.parsed_at, files.is_missing, files.session_id, files.error,
                    parser_checkpoints.byte_offset as checkpoint_offset
             from files
             left join parser_checkpoints
@@ -40,7 +40,14 @@ def eligible_append_checkpoint(
     if (
         rebuilt
         or cached is None
-        or entry.storage_state != "active"
+        or (
+            entry.storage_state != "active"
+            and not (
+                int(cached["size_bytes"]) == entry.size_bytes
+                and cached["checkpoint_offset"] is not None
+                and int(cached["checkpoint_offset"]) < entry.size_bytes
+            )
+        )
         or str(cached["path"]) != str(entry.path)
         or int(cached["is_missing"]) != 0
         or not entry.source_device

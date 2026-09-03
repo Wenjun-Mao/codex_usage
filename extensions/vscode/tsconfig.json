@@ -13,6 +13,13 @@
     "skipLibCheck": true
   },
   "include": [
-    "src/**/*.ts"
+    "src/agentClient.ts",
+    "src/extension.ts",
+    "src/nativeApp.ts",
+    "src/reportHtml.ts",
+    "src/storageClient.ts",
+    "src/taskTransferContract.ts",
+    "src/taskTransferClient.ts",
+    "src/types.ts"
   ]
 }

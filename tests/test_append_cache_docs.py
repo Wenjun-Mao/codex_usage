@@ -25,13 +25,16 @@ def markdown_section(path: Path, heading: str) -> str:
 
 
 def test_repository_readme_describes_current_append_contract() -> None:
-    text = READMES[0].read_text(encoding="utf-8").casefold()
+    text = " ".join(
+        READMES[0].read_text(encoding="utf-8").casefold().split()
+    )
 
-    assert "schema 8" in text
-    assert "old-boundary digest" in text
+    assert "durable ledger" in text
+    assert "forward, backup-protected migrations" in text
+    assert "guard windows" in text
     assert "new tail" in text
-    assert "append fallbacks" in text
-    assert "source bytes read" in text
+    assert "stale-source warnings" in text
+    assert "reopening task files" in text
     assert "reparsing complete files from byte zero" not in text
 
 

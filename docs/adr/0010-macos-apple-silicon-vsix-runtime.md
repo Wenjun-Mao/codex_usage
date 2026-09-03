@@ -1,6 +1,6 @@
 # ADR 0010: macOS Apple Silicon VSIX Runtime
 
-Status: Accepted
+Status: Superseded by ADR 0034 in version 2.0.0
 
 Date: 2026-07-04
 

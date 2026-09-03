@@ -2,9 +2,10 @@
 
 ## Status
 
-Accepted. Partially superseded by
-[ADR 0022](0022-guarded-append-parser-checkpoints.md) for whole-file refresh
-and no-checkpoint behavior. Per-task
+Accepted. Cache ownership is partially superseded by
+[ADR 0033](0033-persistent-collector-and-durable-ledger.md). Whole-file refresh
+and no-checkpoint behavior were previously partially superseded by
+[ADR 0022](0022-guarded-append-parser-checkpoints.md). Per-task
 transition ownership, range-aware queries, latest-request serialization, and
 parent-only SQLite ownership remain in force. Latest-request serialization is
 per extension host; [ADR 0032](0032-cross-process-cache-refresh-recovery.md)

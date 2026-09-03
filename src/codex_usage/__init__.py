@@ -1,3 +1,3 @@
-"""Codex session usage analyzer."""
+"""Private capture and ledger core for the Codex Usage native app."""
 
-__version__ = "1.8.2"
+__version__ = "2.0.0"

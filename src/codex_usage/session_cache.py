@@ -67,6 +67,7 @@ __all__ = (
     "CachedFileSummary",
     "CachedSessionData",
     "load_cached_session_data",
+    "refresh_cached_session_data",
     "resolve_cache_dir",
     "uncached_session_data",
 )
@@ -175,6 +176,10 @@ def _refresh_files_with_stale_checkpoint_retry(
     *,
     rebuilt: bool,
     max_workers: int | None,
+    max_parse_bytes: int | None = None,
+    max_total_parse_bytes: int | None = None,
+    defer_full_fallback: bool = False,
+    preferred_paths: tuple[str, ...] = (),
 ) -> _refresh.CacheRefreshOutcome:
     for attempt in range(_STALE_CHECKPOINT_RETRY_COUNT + 1):
         try:
@@ -184,6 +189,10 @@ def _refresh_files_with_stale_checkpoint_retry(
                 inventory,
                 rebuilt=rebuilt,
                 max_workers=max_workers,
+                max_parse_bytes=max_parse_bytes,
+                max_total_parse_bytes=max_total_parse_bytes,
+                defer_full_fallback=defer_full_fallback,
+                preferred_paths=preferred_paths,
             )
         except StaleAppendCheckpointError:
             if attempt == _STALE_CHECKPOINT_RETRY_COUNT:
@@ -195,21 +204,28 @@ def load_cached_session_data(
     session_dirs: list[Path],
     *,
     cache_dir: Path | None = None,
+    cache_database_path: Path | None = None,
     auto_transitions: bool = True,
     max_workers: int | None = None,
     range_bounds: RangeBounds | None = None,
     timer: PhaseTimer | None = None,
 ) -> CachedSessionData:
-    resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
+    if cache_dir is not None and cache_database_path is not None:
+        raise ValueError("cache_dir and cache_database_path are mutually exclusive")
+    resolved_cache_dir = (
+        cache_database_path.parent
+        if cache_database_path is not None
+        else resolve_cache_dir(session_dirs, cache_dir)
+    )
     resolved_cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_database_path = resolved_cache_dir / CACHE_DB_NAME
+    resolved_database_path = cache_database_path or resolved_cache_dir / CACHE_DB_NAME
     with (
         _collect_locked_inventory(
-            cache_database_path,
+            resolved_database_path,
             session_dirs,
             timer,
         ) as inventory,
-        _open_cache_connection(cache_database_path) as connection,
+        _open_cache_connection(resolved_database_path) as connection,
     ):
         connection.row_factory = sqlite3.Row
         schema_state = _schema._ensure_schema(connection)
@@ -315,4 +331,58 @@ def load_cached_session_data(
         usage_run=usage_run,
         transition_run=EMPTY_PARALLEL_RUN_REPORT,
         storage_insights=storage_insights,
+    )
+
+
+def refresh_cached_session_data(
+    session_dirs: list[Path],
+    *,
+    cache_database_path: Path,
+    auto_transitions: bool = True,
+    max_workers: int | None = None,
+    max_parse_bytes: int | None = None,
+    max_total_parse_bytes: int | None = None,
+    refresh_storage_metadata: bool = True,
+    defer_full_fallback: bool = False,
+    preferred_paths: tuple[str, ...] = (),
+) -> _refresh.CacheRefreshOutcome:
+    """Refresh parser state without materializing report rows in memory."""
+    cache_database_path.parent.mkdir(parents=True, exist_ok=True)
+    with (
+        _collect_locked_inventory(cache_database_path, session_dirs, None) as inventory,
+        _open_cache_connection(cache_database_path) as connection,
+    ):
+        connection.row_factory = sqlite3.Row
+        schema_state = _schema._ensure_schema(connection)
+        outcome = _refresh_files_with_stale_checkpoint_retry(
+            connection,
+            session_dirs,
+            inventory,
+            rebuilt=schema_state.created or schema_state.reset,
+            max_workers=max_workers,
+            max_parse_bytes=max_parse_bytes,
+            max_total_parse_bytes=max_total_parse_bytes,
+            defer_full_fallback=defer_full_fallback,
+            preferred_paths=preferred_paths,
+        )
+        storage_refresh = (
+            _storage_metadata.refresh_storage_file_metadata(
+                connection, list(inventory)
+            )
+            if refresh_storage_metadata
+            else _storage_metadata.StorageMetadataRefreshStats()
+        )
+        _cache_transitions.refresh_dirty_task_transitions(
+            connection,
+            session_dirs=session_dirs,
+            auto_transitions=auto_transitions,
+        )
+    return replace(
+        outcome,
+        stats=replace(
+            outcome.stats,
+            storage_metadata_reads=storage_refresh.metadata_reads,
+            storage_files_reused=storage_refresh.files_reused,
+            storage_files_missing_marked=storage_refresh.files_missing_marked,
+        ),
     )

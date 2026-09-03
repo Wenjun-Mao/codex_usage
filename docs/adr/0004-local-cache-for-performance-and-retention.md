@@ -1,6 +1,6 @@
 # ADR 0004: Local SQLite Cache For Performance And Retention
 
-Status: Accepted
+Status: Partially superseded by ADR 0033 in version 2.0.0
 
 Date: 2026-06-16
 
@@ -25,4 +25,3 @@ First run can take a few seconds. Later range switching is faster. Deleted files
 ## Guardrails
 
 The cache must not change token accounting. Failed refreshes should not wipe previous good rows.
-

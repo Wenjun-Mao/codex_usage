@@ -28,6 +28,18 @@ extensions/vscode/out/
 extensions/vscode/.vscode-test/
 extensions/vscode/bin/
 extensions/vscode/media/ChatGPT Image*.png
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/icons/android/
+apps/desktop/src-tauri/icons/ios/
+apps/desktop/src-tauri/icons/64x64.png
+apps/desktop/src-tauri/icons/Square*.png
+apps/desktop/src-tauri/icons/StoreLogo.png
+apps/desktop/src-tauri/icons/icon.png
+apps/desktop/.tauri-signing/
+*.key
+*.key.pub
 
 # Local Codex session samples and generated reports
 *.jsonl

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.0.0 - 2026-09-03 - Native App And Persistent Collector
+
+- Replaced VS Code-owned refreshes with a Tauri 2 native app and an independent Python collector that can retain usage while Codex, VS Code, and the app window are closed.
+- Added a forward-migrated durable SQLite ledger, 15-minute default capture with configurable 1-1,440 minute or Manual Only scheduling, Capture Now coalescing, watcher reconciliation, bounded append reads, and resumable stale-source reconstruction.
+- Made Usage reports ledger-only and moved Usage, Task Storage, Task Transfer, Desktop binding, registration, onboarding, settings, and signed update controls into the native product.
+- Converted the Marketplace extension into an optional universal companion with no parser, Python runtime, or fallback cache, and removed the public Python CLI and its `codex-usage` console script.
+- Added signed-only macOS Apple Silicon and Windows x64 release pipelines with notarized Developer ID DMGs, Azure Artifact Signing NSIS installers, signed Tauri updater bundles, checksums, and data-preserving uninstall behavior.
+- Made baseline coverage account for every inventoried source before bounded parsing, so unscheduled files and bytes remain visibly incomplete instead of producing prematurely complete totals.
+- Added resumable, audited schema-8 cache migration that retains deleted-source history, deduplicates complete semantic overlap, and asks for one explicit source when a task's usage context, metadata, or transition evidence diverges.
+
 ## 1.8.2 - 2026-08-29 - Release Gate Hardening
 
 - Split parser-batch result validation from the cache refresh coordinator so detached release-tag builds enforce the repository's focused-module size guard without changing cache behavior.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; implemented in version 1.8.1 on 2026-08-29
+Partially superseded by ADR 0033 in version 2.0.0; source-relocation recovery remains
 
 ## Context
 

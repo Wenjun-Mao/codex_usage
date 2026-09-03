@@ -7,6 +7,11 @@ from pathlib import Path
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 import codex_usage.session_cache_schema as _schema
+from codex_usage.agent_private_files import (
+    ensure_private_directory,
+    ensure_private_file,
+    ensure_private_sqlite_files,
+)
 from codex_usage.session_cache import CACHE_DB_NAME, resolve_cache_dir
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
@@ -40,6 +45,7 @@ def load_storage_context(
     *,
     session_dirs: list[Path] | None = None,
     cache_dir: Path | None = None,
+    cache_database_path: Path | None = None,
 ) -> StorageContext:
     """Refresh bounded storage metadata without parsing usage-event bodies."""
     resolved_session_dirs = session_dirs or find_session_dirs()
@@ -51,6 +57,7 @@ def load_storage_context(
             resolved_session_dirs,
             inventory,
             cache_dir=cache_dir,
+            cache_database_path=cache_database_path,
         )
         direct_fallback = False
     except (OSError, sqlite3.Error):
@@ -84,10 +91,19 @@ def _load_cached_storage_files(
     inventory: tuple[SessionFileInventoryEntry, ...],
     *,
     cache_dir: Path | None,
+    cache_database_path: Path | None,
 ) -> tuple[tuple[StorageFile, ...], StorageMetadataRefreshStats]:
-    resolved_cache_dir = resolve_cache_dir(session_dirs, cache_dir)
-    resolved_cache_dir.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(resolved_cache_dir / CACHE_DB_NAME)
+    if cache_dir is not None and cache_database_path is not None:
+        raise ValueError("cache_dir and cache_database_path are mutually exclusive")
+    resolved_cache_dir = (
+        cache_database_path.parent
+        if cache_database_path is not None
+        else resolve_cache_dir(session_dirs, cache_dir)
+    )
+    ensure_private_directory(resolved_cache_dir)
+    database_path = cache_database_path or resolved_cache_dir / CACHE_DB_NAME
+    connection = sqlite3.connect(database_path)
+    ensure_private_file(database_path)
     try:
         connection.row_factory = sqlite3.Row
         _schema._ensure_schema(connection)
@@ -96,3 +112,4 @@ def _load_cached_storage_files(
         return files, stats
     finally:
         connection.close()
+        ensure_private_sqlite_files(database_path)

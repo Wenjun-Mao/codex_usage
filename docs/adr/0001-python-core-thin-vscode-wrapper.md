@@ -1,6 +1,6 @@
 # ADR 0001: Python Core With Thin VS Code Wrapper
 
-Status: Accepted
+Status: Partially superseded by ADR 0034 in version 2.0.0
 
 Date: 2026-06-16
 
@@ -25,4 +25,3 @@ The Python CLI remains reusable outside VS Code. The extension stays small and t
 ## Guardrails
 
 TypeScript should not reimplement token accounting, pricing, project identity, or sync decisions.
-

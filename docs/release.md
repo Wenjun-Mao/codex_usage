@@ -1,241 +1,214 @@
-# Marketplace Release Checklist
+# Native Release Checklist
 
-This project is prepared for Windows x64 and macOS Apple Silicon Marketplace distribution. Linux packaging is a follow-up and is not a supported or hidden publication target for this release. Confirm the Marketplace publisher id `wenjun-mao` exists before publishing.
+Version 2.0 publishes a native macOS Apple Silicon app, a native Windows x64
+app, signed updater bundles, checksums, and one universal optional VS Code
+companion. Linux, Intel macOS, and Windows ARM64 are not release targets.
 
-## Build And Test
+There is **no unsigned release fallback**. Missing Apple, Azure, or Tauri
+signing material blocks publication.
+
+## Required Identities And Secrets
+
+### Tauri updater
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+The corresponding public key is committed in
+`apps/desktop/src-tauri/tauri.conf.json`. Retain the private key independently;
+losing it prevents existing installations from trusting future updates.
+
+### macOS Developer ID and notarization
+
+- `APPLE_CERTIFICATE`: base64-encoded Developer ID Application `.p12`.
+- `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_SIGNING_IDENTITY`
+- `APPLE_ID`
+- `APPLE_PASSWORD`: app-specific password.
+- `APPLE_TEAM_ID`
+
+The Apple account must support Developer ID distribution and notarization. The
+workflow imports the certificate into a temporary keychain, signs the app and
+sidecar, notarizes/staples the DMG, validates Gatekeeper, and deletes the
+temporary keychain.
+
+### Windows Azure Artifact Signing
+
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `ARTIFACT_SIGNING_ENDPOINT`
+- `ARTIFACT_SIGNING_ACCOUNT`
+- `ARTIFACT_SIGNING_PROFILE`
+
+Configure a GitHub OIDC federated credential for the repository and grant its
+service principal **Artifact Signing Certificate Profile Signer**. Microsoft
+requires completed identity validation and an eligible paid, non-sponsored
+Azure subscription.
+
+The Windows job signs the application and PyInstaller agent, creates the
+per-user NSIS installer, signs that installer, then rebuilds and signs the Tauri
+updater archive from the signed installer. Reordering those steps invalidates
+the updater signature.
+
+### VS Code Marketplace
+
+- `VSCE_PAT` with Manage permission for publisher `wenjun-mao`.
+
+## Local Gates
 
 Run from the repository root:
 
-```powershell
-uv run pytest
+```bash
+uv sync --all-groups
+uv run pytest -q
+uv run ruff check .
 ```
 
-For Windows x64 packaging, run from Windows/PowerShell:
+Native frontend and Rust host:
 
-```powershell
-cd extensions\vscode
+```bash
+cd apps/desktop
+npm ci
 npm test
-npm run package:vsix:win
+npm run build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-For macOS Apple Silicon packaging, run from macOS/bash:
+macOS packaged sidecar:
+
+```bash
+./scripts/build-agent-macos-arm64.sh
+```
+
+Companion:
 
 ```bash
 cd extensions/vscode
+npm ci
 npm test
-npm run package:vsix:mac
+npm run package:vsix
 ```
 
-Expected VSIX output:
+The companion package audit must show no Python, agent executable, parser,
+cache, source, or test files.
 
-```text
-output/releases/codex-usage-dashboard-win32-x64.vsix
-output/releases/codex-usage-dashboard-darwin-arm64.vsix
-```
+### 2.0.0 performance evidence
 
-## Marketplace Screenshot
+The 2026-09-02 candidate was checked against a 33 GiB, 1,325-file local corpus
+through an isolated ledger. One bounded baseline slice completed in 0.52 seconds,
+reported 115 MiB of source reads, and correctly exposed 0.19% coverage with all
+unscheduled files and bytes still pending. A separate 100-file live subset
+completed its baseline in 0.15 seconds; the immediately repeated unchanged
+capture completed in 0.01 seconds with 100 files reused and zero source bytes
+read. Timings are machine-specific evidence, not CI thresholds.
 
-Run from the repository root whenever dashboard presentation changes:
+## Visual Gate
+
+Run the native frontend fixture through Playwright at desktop and narrow window
+sizes (1440 x 900 and 760 x 900). Confirm:
+
+- the sidebar and Capture Now remain usable without overlap;
+- Usage clearly shows last/next capture, pending work, incomplete baseline, and
+  stale-source states;
+- report content and tooltips are not clipped;
+- Task Storage exposes Analyze and cancellation without unrelated operations;
+- Task Transfer has separate one-project and task-selection stages, zero default
+  task selection, project-only search, Back navigation, and explicit destination;
+- Settings expose 1-1,440 minutes, Manual Only, background registration, Codex
+  home switching, daily updates, Unregister, and Reset Local Data;
+- no synthetic screenshot contains personal paths or corpus data.
+
+Regenerate and review:
 
 ```bash
-uv sync
 uv run playwright install chromium
 uv run python scripts/generate_marketplace_screenshot.py
 uv run python scripts/generate_marketplace_screenshot.py --check
 ```
 
-Visually review both tracked images at 1440 x 900. In the Usage image, confirm that `Root tasks` and `Subagents` appear once as shared columns, role tracks have equal widths across projects, exact role totals and project shares remain visible, model colors match Model Mix, and `Other` is neutral. At the narrow browser gate, confirm each project stacks the two labeled role cells without overlap. In the Task Storage image, confirm that root and structured-subagent bytes remain distinct, amplification versus unknown-analysis badges are honest, and **Analyze** is the only row action. In both images, confirm the active view is obvious, no tooltip text is clipped, and no personal paths or data appear. Require `git diff -- docs/marketplace/dashboard-synthetic.png docs/marketplace/task-storage-synthetic.png` review whenever dashboard presentation changes.
+Visually review both generated images before committing them. The automated
+gate catches geometry and overflow regressions, but it does not replace a human
+check for hierarchy, readability, and representative product copy.
 
-## GitHub Actions Release
+## Non-Publishing Native Gate
 
-The repository has a `Package and Publish VSIX` workflow that builds both platform packages on native GitHub-hosted runners.
-
-Use the manual workflow trigger with `publish=false` to build and inspect artifacts without publishing. Run the manual workflow on the `main` ref with `publish=true` to publish both generated VSIX files to the VS Code Marketplace. Pushing a release tag that matches the extension version and points at a commit contained in `origin/main`, such as `v1.8.2`, also builds and publishes both packages.
-
-Publishing requires the repository Actions secret `VSCE_PAT`. The token must have Marketplace `Manage` permission for publisher `wenjun-mao`.
-
-## Parallel Refresh Prepublish Gate
-
-Run the guarded source acceptance and confirm its aggregate audit records non-parent worker PIDs, overlapping worker spans, and no serial fallback.
-
-After merged `main` is pushed, dispatch a non-publishing native workflow with `publish=false`, match it to the new `main` commit, and require both native package jobs to pass. Complete both gates before creating a release tag or publishing.
-
-## Inspect The VSIX
-
-Run from the repository root:
-
-```powershell
-tar -tf output\releases\codex-usage-dashboard-win32-x64.vsix
-```
-
-On macOS, inspect the macOS package:
+Push the candidate commit to `main`, then dispatch:
 
 ```bash
-tar -tf output/releases/codex-usage-dashboard-darwin-arm64.vsix
+gh workflow run package-vsix.yml --ref main -f publish=false
 ```
 
-Each archive should include:
+Require all four jobs to pass before publication:
 
-- `extension/LICENSE.txt`
-- `extension/CHANGELOG.md`
-- `extension/SUPPORT.md`
-- `extension/media/icon.png`
-- `extension/out/core.js`
-- `extension/out/extension.js`
-- `extension/package.json`
-- `extension/readme.md`
+- core/release-contract validation;
+- universal VS Code companion packaging;
+- macOS ARM64 PyInstaller, frontend, Rust, and no-bundle native smoke;
+- Windows x64 PyInstaller, frontend, Rust, and no-bundle native smoke.
 
-The Windows archive should include:
+This gate intentionally does not produce distributable unsigned installers.
 
-- `extension/bin/win32-x64/codex-usage.exe`
+## Signed Publication
 
-The macOS Apple Silicon archive should include:
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.0.0`, both
+changelogs have a dated `2.0.0` entry, and the candidate commit is contained in
+`origin/main`.
 
-- `extension/bin/darwin-arm64/codex-usage`
-
-The archive should not include:
-
-- TypeScript source files
-- tests
-- `node_modules`
-- `.vscode`
-- source maps
-
-## Marketplace Preflight
-
-Before publishing:
-
-- Confirm the Visual Studio Marketplace publisher id is `wenjun-mao`.
-- Confirm `extensions/vscode/package.json` does not contain a `preview` field.
-- Confirm `extensions/vscode/package.json` does not have `"private": true`.
-- Confirm the package targets are Windows x64 and macOS Apple Silicon.
-- Confirm no Linux package or Marketplace target is included; Linux remains follow-up work.
-- Confirm the extension README clearly identifies Windows x64 and macOS Apple Silicon as the supported platforms.
-- Confirm `PRIVACY.md`, `LICENSE`, `CHANGELOG.md`, and `SUPPORT.md` are current.
-- Confirm pricing notes say pricing is checked-in and effective-dated, with no live fetch.
-- Confirm Task Transfer Import blocks before copying when Desktop is running,
-  the destination does not match exactly one existing local Desktop project,
-  or a selected task has a conflicting assignment.
-- Confirm an unchanged Import still performs app-server registration and guarded
-  Desktop project binding, with a sibling state backup and post-write verification.
-- Confirm VS Code-only mode remains available when no Desktop global-state file exists.
-- Confirm Codex fast mode is documented as counted through recorded tokens but not separately labeled because Codex does not expose a durable per-turn fast-mode marker in JSONL.
-- Confirm the version in `extensions/vscode/package.json` has not already been published. Marketplace versions are immutable.
-
-## Manual Marketplace Upload
-
-Use this path when you want to upload the VSIX through the browser instead of publishing from the terminal.
-
-1. Open <https://marketplace.visualstudio.com/manage/publishers/>.
-2. Sign in with the Microsoft account that owns the publisher.
-3. Select publisher `wenjun-mao`.
-4. Open the existing `Codex Usage Dashboard` extension entry.
-5. Choose the update/upload action for a new extension version.
-6. Upload the target VSIX from the repository root, such as `output\releases\codex-usage-dashboard-win32-x64.vsix` or `output/releases/codex-usage-dashboard-darwin-arm64.vsix`.
-7. Wait for Marketplace verification to finish.
-8. Confirm the listing shows the new version, then search/install it from VS Code after indexing catches up.
-
-## CLI Marketplace Publish
-
-Publish Windows x64 from Windows/PowerShell after the checks pass:
-
-```powershell
-cd extensions\vscode
-npx vsce login wenjun-mao
-npm run package:vsix:win
-npx vsce publish --packagePath ..\..\output\releases\codex-usage-dashboard-win32-x64.vsix
-```
-
-Publish macOS Apple Silicon from macOS/bash after the checks pass:
+The only valid release tag for this version is `v2.0.0`. Create and push that
+exact tag:
 
 ```bash
-cd extensions/vscode
-npx vsce login wenjun-mao
-npm run package:vsix:mac
-npx vsce publish --packagePath ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix
+git tag v2.0.0
+git push origin v2.0.0
 ```
 
-## Local Install Smoke
+The tag starts the signed path. It must produce these release assets:
 
-Install into normal VS Code:
-
-```powershell
-code --install-extension output\releases\codex-usage-dashboard-win32-x64.vsix --force
+```text
+Codex-Usage-2.0.0-macos-arm64.dmg
+Codex-Usage-2.0.0-darwin-aarch64.app.tar.gz
+Codex-Usage-2.0.0-darwin-aarch64.app.tar.gz.sig
+Codex-Usage-2.0.0-windows-x64-setup.exe
+Codex-Usage-2.0.0-windows-x86_64.nsis.zip
+Codex-Usage-2.0.0-windows-x86_64.nsis.zip.sig
+codex-usage-companion.vsix
+latest.json
+SHA256SUMS.txt
 ```
 
-On macOS Apple Silicon:
+The workflow verifies native signatures, updater signatures, checksums, all nine
+GitHub assets, and Marketplace version availability. Publication is rerunnable:
+an existing GitHub release is updated with `--clobber`, and VSCE uses
+`--skip-duplicate`.
 
-```bash
-code --install-extension output/releases/codex-usage-dashboard-darwin-arm64.vsix --force
-```
+## Clean-Install Acceptance
 
-Manual smoke checklist:
+On a clean macOS Apple Silicon account:
 
-- Run `Codex Usage: Open Dashboard`.
-- Run `Codex Usage: Refresh Dashboard`.
-- Run `Codex Usage: Select Range`.
-- Run `Codex Usage: Select Projects`.
-- Run `Codex Usage: Task Transfer`.
-- Run `Codex Usage: Import Tasks`, `Codex Usage: Export Tasks`, and `Codex Usage: Review Transfer Status`.
-- In Task Storage, analyze one incomplete tree and confirm the refreshed row becomes complete without scanning unrelated trees.
-- Confirm an incomplete Task Storage row exposes **Analyze** as its only action and a complete row exposes no action.
-- Run `Codex Usage: Open Settings`.
-- Confirm readable behavior when no session files are found.
-- Confirm the dashboard says pricing uses rates effective at each usage event.
-- Confirm token reporting works with no transfer folder remembered.
+1. Validate the DMG staple and Gatekeeper assessment.
+2. Install and open the app without bypassing security prompts.
+3. Complete onboarding with background capture both disabled and enabled.
+4. Close the app and prove only opted-in background capture remains running.
+5. Install an update from a test endpoint and prove the collector is quiesced,
+   registration is repaired, and the app restarts.
+6. Use **Unregister Background Agent** and **Reset Local Data** and confirm each
+   affects only Codex Usage-owned state.
 
-## Task Transfer Acceptance
+On a clean Windows x64 account:
 
-- Confirm Import, Export, and Review each open with a fresh empty selection.
-- Export selected active tasks and confirm unselected and archived tasks are not copied.
-- Confirm the filesystem provider has converged before testing on the destination computer.
-- Confirm the corresponding destination project checkout already exists; Task Transfer must not clone it.
-- Confirm a matching Git origin maps automatically and a mismatched Git origin is rejected.
-- Confirm a non-Git destination requires explicit unverified-mapping confirmation.
-- Import a task and confirm its JSONL remains in the transfer folder.
-- Confirm conflicts, opposite-direction work, and invalid mappings block the complete selected batch without partial copies.
-- Confirm a valid version-2 transfer folder migrates automatically to the version-3 `tasks/` layout.
+1. Verify Authenticode on the installer, app executable, and agent executable.
+2. Install per-user without elevation and complete onboarding.
+3. Confirm the Scheduled Task appears only after consent and survives app exit.
+4. Exercise signed update installation and repaired task registration.
+5. Uninstall and choose the default **No** response; verify ledger/settings are
+   preserved and the Scheduled Task is removed.
+6. Reinstall, uninstall again, choose **Yes**, and verify only Codex Usage-owned
+   ledger/settings are removed.
 
-Extension-only manual gate:
-
-- Quit the Codex desktop app.
-- Open an existing matching checkout in VS Code.
-- Import a remote-only task using the packaged extension.
-- Reload VS Code.
-- Confirm the official Codex extension lists and opens the task under that workspace.
-
-## Archive/Delete Accounting Checks
-
-Archived Codex tasks should remain in usage totals through `archived_sessions`. Deleted tasks should remain in historical totals after the local cache has parsed them once, but the real delete behavior must be observed on an expendable task instead of assumed.
-
-Before any manual delete experiment, capture:
-
-```powershell
-uv run codex-usage storage snapshot --json > output\storage-snapshot-before-delete-experiment.json
-uv run codex-usage summary --range all --by session --json > output\delete-experiment-before-summary.json
-```
-
-Then delete one nonessential Codex task in the Codex app and capture:
-
-```powershell
-uv run codex-usage storage snapshot --json > output\storage-snapshot-after-delete-experiment.json
-uv run codex-usage summary --range all --by session --json > output\delete-experiment-after-summary.json
-```
-
-Do not use a task needed for Task Transfer testing. This release preserves parsed historical usage but cannot restore a deleted Codex task.
-
-## Codex Delete Behavior Observation
-
-Observed on Windows with Codex app build current as of 2026-05-27:
-
-- Archive moves session JSONL files from `sessions` to `archived_sessions`.
-- Delete removed the archived session JSONL from local Codex storage; Codex Usage retained historical usage from cache.
-
-## Release Notes
-
-- Supported targets are Windows x64 and macOS Apple Silicon.
-- Linux packaging is follow-up work and is not supported in this release.
-- The VSIX is self-contained and does not require Python, `uv`, or this repository at runtime.
-- Intel macOS is not supported.
-- The extension reads local Codex session files and writes local reports only.
-- Marketplace publisher identity is `wenjun-mao`.
+On both platforms, verify ledger-only range/project/theme changes open zero
+JSONLs, an unchanged capture reads zero source bytes, Capture Now coalesces,
+partial baseline totals remain visibly incomplete, Task Storage analysis is
+selected-tree-only and cancellable, and Task Transfer preserves its guarded
+one-project contract.

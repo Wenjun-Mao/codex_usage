@@ -159,6 +159,8 @@ def render_html_report(
     project_transitions: list[dict[str, object]] | None = None,
     storage_snapshot: TaskStorageInsights | None = None,
     theme: str = "auto",
+    data_status_html: str = "",
+    embedded_usage_only: bool = False,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     theme = normalize_report_theme(theme)
@@ -196,6 +198,23 @@ def render_html_report(
         ),
     )
     storage_view_html = render_report_view(STORAGE_REPORT_VIEW, task_storage_html)
+    report_contents = (
+        f"{data_status_html}{usage_view_html}"
+        if embedded_usage_only
+        else f"""
+    {render_report_view_targets()}
+    <h1>Codex Usage Report</h1>
+    {data_status_html}
+    <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())}</div>
+    <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
+    <div class="muted summary-line">Sessions: {html.escape(", ".join(str(path) for path in sessions_dirs))}</div>
+    <div class="muted summary-line">{html.escape(storage_summary)}</div>
+    {render_report_view_tabs()}
+    {usage_view_html}
+    {storage_view_html}
+"""
+    )
+    embedded_class = " report-shell-embedded" if embedded_usage_only else ""
     body = f"""<!doctype html>
 <html lang="en" data-codex-theme="{html.escape(theme)}">
 <head>
@@ -207,16 +226,8 @@ def render_html_report(
   </style>
 </head>
 <body>
-  <main class="report-shell">
-    {render_report_view_targets()}
-    <h1>Codex Usage Report</h1>
-    <div class="muted summary-line">Generated {html.escape(generated_at.isoformat())}</div>
-    <div class="muted summary-line">Projects: {html.escape(project_filter_label)}</div>
-    <div class="muted summary-line">Sessions: {html.escape(", ".join(str(path) for path in sessions_dirs))}</div>
-    <div class="muted summary-line">{html.escape(storage_summary)}</div>
-    {render_report_view_tabs()}
-    {usage_view_html}
-    {storage_view_html}
+  <main class="report-shell{embedded_class}">
+    {report_contents}
   </main>
 </body>
 </html>"""

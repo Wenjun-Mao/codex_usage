@@ -1,173 +1,63 @@
 {
   "name": "codex-usage-dashboard",
-  "displayName": "Codex Usage Dashboard",
-  "description": "Local Codex usage dashboard with Task Storage diagnostics and optional cross-computer task transfer.",
+  "displayName": "Codex Usage Companion",
+  "description": "Optional VS Code companion for the Codex Usage native app and persistent local collector.",
   "publisher": "wenjun-mao",
-  "version": "1.8.2",
+  "version": "2.0.0",
   "license": "MIT",
   "icon": "media/icon.png",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Wenjun-Mao/codex_usage.git"
-  },
-  "bugs": {
-    "url": "https://github.com/Wenjun-Mao/codex_usage/issues"
-  },
+  "repository": { "type": "git", "url": "https://github.com/Wenjun-Mao/codex_usage.git" },
+  "bugs": { "url": "https://github.com/Wenjun-Mao/codex_usage/issues" },
   "homepage": "https://github.com/Wenjun-Mao/codex_usage#readme",
-  "keywords": [
-    "codex",
-    "tokens",
-    "usage",
-    "dashboard",
-    "cost",
-    "task-transfer",
-    "cross-computer"
-  ],
-  "engines": {
-    "vscode": "^1.90.0"
-  },
-  "categories": [
-    "Visualization",
-    "Other"
-  ],
-  "extensionKind": [
-    "ui"
-  ],
+  "keywords": ["codex", "tokens", "usage", "dashboard", "task-transfer", "native-app"],
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Visualization", "Other"],
+  "extensionKind": ["ui"],
   "capabilities": {
-    "virtualWorkspaces": false,
-    "untrustedWorkspaces": {
-      "supported": true,
-      "description": "Codex Usage reads local Codex session storage and does not execute workspace code."
-    }
+    "virtualWorkspaces": true,
+    "untrustedWorkspaces": { "supported": true, "description": "The companion only talks to the local Codex Usage collector and does not execute workspace code." }
   },
   "activationEvents": [
     "onCommand:codexUsage.openDashboard",
-    "onCommand:codexUsage.refreshDashboard",
-    "onCommand:codexUsage.openSettings",
-    "onCommand:codexUsage.selectRange",
-    "onCommand:codexUsage.selectProjects",
-    "onCommand:codexUsage.selectTheme",
-    "onCommand:codexUsage.reviewProjectTransitions",
-    "onCommand:codexUsage.openSyncMenu",
-    "onCommand:codexUsage.configureSync",
-    "onCommand:codexUsage.selectSyncTasks",
-    "onCommand:codexUsage.pullTasks",
-    "onCommand:codexUsage.pushTasks",
-    "onCommand:codexUsage.syncStatus",
-    "onCommand:codexUsage.openSyncFolder",
+    "onCommand:codexUsage.captureNow",
+    "onCommand:codexUsage.openTaskTransfer",
     "onCommand:codexUsage.analyzeTaskStorage",
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "codexUsage.openDashboard",
-        "title": "Codex Usage: Open Dashboard"
-      },
-      {
-        "command": "codexUsage.refreshDashboard",
-        "title": "Codex Usage: Refresh Dashboard"
-      },
-      {
-        "command": "codexUsage.openSettings",
-        "title": "Codex Usage: Open Settings"
-      },
-      {
-        "command": "codexUsage.selectRange",
-        "title": "Codex Usage: Select Range"
-      },
-      {
-        "command": "codexUsage.selectProjects",
-        "title": "Codex Usage: Select Projects"
-      },
-      {
-        "command": "codexUsage.selectTheme",
-        "title": "Codex Usage: Select Theme"
-      },
-      {
-        "command": "codexUsage.reviewProjectTransitions",
-        "title": "Codex Usage: Review Project Transitions"
-      },
-      {
-        "command": "codexUsage.openSyncMenu",
-        "title": "Codex Usage: Task Transfer"
-      },
-      {
-        "command": "codexUsage.configureSync",
-        "title": "Codex Usage: Choose Transfer Folder"
-      },
-      {
-        "command": "codexUsage.selectSyncTasks",
-        "title": "Codex Usage: Task Transfer"
-      },
-      {
-        "command": "codexUsage.pullTasks",
-        "title": "Codex Usage: Import Tasks"
-      },
-      {
-        "command": "codexUsage.pushTasks",
-        "title": "Codex Usage: Export Tasks"
-      },
-      {
-        "command": "codexUsage.syncStatus",
-        "title": "Codex Usage: Review Transfer Status"
-      },
-      {
-        "command": "codexUsage.openSyncFolder",
-        "title": "Codex Usage: Open Transfer Folder"
-      },
-      {
-        "command": "codexUsage.analyzeTaskStorage",
-        "title": "Codex Usage: Analyze Task Storage"
-      }
+      { "command": "codexUsage.openDashboard", "title": "Codex Usage: Open Dashboard" },
+      { "command": "codexUsage.captureNow", "title": "Codex Usage: Capture Now" },
+      { "command": "codexUsage.refreshDashboard", "title": "Codex Usage: Refresh Dashboard" },
+      { "command": "codexUsage.selectRange", "title": "Codex Usage: Select Range" },
+      { "command": "codexUsage.selectProjects", "title": "Codex Usage: Select Projects" },
+      { "command": "codexUsage.selectTheme", "title": "Codex Usage: Select Theme" },
+      { "command": "codexUsage.reviewProjectTransitions", "title": "Codex Usage: Review Project Transitions" },
+      { "command": "codexUsage.showUsageView", "title": "Codex Usage: Show Usage" },
+      { "command": "codexUsage.showStorageView", "title": "Codex Usage: Show Task Storage" },
+      { "command": "codexUsage.openTaskTransfer", "title": "Codex Usage: Task Transfer" },
+      { "command": "codexUsage.importTasks", "title": "Codex Usage: Import Tasks" },
+      { "command": "codexUsage.exportTasks", "title": "Codex Usage: Export Tasks" },
+      { "command": "codexUsage.reviewTransferStatus", "title": "Codex Usage: Review Transfer Status" },
+      { "command": "codexUsage.chooseTransferFolder", "title": "Codex Usage: Choose Transfer Folder" },
+      { "command": "codexUsage.analyzeTaskStorage", "title": "Codex Usage: Analyze Task Storage" },
+      { "command": "codexUsage.openNativeApp", "title": "Codex Usage: Open Native App" }
     ],
     "configuration": {
-      "title": "Codex Usage",
+      "title": "Codex Usage Companion",
       "properties": {
-        "codexUsage.range": {
-          "type": "string",
-          "enum": [
-            "today",
-            "yesterday",
-            "7d",
-            "30d",
-            "month",
-            "all"
-          ],
-          "default": "30d",
-          "description": "Time range used when generating the dashboard report."
-        },
-        "codexUsage.theme": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "day",
-            "night"
-          ],
-          "default": "auto",
-          "description": "Dashboard theme. Auto follows the active VS Code theme in the extension and system preference for standalone HTML."
-        },
-        "codexUsage.projectTransitions.autoDetect": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically split usage when high-confidence local repository transitions are detected."
-        }
+        "codexUsage.range": { "type": "string", "enum": ["today", "yesterday", "7d", "30d", "month", "all"], "default": "30d", "description": "Time range requested from the Codex Usage ledger." },
+        "codexUsage.theme": { "type": "string", "enum": ["auto", "day", "night"], "default": "auto", "description": "Dashboard report theme." }
       }
     }
   },
   "scripts": {
-    "build:python:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ..\\..\\scripts\\build-windows-exe.ps1",
-    "build:python:mac": "bash ../../scripts/build-macos-arm64-exe.sh",
     "clean": "node scripts/clean-output.js",
     "build": "npm run clean && tsc -p .",
-    "typecheck:contracts": "tsc -p tsconfig.type-tests.json",
     "watch": "tsc -watch -p .",
-    "test": "npm run build && npm run typecheck:contracts && node --test test/*.test.js",
-    "test:registration-smoke": "npm run build && node ../../scripts/smoke-test-codex-registration.js",
-    "package:vsix": "npm run package:vsix:win",
-    "package:vsix:win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Force ..\\..\\output\\releases | Out-Null\" && npm run build:python:win && vsce package --target win32-x64 --out ../../output/releases/codex-usage-dashboard-win32-x64.vsix",
-    "package:vsix:mac": "mkdir -p ../../output/releases && npm run build:python:mac && vsce package --target darwin-arm64 --out ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix",
+    "test": "npm run build && node --test test/*.test.js && node scripts/verify-package.js",
+    "package:vsix": "mkdir -p ../../output/releases && npm run build && vsce package --out ../../output/releases/codex-usage-companion.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

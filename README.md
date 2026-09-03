@@ -1,267 +1,236 @@
-# Codex Usage Dashboard
+# Codex Usage
 
-Local-first Codex usage reporting for understanding project activity, token usage, Codex credits, and API-equivalent cost from local Codex session JSONL logs. Project Breakdown separates each project into user-visible root tasks and structured subagents, presents both roles in shared comparison columns, then stacks each role by model so the report explains both who used tokens and which models contributed.
+Codex Usage is a local native app for understanding Codex token usage, model
+mix, project activity, and task storage. Its optional background collector keeps
+a durable usage history even when Codex, VS Code, and the Codex Usage window are
+closed.
 
-## What The Dashboard Shows
+Everything stays on your computer. Capturing usage does not call a model or the
+OpenAI API.
 
-- Two focused views keep date-filtered **Usage** separate from current **Task Storage**. Projects and theme apply to both; the date range applies only to Usage.
-- Task Storage shows current local JSONL usage by user-visible root task tree and diagnoses repeated compacted-history and inline-media amplification on demand.
-- Project Breakdown separates each project into user-visible root tasks and structured subagents, presents both roles in shared comparison columns, then stacks each role by model.
-- Model Mix uses shared model colors across the report. Model Details remains exact while crowded charts group models after the largest seven into visual-only `Other`.
-- Total tokens and usage event counts, cache hit share, and daily/hourly usage patterns.
-- API-equivalent USD using checked-in effective-dated pricing.
-- Codex credits, estimated from recorded usage.
-- Optional Task Transfer moves selected active tasks between computers; token reporting works without it.
+![Codex Usage native app](docs/marketplace/native-usage-synthetic.png)
 
-![Synthetic Codex Usage Dashboard screenshot](docs/marketplace/dashboard-synthetic.png)
+## Highlights
 
-## Quick Start
+- **Persistent local history:** captured usage remains in the ledger after a
+  source task is archived or deleted.
+- **Low-I/O collection:** the default schedule runs every 15 minutes. Unchanged
+  cycles inspect metadata but open zero JSONLs; normal appends read only guard
+  windows and the new tail.
+- **Immediate capture:** **Capture Now** coalesces with any running capture and
+  resets the next scheduled interval after success.
+- **Fast reports:** date, project, and theme changes query the ledger without
+  reopening task files.
+- **Honest accounting:** Project Breakdown separates root tasks from structured
+  subagents and stacks each role by model. Side chats remain disclosed under
+  their parent root task when Codex stores no durable discriminator.
+- **Task Storage:** inspect current disk use and explicitly analyze one selected
+  task tree for history amplification and inline media.
+- **Task Transfer:** deliberately export or import selected active tasks from one
+  project at a time through a user-managed folder.
 
-1. Run **Codex Usage: Open Dashboard** from the VS Code Command Palette.
-2. Use **Usage** to review tokens, models, estimated API-equivalent cost, Codex credits, and root-task versus subagent activity. Change the date range or project filter from the toolbar.
-3. Use **Task Storage** to see current disk usage by task tree. Choose **Analyze** on a tree when you need to understand its growth.
-4. Use **Codex Usage: Task Transfer** only when you deliberately want to move selected active tasks between computers; reporting does not require it.
+## Install
 
-This repository contains:
+Download the latest signed installer from
+[GitHub Releases](https://github.com/Wenjun-Mao/codex_usage/releases/latest):
 
-- A Python CLI, `codex-usage`, for parsing local Codex session logs.
-- A Windows x64 and macOS Apple Silicon VS Code extension that bundles the Python CLI.
-- A dependency-light dashboard report rendered with local HTML, CSS, and inline SVG.
+- macOS 13 or later on Apple Silicon: notarized Developer ID DMG.
+- Windows 10 or later on x64: signed per-user NSIS installer.
 
-## VS Code Packages
+Intel macOS, Windows ARM64, and Linux are not supported in 2.0.0.
 
-The stable packages support Windows x64 and macOS Apple Silicon only. Each package is self-contained at runtime and does not require Python, `uv`, or this repository after installation. The release workflow runs both native packaged version-3 Task Transfer smoke gates, one on Windows x64 and one on macOS Apple Silicon, and requires them to pass before publication. Additional packaged gates cover report and cache behavior plus Task Storage snapshot and analysis, including zero-byte warm-analysis reuse; they must also pass. Intel macOS and Windows ARM64 are not supported targets in this release. Linux packaging is a follow-up and is not a supported target in this release.
+The [Codex Usage Companion](https://marketplace.visualstudio.com/items?itemName=wenjun-mao.codex-usage-dashboard)
+is optional. It opens the same ledger and workflows inside VS Code, but requires
+the native app and never bundles a second parser or private cache.
 
-Build and install the local macOS Apple Silicon VSIX:
+## First Run
 
-```bash
-cd extensions/vscode
-npm run package:vsix:mac
-code --install-extension ../../output/releases/codex-usage-dashboard-darwin-arm64.vsix --force
+1. Open Codex Usage and choose the Codex home containing `sessions` or
+   `archived_sessions`. The usual location is `~/.codex` on macOS or
+   `%USERPROFILE%\.codex` on Windows.
+2. Choose whether capture should continue after the app closes. Background
+   capture is opt-in and registers only for your user account.
+3. Keep the balanced 15-minute interval, choose 1 to 1,440 minutes, or select
+   **Manual Only**.
+4. Optionally enable a GitHub update check at most once per day. Every update
+   still requires confirmation.
+5. Let the initial baseline continue. Available totals are shown with an
+   incomplete-data warning until all discovered files have been processed.
+
+Codex Usage supports one active Codex home. Changing it in **Settings** stops
+the collector, validates the new home, switches to that home's ledger, repairs
+background registration, and restarts collection.
+
+## Capture And History
+
+The collector reconciles active and archived task directories at the configured
+interval. Filesystem notifications only mark paths as dirty; notification
+callbacks never read task content. Overdue work after startup, sleep/wake, or a
+watcher recovery produces one catch-up rather than replaying every missed tick.
+
+The status header shows the last capture, next scheduled capture, pending files
+and bytes, baseline progress, and stale-source warnings. Use **Capture Now** when
+you want current data immediately.
+
+Run **Capture Now before manually deleting a Codex task**. A scheduled interval
+can leave an uncaptured tail of up to that interval. Once a generation is in the
+ledger, its usage is retained when the JSONL disappears, but Codex Usage cannot
+restore a deleted task.
+
+The durable ledger lives at:
+
+```text
+CODEX_HOME/.codex-usage/usage-ledger.sqlite3
 ```
 
-Available commands:
+It uses forward, backup-protected migrations and is written only by the single
+collector process. Task Storage content diagnostics use a separate disposable
+database.
 
-- `Codex Usage: Open Dashboard`
-- `Codex Usage: Refresh Dashboard`
-- `Codex Usage: Select Range`
-- `Codex Usage: Select Projects`
-- `Codex Usage: Review Project Transitions`
-- `Codex Usage: Select Theme`
-- `Codex Usage: Task Transfer`
-- `Codex Usage: Choose Transfer Folder`
-- `Codex Usage: Import Tasks`
-- `Codex Usage: Export Tasks`
-- `Codex Usage: Review Transfer Status`
-- `Codex Usage: Analyze Task Storage`
-- `Codex Usage: Open Transfer Folder`
-- `Codex Usage: Open Settings`
+## Usage
 
-## CLI Usage
+Open **Usage** to review:
 
-```powershell
-uv sync
-uv run codex-usage summary --range 7d --by project
-uv run codex-usage summary --range all --by hour --json
-uv run codex-usage summary --range month --by model --csv output/monthly-models.csv
-uv run codex-usage report --range 30d --output output/report.html
-uv run codex-usage report --range all --theme night --output output/night-report.html
-uv run codex-usage storage snapshot --json
-uv run codex-usage storage analyze --tree-id <tree-id> --json --progress-json
-uv run codex-usage transitions suggest --json
-```
+- total, input, cache-read, cache-write, and output tokens;
+- effective-dated API-equivalent USD and estimated Codex credits;
+- daily and hourly patterns;
+- project totals and project transitions;
+- root-task versus structured-subagent usage, split again by model;
+- exact model details, including unknown or currently unpriced usage.
 
-### Internal CLI
+Choose a date range and any project filter. These controls query SQLite only.
+The report shows generation time and whether its rendered-result cache was used.
+Pricing is bundled and effective-dated; the app makes no live pricing request.
+Estimates are not an OpenAI invoice and do not know the price of your plan.
 
-The VS Code extension invokes the technical commands below. Their `sync`,
-`thread_id`, and `threads` names are private compatibility contracts, not
-user-facing Task Transfer terminology.
+## Task Storage
 
-```powershell
-uv run codex-usage threads --project-key https://github.com/example/demo --json
-uv run codex-usage sync inventory --sync-dir D:\CodexSync --json
-uv run codex-usage sync pull --sync-dir D:\CodexSync --thread-id <thread-id> --json
-uv run codex-usage sync push --sync-dir D:\CodexSync --thread-id <thread-id> --json
-uv run codex-usage sync status --sync-dir D:\CodexSync --thread-id <thread-id> --json
-```
+Open **Task Storage** to see current physical JSONL usage by user-visible root
+task tree. This inventory includes active and archived files, separates root
+bytes from structured descendants, and is independent of the Usage date range.
 
-By default, the tool looks for Codex session storage at:
+![Codex Usage Task Storage](docs/marketplace/native-storage-synthetic.png)
 
-- `CODEX_HOME/sessions`
-- `CODEX_HOME/archived_sessions`
-- `%USERPROFILE%\.codex\sessions`
-- `%USERPROFILE%\.codex\archived_sessions`
-- `~/.codex/sessions`
-- `~/.codex/archived_sessions`
+Choose **Analyze** on one tree to measure compacted-history amplification,
+inline-media evidence, large descendants, and active-root history risk. Analysis
+is selected-tree-only, cancellable, local, and limited to one shared heavy-I/O
+lane. It does not invoke a model or scan unrelated trees opportunistically.
+The app labels history amplification only after a complete analysis finds at
+least 1 GiB of compacted rows representing at least 50% of the tree's logical
+bytes. Until then, the result remains visibly **Not analyzed** or incomplete.
 
-Dashboard and usage-report discovery includes active and archived session roots when they exist. Task Transfer exports only from the active `sessions` roots. Set `CODEX_HOME` when you need to point the CLI at a different Codex home for testing or migration.
+For a large task:
 
-Dashboard theme defaults to `auto`. In standalone HTML, auto follows the browser/system color-scheme preference. In VS Code, auto follows the active VS Code theme. You can force a report with `--theme day` or `--theme night`, or set `CODEX_USAGE_THEME`.
+- Use **Fork in Codex** when conversational continuity is the priority. A fork
+  is not a backup and does not guarantee smaller storage.
+- Start a fresh task with a concise handoff when reducing inherited context and
+  future growth is the priority.
+- Verify the replacement before manually archiving or deleting the original in
+  Codex.
 
-### Performance Cache
-
-The VS Code extension stores a local SQLite cache under VS Code global extension storage. The first `1.7.0` report rebuilds the disposable schema 8 cache once. Later reports query only the selected time range from SQLite, value each retained record once, and reuse that valuation across totals, timeline rows, and Project Breakdown. Schema 8 also retains guarded Task Storage content diagnostics whenever the usage parser has already read a file. The cache remains local and pricing still uses checked-in effective-dated rates. The dashboard toolbar shows `Loaded in X.X seconds` for the report currently displayed.
-
-Unchanged refreshes open no session JSONLs. When a Codex-owned active JSONL grows, schema 8 verifies its path, OS file identity, task ID, head digest, and 64 KiB old-boundary digest before restoring the parser checkpoint's model, turn, role, fork, metadata, cumulative-token state, and content observer and reading only fixed guard windows plus the new tail. Replacement, truncation, same-size modification, unavailable identity, digest mismatch, invalid state, or any archived-file change falls back to a full parse. File inventory captures a fixed readable size, so growth during parsing waits for the next refresh. Incomplete final rows are deferred without losing their starting offset.
-
-At most four read-only workers use buffered binary I/O to parse groups of eight files in descending unread-byte order. SQLite remains in the parent process and atomically commits records, metadata, transition candidates, fingerprints, and checkpoints; a failure retains the prior complete generation. Task Transfer metadata discovery reads one bounded line at a time and stops as soon as it finds valid `session_meta`. Range-aware queries use cached UTC-microsecond timestamps, while refresh coordination keeps only the latest request pending behind an active report. Cache diagnostics in the timing sidecar and VS Code Output channel distinguish full parses, append parses, append fallbacks, and source bytes read.
-
-### Task Storage
-
-The dashboard's **Task Storage** view and `codex-usage storage snapshot` command report the current local corpus separately from date-filtered Usage. The view groups physical JSONL files into user-visible root task trees, separates root-task bytes from nested structured-descendant bytes, includes both active and archived files, and applies the selected project filter while remaining independent of the usage date range. The dashboard shows the largest trees as horizontal bars and lists the complete inventory with logical file bytes, file counts, state, share, analysis coverage, and diagnostic flags. A root-size badge appears at 1 GiB and a tree-size badge at 10 GiB; these are visibility thresholds, not deletion recommendations or reclaimable-space estimates.
-
-Codex guardian approval logs are preserved as structured descendants of their explicit owning task. Their bytes stay with that task tree, while their recorded `codex-auto-review` tokens remain visible under **Subagents** in Usage; they are not hidden or presented as user-created roots.
-
-![Synthetic Task Storage screenshot](docs/marketplace/task-storage-synthetic.png)
-
-Task trees can become large when compacted history or inline media is repeated across later rows and structured descendants. Visible task count, turn count, and subagent count do not explain that growth by themselves. Run **Analyze** on one selected tree to measure repeated compacted-history rows, inline-media markers, large descendants, and active-root history risk. Analysis uses at most four local read-only workers and updates guarded diagnostics atomically; it does not invoke a model or scan unrelated trees.
-
-#### Analyze One Task Tree
-
-1. Open **Task Storage** and optionally use the project filter to narrow the table.
-2. Choose **Analyze** on the task row, or run **Codex Usage: Analyze Task Storage** and choose one project and one task tree.
-3. Wait for the selected-tree scan to finish and the dashboard row to refresh.
-4. Review total size together with **History amplification**, **Inline media**, descendant concentration, and active-root history risk. A `not analyzed` or `partial` result means the evidence is incomplete, not that the risk is absent.
-
-A positive **History amplification** label requires complete analysis, at least 1 GiB of compacted rows, and compacted history representing at least 50% of the tree. **Inline media** additionally requires media markers inside that amplified history. `not analyzed` or `partial` is intentionally shown as unknown, never as evidence that amplification is absent. Marker counts are diagnostic clues rather than decoded media size or reclaimable-space estimates. The investigation behind these rules is recorded in [Task Storage Amplification](docs/knowledge/task-storage-amplification.md).
-
-Codex documentation describes side chats as ephemeral forks. In the observed local format, a side-chat turn is stored in its parent root JSONL without a separate task, file, or durable discriminator. Its bytes and token usage therefore remain under **Root task**, and the report discloses that inclusion rather than inventing a heuristic third role. A future separate side-chat breakdown requires reliable upstream metadata and will not retroactively guess older records.
-
-### Managing Large Tasks
-
-- Use **Fork in Codex** when you want conversational continuity. A fork is a Codex-owned continuation mechanism, not a backup and not a guarantee that inherited storage will shrink.
-- Use a fresh task with a concise handoff when reducing inherited context and future storage growth is the priority.
-- Verify that the replacement task has the context and files it needs before manually archiving or deleting the original in Codex.
-
-Codex Usage keeps Task Storage read-only except for its disposable diagnostic cache. It does not create, fork, archive, restore, or delete tasks. Version 1.8.0 also removes creation and verification of custom `.codex-task-backup` archives. Existing archives are untouched, but the plugin can no longer create, verify, or restore them.
-
-### Codex Fast Mode
-
-Codex fast mode is counted through the token usage that Codex records. Current Codex session JSONL files do not expose a durable per-turn fast-mode marker or exact charged-credit field, so the dashboard cannot label GPT-5.5 fast-mode turns separately from regular GPT-5.5 turns.
-
-The report uses no remote assets, JavaScript, or Python chart libraries. It is safe to open locally and is designed to fit inside a VS Code webview.
-The dashboard uses the same tokenized day/night design system as the VS Code extension, including dark-mode-friendly charts and tables.
+Codex Usage does not create, fork, archive, restore, or delete tasks.
 
 ## Task Transfer
 
-Task Transfer deliberately moves selected active Codex tasks between computers through a transfer folder managed by OneDrive, Dropbox, iCloud Drive, Syncthing, a network drive, or another filesystem provider. It is optional: token reporting works without Task Transfer and no transfer runs in the background. Codex's built-in handoff can fail on a very large task; Task Transfer preserves that task as a full JSONL so it can continue on another computer without summarizing or repackaging its context.
+Task Transfer moves selected active task JSONLs between computers through a
+folder managed by OneDrive, Dropbox, iCloud Drive, Syncthing, a network drive,
+or another filesystem provider. It is explicit and never runs in the
+background. Each Import or Export handles exactly one project.
 
-1. On the source computer, run **Codex Usage: Task Transfer**, choose **Choose Transfer Folder**, and select a folder managed by your filesystem provider.
-2. Choose **Export Tasks**, select one project, then select the active tasks from that project. No tasks are selected by default.
-3. Wait until the filesystem provider has finished copying the transfer folder.
-4. On the destination computer, make sure the corresponding project checkout already exists. If you use only the Codex IDE extension, open that checkout in VS Code.
-5. On the destination computer, if you use Codex Desktop, add that checkout as an existing local project and fully quit Desktop. Then choose the same transfer folder and run **Import Tasks**.
-6. Select the transferred project and tasks. Accept the automatic project match or choose a validated local folder for the project when prompted.
-7. After a successful Desktop assignment, start Codex Desktop. In a VS Code-only workflow, reload VS Code so the imported tasks appear.
+### Export
 
-Use **Review Transfer Status** to compare selected local and transferred tasks without copying files. Use **Open Transfer Folder** to inspect the user-managed folder.
+1. Open **Task Transfer**, choose **Export**, and select a transfer folder.
+2. Choose one project.
+3. Choose the exact active tasks to export. No tasks are selected by default,
+   and search is limited to that project.
+4. Select **Export Selected** and wait for your filesystem provider to finish
+   copying the transfer folder.
 
-The Codex desktop app is not required. An IDE-only workflow uses open VS Code workspace folders as destination candidates. When Desktop state exists, Import requires Desktop to be closed and the destination to match exactly one existing local Desktop project. Git-backed projects are matched and validated by normalized Git origin; a chosen folder with the wrong origin is rejected. For a non-Git project, the extension shows the source and destination and asks for confirmation because the mapping cannot be verified automatically. Task Transfer never clones a project, so its destination checkout must already exist.
+### Import
 
-Each Import or Export handles one Codex project. First choose one project, then choose one or more eligible tasks from that project. No tasks are selected by default. Search on the task screen is limited to the chosen project. Use Back to discard the current task choices and choose a different project. Repeat the operation to transfer tasks from another project. The transfer folder can retain tasks from many projects across separate operations. Review Transfer Status remains cross-project and does not copy files. Neither task selections nor project mappings are saved. Imported tasks remain in the transfer folder, and forgetting or changing the folder does not delete any task files.
+1. Clone or otherwise create the matching project checkout on the destination
+   computer. Task Transfer does not clone repositories.
+2. If using Codex Desktop, add the checkout as a local project and fully quit
+   Desktop before Import. VS Code-only use does not require Desktop.
+3. Open **Task Transfer**, choose **Import**, and select the same transfer
+   folder.
+4. Choose one transferred project, choose its tasks, and select the matching
+   local checkout.
+5. Review any unverified non-Git mapping, then choose **Import Selected**.
+6. Start Codex Desktop after success, or reload VS Code in an IDE-only workflow,
+   so Codex refreshes its visible task list.
 
-The full selected batch is checked before any file is copied. Conflicts, malformed folder structures, changed source files, unsafe mappings, a running or indeterminate Desktop process, a missing or ambiguous Desktop project, conflicting assignments, and tasks that need the opposite direction block the complete operation. Existing local tasks keep their current checkout path.
+Use **Review Status** to compare selected local and transferred tasks without
+copying files. Use **Projects** to go back and choose a different project. Repeat
+the operation for another project; one transfer folder can retain many projects.
 
-After certified task files are copied during Import, Codex Usage asks an installed official Codex runtime to register the selected tasks through targeted `app-server` task-read requests. Registration sends targeted reads only: it does not invoke a model, send a prompt, or start a turn. Codex Usage never writes Codex SQLite or task JSONLs. When Desktop state exists, it then atomically adds only the successfully registered task-to-project assignments, removes those tasks from projectless registries, preserves a sibling state backup, and verifies the result while Desktop remains closed. It does not change project definitions, sidebar ordering, workspace hints, or rollout state. If registration or assignment fails, the certified imported files remain safe in place, and re-running even an unchanged Import retries both stages. Start Desktop after a successful assignment; reload VS Code in an IDE-only workflow.
+The complete selected batch is checked before copying. Conflicts, malformed
+layouts, changed sources, unsafe project mappings, opposite-direction work, a
+running or indeterminate Desktop process, ambiguous Desktop projects, and
+assignment conflicts fail closed. Import registers only certified files
+through targeted Codex `app-server` reads. Registration does not start a turn or
+consume tokens. Import atomically installs selected JSONLs but never edits their content
+or writes Codex SQLite databases. Desktop project assignment is atomic, backed
+up, and verified while Desktop is closed. Imported files remain in the transfer
+folder, and only the transfer-folder path is retained as durable Task Transfer
+configuration.
 
-On supported Windows x64 and macOS Apple Silicon installations, official runtime discovery checks the official Codex VS Code extension, the native Codex desktop app, and `PATH`; the desktop app is not required when another official runtime is available. The packaged Codex Usage VSIX is limited to Windows x64 and macOS Apple Silicon.
+## Legacy Migration
 
-The current portable layout stores one byte-preserved JSONL per task:
+Onboarding discovers schema-8 caches from supported VS Code variants and prior
+home-directory locations. Unique generations and retained deleted-source history
+can be imported into the durable ledger. Identical overlap is deduplicated;
+genuinely divergent history asks which cache takes precedence. Migration is
+resumable and auditable, and legacy databases are never changed.
 
-```text
-<transfer-folder>/
-  sync-index.json
-  tasks/
-    <portable-task-filename>.jsonl
-```
+## Privacy And Updates
 
-Valid version-2 folders are migrated automatically to this version-3 layout before Import, Export, or Review. The transfer menu also lets you choose, change, open, or forget the remembered folder. Only the folder path is remembered.
+The app has no telemetry, cloud backend, Docker service, Codex hooks, or model
+calls. Session content, usage rows, project paths, and Task Storage diagnostics
+stay local. The only optional automatic network activity is a daily GitHub
+update check. See [PRIVACY.md](PRIVACY.md) for the complete data boundary.
 
-## Troubleshooting
-
-### Imported files exist but tasks are not visible
-
-1. Confirm an official Codex runtime is installed on the destination computer.
-2. For Codex Desktop, confirm the destination checkout is already an existing local Desktop project, then fully quit Desktop.
-3. Check the Codex Usage output for a post-import registration or Desktop assignment failure.
-4. Run **Import Tasks** again for the same project and task subset. An unchanged Import still retries registration and repairs a missing project assignment.
-5. Start Codex Desktop after success, or reload VS Code in a VS Code-only workflow. If an older imported task is no longer available in the transfer folder, preserve its local files and do not edit Codex JSONL, SQLite, or Desktop state by hand.
-
-## Archived And Deleted Tasks
-
-The dashboard treats token usage as historical usage. Archiving a Codex task moves its JSONL file to `archived_sessions`, and those files are included in totals. If a task file disappears after the dashboard cache has seen it, its parsed usage is retained as historical usage and marked as a retained missing file.
-
-To observe how your installed Codex build handles deletion:
-
-```powershell
-uv run codex-usage storage snapshot --json > output\before-delete.json
-# delete one test task in Codex
-uv run codex-usage storage snapshot --json > output\after-delete.json
-uv run codex-usage summary --range all --by project --json > output\after-delete-summary.json
-```
-
-Do not use a task you still need for Task Transfer testing. The dashboard can preserve usage after it has parsed a file, but it cannot restore a deleted Codex task.
-
-## Accounting And Pricing
-
-The parser reads cumulative `total_token_usage` records and counts only positive deltas between token-count events. This avoids double-counting repeated records while still allowing daily and hourly reports for long sessions.
-
-Project grouping uses `git.repository_url` when present, local `.git/config` origin remotes resolved from `cwd` when needed, then normalized `cwd`, then the session id. Automatic project transition detection handles high-confidence repository switches within a task without manual alias configuration.
-
-Pricing uses checked-in effective-dated rate schedules. Each retained usage event is priced with the API USD and Codex credit rates active at that event's timestamp, so future price changes can be added without rewriting historical reports.
-
-GPT-5.6 Sol, Terra, and Luna use official API rates for usage recorded from June 26, 2026 onward. Their Codex credit estimates start July 9, 2026, remain flat across context length, and use the public credit rate card. Reasoning effort such as `ultra` does not change the per-token rate; any additional work is reflected in the recorded token totals.
-
-The original Terra and Luna API rates apply through July 30, 2026. Reduced Terra and Luna API rates apply from July 31, 2026; earlier usage keeps the original effective-dated rates. The original Sol API rate applies through August 21, 2026. Promotional Sol API rates apply from August 22, 2026; earlier usage keeps the original effective-dated rates. OpenAI states that the promotional pricing is available at least through November 21, 2026. All three models' Codex credit rates are unchanged.
-
-The official `gpt-5.6` model alias is priced as GPT-5.6 Sol. Other variants such as `gpt-5.6-pro`, `gpt-5.6-mini`, and wrapper names remain visible but unpriced unless they exactly match a checked-in model id or explicit alias.
-
-API-equivalent USD figures are estimates, not actual API or Codex billing. For GPT-5.6, standard cache-write rates per 1M tokens are: Sol $5, Terra $2.50, Luna $0.25; cache read (cached input) and ordinary input remain distinct categories. Exactly 272,000 input tokens is short-context pricing. More than 272,000 input tokens, including 272,001, prices the full retained request event at long-context API rates. Long-context rates per 1M tokens are: Sol ordinary input $8, cache read (cached input) $0.80, cache write $10, output $30; Terra ordinary input $4, cache read (cached input) $0.40, cache write $5, output $18; Luna ordinary input $0.40, cache read (cached input) $0.04, cache write $0.50, output $1.80. Codex credits do not use long-context or API cache-write categories; cache writes use the ordinary input credit rate.
-
-The parser reads cumulative `total_token_usage` records but reports only retained positive deltas. A local audit of GPT-5.6 Sol sessions found retained positive deltas matched request-level `last_token_usage`, so pricing is per retained event and cumulative session totals cannot trigger long-context pricing.
-
-The tool does not fetch live pricing. Cost and credit values are estimates based on the checked-in pricing table version shown in each report. New Codex models may appear in local logs before this repository has official checked-in rates for them; those models remain visible in totals and model mix, but their API USD and Codex credit estimates are excluded until exact effective-dated rates are checked in.
-
-For GPT-5.6 and later API models, local Codex logs expose `cache_write_input_tokens`. API-equivalent USD prices those explicit cache writes at 1.25 times the ordinary input rate, including the long-context multiplier when applicable; remaining ordinary input uses the standard input rate. Codex credits have no separate cache-write category, so cache writes use the published ordinary input credit rate. Cache-contract changes reparse available source JSONL files, but retained records whose source JSONL is missing cannot gain newly observed token evidence; reports disclose that limitation.
-
-## Project Transitions
-
-Codex can continue one task after you ask it to work in another local repository. By default, reports apply automatic high-confidence transition detection when a timestamped Codex event references an existing local path, that path resolves to a repository with a `.git/config` origin remote, and the task already has usage under a different source project. Usage before the transition timestamp stays with the source project; usage after the timestamp moves to the detected target project.
-
-The detector uses read-only evidence from local Codex session JSONL files and, when present, project paths and timestamps from the local Codex database. It does not upload this data, make network calls, mutate SQLite, or include SQLite databases in Task Transfer.
-
-Casual repository name mentions do not split usage because the detector requires verified local path evidence. Dashboard reports show transition source, target, effective timestamp, and confidence. Detailed evidence and Task IDs are available through `Codex Usage: Review Project Transitions`.
-
-Use `uv run codex-usage transitions suggest --json` to review inferred transitions directly. Pass `--no-auto-transitions` to summary and report commands when you want the original project grouping without automatic splits.
-
-## Privacy
-
-Codex Usage Dashboard is local-first:
-
-- It reads local Codex session JSONL files.
-- Project transition detection can also read local Codex project paths and timestamps as read-only evidence.
-- It writes reports and disposable SQLite caches to local paths.
-- It writes Task Transfer files only when requested, to folders the user selects.
-- It does not upload session logs.
-- It does not include telemetry.
-- It does not fetch live pricing.
-
-See [PRIVACY.md](PRIVACY.md) for details. The screenshot above uses synthetic data.
+Updates are signed, require confirmation, stop the collector before installation,
+repair service registration, and restart it afterward. Windows uninstall asks
+whether to remove ledger and settings and defaults to preserving them. On macOS,
+use **Unregister Background Agent** and **Reset Local Data** before removing the
+app if you want those effects.
 
 ## Development
 
-Python:
+The repository contains a Python agent/core, a Tauri 2 application under
+`apps/desktop`, and an optional TypeScript companion under `extensions/vscode`.
+The Python executable and loopback protocol are private implementation details;
+2.0.0 intentionally provides no public `codex-usage` console script.
 
-```powershell
-uv run pytest
+Run the core gates from the repository root:
+
+```bash
+uv sync --all-groups
+uv run pytest -q
+uv run ruff check .
 ```
 
-VS Code extension:
+Run native frontend and host gates:
 
-```powershell
-cd extensions/vscode
-npm install
+```bash
+cd apps/desktop
+npm ci
 npm test
+npm run build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 ```
 
-Release checklist: [docs/release.md](docs/release.md).
+Run the companion gates:
+
+```bash
+cd extensions/vscode
+npm ci
+npm test
+npm run package:vsix
+```
+
+Architecture decisions are indexed in [docs/adr](docs/adr/README.md). Signed
+release requirements and native packaging checks are in
+[docs/release.md](docs/release.md).

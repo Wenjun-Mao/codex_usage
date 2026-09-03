@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted. [ADR 0032](0032-cross-process-cache-refresh-recovery.md) extends the
+Accepted. Durable-ledger ownership is defined by
+[ADR 0033](0033-persistent-collector-and-durable-ledger.md); the guarded append
+contract remains in force. [ADR 0032](0032-cross-process-cache-refresh-recovery.md) extends the
 atomic checkpoint contract with cross-process refresh ownership and a
 transaction-time stale-checkpoint assertion.
 

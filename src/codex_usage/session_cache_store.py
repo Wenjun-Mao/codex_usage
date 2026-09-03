@@ -62,6 +62,55 @@ def record_file_error(
     )
 
 
+def record_file_stale(
+    connection: sqlite3.Connection,
+    session_dirs: list[Path],
+    entry: SessionFileInventoryEntry,
+    reason: str,
+) -> None:
+    """Retain trusted rows while recording the newer source snapshot as stale."""
+    now = datetime.now(UTC).isoformat()
+    cursor = connection.execute(
+        """
+        update files set
+            path = ?, session_dir = ?, storage_state = ?, size_bytes = ?,
+            mtime_ns = ?, last_seen_at = ?, missing_since = null,
+            is_missing = 0, error = ?
+        where file_key = ?
+        """,
+        (
+            str(entry.path),
+            str(owning_session_dir(entry.path, session_dirs)),
+            entry.storage_state,
+            entry.size_bytes,
+            entry.mtime_ns,
+            now,
+            f"stale append checkpoint: {reason}",
+            entry.file_key,
+        ),
+    )
+    if cursor.rowcount != 1:
+        raise RuntimeError(
+            f"cannot retain stale source without a trusted generation: {entry.file_key}"
+        )
+    connection.execute(
+        """
+        update session_metadata
+        set file_path = ?, session_dir = ?, storage_state = ?, is_missing = 0,
+            session_bytes = ?, estimated_sync_bytes = ?
+        where file_key = ?
+        """,
+        (
+            str(entry.path),
+            str(owning_session_dir(entry.path, session_dirs)),
+            entry.storage_state,
+            entry.size_bytes,
+            entry.size_bytes + 4096,
+            entry.file_key,
+        ),
+    )
+
+
 def _load_records_by_file_key(
     connection: sqlite3.Connection, selected_keys: set[str]
 ) -> dict[str, list[UsageRecord]]:

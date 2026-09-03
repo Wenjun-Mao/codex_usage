@@ -1,5 +1,7 @@
 import json
 import re
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -11,15 +13,16 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "package-vsix.yml"
 PYPROJECT = ROOT / "pyproject.toml"
 UV_LOCK = ROOT / "uv.lock"
+DESKTOP_ROOT = ROOT / "apps" / "desktop"
+DESKTOP_PACKAGE = DESKTOP_ROOT / "package.json"
+DESKTOP_PACKAGE_LOCK = DESKTOP_ROOT / "package-lock.json"
+TAURI_CONFIG = DESKTOP_ROOT / "src-tauri" / "tauri.conf.json"
+CARGO_TOML = DESKTOP_ROOT / "src-tauri" / "Cargo.toml"
+CARGO_LOCK = DESKTOP_ROOT / "src-tauri" / "Cargo.lock"
 EXTENSION_ROOT = ROOT / "extensions" / "vscode"
 EXTENSION_PACKAGE = EXTENSION_ROOT / "package.json"
 EXTENSION_PACKAGE_LOCK = EXTENSION_ROOT / "package-lock.json"
 CHANGELOGS = (ROOT / "CHANGELOG.md", EXTENSION_ROOT / "CHANGELOG.md")
-NATIVE_BUILD_SCRIPTS = (
-    ROOT / "scripts" / "build-macos-arm64-exe.sh",
-    ROOT / "scripts" / "build-windows-exe.ps1",
-)
-WINDOWS_PROCESS_TREE_SMOKE = ROOT / "scripts" / "packaged_windows_process_tree_smoke.py"
 
 
 def read_workflow() -> str:
@@ -39,256 +42,225 @@ def extract_workflow_job(text: str, job_name: str) -> str:
     raise AssertionError(f"Workflow job not found: {job_name}")
 
 
-def markdown_section(path: Path, heading: str) -> str:
-    text = path.read_text(encoding="utf-8")
-    start = text.index(f"{heading}\n")
-    level = heading.split(maxsplit=1)[0]
-    remaining = text[start + len(heading) + 1 :]
-    end_match = re.search(rf"^{re.escape(level)} (?!#)", remaining, re.MULTILINE)
-    end = len(text) if end_match is None else start + len(heading) + 1 + end_match.start()
-    return text[start:end]
-
-
-def test_workflow_has_manual_and_tag_triggers():
+def test_workflow_has_nonpublishing_dispatch_and_tag_release() -> None:
     text = read_workflow()
 
     assert "workflow_dispatch:" in text
-    assert "publish:" in text
-    assert "type: boolean" in text
-    assert "default: false" in text
-    assert "push:" in text
+    assert "publish:" in text and "default: false" in text
     assert '"v*"' in text
-
-
-def test_workflow_names_platform_vsix_files():
-    text = read_workflow()
-
-    assert "codex-usage-dashboard-win32-x64.vsix" in text
-    assert "codex-usage-dashboard-darwin-arm64.vsix" in text
+    assert "Signed publication requires dispatching a matching" in text
+    assert 'expected_tag="v${version}"' in text
+    assert "git merge-base --is-ancestor" in text
 
 
 @pytest.mark.parametrize(
-    ("job_name", "runner", "package_command"),
-    (
-        ("windows", "windows-2025", "npm run package:vsix:win"),
-        ("macos", "macos-26", "npm run package:vsix:mac"),
-    ),
+    ("job_name", "runner"),
+    (("macos-native", "macos-26"), ("windows-native", "windows-2025")),
 )
-def test_native_workflow_jobs_test_before_packaging(
-    job_name: str,
-    runner: str,
-    package_command: str,
-):
+def test_native_jobs_run_platform_gates(job_name: str, runner: str) -> None:
     job = extract_workflow_job(read_workflow(), job_name)
 
     assert f"runs-on: {runner}" in job
-    assert f"run: {package_command}" in job
-    assert job.index("run: uv run pytest -q") < job.index("run: npm test")
-    assert job.index("run: npm test") < job.index(f"run: {package_command}")
+    assert "Build and smoke-test packaged agent" in job
+    assert "npm test" in job and "cargo test" in job and "cargo clippy" in job
+    assert "--no-bundle --ci" in job
 
 
-def test_only_macos_installs_and_checks_marketplace_screenshot() -> None:
+def test_release_is_signed_only_on_both_platforms() -> None:
+    text = read_workflow()
+    macos = extract_workflow_job(text, "macos-native")
+    windows = extract_workflow_job(text, "windows-native")
+
+    for secret in (
+        "APPLE_CERTIFICATE",
+        "APPLE_SIGNING_IDENTITY",
+        "APPLE_ID",
+        "APPLE_PASSWORD",
+        "APPLE_TEAM_ID",
+    ):
+        assert f"secrets.{secret}" in macos
+    assert "codesign --verify --deep --strict" in macos
+    assert "spctl --assess --type execute" in macos
+    assert "xcrun stapler validate" in macos
+    assert "--skip-stapling" not in macos
+
+    assert "permissions:\n      contents: read\n      id-token: write" in windows
+    assert "azure/login@v2" in windows
+    assert windows.count("azure/artifact-signing-action@v2") == 2
+    assert "Get-AuthenticodeSignature" in windows
+    assert "--no-sign" not in windows
+
+
+def test_windows_signing_order_preserves_updater_integrity() -> None:
+    windows = extract_workflow_job(read_workflow(), "windows-native")
+
+    sign_binary = windows.index("Sign Windows application and agent")
+    bundle = windows.index("Bundle NSIS installer")
+    sign_installer = windows.index("Sign NSIS installer")
+    repack = windows.index("Build and sign Windows updater archive")
+    verify = windows.index("Verify Windows signatures")
+    assert sign_binary < bundle < sign_installer < repack < verify
+    assert "repack-signed-windows-updater.ps1" in windows
+    assert "tauri signer sign" in windows
+
+
+def test_updater_has_committed_public_key_and_secret_backed_signing() -> None:
+    config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
     workflow = read_workflow()
-    macos = extract_workflow_job(workflow, "macos")
-    windows = extract_workflow_job(workflow, "windows")
-    publish = extract_workflow_job(workflow, "publish")
-    browser_install = "uv run playwright install chromium"
-    screenshot_check = "uv run python scripts/generate_marketplace_screenshot.py --check"
+    cargo = tomllib.loads(CARGO_TOML.read_text(encoding="utf-8"))
 
-    assert browser_install in macos
-    assert screenshot_check in macos
-    assert macos.index("run: uv run pytest -q") < macos.index(browser_install)
-    assert macos.index(browser_install) < macos.index(screenshot_check)
-    assert browser_install not in windows
-    assert screenshot_check not in windows
-    assert browser_install not in publish
-    assert screenshot_check not in publish
+    pubkey = config["plugins"]["updater"]["pubkey"]
+    assert isinstance(pubkey, str) and len(pubkey) > 80
+    assert config["bundle"]["createUpdaterArtifacts"] is True
+    assert workflow.count("secrets.TAURI_SIGNING_PRIVATE_KEY") >= 2
+    assert workflow.count("secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD") >= 2
+    assert workflow.count("--example verify_updater_signature") == 2
+    assert cargo["dev-dependencies"]["minisign-verify"] == "0.2.5"
+    assert "latest.json" in workflow
 
 
-@pytest.mark.parametrize("build_script", NATIVE_BUILD_SCRIPTS, ids=lambda path: path.name)
-def test_native_build_scripts_run_packaged_sync_and_storage_smokes(
-    build_script: Path,
-) -> None:
-    text = build_script.read_text(encoding="utf-8")
+def test_windows_uninstall_preserves_data_by_default() -> None:
+    config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
+    hook_path = DESKTOP_ROOT / "src-tauri" / config["bundle"]["windows"]["nsis"]["installerHooks"]
+    hook = hook_path.read_text(encoding="utf-8")
 
-    assert "smoke-test-packaged-sync.py" in text
-    assert "packaged_storage_analysis_smoke.py" in text
-    assert "packaged_task_backup_smoke.py" not in text
-
-
-def test_package_workflow_exposes_dispatch_input_in_run_identity() -> None:
-    text = (ROOT / ".github/workflows/package-vsix.yml").read_text(encoding="utf-8")
-    assert 'run-name: "Package VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"' in text
+    assert "NSIS_HOOK_PREUNINSTALL" in hook
+    assert "--uninstall-service" in hook
+    assert "MB_DEFBUTTON2" in hook
+    assert "IDNO preserve_local_data" in hook
+    assert "--reset-local-data --remove-settings" in hook
 
 
-def test_native_build_scripts_run_parallel_smoke_before_transfer_smoke() -> None:
-    windows = (ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
-    macos = (ROOT / "scripts/build-macos-arm64-exe.sh").read_text(encoding="utf-8")
-    assert "RuntimeInformation.ProcessArchitecture" in windows
-    assert "Architecture.X64" in windows
-    assert "--expected-target win32-x64" in windows
-    assert windows.index("packaged_parallel_cache_smoke.py") < windows.index(
-        "smoke-test-packaged-sync.py"
-    )
-    assert "uname -s" in macos
-    assert "uname -m" in macos
-    assert "--expected-target darwin-arm64" in macos
-    assert macos.index("packaged_parallel_cache_smoke.py") < macos.index(
-        "smoke-test-packaged-sync.py"
-    )
+def test_release_artifacts_are_uploaded_before_publication() -> None:
+    text = read_workflow()
+    publish = extract_workflow_job(text, "publish")
+
+    assert "actions/upload-artifact@v6" in text
+    assert "actions/download-artifact@v6" in publish
+    assert "if-no-files-found: error" in text
+    assert "retention-days: 14" in text
+    assert "gh release create" in publish and "gh release upload" in publish
+    assert "--clobber" in publish
+    assert "npx vsce publish --skip-duplicate" in publish
+    assert "SHA256SUMS.txt" in publish
 
 
-@pytest.mark.parametrize("job_name", ("windows", "macos"))
-def test_native_package_jobs_reach_the_parallel_smoke_before_vsix_creation(
-    job_name: str,
-) -> None:
-    job = extract_workflow_job(read_workflow(), job_name)
-    package_command = "package:vsix:win" if job_name == "windows" else "package:vsix:mac"
-    build_script = (
-        ROOT / "scripts/build-windows-exe.ps1"
-        if job_name == "windows"
-        else ROOT / "scripts/build-macos-arm64-exe.sh"
-    )
-
-    assert f"run: npm run {package_command}" in job
-    assert "packaged_parallel_cache_smoke.py" in build_script.read_text(encoding="utf-8")
-
-
-def test_windows_build_runs_native_descendant_lifetime_proof() -> None:
-    build = (ROOT / "scripts/build-windows-exe.ps1").read_text(encoding="utf-8")
-
-    assert WINDOWS_PROCESS_TREE_SMOKE.is_file()
-    smoke = WINDOWS_PROCESS_TREE_SMOKE.read_text(encoding="utf-8")
-    assert "--root" in smoke and "--child" in smoke
-    assert "root_exited_before_timeout" in smoke
-    assert "descendant_exited" in smoke
-    assert "run_process_tree" in smoke
-    assert "packaged_windows_process_tree_smoke.py" in build
-    smoke_call = "uv run python $processTreeSmokeScript --executable $exePath"
-    assert smoke_call in build
-    assert build.index("& $exePath --help") < build.index(smoke_call)
-    parallel_call = "uv run python $parallelSmokeScript --executable $exePath"
-    assert build.index(smoke_call) < build.index(parallel_call)
-
-
-def test_release_document_uses_current_tag_example() -> None:
-    release_document = (ROOT / "docs/release.md").read_text(encoding="utf-8")
-
-    assert "such as `v1.8.2`" in release_document
-    assert "`v0.1.42`" not in release_document
-    assert "`v0.1.32`" not in release_document
-
-
-def test_release_workflow_keeps_only_supported_platform_targets() -> None:
-    workflow = read_workflow()
-
-    assert "win32-x64" in workflow
-    assert "darwin-arm64" in workflow
-    assert "linux-x64" not in workflow
-
-
-def test_release_metadata_is_stable_1_8_2():
+def test_release_metadata_is_consistently_2_0_0() -> None:
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
-    extension_package = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
+    extension = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
     extension_lock = json.loads(EXTENSION_PACKAGE_LOCK.read_text(encoding="utf-8"))
+    desktop = json.loads(DESKTOP_PACKAGE.read_text(encoding="utf-8"))
+    desktop_lock = json.loads(DESKTOP_PACKAGE_LOCK.read_text(encoding="utf-8"))
+    tauri = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
+    cargo = tomllib.loads(CARGO_TOML.read_text(encoding="utf-8"))
+    cargo_lock = tomllib.loads(CARGO_LOCK.read_text(encoding="utf-8"))
 
     codex_usage_lock = next(
         package for package in uv_lock["package"] if package["name"] == "codex-usage"
     )
-    assert pyproject["project"]["version"] == "1.8.2"
-    assert __version__ == "1.8.2"
-    assert codex_usage_lock["version"] == "1.8.2"
-    assert extension_package["version"] == "1.8.2"
-    assert "preview" not in extension_package
-    assert extension_lock["version"] == "1.8.2"
-    assert extension_lock["packages"][""]["version"] == "1.8.2"
+    rust_package = next(
+        package
+        for package in cargo_lock["package"]
+        if package["name"] == "codex-usage-desktop"
+    )
+    versions = {
+        pyproject["project"]["version"],
+        __version__,
+        codex_usage_lock["version"],
+        extension["version"],
+        extension_lock["version"],
+        extension_lock["packages"][""]["version"],
+        desktop["version"],
+        desktop_lock["version"],
+        desktop_lock["packages"][""]["version"],
+        tauri["version"],
+        cargo["package"]["version"],
+        rust_package["version"],
+    }
+    assert versions == {"2.0.0"}
+    assert "scripts" not in pyproject["project"]
+    assert "preview" not in extension
 
 
-@pytest.mark.parametrize(
-    "readme",
-    (
-        ROOT / "README.md",
-        EXTENSION_ROOT / "README.md",
-    ),
-    ids=("repository", "extension"),
-)
-def test_task_transfer_documentation_describes_current_release_contract(readme: Path):
-    transfer = markdown_section(readme, "## Task Transfer").casefold()
+def test_companion_package_contains_no_parser_or_native_runtime() -> None:
+    extension = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
+    workflow = read_workflow()
 
-    assert "import tasks" in transfer and "export tasks" in transfer
-    assert "each import or export handles one codex project" in transfer
-    assert "first choose one project" in transfer
-    assert "no tasks are selected by default" in transfer
-    assert "search" in transfer and "chosen project" in transfer
-    assert "back" in transfer and "different project" in transfer
-    assert "repeat" in transfer and "another project" in transfer
-    assert "review transfer status remains cross-project and does not copy files" in transfer
-    assert "desktop app is not required" in transfer
-    assert "open vs code workspace folders" in transfer
-    assert "validated local folder" in transfer
-    assert "tasks/" in transfer and ("version 3" in transfer or "version-3" in transfer)
-    assert "selected batch" in transfer
-    assert "complete operation" in transfer or "whole operation" in transfer
-    assert "task selections" in transfer and "project mappings" in transfer
-    assert "not saved" in transfer or "neither" in transfer
-    assert "targeted `app-server` task-read requests" in transfer
-    assert "does not invoke a model" in transfer
-    assert "never writes codex sqlite or task jsonls" in transfer
-    assert "successfully registered task-to-project assignments" in transfer
-    assert "desktop to be closed" in transfer
+    assert extension["displayName"] == "Codex Usage Companion"
+    assert "package:vsix:win" not in json.dumps(extension)
+    assert "package:vsix:mac" not in json.dumps(extension)
+    assert "codex-usage-companion.vsix" in workflow
+    assert "codex-usage-dashboard-win32" not in workflow
+    assert "codex-usage-dashboard-darwin" not in workflow
+
+
+def test_release_targets_only_supported_native_platforms() -> None:
+    workflow = read_workflow()
+
+    assert "aarch64-apple-darwin" in workflow
+    assert "x86_64-pc-windows-msvc" in workflow
+    assert "linux-x64" not in workflow
+    assert "x86_64-apple-darwin" not in workflow
+    assert "aarch64-pc-windows" not in workflow
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
-def test_0_1_34_changelog_describes_complete_release_contract(changelog: Path):
-    section = markdown_section(
-        changelog,
-        "## 0.1.34 - 2026-07-14 - Exact Task Sync Selection",
-    ).casefold()
+def test_changelogs_describe_2_0_release(changelog: Path) -> None:
+    text = changelog.read_text(encoding="utf-8")
+    section = text.split("## 2.0.0 - 2026-09-03", 1)[1].split("\n## ", 1)[0]
 
-    assert "project-grouped task picker" in section and "exact selected task thread ids" in section
-    assert "tasks currently shown" in section
-    assert "future tasks" in section and "explicitly selected" in section
-    assert "remote-only task discovery" in section
-    assert "selection schema" in section and "project/conversation" in section
-    assert "setup required" in section and "does not migrate" in section
-    assert "version-2 remote layout" in section
-    assert "no remote cleanup or republish" in section
-    assert "version-1" in section and "clean resync" in section
-    assert "user-facing" in section and "technical" in section and "thread id" in section
-    assert "macos apple silicon packaged inventory/push/pull verified locally" in section
-    assert "windows x64 is a ci-only release gate" in section
-    assert "full-jsonl" in section and "built-in codex handoff" in section
+    assert "native" in section.casefold()
+    assert "persistent" in section.casefold()
+    assert re.search(r"15[- ]minute", section.casefold())
+    assert "companion" in section.casefold()
 
 
-def test_workflow_uploads_artifacts_before_publishing():
-    text = read_workflow()
+def test_prepare_native_release_builds_platform_manifest(tmp_path: Path) -> None:
+    version = "2.0.0"
+    names = (
+        f"Codex-Usage-{version}-darwin-aarch64.app.tar.gz",
+        f"Codex-Usage-{version}-windows-x86_64.nsis.zip",
+    )
+    for name in names:
+        (tmp_path / name).write_bytes(name.encode())
+        (tmp_path / f"{name}.sig").write_text(f"signature-{name}\n", encoding="utf-8")
+    for name in (
+        f"Codex-Usage-{version}-macos-arm64.dmg",
+        f"Codex-Usage-{version}-windows-x64-setup.exe",
+        "codex-usage-companion.vsix",
+    ):
+        (tmp_path / name).write_bytes(name.encode())
 
-    assert "actions/upload-artifact@v6" in text
-    assert "actions/download-artifact@v6" in text
-    assert "if-no-files-found: error" in text
-    assert "retention-days: 14" in text
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "prepare-native-release.py"),
+            "--directory",
+            str(tmp_path),
+            "--repository",
+            "Wenjun-Mao/codex_usage",
+            "--version",
+            version,
+            "--published-at",
+            "2026-09-02T00:00:00Z",
+        ],
+        check=True,
+    )
+
+    latest = json.loads((tmp_path / "latest.json").read_text(encoding="utf-8"))
+    assert latest["version"] == version
+    assert set(latest["platforms"]) == {"darwin-aarch64", "windows-x86_64"}
+    assert latest["platforms"]["windows-x86_64"]["url"].endswith(names[1])
+    checksums = (tmp_path / "SHA256SUMS.txt").read_text(encoding="ascii")
+    assert "latest.json" in checksums
+    assert "codex-usage-companion.vsix" in checksums
 
 
-def test_publish_job_requires_secret_and_release_guard():
-    text = read_workflow()
+def test_release_document_uses_current_signed_release_contract() -> None:
+    release_document = (ROOT / "docs" / "release.md").read_text(encoding="utf-8")
 
-    assert "VSCE_PAT: ${{ secrets.VSCE_PAT }}" in text
-    assert "    env:\n      VSCE_PAT: ${{ secrets.VSCE_PAT }}" not in text
-    assert "npx vsce publish --skip-duplicate --packagePath" in text
-    assert "startsWith(github.ref, 'refs/tags/v')" in text
-    assert "github.event_name == 'workflow_dispatch'" in text
-    assert "github.ref == 'refs/heads/main'" in text
-    assert "inputs.publish" in text
-
-
-def test_publish_job_has_release_preflight_and_rerunnable_publish():
-    text = read_workflow()
-
-    assert "fetch-depth: 0" in text
-    assert "Verify release tag" in text
-    assert "GITHUB_REF_NAME" in text
-    assert "expected_tag=\"v${version}\"" in text
-    assert "git merge-base --is-ancestor" in text
-    assert "--skip-duplicate" in text
-    assert text.count("npx vsce publish") == 1
+    assert "`v2.0.0`" in release_document
+    assert "Developer ID" in release_document
+    assert "Artifact Signing" in release_document
+    assert "no unsigned" in release_document.casefold()
