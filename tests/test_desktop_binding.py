@@ -44,13 +44,107 @@ def test_binding_assigns_only_registered_tasks_and_preserves_unrelated_state(
     assert state["thread-project-assignments"]["task-1"] == {
         "projectKind": "local",
         "projectId": "project-1",
-        "cwd": str(destination),
-        "pendingCoreUpdate": False,
     }
     assert "task-1" not in state["projectless-thread-ids"]
     assert state["thread-project-assignments"].get("task-2") is None
     assert state["unrelated"] == {"keep": True}
     assert Path(str(result["backup_path"])).is_file()
+
+
+def test_compact_existing_assignment_allows_unchanged_reimport(
+    tmp_path: Path,
+) -> None:
+    home, destination, state_path = _desktop_fixture(tmp_path)
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["thread-project-assignments"]["task-1"] = {
+        "projectKind": "local",
+        "projectId": "project-1",
+    }
+    state["projectless-thread-ids"] = ["other"]
+    del state["thread-projectless-output-directories"]["task-1"]
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    plan = preflight_desktop_binding(
+        home, destination, ["task-1"], process_probe=lambda: "closed"
+    )
+    result = bind_desktop_tasks(plan, ["task-1"], process_probe=lambda: "closed")
+
+    assert plan.assignment_shape == "compact"
+    assert result == {"status": "unchanged", "attempted": 1, "bound": 1}
+
+
+def test_legacy_assignment_shape_is_preserved(tmp_path: Path) -> None:
+    home, destination, state_path = _desktop_fixture(tmp_path)
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["thread-project-assignments"]["other"] = {
+        "projectKind": "local",
+        "projectId": "project-1",
+        "cwd": str(destination),
+        "pendingCoreUpdate": False,
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    plan = preflight_desktop_binding(
+        home, destination, ["task-1"], process_probe=lambda: "closed"
+    )
+    bind_desktop_tasks(plan, ["task-1"], process_probe=lambda: "closed")
+
+    assignment = json.loads(state_path.read_text(encoding="utf-8"))[
+        "thread-project-assignments"
+    ]["task-1"]
+    assert plan.assignment_shape == "legacy"
+    assert assignment == {
+        "projectKind": "local",
+        "projectId": "project-1",
+        "cwd": str(destination),
+        "pendingCoreUpdate": False,
+    }
+
+
+def test_mixed_assignment_registry_prefers_current_compact_shape(
+    tmp_path: Path,
+) -> None:
+    home, destination, state_path = _desktop_fixture(tmp_path)
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["thread-project-assignments"] = {
+        "compact": {"projectKind": "local", "projectId": "project-1"},
+        "legacy": {
+            "projectKind": "local",
+            "projectId": "project-1",
+            "cwd": str(destination),
+            "pendingCoreUpdate": False,
+        },
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    plan = preflight_desktop_binding(
+        home, destination, ["task-1"], process_probe=lambda: "closed"
+    )
+    bind_desktop_tasks(plan, ["task-1"], process_probe=lambda: "closed")
+
+    assignment = json.loads(state_path.read_text(encoding="utf-8"))[
+        "thread-project-assignments"
+    ]["task-1"]
+    assert plan.assignment_shape == "compact"
+    assert assignment == {"projectKind": "local", "projectId": "project-1"}
+
+
+def test_unrecognized_assignment_shape_fails_closed(tmp_path: Path) -> None:
+    home, destination, state_path = _desktop_fixture(tmp_path)
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["thread-project-assignments"]["other"] = {
+        "projectKind": "local",
+        "projectId": "project-1",
+        "newDesktopField": True,
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    with pytest.raises(DesktopProjectBindingError) as error:
+        preflight_desktop_binding(
+            home, destination, ["task-1"], process_probe=lambda: "closed"
+        )
+
+    assert error.value.code == "state-malformed"
 
 
 def test_running_desktop_blocks_preflight_before_mutation(tmp_path: Path) -> None:

@@ -33,6 +33,15 @@ concurrent change, or an indeterminate process probe fails closed.
 If Desktop global state is absent, Import remains in VS Code-only mode and uses
 the existing app-server registration path without creating Desktop state.
 
+A compatibility audit against Desktop release `26.901.20858` found that current
+local assignments use a compact two-field shape (`projectKind` and `projectId`),
+while retained older state snapshots use the legacy four-field shape that also
+contains `cwd` and `pendingCoreUpdate`. Import recognizes both exact shapes. It
+writes the shape already used by that installation, prefers the compact shape
+for an empty or transitionally mixed registry, and continues to reject unknown
+fields. Compact assignments are destination-safe because their project ID must
+resolve through the separately validated exact project root.
+
 ## Alternatives Considered
 
 - Continue relying on `thread/read` and tell users to accept `No chats`.

@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import Any, Literal
 
 
+AssignmentShape = Literal["compact", "legacy"]
+_COMPACT_ASSIGNMENT_FIELDS = frozenset({"projectKind", "projectId"})
+_LEGACY_ASSIGNMENT_FIELDS = frozenset(
+    {"projectKind", "projectId", "cwd", "pendingCoreUpdate"}
+)
+
+
 class DesktopProjectBindingError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -35,6 +42,7 @@ class DesktopBindingPlan:
     state_path: str = ""
     project_id: str = ""
     destination_path: str = ""
+    assignment_shape: AssignmentShape = "compact"
     source_sha256: str = ""
     source_identity: FileIdentity | None = None
 
@@ -108,6 +116,7 @@ def preflight_desktop_binding(
     raw, digest, identity = _read_stable(state_path)
     state = _parse_state(raw)
     _validate_state_shape(state)
+    assignment_shape = _preferred_assignment_shape(state)
     destination_path = _canonical_path(destination)
     project_id = _matching_project_id(state, destination_path)
     _require_compatible_assignments(state, selected, project_id, destination_path)
@@ -117,6 +126,7 @@ def preflight_desktop_binding(
         state_path=str(state_path),
         project_id=project_id,
         destination_path=str(destination_path),
+        assignment_shape=assignment_shape,
         source_sha256=digest,
         source_identity=identity,
     )
@@ -151,7 +161,13 @@ def bind_desktop_tasks(
     _require_compatible_assignments(
         state, registered, plan.project_id, destination
     )
-    if not _apply_assignments(state, registered, plan.project_id, destination):
+    if not _apply_assignments(
+        state,
+        registered,
+        plan.project_id,
+        destination,
+        plan.assignment_shape,
+    ):
         return {
             "status": "unchanged",
             "attempted": len(registered),
@@ -205,15 +221,12 @@ def _verify_assignments(plan: DesktopBindingPlan, task_ids: tuple[str, ...]) -> 
     )
     for task_id in task_ids:
         assignment = _object(assignments.get(task_id), f"assignment {task_id}")
-        if (
-            assignment.get("projectKind") != "local"
-            or assignment.get("projectId") != plan.project_id
-            or assignment.get("pendingCoreUpdate") is not False
-            or not isinstance(assignment.get("cwd"), str)
-            or not _same_path(Path(str(assignment["cwd"])), Path(plan.destination_path))
-            or task_id in projectless
-            or task_id in outputs
-        ):
+        expected = _assignment_value(
+            plan.project_id,
+            Path(plan.destination_path),
+            plan.assignment_shape,
+        )
+        if assignment != expected or task_id in projectless or task_id in outputs:
             _fail("state-verification-failed", "Desktop assignment verification failed.")
 
 
@@ -222,16 +235,12 @@ def _apply_assignments(
     task_ids: tuple[str, ...],
     project_id: str,
     destination: Path,
+    assignment_shape: AssignmentShape,
 ) -> bool:
     assignments = _object_field(state, "thread-project-assignments", required=False)
     changed = False
     for task_id in task_ids:
-        value = {
-            "projectKind": "local",
-            "projectId": project_id,
-            "cwd": str(destination),
-            "pendingCoreUpdate": False,
-        }
+        value = _assignment_value(project_id, destination, assignment_shape)
         if assignments.get(task_id) != value:
             assignments[task_id] = value
             changed = True
@@ -285,27 +294,71 @@ def _require_compatible_assignments(
     destination: Path,
 ) -> None:
     assignments = _object_field(state, "thread-project-assignments", required=False)
-    allowed = {"projectKind", "projectId", "cwd", "pendingCoreUpdate"}
     for task_id in task_ids:
         raw = assignments.get(task_id)
         if raw is None:
             continue
         assignment = _object(raw, f"thread-project-assignments.{task_id}")
-        if set(assignment) - allowed:
-            _malformed(f"thread-project-assignments.{task_id} has unknown fields")
+        shape = _assignment_shape(assignment, f"thread-project-assignments.{task_id}")
         if (
             assignment.get("projectKind") != "local"
             or assignment.get("projectId") != project_id
-            or type(assignment.get("pendingCoreUpdate")) is not bool
-            or not isinstance(assignment.get("cwd"), str)
         ):
             _fail("assignment-conflict", "A selected task belongs to another project.")
+        if shape == "compact":
+            continue
+        if (
+            type(assignment.get("pendingCoreUpdate")) is not bool
+            or not isinstance(assignment.get("cwd"), str)
+        ):
+            _malformed(f"thread-project-assignments.{task_id} has invalid legacy fields")
         try:
             existing = Path(str(assignment["cwd"])).resolve(strict=True)
         except OSError:
             _fail("assignment-conflict", "A selected task has an unavailable project folder.")
         if not _same_path(existing, destination):
             _fail("assignment-conflict", "A selected task has a different project folder.")
+
+
+def _preferred_assignment_shape(state: dict[str, Any]) -> AssignmentShape:
+    assignments = _object_field(state, "thread-project-assignments", required=False)
+    shapes = {
+        _assignment_shape(
+            _object(raw, f"thread-project-assignments.{task_id}"),
+            f"thread-project-assignments.{task_id}",
+        )
+        for task_id, raw in assignments.items()
+    }
+    # Current Desktop persists compact assignments. A mixed registry can be left
+    # behind by an older Codex Usage import before Desktop normalizes it.
+    if "compact" in shapes or not shapes:
+        return "compact"
+    return "legacy"
+
+
+def _assignment_shape(
+    assignment: dict[str, Any], label: str
+) -> AssignmentShape:
+    fields = frozenset(assignment)
+    if fields == _COMPACT_ASSIGNMENT_FIELDS:
+        return "compact"
+    if fields == _LEGACY_ASSIGNMENT_FIELDS:
+        return "legacy"
+    _malformed(f"{label} has an unrecognized field shape")
+
+
+def _assignment_value(
+    project_id: str,
+    destination: Path,
+    shape: AssignmentShape,
+) -> dict[str, object]:
+    value: dict[str, object] = {
+        "projectKind": "local",
+        "projectId": project_id,
+    }
+    if shape == "legacy":
+        value.update({"cwd": str(destination), "pendingCoreUpdate": False})
+    return value
 
 
 def _read_stable(path: Path) -> tuple[bytes, str, FileIdentity]:

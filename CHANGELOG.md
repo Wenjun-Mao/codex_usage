@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Kept guarded Task Transfer imports compatible with Codex Desktop's compact
+  two-field project assignments while retaining legacy assignment support and
+  fail-closed validation for unknown state shapes.
+
 ## 2.0.0 - 2026-09-03 - Native App And Persistent Collector
 
 - Replaced VS Code-owned refreshes with a Tauri 2 native app and an independent Python collector that can retain usage while Codex, VS Code, and the app window are closed.
