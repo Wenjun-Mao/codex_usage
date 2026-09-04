@@ -14,9 +14,12 @@
   },
   "include": [
     "src/agentClient.ts",
+    "src/agentSupervisor.ts",
+    "src/bundledAgent.ts",
     "src/extension.ts",
     "src/nativeApp.ts",
     "src/reportHtml.ts",
+    "src/setupPresentation.ts",
     "src/storageClient.ts",
     "src/taskTransferContract.ts",
     "src/taskTransferClient.ts",

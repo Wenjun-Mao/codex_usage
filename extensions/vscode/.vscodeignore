@@ -5,6 +5,10 @@ scripts/**
 node_modules/**
 out/**/*.map
 bin/**
+!bin/darwin-arm64/
+!bin/darwin-arm64/codex-usage-agent
+!bin/win32-x64/
+!bin/win32-x64/codex-usage-agent.exe
 tsconfig.json
 package-lock.json
 *.vsix

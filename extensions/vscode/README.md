@@ -1,37 +1,40 @@
 # Codex Usage Companion
 
-Codex Usage Companion brings the Codex Usage native app's durable local ledger
-and task workflows into VS Code. It is an optional, universal client for macOS
-Apple Silicon and Windows x64.
+Codex Usage Companion is a standalone VS Code dashboard for a durable local
+usage ledger, Task Storage, and Task Transfer. Each platform-specific VSIX
+includes the matching collector for macOS Apple Silicon or Windows x64; Python,
+uv, this repository, and the native app are not runtime requirements.
 
-**Codex Usage 2.0 or later must also be installed.** The companion contains no
-Python parser, collector, or private usage cache. When the collector is stopped,
-it offers to open the native app; when the app is absent, it links to the signed
-[Codex Usage installers](https://github.com/Wenjun-Mao/codex_usage/releases/latest).
+On activation, the extension authenticates an existing collector for the chosen
+`CODEX_HOME` or starts one parent-bound collector of its own. The collector is
+the only ledger writer, so stale descriptors and multiple VS Code windows do
+not create duplicate writers.
 
 ![Codex Usage native dashboard](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/native-usage-synthetic.png)
 
 ## Install
 
-1. Install the signed Codex Usage native app from
-   [GitHub Releases](https://github.com/Wenjun-Mao/codex_usage/releases/latest)
-   and complete onboarding.
-2. In the VS Code **Extensions** view, search for **Codex Usage Companion** and
+1. In the VS Code **Extensions** view, search for **Codex Usage Companion** and
    choose **Install**.
-3. Open the Command Palette and run **Codex Usage: Open Dashboard**.
+2. Open the Command Palette and run **Codex Usage: Set Up Collector**. Choose
+   `CODEX_HOME`, a capture interval (or **Manual only**), and migrate a
+   compatible legacy cache if one is offered.
+3. Run **Codex Usage: Open Dashboard**.
 
-No source checkout or local copy of this repository is needed.
+No source checkout, native app, or local copy of this repository is needed.
 
 ## Supported Platforms
 
-The required self-contained native app supports macOS 13 or later on Apple
-Silicon and Windows 10 or later on x64. The companion VSIX is universal across
-those targets. Intel macOS, Windows ARM64, and Linux are not supported in 2.0.0.
+The extension ships separate platform VSIX packages for macOS 13 or later on
+Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
+Linux are not supported in 2.0.0.
 
 ## What You Can Do
 
 - Open the ledger-backed Usage dashboard without rescanning task JSONLs.
 - Run **Capture Now** when you want current totals immediately.
+- Set `CODEX_HOME`, scheduled capture or **Manual only**, and migrate compatible
+  legacy usage caches entirely inside VS Code.
 - Filter Usage by range and project, switch theme, and review verified project
   transitions.
 - Inspect current Task Storage and explicitly analyze one selected task tree.
@@ -39,20 +42,23 @@ those targets. Intel macOS, Windows ARM64, and Linux are not supported in 2.0.0.
 - See last capture, pending work, stale-source warnings, and ledger revision in
   the status bar.
 
-The native app remains the home for onboarding, capture interval, background
-registration, Codex home, local-data reset, and signed update settings.
+The optional native app can still be opened for its own background-capture,
+installer, and update workflows. It is not required for any Companion command.
 
 ## Quick Start
 
-1. Install and open [Codex Usage](https://github.com/Wenjun-Mao/codex_usage/releases/latest).
-2. Complete native onboarding and let the collector begin its baseline.
-3. Install this Marketplace companion.
+1. Install the platform-specific Companion VSIX.
+2. Run **Codex Usage: Set Up Collector** and choose a valid `CODEX_HOME`.
+3. Choose a capture interval, or **Manual only** if you prefer explicit refreshes.
 4. Run **Codex Usage: Open Dashboard** from the Command Palette.
 5. Use **Codex Usage: Capture Now** before manually deleting a task or whenever
    the scheduled interval is not fresh enough.
 
-Background capture is optional. If enabled in the native app, it continues when
-Codex Usage, VS Code, and Codex are closed. The default interval is 15 minutes.
+The Companion's collector is parent-bound: automatic capture stops when VS Code
+closes. It continues while VS Code is open, even if the dashboard panel is
+closed. Automatic capture outside VS Code requires the optional native app to
+have installed its separate background collector. The default interval is 15
+minutes.
 
 ## Commands
 
@@ -73,6 +79,7 @@ Codex Usage, VS Code, and Codex are closed. The default interval is 15 minutes.
 | `Codex Usage: Export Tasks` | Export selected active tasks from one project. |
 | `Codex Usage: Review Transfer Status` | Compare selected local and transferred tasks. |
 | `Codex Usage: Analyze Task Storage` | Analyze one selected task tree. |
+| `Codex Usage: Set Up Collector` | Choose CODEX_HOME, interval or Manual only, and migrate legacy usage data. |
 | `Codex Usage: Open Native App` | Open Codex Usage settings and full native UI. |
 
 ## Usage And Capture
@@ -157,8 +164,10 @@ configuration.
 - `codexUsage.range`: dashboard range; default `30d`.
 - `codexUsage.theme`: `auto`, `day`, or `night`.
 
-Project selections are companion UI state. Collector interval, background mode,
-Codex home, transition detection, and updates are configured in the native app.
+Project selections are Companion UI state. Use **Set Up Collector** for
+`CODEX_HOME`, capture interval, Manual only, and legacy-cache migration. The
+optional native app separately owns its own background registration and update
+settings.
 
 ## Privacy
 

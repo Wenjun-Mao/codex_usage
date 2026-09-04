@@ -40,7 +40,7 @@ test("agent discovery authenticates health and subsequent requests", async (cont
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   context.after(() => server.close());
   const port = server.address().port;
-  await fs.writeFile(path.join(home, ".codex-usage", "agent.json"), JSON.stringify({ api_version: 1, port, token, codex_home: home }));
+  await fs.writeFile(path.join(home, ".codex-usage", "agent.json"), JSON.stringify({ pid: process.pid, api_version: 1, port, token, codex_home: home }));
 
   const previous = process.env.CODEX_USAGE_DATA_DIR;
   process.env.CODEX_USAGE_DATA_DIR = data;
@@ -69,7 +69,7 @@ test("client rejects request smuggling paths and oversized request bodies", asyn
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
-  await fs.writeFile(path.join(home, ".codex-usage", "agent.json"), JSON.stringify({ api_version: 1, port, token, codex_home: home }));
+  await fs.writeFile(path.join(home, ".codex-usage", "agent.json"), JSON.stringify({ pid: process.pid, api_version: 1, port, token, codex_home: home }));
   const previous = process.env.CODEX_USAGE_DATA_DIR;
   process.env.CODEX_USAGE_DATA_DIR = data;
   try {
