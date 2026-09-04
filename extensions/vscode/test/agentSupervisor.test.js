@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
+const path = require("node:path");
 const test = require("node:test");
 
 const { AgentUnavailableError } = require("../out/agentClient");
@@ -67,6 +68,7 @@ test("a stale descriptor starts one parent-bound collector and waits for its aut
 
 test("changing CODEX_HOME validates before persisting the selected home", async () => {
   let storedHome = "/tmp/old-codex-home";
+  const requestedHome = path.resolve("/tmp/new-codex-home");
   const controlCalls = [];
   const client = collector({ identity: "background", pid: 2000, owner: "background" });
   let discoveries = 0;
@@ -88,8 +90,8 @@ test("changing CODEX_HOME validates before persisting the selected home", async 
   });
 
   await supervisor.configureCodexHome("/tmp/new-codex-home");
-  assert.equal(storedHome, "/tmp/new-codex-home");
-  assert.ok(controlCalls.some((args) => args.includes("/tmp/new-codex-home")));
+  assert.equal(storedHome, requestedHome);
+  assert.ok(controlCalls.some((args) => args.includes(requestedHome)));
 });
 
 test("a foreign collector blocks a home switch without receiving shutdown", async () => {

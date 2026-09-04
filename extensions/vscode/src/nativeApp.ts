@@ -33,21 +33,23 @@ export function nativeAppCandidates(
   platform: NodeJS.Platform = process.platform,
   home: string = os.homedir(),
 ): string[] {
+  // Callers may inspect a target platform different from the current host.
+  const targetPath = platform === "win32" ? path.win32 : path.posix;
   if (platform === "darwin") {
     return [
       "/Applications/Codex Usage.app",
-      path.join(home, "Applications", "Codex Usage.app"),
+      targetPath.join(home, "Applications", "Codex Usage.app"),
     ];
   }
   if (platform === "win32") {
-    const local = environment.LOCALAPPDATA || path.join(home, "AppData", "Local");
+    const local = environment.LOCALAPPDATA || targetPath.join(home, "AppData", "Local");
     const installRoots = [
-      path.join(local, "Codex Usage"),
-      path.join(local, "Programs", "Codex Usage"),
+      targetPath.join(local, "Codex Usage"),
+      targetPath.join(local, "Programs", "Codex Usage"),
     ];
     const executableNames = ["codex-usage-desktop.exe", "Codex Usage.exe"];
     return installRoots.flatMap((root) =>
-      executableNames.map((name) => path.join(root, name)),
+      executableNames.map((name) => targetPath.join(root, name)),
     );
   }
   return [];
