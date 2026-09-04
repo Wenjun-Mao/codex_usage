@@ -9,6 +9,7 @@ export interface AgentSettings {
   background_capture: boolean;
   daily_update_checks: boolean;
   onboarding_complete: boolean;
+  native_onboarding_complete: boolean;
   timezone: string | null;
   theme: Theme;
   auto_project_transitions: boolean;

@@ -25,7 +25,9 @@ export interface AgentSettings {
   background_capture: boolean;
   daily_update_checks: boolean;
   onboarding_complete: boolean;
+  native_onboarding_complete: boolean;
   theme: ReportTheme;
+  auto_project_transitions: boolean;
   transfer_folder: string;
 }
 

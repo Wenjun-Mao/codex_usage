@@ -34,8 +34,8 @@ async fn prepare_codex_home(app: AppHandle, path: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-async fn agent_request(request: AgentRequest) -> Result<Value, String> {
-    agent_host::request_agent(request).await
+async fn agent_request(app: AppHandle, request: AgentRequest) -> Result<Value, String> {
+    agent_host::request_agent(&app, request).await
 }
 
 #[tauri::command]

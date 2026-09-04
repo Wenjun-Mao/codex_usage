@@ -4,7 +4,7 @@ import { AgentSupervisor } from "./agentSupervisor";
 import { resolveBundledAgent } from "./bundledAgent";
 import { findNativeApp, INSTALL_URL, openNativeApp } from "./nativeApp";
 import { decorateUsageReport, renderError, renderLoading, renderStorageReport, WEBVIEW_COMMANDS } from "./reportHtml";
-import { captureIntervalChoices, captureScheduleMessage, validateCaptureInterval } from "./setupPresentation";
+import { captureIntervalChoices, captureScheduleMessage, collectorSetupChoices, projectTransitionChoices, validateCaptureInterval } from "./setupPresentation";
 import { StorageClient } from "./storageClient";
 import { TaskTransferClient } from "./taskTransferClient";
 import type { AgentSettings, AgentStatus, ProjectSummary, RenderedReport, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
@@ -18,6 +18,7 @@ let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
 let contextRef: vscode.ExtensionContext;
 let agentSupervisor: AgentSupervisor;
+let taskTransferClient: TaskTransferClient;
 let activeView: ReportView = "usage";
 let refreshSerial = 0;
 let statusTimer: NodeJS.Timeout | undefined;
@@ -35,7 +36,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     resolveExecutable: () => resolveBundledAgent(context.extensionUri.fsPath),
   });
   const acquireClient = () => acquireAgentClient(true);
-  const taskTransfer = new TaskTransferClient(acquireClient, output);
+  taskTransferClient = new TaskTransferClient(acquireClient, output);
   const storage = new StorageClient(acquireClient, output, refreshVisibleDashboard);
   context.subscriptions.push(
     output,
@@ -49,11 +50,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.showUsageView", () => selectView("usage")),
     vscode.commands.registerCommand("codexUsage.showStorageView", () => selectView("storage")),
     vscode.commands.registerCommand("codexUsage.reviewProjectTransitions", reviewTransitions),
-    vscode.commands.registerCommand("codexUsage.openTaskTransfer", () => taskTransfer.menu()),
-    vscode.commands.registerCommand("codexUsage.importTasks", () => taskTransfer.run("import")),
-    vscode.commands.registerCommand("codexUsage.exportTasks", () => taskTransfer.run("export")),
-    vscode.commands.registerCommand("codexUsage.reviewTransferStatus", () => taskTransfer.run("status")),
-    vscode.commands.registerCommand("codexUsage.chooseTransferFolder", () => taskTransfer.chooseFolder()),
+    vscode.commands.registerCommand("codexUsage.openTaskTransfer", () => taskTransferClient.menu()),
+    vscode.commands.registerCommand("codexUsage.importTasks", () => taskTransferClient.run("import")),
+    vscode.commands.registerCommand("codexUsage.exportTasks", () => taskTransferClient.run("export")),
+    vscode.commands.registerCommand("codexUsage.reviewTransferStatus", () => taskTransferClient.run("status")),
+    vscode.commands.registerCommand("codexUsage.chooseTransferFolder", () => taskTransferClient.chooseFolder()),
     vscode.commands.registerCommand("codexUsage.analyzeTaskStorage", (treeId?: unknown) => storage.analyze(treeId)),
     vscode.commands.registerCommand("codexUsage.configure", configureCollector),
     vscode.commands.registerCommand("codexUsage.openNativeApp", () => launchNativeApp(true)),
@@ -213,32 +214,10 @@ async function acquireAgentClient(interactive: boolean): Promise<AgentClient | u
 
 async function configureCollector(): Promise<void> {
   const codexHome = await agentSupervisor.currentCodexHome();
-  const selected = await vscode.window.showQuickPick([
-    {
-      label: "$(folder) Choose CODEX_HOME",
-      description: codexHome,
-      detail: "Select the Codex sessions folder that this VS Code installation should capture.",
-      action: "home" as const,
-    },
-    {
-      label: "$(clock) Set capture interval",
-      description: "Choose a scheduled interval or Manual only.",
-      detail: "The parent-bound collector stops when VS Code closes.",
-      action: "interval" as const,
-    },
-    {
-      label: "$(database) Migrate legacy usage cache",
-      description: "Preview and import compatible pre-2.0 usage data.",
-      detail: "Conflicting histories require an explicit source choice.",
-      action: "migration" as const,
-    },
-    {
-      label: "$(play) Capture now",
-      description: "Run one immediate ledger capture.",
-      detail: "Useful after initial setup or before deleting a task.",
-      action: "capture" as const,
-    },
-  ], { title: "Set Up Codex Usage", placeHolder: "Choose a collector setup action" });
+  const selected = await vscode.window.showQuickPick(
+    collectorSetupChoices(codexHome),
+    { title: "Set Up Codex Usage", placeHolder: "Choose a collector setup action" },
+  );
   if (!selected) return;
   if (selected.action === "home") {
     await chooseCodexHome();
@@ -250,8 +229,23 @@ async function configureCollector(): Promise<void> {
     return;
   }
   if (selected.action === "interval") await configureCaptureInterval(client);
+  else if (selected.action === "transitions") await configureProjectTransitions(client);
+  else if (selected.action === "transferFolder") await taskTransferClient.chooseFolder(client);
   else if (selected.action === "migration") await migrateLegacyUsage(client);
   else await captureNow();
+}
+
+async function configureProjectTransitions(client: AgentClient): Promise<void> {
+  const settings = await client.get<AgentSettings>("/v1/settings");
+  const selected = await vscode.window.showQuickPick(projectTransitionChoices(settings.auto_project_transitions), {
+    title: "Project Transitions",
+    placeHolder: "Choose how Codex Usage groups verified repository switches",
+  });
+  if (!selected) return;
+  await client.post<AgentSettings>("/v1/settings", { auto_project_transitions: selected.enabled });
+  void vscode.window.showInformationMessage(
+    selected.enabled ? "Project transition detection enabled." : "Project transition detection disabled.",
+  );
 }
 
 async function chooseCodexHome(): Promise<void> {
