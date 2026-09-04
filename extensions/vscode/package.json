@@ -1,7 +1,7 @@
 {
   "name": "codex-usage-dashboard",
   "displayName": "Codex Usage Companion",
-  "description": "Optional VS Code companion for the Codex Usage native app and persistent local collector.",
+  "description": "Standalone VS Code usage dashboard with a bundled, parent-bound local collector.",
   "publisher": "wenjun-mao",
   "version": "2.0.0",
   "license": "MIT",
@@ -9,7 +9,7 @@
   "repository": { "type": "git", "url": "https://github.com/Wenjun-Mao/codex_usage.git" },
   "bugs": { "url": "https://github.com/Wenjun-Mao/codex_usage/issues" },
   "homepage": "https://github.com/Wenjun-Mao/codex_usage#readme",
-  "keywords": ["codex", "tokens", "usage", "dashboard", "task-transfer", "native-app"],
+  "keywords": ["codex", "tokens", "usage", "dashboard", "task-transfer", "local-first"],
   "engines": { "vscode": "^1.90.0" },
   "categories": ["Visualization", "Other"],
   "extensionKind": ["ui"],
@@ -22,6 +22,7 @@
     "onCommand:codexUsage.captureNow",
     "onCommand:codexUsage.openTaskTransfer",
     "onCommand:codexUsage.analyzeTaskStorage",
+    "onCommand:codexUsage.configure",
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
@@ -42,6 +43,7 @@
       { "command": "codexUsage.reviewTransferStatus", "title": "Codex Usage: Review Transfer Status" },
       { "command": "codexUsage.chooseTransferFolder", "title": "Codex Usage: Choose Transfer Folder" },
       { "command": "codexUsage.analyzeTaskStorage", "title": "Codex Usage: Analyze Task Storage" },
+      { "command": "codexUsage.configure", "title": "Codex Usage: Set Up Collector" },
       { "command": "codexUsage.openNativeApp", "title": "Codex Usage: Open Native App" }
     ],
     "configuration": {
@@ -56,8 +58,14 @@
     "clean": "node scripts/clean-output.js",
     "build": "npm run clean && tsc -p .",
     "watch": "tsc -watch -p .",
-    "test": "npm run build && node --test test/*.test.js && node scripts/verify-package.js",
-    "package:vsix": "mkdir -p ../../output/releases && npm run build && vsce package --out ../../output/releases/codex-usage-companion.vsix",
+    "test": "npm run build && node --test test/*.test.js",
+    "test:package:mac": "npm run build && node scripts/verify-package.js --target darwin-arm64",
+    "test:package:win": "npm run build && node scripts/verify-package.js --target win32-x64",
+    "build:agent:mac": "bash scripts/build-agent-macos-arm64.sh",
+    "build:agent:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build-agent-windows-x64.ps1",
+    "package:vsix:mac": "npm run build:agent:mac && node scripts/package-vsix.js darwin-arm64",
+    "package:vsix:win": "npm run build:agent:win && node scripts/package-vsix.js win32-x64",
+    "package:vsix": "npm run package:vsix:mac",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

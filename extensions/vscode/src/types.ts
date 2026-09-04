@@ -24,6 +24,7 @@ export interface AgentSettings {
   capture_interval_minutes: number | null;
   background_capture: boolean;
   daily_update_checks: boolean;
+  onboarding_complete: boolean;
   theme: ReportTheme;
   transfer_folder: string;
 }

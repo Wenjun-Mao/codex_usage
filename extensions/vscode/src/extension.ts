@@ -1,19 +1,25 @@
 import * as vscode from "vscode";
-import { AgentClient, AgentUnavailableError } from "./agentClient";
+import * as path from "path";
+import { AgentClient, resolveCodexHome } from "./agentClient";
+import { AgentSupervisor } from "./agentSupervisor";
+import { resolveBundledAgent } from "./bundledAgent";
 import { findNativeApp, INSTALL_URL, openNativeApp } from "./nativeApp";
 import { decorateUsageReport, renderError, renderLoading, renderStorageReport, WEBVIEW_COMMANDS } from "./reportHtml";
+import { captureIntervalChoices, captureScheduleMessage, validateCaptureInterval } from "./setupPresentation";
 import { StorageClient } from "./storageClient";
 import { TaskTransferClient } from "./taskTransferClient";
-import type { AgentStatus, ProjectSummary, RenderedReport, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
+import type { AgentSettings, AgentStatus, ProjectSummary, RenderedReport, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
 
 const RANGE_VALUES: readonly ReportRange[] = ["today", "yesterday", "7d", "30d", "month", "all"];
 const THEME_VALUES: readonly ReportTheme[] = ["auto", "day", "night"];
 const PROJECT_STATE_KEY = "selectedProjectKeys";
+const CODEX_HOME_STATE_KEY = "configuredCodexHome";
 
 let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
 let contextRef: vscode.ExtensionContext;
+let agentSupervisor: AgentSupervisor;
 let activeView: ReportView = "usage";
 let refreshSerial = 0;
 let statusTimer: NodeJS.Timeout | undefined;
@@ -25,6 +31,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusItem.command = "codexUsage.openDashboard";
   statusItem.text = "$(pulse) Codex Usage: Connecting";
   statusItem.show();
+  agentSupervisor = new AgentSupervisor({
+    settingsFile: path.join(context.globalStorageUri.fsPath, "agent-settings.json"),
+    getCodexHome: async () => context.globalState.get<string>(CODEX_HOME_STATE_KEY) || resolveCodexHome(),
+    setCodexHome: async (codexHome) => context.globalState.update(CODEX_HOME_STATE_KEY, codexHome),
+    resolveExecutable: () => resolveBundledAgent(context.extensionUri.fsPath),
+  });
   const acquireClient = () => acquireAgentClient(true);
   const taskTransfer = new TaskTransferClient(acquireClient, output);
   const storage = new StorageClient(acquireClient, output, refreshVisibleDashboard);
@@ -46,6 +58,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.reviewTransferStatus", () => taskTransfer.run("status")),
     vscode.commands.registerCommand("codexUsage.chooseTransferFolder", () => taskTransfer.chooseFolder()),
     vscode.commands.registerCommand("codexUsage.analyzeTaskStorage", (treeId?: unknown) => storage.analyze(treeId)),
+    vscode.commands.registerCommand("codexUsage.configure", configureCollector),
     vscode.commands.registerCommand("codexUsage.openNativeApp", () => launchNativeApp(true)),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("codexUsage") && panel) void refreshVisibleDashboard();
@@ -188,37 +201,143 @@ async function selectView(view: ReportView): Promise<void> {
 
 async function acquireAgentClient(interactive: boolean): Promise<AgentClient | undefined> {
   try {
-    return await AgentClient.discover();
+    return await agentSupervisor.acquire();
   } catch (error) {
     output.appendLine(`[collector] ${errorMessage(error)}`);
     if (!interactive) return undefined;
-    const appPath = await findNativeApp();
-    if (appPath) {
-      const selected = await vscode.window.showWarningMessage("The Codex Usage collector is not running.", "Open Codex Usage");
-      if (selected === "Open Codex Usage") {
-        openNativeApp(appPath);
-        return waitForAgent();
-      }
-    } else {
-      const selected = await vscode.window.showErrorMessage("Codex Usage 2.0 or later must be installed to use this companion extension.", "Install Codex Usage");
-      if (selected === "Install Codex Usage") await vscode.env.openExternal(vscode.Uri.parse(INSTALL_URL));
-    }
+    const selected = await vscode.window.showErrorMessage(
+      `Codex Usage could not start its bundled collector: ${errorMessage(error)}`,
+      "Set Up Collector",
+    );
+    if (selected === "Set Up Collector") await configureCollector();
     return undefined;
   }
 }
 
-async function waitForAgent(): Promise<AgentClient | undefined> {
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    try {
-      return await AgentClient.discover();
-    } catch (error) {
-      if (!(error instanceof AgentUnavailableError)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
+async function configureCollector(): Promise<void> {
+  const codexHome = await agentSupervisor.currentCodexHome();
+  const selected = await vscode.window.showQuickPick([
+    {
+      label: "$(folder) Choose CODEX_HOME",
+      description: codexHome,
+      detail: "Select the Codex sessions folder that this VS Code installation should capture.",
+      action: "home" as const,
+    },
+    {
+      label: "$(clock) Set capture interval",
+      description: "Choose a scheduled interval or Manual only.",
+      detail: "The parent-bound collector stops when VS Code closes.",
+      action: "interval" as const,
+    },
+    {
+      label: "$(database) Migrate legacy usage cache",
+      description: "Preview and import compatible pre-2.0 usage data.",
+      detail: "Conflicting histories require an explicit source choice.",
+      action: "migration" as const,
+    },
+    {
+      label: "$(play) Capture now",
+      description: "Run one immediate ledger capture.",
+      detail: "Useful after initial setup or before deleting a task.",
+      action: "capture" as const,
+    },
+  ], { title: "Set Up Codex Usage", placeHolder: "Choose a collector setup action" });
+  if (!selected) return;
+  if (selected.action === "home") {
+    await chooseCodexHome();
+    return;
   }
-  void vscode.window.showErrorMessage("Codex Usage opened, but its collector did not become ready.");
-  return undefined;
+  const client = await acquireAgentClient(false);
+  if (!client) {
+    void vscode.window.showErrorMessage("Choose a valid CODEX_HOME folder before configuring the collector.");
+    return;
+  }
+  if (selected.action === "interval") await configureCaptureInterval(client);
+  else if (selected.action === "migration") await migrateLegacyUsage(client);
+  else await captureNow();
+}
+
+async function chooseCodexHome(): Promise<void> {
+  const selected = await vscode.window.showOpenDialog({
+    title: "Choose CODEX_HOME",
+    openLabel: "Use CODEX_HOME",
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: false,
+  });
+  const codexHome = selected?.[0]?.fsPath;
+  if (!codexHome) return;
+  try {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Starting the Codex Usage collector" },
+      () => agentSupervisor.configureCodexHome(codexHome),
+    );
+    await refreshStatus(false);
+    void vscode.window.showInformationMessage(
+      "Codex Usage is ready. Scheduled capture runs only while VS Code is open unless the optional native app has installed background capture.",
+    );
+  } catch (error) {
+    void vscode.window.showErrorMessage(`Could not use that CODEX_HOME: ${errorMessage(error)}`);
+  }
+}
+
+async function configureCaptureInterval(client: AgentClient): Promise<void> {
+  const settings = await client.get<AgentSettings>("/v1/settings");
+  const selected = await vscode.window.showQuickPick(
+    captureIntervalChoices(settings.capture_interval_minutes),
+    { title: "Set Capture Interval", placeHolder: "Select how often to capture while VS Code is open" },
+  );
+  if (!selected) return;
+  let interval: number | null;
+  if (selected.value === "custom") {
+    const entered = await vscode.window.showInputBox({
+      title: "Custom Capture Interval",
+      prompt: "Enter a whole number of minutes from 1 to 1,440.",
+      validateInput: validateCaptureInterval,
+    });
+    if (entered === undefined) return;
+    interval = Number(entered);
+  } else {
+    interval = selected.value;
+  }
+  await client.post<AgentSettings>("/v1/settings", {
+    capture_interval_minutes: interval,
+    onboarding_complete: true,
+  });
+  await refreshStatus(false);
+  void vscode.window.showInformationMessage(captureScheduleMessage(interval));
+}
+
+async function migrateLegacyUsage(client: AgentClient): Promise<void> {
+  const plan = await client.get<LegacyMigrationPlan>("/v1/migration/plan");
+  if (!plan.candidates.length) {
+    void vscode.window.showInformationMessage("No compatible legacy Codex Usage caches were found for this CODEX_HOME.");
+    return;
+  }
+  const precedence: Record<string, string> = {};
+  for (const conflict of plan.conflicts) {
+    const selected = await vscode.window.showQuickPick(
+      conflict.sources.map((source) => ({ label: source, source })),
+      {
+        title: "Choose a migration source",
+        placeHolder: `Histories disagree for ${conflict.file_key}. Choose the source to retain.`,
+      },
+    );
+    if (!selected) return;
+    precedence[conflict.file_key] = selected.source;
+  }
+  const result = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Migrating ${plan.candidates.length} legacy ${plan.candidates.length === 1 ? "cache" : "caches"}`,
+    },
+    () => client.post<LegacyMigrationResult>("/v1/migration/run", { precedence }),
+  );
+  await refreshStatus(false);
+  await refreshVisibleDashboard();
+  void vscode.window.showInformationMessage(
+    `Migration complete: ${result.imported_caches} imported, ${result.skipped_caches} already present.`,
+  );
 }
 
 async function launchNativeApp(interactive: boolean): Promise<void> {
@@ -234,14 +353,14 @@ async function launchNativeApp(interactive: boolean): Promise<void> {
 async function refreshStatus(interactive: boolean): Promise<void> {
   const client = await acquireAgentClient(interactive);
   if (!client) {
-    statusItem.text = "$(circle-slash) Codex Usage: App Required";
-    statusItem.tooltip = "Open or install Codex Usage to start its collector.";
+    statusItem.text = "$(tools) Codex Usage: Setup Required";
+    statusItem.tooltip = "Run Codex Usage: Set Up Collector. Scheduled capture runs only while VS Code is open unless the optional native app has installed background capture.";
     return;
   }
   try {
     const status = await client.get<AgentStatus>("/v1/status");
     statusItem.text = status.capture_running ? "$(sync~spin) Codex Usage: Capturing" : `$(pulse) Codex Usage: ${relativeCapture(status.last_capture_at)}`;
-    statusItem.tooltip = `${status.coverage.pending_files.toLocaleString()} files pending · ${status.coverage.stale_sources.toLocaleString()} stale sources · Ledger revision ${status.ledger_revision}`;
+    statusItem.tooltip = `${status.coverage.pending_files.toLocaleString()} files pending · ${status.coverage.stale_sources.toLocaleString()} stale sources · Ledger revision ${status.ledger_revision}\nScheduled capture runs only while VS Code is open unless the optional native app has installed background capture.`;
   } catch (error) {
     statusItem.text = "$(warning) Codex Usage: Unavailable";
     statusItem.tooltip = errorMessage(error);
@@ -282,6 +401,23 @@ function relativeCapture(value: string): string {
 
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+interface LegacyMigrationPlan {
+  candidates: Array<{ path: string; digest: string; source_kind: string }>;
+  conflicts: Array<{ file_key: string; sources: string[]; reason: string }>;
+  importable_generations: number;
+  identical_generations: number;
+  superseding_generations: number;
+  requires_precedence: boolean;
+}
+
+interface LegacyMigrationResult {
+  imported_caches: number;
+  skipped_caches: number;
+  ledger_revision: number;
+  ledger_changed: boolean;
+  plan: LegacyMigrationPlan;
 }
 
 function errorMessage(error: unknown): string {

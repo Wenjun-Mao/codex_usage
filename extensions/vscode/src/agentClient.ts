@@ -8,6 +8,7 @@ const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 interface AgentDescriptor {
+  pid: number;
   api_version: number;
   port: number;
   token: string;
@@ -30,6 +31,10 @@ export class AgentClient {
 
   static async discover(environment: NodeJS.ProcessEnv = process.env): Promise<AgentClient> {
     const codexHome = await resolveCodexHome(environment);
+    return this.discoverAt(codexHome);
+  }
+
+  static async discoverAt(codexHome: string): Promise<AgentClient> {
     const descriptorPath = path.join(codexHome, ".codex-usage", "agent.json");
     let descriptor: AgentDescriptor;
     try {
@@ -149,7 +154,7 @@ export function samePath(
 }
 
 function parseDescriptor(value: unknown): AgentDescriptor {
-  if (!isRecord(value) || value.api_version !== API_VERSION || typeof value.port !== "number" || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 || typeof value.token !== "string" || value.token.length < 32 || typeof value.codex_home !== "string") {
+  if (!isRecord(value) || typeof value.pid !== "number" || !Number.isInteger(value.pid) || value.pid < 1 || value.api_version !== API_VERSION || typeof value.port !== "number" || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 || typeof value.token !== "string" || value.token.length < 32 || typeof value.codex_home !== "string") {
     throw new Error("descriptor has invalid connection details");
   }
   return value as unknown as AgentDescriptor;
