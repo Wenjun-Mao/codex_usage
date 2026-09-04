@@ -149,7 +149,10 @@ pub async fn request_agent(app: &AppHandle, request: AgentRequest) -> Result<Val
         }
     };
     let result = request_agent_with_descriptor(&descriptor, &request).await;
-    if result.is_ok() || live_descriptor().await.is_ok() {
+    if result.is_ok() || !can_retry_after_disconnect(&request.method) {
+        return result;
+    }
+    if live_descriptor().await.is_ok() {
         return result;
     }
     // A VS Code-owned transient can disappear after the initial health check.
@@ -178,7 +181,7 @@ async fn request_agent_with_descriptor(
             method,
             format!("http://127.0.0.1:{}{}", descriptor.port, request.path),
         )
-        .bearer_auth(descriptor.token)
+        .bearer_auth(&descriptor.token)
         .header("Content-Type", "application/json");
     if let Some(body) = &request.body {
         outgoing = outgoing.json(body);
@@ -343,6 +346,11 @@ fn validate_request(request: &AgentRequest) -> Result<(), String> {
     Ok(())
 }
 
+fn can_retry_after_disconnect(method: &str) -> bool {
+    // A failed mutation may have committed before its response was lost.
+    method == "GET"
+}
+
 async fn live_descriptor() -> Result<AgentDescriptor, String> {
     let descriptor = read_descriptor()?;
     let response = Client::builder()
@@ -496,8 +504,8 @@ fn display_error(error: impl std::fmt::Display) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        descriptor_matches_transient, validate_codex_home, validate_request, AgentDescriptor,
-        AgentRequest, ProcessOwner, REQUEST_LIMIT,
+        can_retry_after_disconnect, descriptor_matches_transient, validate_codex_home,
+        validate_request, AgentDescriptor, AgentRequest, ProcessOwner, REQUEST_LIMIT,
     };
     use serde_json::{json, Value};
     use std::fs;
@@ -533,6 +541,12 @@ mod tests {
             body: Some(json!({ "value": oversized })),
         })
         .is_err());
+    }
+
+    #[test]
+    fn collector_proxy_retries_only_read_only_requests_after_disconnect() {
+        assert!(can_retry_after_disconnect("GET"));
+        assert!(!can_retry_after_disconnect("POST"));
     }
 
     #[test]
