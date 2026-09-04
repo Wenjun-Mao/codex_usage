@@ -1,6 +1,6 @@
 import { spawn as spawnChild, type ChildProcess, type SpawnOptions } from "child_process";
 import * as path from "path";
-import { AgentClient, AgentUnavailableError } from "./agentClient";
+import { AgentClient, AgentUnavailableError, samePath } from "./agentClient";
 
 const STARTUP_ATTEMPTS = 80;
 const STARTUP_RETRY_MS = 125;
@@ -8,7 +8,6 @@ const STARTUP_RETRY_MS = 125;
 export interface AgentSupervisorOptions {
   settingsFile: string;
   getCodexHome: () => Promise<string>;
-  setCodexHome: (codexHome: string) => Promise<void>;
   resolveExecutable: () => Promise<string>;
   parentPid?: number;
   discover?: (codexHome: string) => Promise<AgentClient>;
@@ -29,6 +28,7 @@ export class AgentSupervisor {
   private managedHome: string | undefined;
   private managedClient: AgentClient | undefined;
   private starting: Promise<AgentClient> | undefined;
+  private startingHome: string | undefined;
 
   constructor(private readonly options: AgentSupervisorOptions) {
     this.discover = options.discover ?? AgentClient.discoverAt;
@@ -46,20 +46,30 @@ export class AgentSupervisor {
     } catch (error) {
       if (!(error instanceof AgentUnavailableError)) throw error;
     }
-    if (!this.starting) {
-      this.starting = this.startTransientAgent(codexHome).finally(() => {
-        this.starting = undefined;
-      });
+    if (this.starting) {
+      if (this.startingHome === undefined || !samePath(this.startingHome, codexHome)) {
+        throw new Error("The collector is still starting for another CODEX_HOME.");
+      }
+      return this.starting;
     }
+    this.startingHome = codexHome;
+    this.starting = this.startTransientAgent(codexHome).finally(() => {
+      this.starting = undefined;
+      this.startingHome = undefined;
+    });
     return this.starting;
   }
 
   async configureCodexHome(codexHome: string): Promise<AgentClient> {
     const target = path.resolve(codexHome.trim());
     if (!codexHome.trim()) throw new Error("Choose a CODEX_HOME folder first.");
+    if (this.starting && (this.startingHome === undefined || !samePath(this.startingHome, target))) {
+      throw new Error("Wait for the current collector startup before changing CODEX_HOME.");
+    }
+    const current = await this.codexHome();
+    if (samePath(current, target)) return this.acquire();
+    await this.stopOrRejectCurrentCollector(current);
     await this.runControl(["--set-codex-home", target]);
-    if (this.managedHome && this.managedHome !== target) await this.stopManagedAgent();
-    await this.options.setCodexHome(target);
     return this.acquire();
   }
 
@@ -67,21 +77,33 @@ export class AgentSupervisor {
     return this.codexHome();
   }
 
-  async stopManagedAgent(): Promise<void> {
+  async stopManagedAgent(): Promise<boolean> {
     const client = this.managedClient;
+    const home = this.managedHome;
     this.managedClient = undefined;
     this.managedHome = undefined;
-    if (!client) return;
+    if (!client || !home) return false;
     try {
-      await client.post("/v1/shutdown");
-    } catch {
-      // A parent-bound agent may already be stopping while VS Code reloads.
+      const current = await this.discover(home);
+      if (!client.isSameAgent(current) || !current.isTransientOwnedBy(this.parentPid, client.processId)) {
+        return false;
+      }
+      try {
+        await current.post("/v1/shutdown");
+      } catch (error) {
+        if (!(error instanceof AgentUnavailableError)) throw error;
+      }
+      await this.waitForStop(home);
+      return true;
+    } catch (error) {
+      if (error instanceof AgentUnavailableError) return true;
+      throw error;
     }
   }
 
   private async startTransientAgent(codexHome: string): Promise<AgentClient> {
-    // The control command validates the selected home and writes extension-owned
-    // settings before the long-running process can claim the writer lock.
+    // The control command validates the shared home before the long-running
+    // process can claim the writer lock.
     await this.runControl(["--set-codex-home", codexHome]);
     const executable = await this.options.resolveExecutable();
     let launchError: Error | undefined;
@@ -97,10 +119,38 @@ export class AgentSupervisor {
       launchError = error instanceof Error ? error : new Error(String(error));
     });
     child.unref();
-    this.managedHome = codexHome;
     const client = await this.waitForClient(codexHome, () => launchError);
-    this.managedClient = client;
+    if (client.isTransientOwnedBy(this.parentPid, child.pid)) {
+      this.managedHome = codexHome;
+      this.managedClient = client;
+    }
     return client;
+  }
+
+  private async stopOrRejectCurrentCollector(codexHome: string): Promise<void> {
+    let active: AgentClient;
+    try {
+      active = await this.discover(codexHome);
+    } catch (error) {
+      if (error instanceof AgentUnavailableError) return;
+      throw error;
+    }
+    if (!this.isManagedClient(codexHome, active)) {
+      throw new Error(
+        "Another client owns the active collector. Stop it from its owning client before changing CODEX_HOME.",
+      );
+    }
+    if (!await this.stopManagedAgent()) {
+      throw new Error("The collector ownership changed before CODEX_HOME could be updated.");
+    }
+  }
+
+  private isManagedClient(codexHome: string, client: AgentClient): boolean {
+    return this.managedHome !== undefined
+      && this.managedClient !== undefined
+      && samePath(this.managedHome, codexHome)
+      && this.managedClient.isSameAgent(client)
+      && client.isTransientOwnedBy(this.parentPid, this.managedClient.processId);
   }
 
   private async runControl(control: readonly string[]): Promise<void> {
@@ -133,6 +183,19 @@ export class AgentSupervisor {
       await this.sleep(STARTUP_RETRY_MS);
     }
     throw new Error(`The bundled collector did not become ready: ${latest}`);
+  }
+
+  private async waitForStop(codexHome: string): Promise<void> {
+    for (let attempt = 0; attempt < STARTUP_ATTEMPTS; attempt += 1) {
+      try {
+        await this.discover(codexHome);
+      } catch (error) {
+        if (error instanceof AgentUnavailableError) return;
+        throw error;
+      }
+      await this.sleep(STARTUP_RETRY_MS);
+    }
+    throw new Error("The owned collector did not stop before changing CODEX_HOME.");
   }
 
   private async codexHome(): Promise<string> {

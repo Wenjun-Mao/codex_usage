@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
-import * as path from "path";
-import { AgentClient, resolveCodexHome } from "./agentClient";
+import { AgentClient, resolveCodexHome, settingsFilePath } from "./agentClient";
 import { AgentSupervisor } from "./agentSupervisor";
 import { resolveBundledAgent } from "./bundledAgent";
 import { findNativeApp, INSTALL_URL, openNativeApp } from "./nativeApp";
@@ -13,7 +12,6 @@ import type { AgentSettings, AgentStatus, ProjectSummary, RenderedReport, Report
 const RANGE_VALUES: readonly ReportRange[] = ["today", "yesterday", "7d", "30d", "month", "all"];
 const THEME_VALUES: readonly ReportTheme[] = ["auto", "day", "night"];
 const PROJECT_STATE_KEY = "selectedProjectKeys";
-const CODEX_HOME_STATE_KEY = "configuredCodexHome";
 
 let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
@@ -32,9 +30,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusItem.text = "$(pulse) Codex Usage: Connecting";
   statusItem.show();
   agentSupervisor = new AgentSupervisor({
-    settingsFile: path.join(context.globalStorageUri.fsPath, "agent-settings.json"),
-    getCodexHome: async () => context.globalState.get<string>(CODEX_HOME_STATE_KEY) || resolveCodexHome(),
-    setCodexHome: async (codexHome) => context.globalState.update(CODEX_HOME_STATE_KEY, codexHome),
+    settingsFile: settingsFilePath(),
+    getCodexHome: resolveCodexHome,
     resolveExecutable: () => resolveBundledAgent(context.extensionUri.fsPath),
   });
   const acquireClient = () => acquireAgentClient(true);
