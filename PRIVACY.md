@@ -52,9 +52,10 @@ directly.
 ## Network Activity
 
 The native preview retains a user-controlled GitHub update-check setting, but
-The 2.0 release line does not publish an automatic native update channel. The VS Code extension
-can open the distribution-workflow page when the user explicitly asks to find a
-missing native preview. Marketplace extension updates are handled by VS Code.
+The 2.x release line does not publish an automatic native update channel. The
+VS Code extension can open the distribution-workflow page when the user
+explicitly asks to find a missing native preview. Marketplace extension updates
+are handled by VS Code.
 
 Codex Usage does not upload task files, usage rows, project metadata, reports,
 or diagnostics. Pricing tables are checked into the application and are not
@@ -66,7 +67,7 @@ to the provider itself.
 
 Captured usage is intentionally retained when a source JSONL disappears. A
 manual task deletion can lose an uncaptured tail of up to the configured
-interval, so run **Capture Now** first. The ledger cannot restore deleted task
+interval, so run **Capture Usage** first. The ledger cannot restore deleted task
 content.
 
 **Reset Local Data** removes Codex Usage's ledger and disposable diagnostics,

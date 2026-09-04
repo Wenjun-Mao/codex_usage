@@ -136,19 +136,13 @@ def capture_marketplace_screenshots(
             page.goto(url, wait_until="networkidle")
             _wait_for_usage(page)
             _reject_private_fixture_data(page)
-            _validate_layout(page, view="usage", viewport=VIEWPORT)
-            _set_viewport(page, NARROW_VIEWPORT)
-            _validate_layout(page, view="usage", viewport=NARROW_VIEWPORT)
-            _set_viewport(page, VIEWPORT)
+            _exercise_theme_modes(page, view="usage")
             page.screenshot(path=str(usage_path), full_page=False)
 
             page.get_by_role("button", name="Task Storage", exact=True).click()
             _wait_for_storage(page)
             _reject_private_fixture_data(page)
-            _validate_layout(page, view="storage", viewport=VIEWPORT)
-            _set_viewport(page, NARROW_VIEWPORT)
-            _validate_layout(page, view="storage", viewport=NARROW_VIEWPORT)
-            _set_viewport(page, VIEWPORT)
+            _exercise_theme_modes(page, view="storage")
             page.screenshot(path=str(storage_path), full_page=False)
         finally:
             browser.close()
@@ -157,9 +151,9 @@ def capture_marketplace_screenshots(
 def _wait_for_usage(page: Page) -> None:
     page.get_by_role("heading", name="Token Usage", exact=True).wait_for()
     page.get_by_text("Collector active", exact=True).wait_for()
-    page.get_by_role("button", name="Capture Now", exact=True).wait_for()
-    page.frame_locator("#usage-report").get_by_role(
-        "heading", name="Usage Summary", exact=True
+    page.get_by_role("button", name="Capture Usage", exact=True).wait_for()
+    page.frame_locator("#usage-report").locator(
+        'section[aria-label="Usage summary"]'
     ).wait_for()
     page.get_by_text("Loaded in", exact=False).wait_for()
 
@@ -181,6 +175,30 @@ def _set_viewport(page: Page, viewport: dict[str, int]) -> None:
     )
 
 
+def _exercise_theme_modes(page: Page, *, view: str) -> None:
+    colors: dict[str, str] = {}
+    for theme in ("day", "night"):
+        page.evaluate(
+            "theme => { document.documentElement.dataset.theme = theme; }",
+            theme,
+        )
+        if view == "usage":
+            page.frame_locator("#usage-report").locator("html").evaluate(
+                "(element, theme) => { element.dataset.codexTheme = theme; }",
+                theme,
+            )
+        _set_viewport(page, VIEWPORT)
+        _validate_layout(page, view=view, viewport=VIEWPORT)
+        _set_viewport(page, NARROW_VIEWPORT)
+        _validate_layout(page, view=view, viewport=NARROW_VIEWPORT)
+        colors[theme] = page.locator("body").evaluate(
+            "element => getComputedStyle(element).backgroundColor"
+        )
+    if colors["day"] == colors["night"]:
+        raise RuntimeError(f"{view} day and night themes render the same background")
+    _set_viewport(page, VIEWPORT)
+
+
 def _reject_private_fixture_data(page: Page) -> None:
     text = page.locator("body").inner_text()
     for marker in PRIVATE_MARKERS:
@@ -192,7 +210,7 @@ def _validate_layout(page: Page, *, view: str, viewport: dict[str, int]) -> None
     metrics = page.evaluate(
         """
         () => {
-          const selectors = ['html', 'body', '#app', '.app-shell', '.main-shell', '.topbar'];
+          const selectors = ['html', 'body', '#app', '.app-shell', '.main-shell', '.topbar', '.view-heading', '.view-filters'];
           return selectors.map(selector => {
             const element = document.querySelector(selector);
             if (!element) throw new Error(`Missing ${selector}`);
@@ -216,6 +234,13 @@ def _validate_layout(page: Page, *, view: str, viewport: dict[str, int]) -> None
             )
 
     _assert_no_overlap(page, ".capture-summary", ".button-capture", view, viewport)
+    contextual_controls = (
+        ("#usage-project-filter", "#usage-reload")
+        if view == "usage"
+        else ("#storage-project-filter", "#storage-refresh")
+    )
+    for selector in contextual_controls:
+        _assert_within_viewport(page, selector, view, viewport)
     if view == "usage":
         frame = page.frame_locator("#usage-report")
         report_metrics = frame.locator("html").evaluate(
@@ -226,6 +251,26 @@ def _validate_layout(page: Page, *, view: str, viewport: dict[str, int]) -> None
                 f"usage report overflows at {viewport['width']}px: "
                 f"{report_metrics['scrollWidth']} > {report_metrics['clientWidth']}"
             )
+
+
+def _assert_within_viewport(
+    page: Page,
+    selector: str,
+    view: str,
+    viewport: dict[str, int],
+) -> None:
+    box = page.locator(selector).bounding_box()
+    if box is None:
+        raise RuntimeError(f"{view} is missing required control {selector}")
+    if (
+        box["x"] < -1
+        or box["x"] + box["width"] > viewport["width"] + 1
+        or box["y"] < -1
+        or box["y"] + box["height"] > viewport["height"] + 1
+    ):
+        raise RuntimeError(
+            f"{view} control {selector} escapes the {viewport['width']}px viewport"
+        )
 
 
 def _assert_no_overlap(

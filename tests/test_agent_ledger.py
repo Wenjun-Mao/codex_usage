@@ -13,6 +13,19 @@ from codex_usage.agent_rebuild import rebuild_stale_source_slice
 from codex_usage.ledger_queries import load_ledger_records, load_ledger_status
 
 
+def test_report_cache_key_changes_with_renderer_revision(monkeypatch) -> None:
+    arguments = (82, "7d", ["codex_usage"], "night", "UTC", True)
+    first = reports_module._report_cache_key(*arguments)
+
+    monkeypatch.setattr(
+        reports_module,
+        "REPORT_RENDER_REVISION",
+        reports_module.REPORT_RENDER_REVISION + 1,
+    )
+
+    assert reports_module._report_cache_key(*arguments) != first
+
+
 def test_capture_populates_durable_ledger_and_reports_without_jsonl_reads(
     tmp_path: Path,
     monkeypatch,

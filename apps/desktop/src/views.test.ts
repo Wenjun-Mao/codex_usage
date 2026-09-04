@@ -97,6 +97,12 @@ describe("native views", () => {
     expect(root.textContent).not.toContain("Back Up");
     expect(root.textContent).not.toContain("Rollover");
     expect(root.textContent).toContain("Largest Task Trees");
+    expect(root.querySelector("#storage-refresh")?.getAttribute("aria-label")).toBe(
+      "Reload storage inventory",
+    );
+    expect(root.querySelector("#storage-project-filter")?.textContent).toContain(
+      "All projects",
+    );
   });
 
   test("Usage renders the report returned by the ledger and load diagnostics", async () => {
@@ -105,8 +111,15 @@ describe("native views", () => {
 
     const frame = root.querySelector<HTMLIFrameElement>("#usage-report")!;
     expect(frame.srcdoc).toContain("Project Breakdown");
+    expect(frame.srcdoc).toContain('data-codex-host="native"');
     expect(root.querySelector("#report-diagnostics")?.textContent).toContain(
       "Ledger revision 82",
+    );
+    expect(root.querySelector("#usage-reload")?.getAttribute("aria-label")).toBe(
+      "Reload usage from ledger",
+    );
+    expect(root.textContent).toContain(
+      "Captured token usage for the selected range and projects.",
     );
     expect(JSON.parse(root.dataset.usageStatusFingerprint ?? "[]")[0]).toBe(82);
   });

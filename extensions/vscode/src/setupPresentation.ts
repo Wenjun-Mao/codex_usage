@@ -76,7 +76,7 @@ export function captureIntervalChoices(current: number | null): CaptureIntervalC
     {
       label: "Manual only",
       value: null,
-      description: current === null ? "Current · Capture runs only when you choose Capture Now." : "Capture runs only when you choose Capture Now.",
+      description: current === null ? "Current · Capture runs only when you choose Capture Usage." : "Capture runs only when you choose Capture Usage.",
     },
     ...[5, 15, 30, 60].map((minutes) => ({
       label: `Every ${minutes} minutes`,
@@ -96,6 +96,6 @@ export function validateCaptureInterval(value: string): string | undefined {
 
 export function captureScheduleMessage(interval: number | null): string {
   return interval === null
-    ? "Codex Usage is set to Manual only. Use Capture Now whenever you want a refresh."
+    ? "Codex Usage is set to Manual only. Use Capture Usage whenever you want current ledger data."
     : `Codex Usage will capture every ${interval} minutes while VS Code is open.`;
 }

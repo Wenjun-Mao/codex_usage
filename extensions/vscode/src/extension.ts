@@ -24,6 +24,7 @@ let activeView: ReportView = "usage";
 let refreshSerial = 0;
 let statusTimer: NodeJS.Timeout | undefined;
 let renderedUsageFingerprint: string | undefined;
+let latestStatus: RenderedReport["status"] | undefined;
 
 const STATUS_REFRESH_INTERVAL_MS = 30_000;
 
@@ -101,7 +102,7 @@ async function refreshVisibleDashboard(
   const target = panel;
   const requestId = ++refreshSerial;
   if (showLoading) {
-    target.webview.html = renderLoading(activeView === "usage" ? "Loading usage from the local ledger" : "Checking Task Storage metadata", target.webview.cspSource);
+    target.webview.html = renderLoading(activeView === "usage" ? "Loading usage from the local ledger" : "Checking Task Storage metadata", target.webview.cspSource, reportTheme());
   }
   const client = await acquireAgentClient(showLoading);
   if (!client || !panel || panel !== target || requestId !== refreshSerial) return;
@@ -113,6 +114,7 @@ async function refreshVisibleDashboard(
       for (const key of selectedProjects()) query.append("project_key", key);
       const report = await client.get<RenderedReport>(`/v1/report?${query.toString()}`);
       if (panel === target && requestId === refreshSerial) {
+        latestStatus = report.status;
         renderedUsageFingerprint = usageStatusFingerprint(report.status);
         target.webview.html = decorateUsageReport(report.html, {
           ...controls,
@@ -136,7 +138,7 @@ async function refreshVisibleDashboard(
     }
   } catch (error) {
     if (showLoading && panel === target && requestId === refreshSerial) {
-      target.webview.html = renderError(errorMessage(error), target.webview.cspSource);
+      target.webview.html = renderError(errorMessage(error), target.webview.cspSource, reportTheme());
     } else {
       output.appendLine(`[dashboard] Automatic refresh failed: ${errorMessage(error)}`);
     }
@@ -373,6 +375,7 @@ async function refreshStatus(
   }
   try {
     const status = await client.get<AgentStatus>("/v1/status");
+    latestStatus = status;
     statusItem.text = status.capture_running ? "$(sync~spin) Codex Usage: Capturing" : `$(pulse) Codex Usage: ${relativeCapture(status.last_capture_at)}`;
     statusItem.tooltip = `${status.coverage.pending_files.toLocaleString()} files pending · ${status.coverage.stale_sources.toLocaleString()} stale sources · Ledger revision ${status.ledger_revision}\nScheduled capture runs only while VS Code is open unless the optional native app has installed background capture.`;
     if (
@@ -390,12 +393,13 @@ async function refreshStatus(
   }
 }
 
-function controlState(): Pick<Parameters<typeof decorateUsageReport>[1], "range" | "theme" | "projectCount" | "version"> {
+function controlState(): Pick<Parameters<typeof decorateUsageReport>[1], "range" | "theme" | "projectCount" | "version" | "lastCaptureAt"> {
   return {
     range: reportRange(),
     theme: reportTheme(),
     projectCount: selectedProjects().length,
-    version: String(contextRef.extension.packageJSON.version ?? "2.0.1"),
+    version: String(contextRef.extension.packageJSON.version ?? "2.1.0"),
+    lastCaptureAt: latestStatus?.last_capture_at ?? "",
   };
 }
 

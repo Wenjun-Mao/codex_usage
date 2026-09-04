@@ -81,7 +81,7 @@ def test_repository_docs_define_persistent_capture_contract() -> None:
         "default schedule runs every 15 minutes",
         "open zero jsonls",
         "guard windows and the new tail",
-        "capture now before manually deleting",
+        "capture usage before manually deleting",
         "forward, backup-protected migrations",
         "one active codex home",
     ):

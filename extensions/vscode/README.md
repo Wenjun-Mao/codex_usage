@@ -27,16 +27,16 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in the 2.0 release line. The optional native app is an unsigned,
-self-contained native app preview with its own background collector and full
-native UI, but it is not required for Companion commands. Its CI artifacts
-include SHA-256 integrity metadata; the operating system may display an
-unidentified-developer or unknown-publisher warning.
+Linux are not supported in the 2.x release line. The optional native app is an
+unsigned, self-contained native app preview with its own background collector
+and full native UI, but it is not required for Companion commands. Its CI
+artifacts include SHA-256 integrity metadata; the operating system may display
+an unidentified-developer or unknown-publisher warning.
 
 ## What You Can Do
 
 - Open the ledger-backed Usage dashboard without rescanning task JSONLs.
-- Run **Capture Now** when you want current totals immediately.
+- Run **Capture Usage** when you want current totals immediately.
 - Set `CODEX_HOME`, scheduled capture or **Manual only**, and migrate compatible
   legacy usage caches entirely inside VS Code.
 - Filter Usage by range and project, switch theme, and review verified project
@@ -56,7 +56,7 @@ Companion command.
 2. Run **Codex Usage: Set Up Collector** and choose a valid `CODEX_HOME`.
 3. Choose a capture interval, or **Manual only** if you prefer explicit refreshes.
 4. Run **Codex Usage: Open Dashboard** from the Command Palette.
-5. Use **Codex Usage: Capture Now** before manually deleting a task or whenever
+5. Use **Codex Usage: Capture Usage** before manually deleting a task or whenever
    the scheduled interval is not fresh enough.
 
 The Companion's collector is parent-bound: automatic capture stops when VS Code
@@ -70,8 +70,8 @@ minutes.
 | Command | Purpose |
 | --- | --- |
 | `Codex Usage: Open Dashboard` | Open the Usage or Task Storage report. |
-| `Codex Usage: Capture Now` | Capture changed task usage into the durable ledger. |
-| `Codex Usage: Refresh Dashboard` | Re-query the ledger or current storage metadata. |
+| `Codex Usage: Capture Usage` | Scan changed task data into the durable ledger. |
+| `Codex Usage: Reload Current View` | Re-query the Usage ledger or current Task Storage inventory without capturing task data. |
 | `Codex Usage: Select Range` | Select Today, Yesterday, 7d, 30d, Month, or All. |
 | `Codex Usage: Select Projects` | Filter Usage and Task Storage by project. |
 | `Codex Usage: Select Theme` | Choose Auto, Day, or Night report styling. |
@@ -98,18 +98,20 @@ discriminator.
 
 The collector normally checks every configured interval. Unchanged cycles may
 inspect filesystem metadata but open zero JSONLs; ordinary growth reads only
-guard windows and the new tail. **Capture Now** coalesces with existing capture
-work and resets the next interval after success.
+guard windows and the new tail. **Capture Usage** coalesces with existing capture
+work and resets the next interval after success. The reload icon only re-queries
+the current view, so it does not scan task files or advance the ledger.
 
 Deleted source tasks remain in historical totals only after their latest usage
-was captured. Run **Capture Now** before deleting. Codex Usage cannot restore a
+was captured. Run **Capture Usage** before deleting. Codex Usage cannot restore a
 deleted task.
 
 ## Task Storage
 
 Task Storage reports current active and archived JSONL bytes by user-visible
 root task tree and separates root files from structured descendants. It does not
-follow the Usage date range.
+follow the Usage date range. It shares the selected project filter and explicit
+Auto, Day, or Night theme with Usage.
 
 ![Codex Usage Task Storage](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/native-storage-synthetic.png)
 

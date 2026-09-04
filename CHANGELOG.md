@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.1.0 - 2026-09-04 - Unified Dashboard UI
+
+- Distinguished **Capture Usage**, which scans changed Codex task data into the durable ledger, from each view's compact reload action, which only re-queries that view's existing data.
+- Unified Usage and Task Storage around the same explicit Day, Night, and Auto themes, compact metric strip, typography, spacing, status treatment, and responsive layout in both the standalone extension and optional native app.
+- Added last-capture and data-source context to the dashboard toolbar, kept Usage range controls out of Task Storage, and added a renderer revision to invalidate persistent HTML when presentation code changes.
+- Regenerated the Marketplace images from the unified native fixture and added wide/narrow Day and Night layout checks.
+
 ## 2.0.1 - 2026-09-04 - Live Baseline Progress
 
 - Refreshed open Usage views automatically as the durable ledger revision or baseline coverage advances, so partial-baseline notices and totals no longer remain frozen until a manual refresh.

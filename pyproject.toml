@@ -1,6 +1,6 @@
 [project]
 name = "codex-usage"
-version = "2.0.1"
+version = "2.1.0"
 description = "Private capture and ledger core for the Codex Usage native app"
 readme = "README.md"
 license = "MIT"

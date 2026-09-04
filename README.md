@@ -17,7 +17,7 @@ OpenAI API.
 - **Low-I/O collection:** the default schedule runs every 15 minutes. Unchanged
   cycles inspect metadata but open zero JSONLs; normal appends read only guard
   windows and the new tail.
-- **Immediate capture:** **Capture Now** coalesces with any running capture and
+- **Immediate capture:** **Capture Usage** coalesces with any running capture and
   resets the next scheduled interval after success.
 - **Fast reports:** date, project, and theme changes query the ledger without
   reopening task files.
@@ -44,7 +44,7 @@ macOS Gatekeeper or Windows SmartScreen may warn because the builds are not
 Developer ID notarized or Authenticode signed. The native preview is not needed
 for any extension command.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.0 release line.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.x release line.
 
 ## Native App First Run
 
@@ -72,10 +72,10 @@ callbacks never read task content. Overdue work after startup, sleep/wake, or a
 watcher recovery produces one catch-up rather than replaying every missed tick.
 
 The status header shows the last capture, next scheduled capture, pending files
-and bytes, baseline progress, and stale-source warnings. Use **Capture Now** when
-you want current data immediately.
+and bytes, baseline progress, and stale-source warnings. Use **Capture Usage**
+when you want current data immediately.
 
-Run **Capture Now before manually deleting a Codex task**. A scheduled interval
+Run **Capture Usage before manually deleting a Codex task**. A scheduled interval
 can leave an uncaptured tail of up to that interval. Once a generation is in the
 ledger, its usage is retained when the JSONL disappears, but Codex Usage cannot
 restore a deleted task.
@@ -101,8 +101,10 @@ Open **Usage** to review:
 - root-task versus structured-subagent usage, split again by model;
 - exact model details, including unknown or currently unpriced usage.
 
-Choose a date range and any project filter. These controls query SQLite only.
-The report shows generation time and whether its rendered-result cache was used.
+Choose a date range, project filter, and explicit Auto, Day, or Night theme.
+These controls query SQLite only. The reload icon re-queries the ledger without
+capturing task files; **Capture Usage** is the separate action that updates the
+ledger. The report shows generation time and whether its rendered-result cache was used.
 Pricing is bundled and effective-dated; the app makes no live pricing request.
 Estimates are not an OpenAI invoice and do not know the price of your plan.
 
@@ -111,6 +113,8 @@ Estimates are not an OpenAI invoice and do not know the price of your plan.
 Open **Task Storage** to see current physical JSONL usage by user-visible root
 task tree. This inventory includes active and archived files, separates root
 bytes from structured descendants, and is independent of the Usage date range.
+It shares the selected project filter and theme with Usage; its reload icon
+checks the current storage inventory without capturing token usage.
 
 ![Codex Usage Task Storage](docs/marketplace/native-storage-synthetic.png)
 

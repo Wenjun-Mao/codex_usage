@@ -32,7 +32,7 @@ def test_readmes_present_native_usage_and_storage_workflows() -> None:
         assert "native-usage-synthetic.png" in text
         assert "native-storage-synthetic.png" in text
         assert "Project Breakdown separates root tasks" in prose
-        assert "Capture Now" in text
+        assert "Capture Usage" in text
         assert "Task Transfer" in text
 
     assert "Manual Only" in root

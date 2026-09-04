@@ -1,6 +1,6 @@
-# 2.0 Distribution Checklist
+# 2.1 Distribution Checklist
 
-Version 2.0 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.1 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
@@ -13,7 +13,7 @@ update channel. Linux, Intel macOS, and Windows ARM64 are not release targets.
 
 - `VSCE_PAT` with Manage permission for publisher `wenjun-mao`.
 
-The 2.0 release workflow has no Apple Developer, Azure Artifact Signing, or Tauri
+The 2.x release workflow has no Apple Developer, Azure Artifact Signing, or Tauri
 updater-signing dependency.
 
 ## Local Gates
@@ -36,7 +36,11 @@ npm run build
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+CI=true npm run tauri build -- --target aarch64-apple-darwin --bundles dmg --ci
 ```
+
+`CI=true` makes the local DMG path match GitHub Actions and skips Finder-only
+window styling, which is not available reliably from a noninteractive build.
 
 macOS packaged sidecar:
 
@@ -72,7 +76,9 @@ read. Timings are machine-specific evidence, not CI thresholds.
 Run the native frontend fixture through Playwright at desktop and narrow window
 sizes (1440 x 900 and 760 x 900). Confirm:
 
-- the sidebar and Capture Now remain usable without overlap;
+- the sidebar and Capture Usage remain usable without overlap;
+- each view exposes one contextual reload icon with an accurate accessible label;
+- Usage and Task Storage render distinctly in Day and Night at both viewport sizes;
 - Usage clearly shows last/next capture, pending work, incomplete baseline, and
   stale-source states;
 - report content and tooltips are not clipped;
@@ -117,16 +123,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.0.1`, both
-changelogs have a dated `2.0.1` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.1.0`, both
+changelogs have a dated `2.1.0` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.0.1`. Create and push that
+The only valid release tag for this version is `v2.1.0`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.0.1
-git push origin v2.0.1
+git tag v2.1.0
+git push origin v2.1.0
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -140,8 +146,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.0.1-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.0.1-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.1.0-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.1.0-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```
@@ -169,7 +175,7 @@ For optional native-preview acceptance:
    removal and verify each choice affects only Codex Usage-owned state.
 
 On both platforms, verify ledger-only range/project/theme changes open zero
-JSONLs, an unchanged capture reads zero source bytes, Capture Now coalesces,
+JSONLs, an unchanged capture reads zero source bytes, Capture Usage coalesces,
 partial baseline totals remain visibly incomplete, Task Storage analysis is
 selected-tree-only and cancellable, and Task Transfer preserves its guarded
 one-project contract.

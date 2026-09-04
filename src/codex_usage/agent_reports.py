@@ -35,6 +35,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}"
+REPORT_RENDER_REVISION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +169,7 @@ def _report_cache_key(
         {
             "ledger_revision": revision,
             "pricing_revision": PRICING_REVISION,
+            "report_render_revision": REPORT_RENDER_REVISION,
             "range": range_name,
             "project_keys": project_keys,
             "theme": theme,

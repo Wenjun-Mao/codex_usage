@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from codex_usage.report_breakdown_theme import report_breakdown_css
+from codex_usage.report_metric_theme import report_metric_strip_css
 from codex_usage.report_views import report_views_css
 
 REPORT_THEME_CHOICES = ("auto", "day", "night")
@@ -18,45 +19,45 @@ def report_css() -> str:
     return """
     :root {
       color-scheme: light;
-      --day-bg: #f7f8fa;
-      --day-bg-strong: #eef0f3;
+      --day-bg: #f5f7f9;
+      --day-bg-strong: #edf1f4;
       --day-surface: #ffffff;
       --day-surface-strong: #ffffff;
-      --day-surface-soft: #f4f6f8;
-      --day-surface-muted: #eef1f5;
-      --day-text: #0a0b0d;
-      --day-muted: #5b616e;
-      --day-muted-soft: #7c828a;
-      --day-accent: #0052ff;
-      --day-accent-strong: #003ecc;
-      --day-accent-soft: rgba(0, 82, 255, 0.08);
-      --day-highlight: #f4b000;
-      --day-success: #05b169;
-      --day-danger: #cf202f;
-      --day-border: #dee1e6;
-      --day-border-soft: #eef0f3;
-      --day-shadow-soft: 0 1px 2px rgba(10, 11, 13, 0.06);
+      --day-surface-soft: #edf1f4;
+      --day-surface-muted: #e5ebef;
+      --day-text: #172027;
+      --day-muted: #64717b;
+      --day-muted-soft: #7b8791;
+      --day-accent: #087ea4;
+      --day-accent-strong: #05627f;
+      --day-accent-soft: rgba(8, 126, 164, 0.10);
+      --day-highlight: #9b6900;
+      --day-success: #1c7a51;
+      --day-danger: #bb3748;
+      --day-border: #d5dce1;
+      --day-border-soft: #e5eaed;
+      --day-shadow-soft: 0 1px 2px rgba(23, 32, 39, 0.08);
 
-      --night-bg: #0d0f12;
-      --night-bg-strong: #14171c;
-      --night-surface: #161a20;
-      --night-surface-strong: #1d222a;
-      --night-surface-soft: #202631;
-      --night-surface-muted: #2a313b;
-      --night-text: #eef2f6;
-      --night-muted: #a7b0bc;
-      --night-muted-soft: #7f8996;
-      --night-accent: #4f83ff;
-      --night-accent-strong: #7da3ff;
-      --night-accent-soft: rgba(79, 131, 255, 0.16);
-      --night-highlight: #d8a72f;
-      --night-success: #31c98a;
-      --night-danger: #ff6b78;
-      --night-border: #303844;
-      --night-border-soft: #252c35;
+      --night-bg: #101316;
+      --night-bg-strong: #15191d;
+      --night-surface: #15191d;
+      --night-surface-strong: #1a1f24;
+      --night-surface-soft: #1e242a;
+      --night-surface-muted: #262d34;
+      --night-text: #edf2f5;
+      --night-muted: #9ba7b1;
+      --night-muted-soft: #78858f;
+      --night-accent: #43b4da;
+      --night-accent-strong: #75cbe7;
+      --night-accent-soft: rgba(67, 180, 218, 0.16);
+      --night-highlight: #e0ab34;
+      --night-success: #55c68f;
+      --night-danger: #ff7485;
+      --night-border: #303840;
+      --night-border-soft: #252c32;
       --night-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.22);
 
-      --bg: #f7f8fa;
+      --bg: #f5f7f9;
       --bg-strong: var(--day-bg-strong);
       --surface: var(--day-surface);
       --surface-strong: var(--day-surface-strong);
@@ -74,14 +75,14 @@ def report_css() -> str:
       --border: var(--day-border);
       --border-soft: var(--day-border-soft);
       --shadow-soft: var(--day-shadow-soft);
-      --notice-bg: #fff7ed;
-      --warn-bg: #fef3f2;
+      --notice-bg: #fff4d2;
+      --warn-bg: #fee9ec;
       --heat-0: #eef1f5;
       --heat-1: #dbeafe;
       --heat-2: #93c5fd;
       --heat-3: #3b82f6;
       --heat-4: #1d4ed8;
-      --heat-5: #003ecc;
+      --heat-5: #05627f;
       --heat-stroke: var(--surface);
       --tooltip-bg: #111827;
       --tooltip-text: #f8fafc;
@@ -106,13 +107,13 @@ def report_css() -> str:
       --border: var(--night-border);
       --border-soft: var(--night-border-soft);
       --shadow-soft: var(--night-shadow-soft);
-      --notice-bg: rgba(216, 167, 47, 0.14);
-      --warn-bg: rgba(255, 107, 120, 0.14);
+      --notice-bg: #3b311c;
+      --warn-bg: #3d2228;
       --heat-0: #202631;
       --heat-1: #1e3a5f;
       --heat-2: #2f5fbe;
-      --heat-3: #4f83ff;
-      --heat-4: #7da3ff;
+      --heat-3: #43b4da;
+      --heat-4: #75cbe7;
       --heat-5: #b8ccff;
       --heat-stroke: var(--bg);
       --tooltip-bg: #f8fafc;
@@ -139,13 +140,13 @@ def report_css() -> str:
         --border: var(--night-border);
         --border-soft: var(--night-border-soft);
         --shadow-soft: var(--night-shadow-soft);
-        --notice-bg: rgba(216, 167, 47, 0.14);
-        --warn-bg: rgba(255, 107, 120, 0.14);
+        --notice-bg: #3b311c;
+        --warn-bg: #3d2228;
         --heat-0: #202631;
         --heat-1: #1e3a5f;
         --heat-2: #2f5fbe;
-        --heat-3: #4f83ff;
-        --heat-4: #7da3ff;
+        --heat-3: #43b4da;
+        --heat-4: #75cbe7;
         --heat-5: #b8ccff;
         --heat-stroke: var(--bg);
         --tooltip-bg: #f8fafc;
@@ -172,13 +173,13 @@ def report_css() -> str:
       --border: var(--vscode-panel-border, var(--night-border));
       --border-soft: var(--night-border-soft);
       --shadow-soft: var(--night-shadow-soft);
-      --notice-bg: rgba(216, 167, 47, 0.14);
-      --warn-bg: rgba(255, 107, 120, 0.14);
+      --notice-bg: #3b311c;
+      --warn-bg: #3d2228;
       --heat-0: #202631;
       --heat-1: #1e3a5f;
       --heat-2: #2f5fbe;
-      --heat-3: #4f83ff;
-      --heat-4: #7da3ff;
+      --heat-3: #43b4da;
+      --heat-4: #75cbe7;
       --heat-5: #b8ccff;
       --heat-stroke: var(--bg);
       --tooltip-bg: var(--vscode-editorWidget-background, #f8fafc);
@@ -219,11 +220,6 @@ def report_css() -> str:
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .muted { color: var(--muted); font-size: 13px; }
     .summary-line { margin-top: 4px; }
-    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 20px 0 18px; }
-    .kpi { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow-soft); padding: 12px; min-height: 92px; }
-    .kpi-label { color: var(--muted); font-size: 12px; text-transform: uppercase; }
-    .kpi-value { display: block; font-size: 23px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-    .kpi-detail { color: var(--muted); font-size: 12px; margin-top: 4px; }
     .notice { border-left: 4px solid var(--highlight); background: var(--notice-bg); padding: 9px 12px; margin: 10px 0; }
     .notice.warn { border-left-color: var(--danger); background: var(--warn-bg); }
     .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 18px; }
@@ -486,11 +482,10 @@ def report_css() -> str:
     .storage-diagnostics { margin: 10px 0 0; overflow-wrap: anywhere; }
     @media (max-width: 720px) {
       main { padding: 16px; }
-      .kpi-value { font-size: 20px; }
       th, td { padding: 6px; }
       .storage-chart { min-width: 560px; }
       .storage-bar-row { grid-template-columns: 96px minmax(220px, 1fr) max-content; gap: 8px; }
       .storage-bar-label { text-align: left; }
       .storage-legend { margin-left: 104px; }
     }
-""" + report_views_css() + report_breakdown_css()
+""" + report_metric_strip_css() + report_views_css() + report_breakdown_css()

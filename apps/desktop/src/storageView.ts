@@ -1,5 +1,6 @@
 import { escapeHtml, formatBytes } from "./format";
 import { agentRequest } from "./host";
+import { openProjectFilter, projectFilterLabel } from "./projectFilter";
 import type { AppState } from "./state";
 import type { StorageSnapshot, StorageTree } from "./types";
 import { errorMessage, refreshIcons, showToast } from "./ui";
@@ -13,9 +14,16 @@ interface AnalysisJob {
 }
 
 export async function renderStorageView(root: HTMLElement, state: AppState): Promise<void> {
-  root.innerHTML = `<section class="view-heading"><div><p class="eyebrow">Local corpus</p><h1>Task Storage</h1></div><button class="icon-button" id="storage-refresh" title="Refresh storage inventory" aria-label="Refresh storage inventory"><i data-lucide="refresh-cw"></i></button></section><div class="view-loading" id="storage-loading"><span class="spinner"></span>Checking task storage metadata</div><div id="storage-content"></div>`;
+  root.innerHTML = `<section class="view-heading"><div><p class="eyebrow">Local corpus</p><h1>Task Storage</h1><p>Read-only inventory and amplification diagnostics. Analysis runs only when requested.</p></div><div class="view-filters"><button class="button-secondary" id="storage-project-filter" type="button"><i data-lucide="folders"></i><span>${projectFilterLabel(state)}</span></button><button class="icon-button" id="storage-refresh" title="Reload storage inventory" aria-label="Reload storage inventory"><i data-lucide="refresh-cw"></i></button></div></section><div class="view-loading" id="storage-loading"><span class="spinner"></span>Checking task storage metadata</div><div id="storage-content"></div>`;
   refreshIcons(root);
   root.querySelector<HTMLButtonElement>("#storage-refresh")!.addEventListener("click", () => loadStorage(root, state));
+  root.querySelector<HTMLButtonElement>("#storage-project-filter")!.addEventListener("click", () => {
+    openProjectFilter(state, async () => {
+      const button = root.querySelector<HTMLElement>("#storage-project-filter span");
+      if (button) button.textContent = projectFilterLabel(state);
+      await loadStorage(root, state);
+    });
+  });
   await loadStorage(root, state);
 }
 

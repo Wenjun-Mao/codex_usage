@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.1.0 - 2026-09-04 - Unified Dashboard UI
+
+- Renamed the visible collection action to **Capture Usage** and replaced the ambiguous toolbar **Refresh** action with a view-specific reload icon, while preserving existing command IDs.
+- Made Usage and Task Storage share explicit Day, Night, and Auto themes, one compact metric-strip treatment, and consistent headers, notices, tables, spacing, and responsive behavior.
+- Added last-capture and source metadata to the toolbar, hid the Usage range outside Usage, and invalidated stale rendered HTML through a dedicated renderer revision.
+
 ## 2.0.1 - 2026-09-04 - Live Baseline Progress
 
 - Refreshed an open Usage dashboard automatically when the collector advances the ledger or baseline coverage, replacing stale partial-baseline notices without requiring **Refresh**.

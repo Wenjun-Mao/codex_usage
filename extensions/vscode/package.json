@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Companion",
   "description": "Standalone VS Code usage dashboard with a bundled, parent-bound local collector.",
   "publisher": "wenjun-mao",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": { "type": "git", "url": "https://github.com/Wenjun-Mao/codex_usage.git" },
@@ -29,8 +29,8 @@
   "contributes": {
     "commands": [
       { "command": "codexUsage.openDashboard", "title": "Codex Usage: Open Dashboard" },
-      { "command": "codexUsage.captureNow", "title": "Codex Usage: Capture Now" },
-      { "command": "codexUsage.refreshDashboard", "title": "Codex Usage: Refresh Dashboard" },
+      { "command": "codexUsage.captureNow", "title": "Codex Usage: Capture Usage" },
+      { "command": "codexUsage.refreshDashboard", "title": "Codex Usage: Reload Current View" },
       { "command": "codexUsage.selectRange", "title": "Codex Usage: Select Range" },
       { "command": "codexUsage.selectProjects", "title": "Codex Usage: Select Projects" },
       { "command": "codexUsage.selectTheme", "title": "Codex Usage: Select Theme" },
