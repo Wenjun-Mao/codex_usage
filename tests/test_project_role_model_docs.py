@@ -46,6 +46,14 @@ def test_readmes_present_native_usage_and_storage_workflows() -> None:
     )
 
 
+def test_companion_docs_preserve_the_platform_vsix_runtime_boundary() -> None:
+    prose = " ".join(COMPANION_README.read_text(encoding="utf-8").split())
+
+    assert "Each platform-specific VSIX includes the matching collector" in prose
+    assert "native app are not runtime requirements" in prose
+    assert "separate platform VSIX packages" in prose
+
+
 def test_native_marketplace_images_are_at_release_dimensions() -> None:
     from PIL import Image
 

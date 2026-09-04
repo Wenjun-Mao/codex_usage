@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import subprocess
@@ -17,12 +18,17 @@ DESKTOP_ROOT = ROOT / "apps" / "desktop"
 DESKTOP_PACKAGE = DESKTOP_ROOT / "package.json"
 DESKTOP_PACKAGE_LOCK = DESKTOP_ROOT / "package-lock.json"
 TAURI_CONFIG = DESKTOP_ROOT / "src-tauri" / "tauri.conf.json"
+TAURI_WINDOWS_CONFIG = DESKTOP_ROOT / "src-tauri" / "tauri.windows.conf.json"
 CARGO_TOML = DESKTOP_ROOT / "src-tauri" / "Cargo.toml"
 CARGO_LOCK = DESKTOP_ROOT / "src-tauri" / "Cargo.lock"
 EXTENSION_ROOT = ROOT / "extensions" / "vscode"
 EXTENSION_PACKAGE = EXTENSION_ROOT / "package.json"
 EXTENSION_PACKAGE_LOCK = EXTENSION_ROOT / "package-lock.json"
 CHANGELOGS = (ROOT / "CHANGELOG.md", EXTENSION_ROOT / "CHANGELOG.md")
+PREVIEW_ARTIFACTS = {
+    "darwin-aarch64": "Codex-Usage-{version}-macos-arm64-unsigned-preview.dmg",
+    "windows-x86_64": "Codex-Usage-{version}-windows-x64-unsigned-preview-setup.exe",
+}
 
 
 def read_workflow() -> str:
@@ -42,107 +48,115 @@ def extract_workflow_job(text: str, job_name: str) -> str:
     raise AssertionError(f"Workflow job not found: {job_name}")
 
 
-def test_workflow_has_nonpublishing_dispatch_and_tag_release() -> None:
+def test_workflow_requires_a_matching_tag_for_marketplace_publication() -> None:
     text = read_workflow()
 
     assert "workflow_dispatch:" in text
     assert "publish:" in text and "default: false" in text
     assert '"v*"' in text
-    assert "Signed publication requires dispatching a matching" in text
+    assert "Marketplace publication requires dispatching a matching" in text
     assert 'expected_tag="v${version}"' in text
     assert "git merge-base --is-ancestor" in text
 
 
 @pytest.mark.parametrize(
-    ("job_name", "runner"),
-    (("macos-native", "macos-26"), ("windows-native", "windows-2025")),
+    ("job_name", "runner", "bundle"),
+    (
+        ("macos-native", "macos-26", "--bundles dmg --ci"),
+        ("windows-native", "windows-2025", "--bundles nsis --ci"),
+    ),
 )
-def test_native_jobs_run_platform_gates(job_name: str, runner: str) -> None:
+def test_native_jobs_build_unsigned_platform_previews(
+    job_name: str, runner: str, bundle: str
+) -> None:
     job = extract_workflow_job(read_workflow(), job_name)
 
     assert f"runs-on: {runner}" in job
     assert "Build and smoke-test packaged agent" in job
     assert "npm test" in job and "cargo test" in job and "cargo clippy" in job
-    assert "--no-bundle --ci" in job
+    assert "Build unsigned native preview" in job
+    assert bundle in job
+    assert "prepare-native-release.py" in job
+    assert "Upload" in job and "preview" in job
 
 
-def test_release_is_signed_only_on_both_platforms() -> None:
-    text = read_workflow()
-    macos = extract_workflow_job(text, "macos-native")
-    windows = extract_workflow_job(text, "windows-native")
-
-    for secret in (
-        "APPLE_CERTIFICATE",
-        "APPLE_SIGNING_IDENTITY",
-        "APPLE_ID",
-        "APPLE_PASSWORD",
-        "APPLE_TEAM_ID",
-    ):
-        assert f"secrets.{secret}" in macos
-    assert "codesign --verify --deep --strict" in macos
-    assert "spctl --assess --type execute" in macos
-    assert "xcrun stapler validate" in macos
-    assert "--skip-stapling" not in macos
-
-    assert "permissions:\n      contents: read\n      id-token: write" in windows
-    assert "azure/login@v2" in windows
-    assert windows.count("azure/artifact-signing-action@v2") == 2
-    assert "Get-AuthenticodeSignature" in windows
-    assert "--no-sign" not in windows
-
-
-def test_windows_signing_order_preserves_updater_integrity() -> None:
-    windows = extract_workflow_job(read_workflow(), "windows-native")
-
-    sign_binary = windows.index("Sign Windows application and agent")
-    bundle = windows.index("Bundle NSIS installer")
-    sign_installer = windows.index("Sign NSIS installer")
-    repack = windows.index("Build and sign Windows updater archive")
-    verify = windows.index("Verify Windows signatures")
-    assert sign_binary < bundle < sign_installer < repack < verify
-    assert "repack-signed-windows-updater.ps1" in windows
-    assert "tauri signer sign" in windows
-
-
-def test_updater_has_committed_public_key_and_secret_backed_signing() -> None:
-    config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
+def test_native_preview_contract_has_no_paid_signing_dependency() -> None:
     workflow = read_workflow()
-    cargo = tomllib.loads(CARGO_TOML.read_text(encoding="utf-8"))
-
-    pubkey = config["plugins"]["updater"]["pubkey"]
-    assert isinstance(pubkey, str) and len(pubkey) > 80
-    assert config["bundle"]["createUpdaterArtifacts"] is True
-    assert workflow.count("secrets.TAURI_SIGNING_PRIVATE_KEY") >= 2
-    assert workflow.count("secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD") >= 2
-    assert workflow.count("--example verify_updater_signature") == 2
-    assert cargo["dev-dependencies"]["minisign-verify"] == "0.2.5"
-    assert "latest.json" in workflow
-
-
-def test_windows_uninstall_preserves_data_by_default() -> None:
     config = json.loads(TAURI_CONFIG.read_text(encoding="utf-8"))
-    hook_path = DESKTOP_ROOT / "src-tauri" / config["bundle"]["windows"]["nsis"]["installerHooks"]
-    hook = hook_path.read_text(encoding="utf-8")
+    windows_config = json.loads(TAURI_WINDOWS_CONFIG.read_text(encoding="utf-8"))
 
-    assert "NSIS_HOOK_PREUNINSTALL" in hook
-    assert "--uninstall-service" in hook
-    assert "MB_DEFBUTTON2" in hook
-    assert "IDNO preserve_local_data" in hook
-    assert "--reset-local-data --remove-settings" in hook
+    assert config["bundle"]["createUpdaterArtifacts"] is False
+    assert windows_config["bundle"]["createUpdaterArtifacts"] is False
+    for forbidden in (
+        "secrets.APPLE_",
+        "secrets.AZURE_",
+        "secrets.ARTIFACT_SIGNING_",
+        "secrets.TAURI_SIGNING_",
+        "azure/login",
+        "artifact-signing",
+        "codesign",
+        "notar",
+        "verify_updater_signature",
+    ):
+        assert forbidden not in workflow
 
 
-def test_release_artifacts_are_uploaded_before_publication() -> None:
+def test_platform_vsix_packages_are_built_and_published_independently() -> None:
     text = read_workflow()
-    publish = extract_workflow_job(text, "publish")
+    macos = extract_workflow_job(text, "macos-vsix")
+    windows = extract_workflow_job(text, "windows-vsix")
+    publish = extract_workflow_job(text, "publish-vsix")
 
-    assert "actions/upload-artifact@v6" in text
+    assert "runs-on: macos-26" in macos
+    assert "npm run package:vsix:mac" in macos
+    assert "codex-usage-companion-darwin-arm64.vsix" in macos
+    assert "runs-on: windows-2025" in windows
+    assert "npm run package:vsix:win" in windows
+    assert "codex-usage-companion-win32-x64.vsix" in windows
+
+    assert "macos-vsix" in publish and "windows-vsix" in publish
+    assert "macos-native" not in publish and "windows-native" not in publish
     assert "actions/download-artifact@v6" in publish
-    assert "if-no-files-found: error" in text
-    assert "retention-days: 14" in text
-    assert "gh release create" in publish and "gh release upload" in publish
-    assert "--clobber" in publish
     assert "npx vsce publish --skip-duplicate" in publish
-    assert "SHA256SUMS.txt" in publish
+    assert "codex-usage-companion-darwin-arm64.vsix" in publish
+    assert "codex-usage-companion-win32-x64.vsix" in publish
+    assert "gh release" not in publish
+
+
+def test_preview_artifacts_include_hash_based_integrity_metadata(tmp_path: Path) -> None:
+    version = "2.0.0"
+    for platform, pattern in PREVIEW_ARTIFACTS.items():
+        artifact_name = pattern.format(version=version)
+        artifact = tmp_path / artifact_name
+        artifact.write_bytes(f"preview-{platform}".encode())
+
+        subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "prepare-native-release.py"),
+                "--directory",
+                str(tmp_path),
+                "--version",
+                version,
+                "--platform",
+                platform,
+            ],
+            check=True,
+        )
+
+        integrity = json.loads(
+            (tmp_path / "preview-integrity.json").read_text(encoding="utf-8")
+        )
+        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        assert integrity["schema_version"] == 1
+        assert integrity["kind"] == "codex-usage-unsigned-preview-integrity"
+        assert integrity["version"] == version
+        assert integrity["platform"] == platform
+        assert integrity["artifact"] == {"name": artifact_name, "sha256": digest}
+        assert integrity["generated_at"].endswith("Z")
+        assert (tmp_path / "SHA256SUMS.txt").read_text(encoding="ascii") == (
+            f"{digest}  {artifact_name}\n"
+        )
 
 
 def test_release_metadata_is_consistently_2_0_0() -> None:
@@ -183,14 +197,16 @@ def test_release_metadata_is_consistently_2_0_0() -> None:
     assert "preview" not in extension
 
 
-def test_companion_package_contains_no_parser_or_native_runtime() -> None:
+def test_companion_package_contract_requires_platform_specific_collectors() -> None:
     extension = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
     workflow = read_workflow()
 
     assert extension["displayName"] == "Codex Usage Companion"
-    assert "package:vsix:win" not in json.dumps(extension)
-    assert "package:vsix:mac" not in json.dumps(extension)
-    assert "codex-usage-companion.vsix" in workflow
+    assert "package:vsix:win" in json.dumps(extension)
+    assert "package:vsix:mac" in json.dumps(extension)
+    assert "codex-usage-companion-darwin-arm64.vsix" in workflow
+    assert "codex-usage-companion-win32-x64.vsix" in workflow
+    assert "codex-usage-companion.vsix" not in workflow
     assert "codex-usage-dashboard-win32" not in workflow
     assert "codex-usage-dashboard-darwin" not in workflow
 
@@ -214,53 +230,3 @@ def test_changelogs_describe_2_0_release(changelog: Path) -> None:
     assert "persistent" in section.casefold()
     assert re.search(r"15[- ]minute", section.casefold())
     assert "companion" in section.casefold()
-
-
-def test_prepare_native_release_builds_platform_manifest(tmp_path: Path) -> None:
-    version = "2.0.0"
-    names = (
-        f"Codex-Usage-{version}-darwin-aarch64.app.tar.gz",
-        f"Codex-Usage-{version}-windows-x86_64.nsis.zip",
-    )
-    for name in names:
-        (tmp_path / name).write_bytes(name.encode())
-        (tmp_path / f"{name}.sig").write_text(f"signature-{name}\n", encoding="utf-8")
-    for name in (
-        f"Codex-Usage-{version}-macos-arm64.dmg",
-        f"Codex-Usage-{version}-windows-x64-setup.exe",
-        "codex-usage-companion.vsix",
-    ):
-        (tmp_path / name).write_bytes(name.encode())
-
-    subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "prepare-native-release.py"),
-            "--directory",
-            str(tmp_path),
-            "--repository",
-            "Wenjun-Mao/codex_usage",
-            "--version",
-            version,
-            "--published-at",
-            "2026-09-02T00:00:00Z",
-        ],
-        check=True,
-    )
-
-    latest = json.loads((tmp_path / "latest.json").read_text(encoding="utf-8"))
-    assert latest["version"] == version
-    assert set(latest["platforms"]) == {"darwin-aarch64", "windows-x86_64"}
-    assert latest["platforms"]["windows-x86_64"]["url"].endswith(names[1])
-    checksums = (tmp_path / "SHA256SUMS.txt").read_text(encoding="ascii")
-    assert "latest.json" in checksums
-    assert "codex-usage-companion.vsix" in checksums
-
-
-def test_release_document_uses_current_signed_release_contract() -> None:
-    release_document = (ROOT / "docs" / "release.md").read_text(encoding="utf-8")
-
-    assert "`v2.0.0`" in release_document
-    assert "Developer ID" in release_document
-    assert "Artifact Signing" in release_document
-    assert "no unsigned" in release_document.casefold()
