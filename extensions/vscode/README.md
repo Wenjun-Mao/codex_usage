@@ -27,7 +27,9 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.0.0.
+Linux are not supported in 2.0.0. The optional native app is a self-contained
+native app with its own background collector and full native UI, but it is not
+required for Companion commands.
 
 ## What You Can Do
 
@@ -42,8 +44,9 @@ Linux are not supported in 2.0.0.
 - See last capture, pending work, stale-source warnings, and ledger revision in
   the status bar.
 
-The optional native app can still be opened for its own background-capture,
-installer, and update workflows. It is not required for any Companion command.
+The native app remains the home for background capture outside VS Code,
+installer, and update workflows. It is optional and is not required for any
+Companion command.
 
 ## Quick Start
 
