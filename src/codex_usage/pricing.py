@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
 
+from codex_usage.bedrock_pricing import (
+    BEDROCK_API_RATE_ROWS,
+)
 from codex_usage.models import TokenUsage
 
 
@@ -190,7 +193,19 @@ def _effective_rate(
     )
 
 
-API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = tuple(
+    _effective_rate(
+        row.model_key,
+        input_per_1m=row.input_per_1m,
+        cached_input_per_1m=row.cached_input_per_1m,
+        output_per_1m=row.output_per_1m,
+        cache_write_input_per_1m=row.cache_write_input_per_1m,
+        effective_from=row.effective_from,
+        aliases=row.aliases,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
+    )
+    for row in BEDROCK_API_RATE_ROWS
+) + (
     _effective_rate(
         "gpt-6-astra",
         input_per_1m=10.00,

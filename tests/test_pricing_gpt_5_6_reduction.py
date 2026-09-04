@@ -34,6 +34,28 @@ GPT_5_6_SOL_API_REDUCTION_BEFORE = datetime(
     999_999,
     tzinfo=UTC,
 )
+BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_AT = datetime(2026, 7, 30, tzinfo=UTC)
+BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_BEFORE = datetime(
+    2026,
+    7,
+    29,
+    23,
+    59,
+    59,
+    999_999,
+    tzinfo=UTC,
+)
+BEDROCK_GPT_5_6_SOL_REDUCTION_AT = datetime(2026, 8, 21, tzinfo=UTC)
+BEDROCK_GPT_5_6_SOL_REDUCTION_BEFORE = datetime(
+    2026,
+    8,
+    20,
+    23,
+    59,
+    59,
+    999_999,
+    tzinfo=UTC,
+)
 
 GPT_5_6_TERRA_LUNA_REDUCTION_CASES = (
     (
@@ -158,6 +180,142 @@ def test_sol_reduction_does_not_change_codex_credit_rates() -> None:
         "gpt-5.6",
         at=GPT_5_6_SOL_API_REDUCTION_AT,
     ) == expected
+
+
+@pytest.mark.parametrize(
+    ("model", "alias", "original_rate", "reduced_rate"),
+    (
+        (
+            "openai.gpt-5.6-terra",
+            "in.openai.gpt-5.6-terra",
+            ModelRate(
+                input_per_1m=2.75,
+                cached_input_per_1m=0.275,
+                output_per_1m=16.5,
+                cache_write_input_per_1m=3.4375,
+            ),
+            ModelRate(
+                input_per_1m=2.2,
+                cached_input_per_1m=0.22,
+                output_per_1m=13.2,
+                cache_write_input_per_1m=2.75,
+            ),
+        ),
+        (
+            "openai.gpt-5.6-luna",
+            "us.openai.gpt-5.6-luna",
+            ModelRate(
+                input_per_1m=1.1,
+                cached_input_per_1m=0.11,
+                output_per_1m=6.6,
+                cache_write_input_per_1m=1.375,
+            ),
+            ModelRate(
+                input_per_1m=0.22,
+                cached_input_per_1m=0.022,
+                output_per_1m=1.32,
+                cache_write_input_per_1m=0.275,
+            ),
+        ),
+    ),
+)
+def test_bedrock_terra_and_luna_reduction_uses_exact_effective_boundary(
+    model: str,
+    alias: str,
+    original_rate: ModelRate,
+    reduced_rate: ModelRate,
+) -> None:
+    assert (
+        rate_for_model(model, at=BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_BEFORE)
+        == original_rate
+    )
+    assert (
+        rate_for_model(model, at=BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_AT)
+        == reduced_rate
+    )
+    assert (
+        rate_for_model(alias, at=BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_BEFORE)
+        == original_rate
+    )
+    assert rate_for_model(alias, at=BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_AT) == reduced_rate
+
+
+def test_bedrock_sol_reduction_uses_exact_effective_boundary() -> None:
+    original_rate = ModelRate(
+        input_per_1m=5.5,
+        cached_input_per_1m=0.55,
+        output_per_1m=33.0,
+        cache_write_input_per_1m=6.875,
+    )
+    reduced_rate = ModelRate(
+        input_per_1m=4.4,
+        cached_input_per_1m=0.44,
+        output_per_1m=22.0,
+        cache_write_input_per_1m=5.5,
+    )
+
+    assert (
+        rate_for_model(
+            "openai.gpt-5.6-sol",
+            at=BEDROCK_GPT_5_6_SOL_REDUCTION_BEFORE,
+        )
+        == original_rate
+    )
+    assert (
+        rate_for_model(
+            "openai.gpt-5.6-sol",
+            at=BEDROCK_GPT_5_6_SOL_REDUCTION_AT,
+        )
+        == reduced_rate
+    )
+    assert (
+        rate_for_model(
+            "us.openai.gpt-5.6-sol",
+            at=BEDROCK_GPT_5_6_SOL_REDUCTION_AT,
+        )
+        == reduced_rate
+    )
+
+
+def test_bedrock_in_region_alias_is_only_retained_for_terra() -> None:
+    assert rate_for_model(
+        "in.openai.gpt-5.6-terra",
+        at=BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_AT,
+    ) == ModelRate(
+        input_per_1m=2.2,
+        cached_input_per_1m=0.22,
+        output_per_1m=13.2,
+        cache_write_input_per_1m=2.75,
+    )
+    assert rate_for_model("in.openai.gpt-5.6-sol") is None
+    assert rate_for_model("in.openai.gpt-5.6-luna") is None
+
+
+@pytest.mark.parametrize(
+    ("model", "effective_at", "expected_total"),
+    (
+        ("openai.gpt-5.6-terra", BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_AT, 1.80334),
+        ("openai.gpt-5.6-luna", BEDROCK_GPT_5_6_TERRA_LUNA_REDUCTION_AT, 0.180334),
+        ("openai.gpt-5.6-sol", BEDROCK_GPT_5_6_SOL_REDUCTION_AT, 3.16668),
+    ),
+)
+def test_bedrock_reduced_short_context_costs(
+    model: str,
+    effective_at: datetime,
+    expected_total: float,
+) -> None:
+    usage = TokenUsage(
+        input_tokens=272_000,
+        cached_input_tokens=72_000,
+        cache_write_input_tokens=50_000,
+        output_tokens=100_000,
+        total_tokens=372_000,
+    )
+
+    cost = estimate_cost(usage, model, at=effective_at)
+
+    assert cost is not None
+    assert cost.total_usd == pytest.approx(expected_total)
 
 
 def test_sol_reduced_short_context_costs() -> None:
