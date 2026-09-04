@@ -51,10 +51,10 @@ directly.
 
 ## Network Activity
 
-The only optional automatic network activity is a user-enabled GitHub update
-check, limited to at most once per day. Installing an update always requires
-confirmation. The VS Code companion can open the GitHub Releases download page
-when the native app is absent.
+The native preview retains a user-controlled GitHub update-check setting, but
+2.0.0 does not publish an automatic native update channel. The VS Code extension
+can open the distribution-workflow page when the user explicitly asks to find a
+missing native preview. Marketplace extension updates are handled by VS Code.
 
 Codex Usage does not upload task files, usage rows, project metadata, reports,
 or diagnostics. Pricing tables are checked into the application and are not

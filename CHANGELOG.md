@@ -2,19 +2,18 @@
 
 ## Unreleased
 
-- Kept guarded Task Transfer imports compatible with Codex Desktop's compact
-  two-field project assignments while retaining legacy assignment support and
-  fail-closed validation for unknown state shapes.
+## 2.0.0 - 2026-09-04 - Durable Ledger And Standalone Clients
 
-## 2.0.0 - 2026-09-03 - Native App And Persistent Collector
-
-- Replaced VS Code-owned refreshes with a Tauri 2 native app and an independent Python collector that can retain usage while Codex, VS Code, and the app window are closed.
-- Added a forward-migrated durable SQLite ledger, 15-minute default capture with configurable 1-1,440 minute or Manual Only scheduling, Capture Now coalescing, watcher reconciliation, bounded append reads, and resumable stale-source reconstruction.
-- Made Usage reports ledger-only and moved Usage, Task Storage, Task Transfer, Desktop binding, registration, onboarding, settings, and signed update controls into the native product.
-- Converted the Marketplace extension into an optional universal companion with no parser, Python runtime, or fallback cache, and removed the public Python CLI and its `codex-usage` console script.
-- Added signed-only macOS Apple Silicon and Windows x64 release pipelines with notarized Developer ID DMGs, Azure Artifact Signing NSIS installers, signed Tauri updater bundles, checksums, and data-preserving uninstall behavior.
+- Added a forward-migrated durable SQLite ledger for persistent history and one authenticated local collector with 15-minute default capture, configurable 1-1,440 minute or Manual Only scheduling, Capture Now coalescing, watcher reconciliation, bounded append reads, and resumable stale-source reconstruction.
+- Made Usage reports ledger-only and shared Usage, Task Storage, Task Transfer, Desktop binding, registration, onboarding, and settings through one Python agent contract.
+- Rebuilt the Marketplace extension as standalone macOS Apple Silicon and Windows x64 packages, each with its matching parent-bound collector and no native-app, Python, `uv`, or source-checkout requirement.
+- Added an optional Tauri 2 native UI whose explicitly enabled LaunchAgent or Scheduled Task can retain usage while Codex, VS Code, and the native window are closed.
+- Published the VSIX packages independently of unsigned native DMG and NSIS preview artifacts, which carry SHA-256 integrity metadata but no paid signing or automatic-update contract.
+- Removed the public Python CLI and its `codex-usage` console script; Python entry points are private agent and packaging interfaces.
 - Made baseline coverage account for every inventoried source before bounded parsing, so unscheduled files and bytes remain visibly incomplete instead of producing prematurely complete totals.
 - Added resumable, audited schema-8 cache migration that retains deleted-source history, deduplicates complete semantic overlap, and asks for one explicit source when a task's usage context, metadata, or transition evidence diverges.
+- Kept guarded Task Transfer imports compatible with Codex Desktop's compact two-field project assignments while retaining legacy assignment support and fail-closed validation for unknown state shapes.
+- Preserved one project identity when a verified local checkout changes from an upstream Git remote to a fork in the same canonical path, preventing duplicate Project Breakdown rows without merging unrelated repositories by label.
 
 ## 1.8.2 - 2026-08-29 - Release Gate Hardening
 

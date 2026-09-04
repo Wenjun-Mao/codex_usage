@@ -1,59 +1,20 @@
-# Native Release Checklist
+# 2.0 Distribution Checklist
 
-Version 2.0 publishes a native macOS Apple Silicon app, a native Windows x64
-app, signed updater bundles, checksums, and one universal optional VS Code
-companion. Linux, Intel macOS, and Windows ARM64 are not release targets.
+Version 2.0 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+packages to the VS Code Marketplace. Each VSIX bundles its matching collector
+and does not require the native application.
 
-There is **no unsigned release fallback**. Missing Apple, Azure, or Tauri
-signing material blocks publication.
+The same workflow builds unsigned native DMG and NSIS previews with SHA-256
+integrity metadata. Native previews are retained as GitHub Actions artifacts for
+evaluation; they are not stable GitHub Release assets and have no automatic
+update channel. Linux, Intel macOS, and Windows ARM64 are not release targets.
 
-## Required Identities And Secrets
-
-### Tauri updater
-
-- `TAURI_SIGNING_PRIVATE_KEY`
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-
-The corresponding public key is committed in
-`apps/desktop/src-tauri/tauri.conf.json`. Retain the private key independently;
-losing it prevents existing installations from trusting future updates.
-
-### macOS Developer ID and notarization
-
-- `APPLE_CERTIFICATE`: base64-encoded Developer ID Application `.p12`.
-- `APPLE_CERTIFICATE_PASSWORD`
-- `APPLE_SIGNING_IDENTITY`
-- `APPLE_ID`
-- `APPLE_PASSWORD`: app-specific password.
-- `APPLE_TEAM_ID`
-
-The Apple account must support Developer ID distribution and notarization. The
-workflow imports the certificate into a temporary keychain, signs the app and
-sidecar, notarizes/staples the DMG, validates Gatekeeper, and deletes the
-temporary keychain.
-
-### Windows Azure Artifact Signing
-
-- `AZURE_CLIENT_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_SUBSCRIPTION_ID`
-- `ARTIFACT_SIGNING_ENDPOINT`
-- `ARTIFACT_SIGNING_ACCOUNT`
-- `ARTIFACT_SIGNING_PROFILE`
-
-Configure a GitHub OIDC federated credential for the repository and grant its
-service principal **Artifact Signing Certificate Profile Signer**. Microsoft
-requires completed identity validation and an eligible paid, non-sponsored
-Azure subscription.
-
-The Windows job signs the application and PyInstaller agent, creates the
-per-user NSIS installer, signs that installer, then rebuilds and signs the Tauri
-updater archive from the signed installer. Reordering those steps invalidates
-the updater signature.
-
-### VS Code Marketplace
+## Required Secret
 
 - `VSCE_PAT` with Manage permission for publisher `wenjun-mao`.
+
+The 2.0.0 workflow has no Apple Developer, Azure Artifact Signing, or Tauri
+updater-signing dependency.
 
 ## Local Gates
 
@@ -83,17 +44,18 @@ macOS packaged sidecar:
 ./scripts/build-agent-macos-arm64.sh
 ```
 
-Companion:
+Standalone VS Code extension:
 
 ```bash
 cd extensions/vscode
 npm ci
 npm test
-npm run package:vsix
+npm run package:vsix:mac
 ```
 
-The companion package audit must show no Python, agent executable, parser,
-cache, source, or test files.
+The package audit must show the matching collector executable and exclude the
+other platform's binary, Python source, caches, and tests. Windows packaging is
+performed on the Windows CI runner.
 
 ### 2.0.0 performance evidence
 
@@ -141,71 +103,70 @@ Push the candidate commit to `main`, then dispatch:
 gh workflow run package-vsix.yml --ref main -f publish=false
 ```
 
-Require all four jobs to pass before publication:
+Require all five jobs to pass before publication:
 
 - core/release-contract validation;
-- universal VS Code companion packaging;
-- macOS ARM64 PyInstaller, frontend, Rust, and no-bundle native smoke;
-- Windows x64 PyInstaller, frontend, Rust, and no-bundle native smoke.
+- macOS Apple Silicon VSIX packaging with its bundled collector;
+- Windows x64 VSIX packaging with its bundled collector;
+- macOS ARM64 PyInstaller, frontend, Rust, and unsigned DMG preview;
+- Windows x64 PyInstaller, frontend, Rust, and unsigned NSIS preview.
 
-This gate intentionally does not produce distributable unsigned installers.
+The two native jobs upload 14-day unsigned preview artifacts and integrity
+metadata. They validate the optional app but do not gate Marketplace publishing
+as a runtime dependency.
 
-## Signed Publication
+## Marketplace Publication
 
 Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.0.0`, both
 changelogs have a dated `2.0.0` entry, and the candidate commit is contained in
 `origin/main`.
 
 The only valid release tag for this version is `v2.0.0`. Create and push that
-exact tag:
+exact tag after the non-publishing gate succeeds:
 
 ```bash
 git tag v2.0.0
 git push origin v2.0.0
 ```
 
-The tag starts the signed path. It must produce these release assets:
+The tag reruns every platform gate and publishes these immutable Marketplace
+packages:
 
 ```text
-Codex-Usage-2.0.0-macos-arm64.dmg
-Codex-Usage-2.0.0-darwin-aarch64.app.tar.gz
-Codex-Usage-2.0.0-darwin-aarch64.app.tar.gz.sig
-Codex-Usage-2.0.0-windows-x64-setup.exe
-Codex-Usage-2.0.0-windows-x86_64.nsis.zip
-Codex-Usage-2.0.0-windows-x86_64.nsis.zip.sig
-codex-usage-companion.vsix
-latest.json
+codex-usage-companion-darwin-arm64.vsix
+codex-usage-companion-win32-x64.vsix
+```
+
+The native jobs also produce these run-scoped artifacts:
+
+```text
+Codex-Usage-2.0.0-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.0.0-windows-x64-unsigned-preview-setup.exe
+preview-integrity.json
 SHA256SUMS.txt
 ```
 
-The workflow verifies native signatures, updater signatures, checksums, all nine
-GitHub assets, and Marketplace version availability. Publication is rerunnable:
-an existing GitHub release is updated with `--clobber`, and VSCE uses
-`--skip-duplicate`.
+The workflow does not create a GitHub Release. Marketplace publication is
+rerunnable because VSCE uses `--skip-duplicate`.
 
 ## Clean-Install Acceptance
 
-On a clean macOS Apple Silicon account:
+On clean macOS Apple Silicon and Windows x64 accounts, install the matching VSIX
+from the Marketplace and verify setup, capture, reports, Task Storage, and Task
+Transfer without installing the native app.
 
-1. Validate the DMG staple and Gatekeeper assessment.
-2. Install and open the app without bypassing security prompts.
+For optional native-preview acceptance:
+
+1. Download the platform artifact and verify it against `SHA256SUMS.txt` and
+   `preview-integrity.json`.
+2. Confirm the expected Gatekeeper or SmartScreen warning identifies the build
+   as unsigned, then use the platform's deliberate local override.
 3. Complete onboarding with background capture both disabled and enabled.
 4. Close the app and prove only opted-in background capture remains running.
-5. Install an update from a test endpoint and prove the collector is quiesced,
-   registration is repaired, and the app restarts.
-6. Use **Unregister Background Agent** and **Reset Local Data** and confirm each
+5. Use **Unregister Background Agent** and **Reset Local Data** and confirm each
    affects only Codex Usage-owned state.
-
-On a clean Windows x64 account:
-
-1. Verify Authenticode on the installer, app executable, and agent executable.
-2. Install per-user without elevation and complete onboarding.
-3. Confirm the Scheduled Task appears only after consent and survives app exit.
-4. Exercise signed update installation and repaired task registration.
-5. Uninstall and choose the default **No** response; verify ledger/settings are
-   preserved and the Scheduled Task is removed.
-6. Reinstall, uninstall again, choose **Yes**, and verify only Codex Usage-owned
-   ledger/settings are removed.
+6. On Windows, uninstall with preservation selected, then repeat with local-data
+   removal and verify each choice affects only Codex Usage-owned state.
 
 On both platforms, verify ledger-only range/project/theme changes open zero
 JSONLs, an unchanged capture reads zero source bytes, Capture Now coalesces,

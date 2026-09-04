@@ -27,9 +27,11 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.0.0. The optional native app is a self-contained
-native app with its own background collector and full native UI, but it is not
-required for Companion commands.
+Linux are not supported in 2.0.0. The optional native app is an unsigned,
+self-contained native app preview with its own background collector and full
+native UI, but it is not required for Companion commands. Its CI artifacts
+include SHA-256 integrity metadata; the operating system may display an
+unidentified-developer or unknown-publisher warning.
 
 ## What You Can Do
 
@@ -83,7 +85,7 @@ minutes.
 | `Codex Usage: Review Transfer Status` | Compare selected local and transferred tasks. |
 | `Codex Usage: Analyze Task Storage` | Analyze one selected task tree. |
 | `Codex Usage: Set Up Collector` | Choose CODEX_HOME, interval or Manual only, and migrate legacy usage data. |
-| `Codex Usage: Open Native App` | Open Codex Usage settings and full native UI. |
+| `Codex Usage: Open Native App` | Open an installed native preview, or its build page when absent. |
 
 ## Usage And Capture
 

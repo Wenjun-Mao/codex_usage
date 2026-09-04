@@ -336,8 +336,13 @@ async function launchNativeApp(interactive: boolean): Promise<void> {
   if (appPath) {
     openNativeApp(appPath);
   } else if (interactive) {
-    const selected = await vscode.window.showInformationMessage("Codex Usage is not installed.", "Download");
-    if (selected === "Download") await vscode.env.openExternal(vscode.Uri.parse(INSTALL_URL));
+    const selected = await vscode.window.showInformationMessage(
+      "The optional Codex Usage native preview is not installed.",
+      "View Preview Builds",
+    );
+    if (selected === "View Preview Builds") {
+      await vscode.env.openExternal(vscode.Uri.parse(INSTALL_URL));
+    }
   }
 }
 

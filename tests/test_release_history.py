@@ -10,7 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
-    "2.0.0": "2026-09-03",
+    "2.0.0": "2026-09-04",
     "1.8.2": "2026-08-29",
     "1.8.1": "2026-08-29",
     "1.8.0": "2026-08-27",
@@ -368,7 +368,8 @@ def test_0_1_41_changelog_describes_effective_dated_price_reduction(
 
 def test_current_support_docs_use_stable_task_transfer_language() -> None:
     for support_document in SUPPORT_DOCS:
-        support = support_document.read_text(encoding="utf-8").casefold()
-        assert "preview" not in support
+        support = normalized_prose(support_document.read_text(encoding="utf-8"))
+        assert "marketplace preview" not in support
+        assert "native" in support and "preview" in support
         assert "task transfer" in support
         assert "sync issues" not in support

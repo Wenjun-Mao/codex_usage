@@ -2,13 +2,14 @@
 
 ## Unreleased
 
-## 2.0.0 - 2026-09-03 - Native App Companion
+## 2.0.0 - 2026-09-04 - Standalone Durable Ledger
 
-- Converted the extension into a thin optional client for the Codex Usage native app and persistent local collector, with no bundled parser, Python executable, or private cache.
-- Added ledger-backed Usage, Task Storage, Task Transfer, Capture Now, project-transition review, and collector status through the authenticated loopback client.
-- Added clear install/open guidance when the native app is absent or stopped and retained a single universal VSIX for macOS Apple Silicon and Windows x64.
-- Moved capture intervals, background registration, Codex home switching, migration, reset, and signed update settings into the native app; the default collector interval is 15 minutes.
-- Removed the public Python CLI; the companion now communicates only through the native app's authenticated local collector.
+- Rebuilt the extension as standalone macOS Apple Silicon and Windows x64 packages, each bundling its matching parent-bound local collector; the native app, Python, `uv`, and a source checkout are not required.
+- Added collector setup, 15-minute default or custom scheduling, Manual Only, Capture Now, Codex-home selection, project-transition settings, and legacy-cache migration directly inside VS Code.
+- Added persistent ledger-backed Usage, Task Storage, Task Transfer, project-transition review, and collector status through the authenticated loopback client.
+- Kept scheduled capture alive while VS Code is open even when the dashboard is closed, with the optional unsigned native preview available only for capture that must continue outside VS Code.
+- Split Marketplace packaging by platform and made publication depend on both VSIX jobs while native app builds remain separate unsigned CI previews.
+- Removed the public Python CLI; the extension communicates only with the bundled or already-running authenticated collector.
 - Added guarded onboarding migration for legacy schema-8 caches, including retained deleted-task history and an explicit source choice for genuinely divergent task records.
 
 ## 1.8.2 - 2026-08-29 - Release Gate Hardening

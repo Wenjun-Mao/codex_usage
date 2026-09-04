@@ -2,7 +2,14 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const test = require("node:test");
 
-const { nativeAppCandidates } = require("../out/nativeApp");
+const { INSTALL_URL, nativeAppCandidates } = require("../out/nativeApp");
+
+test("missing native app links to the unsigned preview workflow", () => {
+  assert.equal(
+    INSTALL_URL,
+    "https://github.com/Wenjun-Mao/codex_usage/actions/workflows/package-vsix.yml",
+  );
+});
 
 test("macOS app discovery checks system and per-user Applications", () => {
   assert.deepEqual(nativeAppCandidates({}, "darwin", "/Users/test"), [

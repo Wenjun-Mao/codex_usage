@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for version 2.0.0 on 2026-09-02
+Partially superseded by ADR 0036 for version 2.0.0 on 2026-09-04
 
 ## Context
 
@@ -59,3 +59,10 @@ Windows ARM64, multiple simultaneous Codex homes, and automatic task lifecycle
 management remain follow-ups. CI must exercise both native platforms, packaged
 sidecars, the thin companion, installer lifecycle, signatures, updater metadata,
 and clean-install behavior before publication.
+
+## Supersession
+
+ADR 0036 replaces the mandatory thin-companion boundary and signed-only native
+publication contract. Tauri remains the native host, but the VS Code extension
+is independently usable and the native application is currently distributed
+only as an unsigned CI preview.

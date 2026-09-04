@@ -177,32 +177,34 @@ def test_current_task_transfer_sources_use_task_language() -> None:
             assert phrase not in text, (path, phrase)
 
 
-def test_release_docs_require_signed_dual_native_gate() -> None:
+def test_release_docs_require_standalone_vsix_and_unsigned_native_gate() -> None:
     prose = normalized_prose(
         (ROOT / "docs/release.md").read_text(encoding="utf-8")
     )
 
     for phrase in (
-        "no unsigned release fallback",
+        "no apple developer, azure artifact signing, or tauri updater-signing dependency",
         "non-publishing native gate",
         "before publication",
         "macos arm64 pyinstaller",
         "windows x64 pyinstaller",
-        "azure artifact signing",
-        "developer id",
-        "tauri updater",
+        "standalone macos apple silicon and windows x64 vsix packages",
+        "unsigned native dmg and nsis previews",
         "clean-install acceptance",
     ):
         assert phrase in prose, phrase
 
 
-def test_current_product_docs_do_not_describe_the_release_as_preview() -> None:
+def test_current_product_docs_distinguish_marketplace_from_native_preview() -> None:
     for path in CURRENT_DOCS:
-        assert "preview" not in path.read_text(encoding="utf-8").casefold(), path
+        prose = normalized_prose(path.read_text(encoding="utf-8"))
+        assert "standalone" in prose, path
+        assert "native app" in prose and "preview" in prose, path
+        assert "not required" in prose, path
 
-    release_document = (ROOT / "docs/release.md").read_text(encoding="utf-8")
-    assert "Marketplace Preview Release Checklist" not in release_document
-    assert "Marketplace preview distribution" not in release_document
+    repository = normalized_prose(CURRENT_DOCS[0].read_text(encoding="utf-8"))
+    assert "marketplace extension updates through vs code" in repository
+    assert "unsigned native previews do not have a supported automatic update channel" in repository
 
 
 def test_adr_0014_keeps_manual_transfer_guardrails() -> None:

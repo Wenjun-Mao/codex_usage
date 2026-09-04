@@ -1,9 +1,9 @@
 # Codex Usage
 
-Codex Usage is a local native app for understanding Codex token usage, model
-mix, project activity, and task storage. Its optional background collector keeps
-a durable usage history even when Codex, VS Code, and the Codex Usage window are
-closed.
+Codex Usage is a local toolkit for understanding Codex token usage, model mix,
+project activity, and task storage. The standalone VS Code extension includes
+its own collector; an optional native app preview adds capture that can continue
+after VS Code and the Codex Usage window are closed.
 
 Everything stays on your computer. Capturing usage does not call a model or the
 OpenAI API.
@@ -31,19 +31,22 @@ OpenAI API.
 
 ## Install
 
-Download the latest signed installer from
-[GitHub Releases](https://github.com/Wenjun-Mao/codex_usage/releases/latest):
+Install [Codex Usage Companion](https://marketplace.visualstudio.com/items?itemName=wenjun-mao.codex-usage-dashboard)
+from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
+packages each include the matching local collector; the native app, Python,
+`uv`, and this repository are not required.
 
-- macOS 13 or later on Apple Silicon: notarized Developer ID DMG.
-- Windows 10 or later on x64: signed per-user NSIS installer.
+The optional native app is currently an unsigned preview for macOS 13 or later
+on Apple Silicon and Windows 10 or later on x64. Preview builds and their SHA-256
+integrity metadata are available from the
+[latest distribution workflow](https://github.com/Wenjun-Mao/codex_usage/actions/workflows/package-vsix.yml).
+macOS Gatekeeper or Windows SmartScreen may warn because the builds are not
+Developer ID notarized or Authenticode signed. The native preview is not needed
+for any extension command.
 
 Intel macOS, Windows ARM64, and Linux are not supported in 2.0.0.
 
-The [Codex Usage Companion](https://marketplace.visualstudio.com/items?itemName=wenjun-mao.codex-usage-dashboard)
-is optional. It opens the same ledger and workflows inside VS Code, but requires
-the native app and never bundles a second parser or private cache.
-
-## First Run
+## Native App First Run
 
 1. Open Codex Usage and choose the Codex home containing `sessions` or
    `archived_sessions`. The usual location is `~/.codex` on macOS or
@@ -190,16 +193,17 @@ calls. Session content, usage rows, project paths, and Task Storage diagnostics
 stay local. The only optional automatic network activity is a daily GitHub
 update check. See [PRIVACY.md](PRIVACY.md) for the complete data boundary.
 
-Updates are signed, require confirmation, stop the collector before installation,
-repair service registration, and restart it afterward. Windows uninstall asks
-whether to remove ledger and settings and defaults to preserving them. On macOS,
-use **Unregister Background Agent** and **Reset Local Data** before removing the
-app if you want those effects.
+The Marketplace extension updates through VS Code. Unsigned native previews do
+not have a supported automatic update channel; install a newer verified preview
+manually. Windows uninstall asks whether to remove ledger and settings and
+defaults to preserving them. On macOS, use **Unregister Background Agent** and
+**Reset Local Data** before removing the app if you want those effects.
 
 ## Development
 
-The repository contains a Python agent/core, a Tauri 2 application under
-`apps/desktop`, and an optional TypeScript companion under `extensions/vscode`.
+The repository contains a Python agent/core, an optional Tauri 2 application
+under `apps/desktop`, and a standalone TypeScript extension under
+`extensions/vscode`.
 The Python executable and loopback protocol are private implementation details;
 2.0.0 intentionally provides no public `codex-usage` console script.
 

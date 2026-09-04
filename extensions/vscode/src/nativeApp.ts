@@ -3,7 +3,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
-export const INSTALL_URL = "https://github.com/Wenjun-Mao/codex_usage/releases/latest";
+export const INSTALL_URL = "https://github.com/Wenjun-Mao/codex_usage/actions/workflows/package-vsix.yml";
 
 export async function findNativeApp(
   environment: NodeJS.ProcessEnv = process.env,

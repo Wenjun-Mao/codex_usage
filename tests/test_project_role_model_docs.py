@@ -88,22 +88,28 @@ def test_native_architecture_adrs_record_ownership_and_rejected_alternatives() -
     app = (ROOT / "docs/adr/0034-tauri-native-app-ownership.md").read_text(
         encoding="utf-8"
     ).casefold()
+    distribution = (
+        ROOT / "docs/adr/0036-standalone-extension-and-native-preview.md"
+    ).read_text(encoding="utf-8").casefold()
     index = (ROOT / "docs/adr/README.md").read_text(encoding="utf-8")
 
     assert "0033-persistent-collector-and-durable-ledger.md" in index
     assert "0034-tauri-native-app-ownership.md" in index
+    assert "0036-standalone-extension-and-native-preview.md" in index
     for phrase in ("durable", "ledger", "single", "append"):
         assert phrase in collector
     for phrase in ("tauri", "electron", "wails", "qt"):
         assert phrase in app
+    for phrase in ("standalone", "parent-bound", "unsigned", "platform vsix"):
+        assert phrase in distribution
 
 
-def test_2_0_0_changelogs_describe_the_breaking_native_release() -> None:
-    heading = "## 2.0.0 - 2026-09-03"
+def test_2_0_0_changelogs_describe_the_breaking_ledger_release() -> None:
+    heading = "## 2.0.0 - 2026-09-04"
     for path in CHANGELOG_PATHS:
         text = path.read_text(encoding="utf-8")
         assert text.count("## Unreleased") == 1
         assert text.count(heading) == 1
         release = markdown_section(path, heading).casefold()
-        for phrase in ("native", "ledger", "capture", "cli"):
+        for phrase in ("native", "ledger", "capture", "cli", "standalone"):
             assert phrase in release, (path, phrase)

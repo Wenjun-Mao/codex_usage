@@ -224,9 +224,9 @@ def test_release_targets_only_supported_native_platforms() -> None:
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
 def test_changelogs_describe_2_0_release(changelog: Path) -> None:
     text = changelog.read_text(encoding="utf-8")
-    section = text.split("## 2.0.0 - 2026-09-03", 1)[1].split("\n## ", 1)[0]
+    section = text.split("## 2.0.0 - 2026-09-04", 1)[1].split("\n## ", 1)[0]
 
     assert "native" in section.casefold()
     assert "persistent" in section.casefold()
     assert re.search(r"15[- ]minute", section.casefold())
-    assert "companion" in section.casefold()
+    assert "standalone" in section.casefold()

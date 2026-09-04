@@ -43,3 +43,4 @@ The cross-process cache refresh and rollout-relocation recovery contract is reco
 The persistent collector and durable usage-ledger contract is recorded in [ADR 0033](0033-persistent-collector-and-durable-ledger.md).
 The Tauri native-app ownership and optional companion contract is recorded in [ADR 0034](0034-tauri-native-app-ownership.md).
 The verified local project-continuity contract is recorded in [ADR 0035](0035-verified-local-project-continuity.md).
+The standalone VS Code runtime and unsigned native-preview distribution contract is recorded in [ADR 0036](0036-standalone-extension-and-native-preview.md).

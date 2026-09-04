@@ -5,12 +5,13 @@ Usage bug reports and feature requests.
 
 Include:
 
-- Codex Usage native app version and optional companion version.
+- Installation surface and version: standalone VS Code extension or native app
+  preview.
 - Operating system and architecture: macOS Apple Silicon or Windows x64.
 - Whether background capture is enabled and the configured interval.
 - Last capture, pending files/bytes, baseline coverage, and stale-source state.
 - The affected workflow: Usage, Task Storage, Task Transfer, onboarding, or
-  update.
+  background capture.
 - Relevant redacted collector/app output and reproducible steps.
 
 For Task Transfer, also include the operation, transfer-folder provider, both
