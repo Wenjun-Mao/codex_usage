@@ -162,6 +162,40 @@ def test_startup_failure_releases_home_lock_and_stops_runtime_threads(
         replacement.stop()
 
 
+def test_core_onboarding_update_preserves_native_consent_and_preferences(
+    tmp_path: Path,
+) -> None:
+    home = _codex_home(tmp_path)
+    settings_file = _settings_file(tmp_path, home, interval=15)
+    agent = CodexUsageAgent(settings_file=settings_file)
+    try:
+        core_onboarded = agent.update_settings({"onboarding_complete": True})
+
+        assert core_onboarded.onboarding_complete is True
+        assert core_onboarded.native_onboarding_complete is False
+        assert core_onboarded.background_capture is False
+        assert core_onboarded.daily_update_checks is False
+
+        native_onboarded = agent.update_settings(
+            {
+                "native_onboarding_complete": True,
+                "background_capture": True,
+                "daily_update_checks": True,
+            }
+        )
+
+        assert native_onboarded.native_onboarding_complete is True
+        assert native_onboarded.background_capture is True
+        assert native_onboarded.daily_update_checks is True
+        restarted = CodexUsageAgent(settings_file=settings_file)
+        try:
+            assert restarted.settings == native_onboarded
+        finally:
+            restarted.stop()
+    finally:
+        agent.stop()
+
+
 def _codex_home(tmp_path: Path) -> Path:
     home = tmp_path / ".codex"
     (home / "sessions").mkdir(parents=True)
@@ -179,6 +213,7 @@ def _settings_file(tmp_path: Path, home: Path, *, interval: int | None) -> Path:
                 "background_capture": False,
                 "daily_update_checks": False,
                 "onboarding_complete": True,
+                "native_onboarding_complete": False,
                 "timezone": "UTC",
                 "theme": "auto",
                 "auto_project_transitions": True,

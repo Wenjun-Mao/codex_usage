@@ -27,6 +27,9 @@ class AgentSettings:
     background_capture: bool = False
     daily_update_checks: bool = False
     onboarding_complete: bool = False
+    # CODEX_HOME setup is shared by every client. Native-only background and
+    # update choices require their own completed consent flow.
+    native_onboarding_complete: bool = False
     timezone: str | None = None
     theme: str = "auto"
     auto_project_transitions: bool = True
@@ -83,6 +86,9 @@ def load_agent_settings(path: Path | None = None) -> AgentSettings:
             background_capture=_boolean(payload.get("background_capture", False)),
             daily_update_checks=_boolean(payload.get("daily_update_checks", False)),
             onboarding_complete=_boolean(payload.get("onboarding_complete", False)),
+            native_onboarding_complete=_boolean(
+                payload.get("native_onboarding_complete", False)
+            ),
             timezone=_optional_string(payload.get("timezone")),
             theme=str(payload.get("theme", "auto")),
             auto_project_transitions=_boolean(

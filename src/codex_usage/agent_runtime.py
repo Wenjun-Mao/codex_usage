@@ -272,6 +272,12 @@ class CodexUsageAgent:
                     "onboarding_complete", self.settings.onboarding_complete
                 )
             ),
+            native_onboarding_complete=_required_bool(
+                changes.get(
+                    "native_onboarding_complete",
+                    self.settings.native_onboarding_complete,
+                )
+            ),
             timezone=_optional_text(changes.get("timezone", self.settings.timezone)),
             theme=str(changes.get("theme", self.settings.theme)),
             auto_project_transitions=_required_bool(
