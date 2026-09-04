@@ -49,7 +49,10 @@ def build_agent_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_agent_parser().parse_args(argv)
+    parser = build_agent_parser()
+    args = parser.parse_args(argv)
+    if args.parent_pid is not None and args.parent_pid <= 0:
+        parser.error("--parent-pid must be greater than zero")
     if args.install_service:
         return _print_control_result(install_background_agent().to_dict())
     if args.uninstall_service:
@@ -79,7 +82,11 @@ def main(argv: list[str] | None = None) -> int:
                 settings_file=args.settings_file,
             )
         )
-    agent = CodexUsageAgent(settings_file=args.settings_file)
+    agent = CodexUsageAgent(
+        settings_file=args.settings_file,
+        process_owner="transient" if args.parent_pid is not None else "background",
+        parent_pid=args.parent_pid,
+    )
     try:
         agent.start(port=args.port)
     except AgentAlreadyRunningError as exc:

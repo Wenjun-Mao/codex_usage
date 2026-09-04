@@ -60,10 +60,14 @@ class CodexUsageAgent:
         self,
         *,
         settings_file: Path | None = None,
+        process_owner: str = "background",
+        parent_pid: int | None = None,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
     ) -> None:
         self.settings_file = settings_file
+        self.process_owner = process_owner
+        self.parent_pid = parent_pid
         self.settings = load_agent_settings(settings_file)
         self.codex_home = Path(self.settings.codex_home)
         self._clock = clock
@@ -124,7 +128,10 @@ class CodexUsageAgent:
             from codex_usage.agent_api import AgentHttpServer
 
             provisional = AgentDescriptor.create(
-                port=port or 1, codex_home=self.codex_home
+                port=port or 1,
+                codex_home=self.codex_home,
+                process_owner=self.process_owner,
+                parent_pid=self.parent_pid,
             )
             self._server = AgentHttpServer(self, token=provisional.token, port=port)
             self._server.start()

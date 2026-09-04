@@ -15,13 +15,19 @@ class AgentUnavailableError(RuntimeError):
 
 
 class AgentClient:
-    def __init__(self, descriptor: AgentDescriptor) -> None:
+    def __init__(
+        self,
+        descriptor: AgentDescriptor,
+        *,
+        descriptor_path: Path | None = None,
+    ) -> None:
         self.descriptor = descriptor
+        self._descriptor_path = descriptor_path
 
     @classmethod
     def from_descriptor(cls, path: Path) -> "AgentClient":
         try:
-            return cls(read_agent_descriptor(path))
+            return cls(read_agent_descriptor(path), descriptor_path=path)
         except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
             raise AgentUnavailableError(f"Codex Usage agent is unavailable: {exc}") from exc
 
@@ -31,10 +37,25 @@ class AgentClient:
         query: list[tuple[str, str]] | None = None,
     ) -> dict[str, Any]:
         suffix = f"?{urlencode(query or [])}" if query else ""
-        return self._request("GET", f"{path}{suffix}", None)
+        request_path = f"{path}{suffix}"
+        try:
+            return self._request("GET", request_path, None)
+        except AgentUnavailableError:
+            self._refresh_descriptor()
+            return self._request("GET", request_path, None)
 
     def post(self, path: str, payload: dict[str, object]) -> dict[str, Any]:
         return self._request("POST", path, payload)
+
+    def _refresh_descriptor(self) -> None:
+        if self._descriptor_path is None:
+            raise AgentUnavailableError("agent descriptor cannot be refreshed")
+        try:
+            self.descriptor = read_agent_descriptor(self._descriptor_path)
+        except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            raise AgentUnavailableError(
+                f"Codex Usage agent is unavailable: {exc}"
+            ) from exc
 
     def _request(
         self,

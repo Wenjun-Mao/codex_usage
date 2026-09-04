@@ -37,6 +37,22 @@ def test_manual_only_agent_performs_one_startup_capture(tmp_path: Path) -> None:
         agent.stop()
 
 
+def test_transient_agent_descriptor_records_its_parent_ownership(tmp_path: Path) -> None:
+    home = _codex_home(tmp_path)
+    agent = CodexUsageAgent(
+        settings_file=_settings_file(tmp_path, home, interval=None),
+        process_owner="transient",
+        parent_pid=4321,
+    )
+    try:
+        descriptor = agent.start()
+
+        assert descriptor.process_owner == "transient"
+        assert descriptor.parent_pid == 4321
+    finally:
+        agent.stop()
+
+
 def test_scheduler_requests_catch_up_after_suspend_and_watcher_recovery(
     tmp_path: Path,
 ) -> None:

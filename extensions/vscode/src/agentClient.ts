@@ -13,6 +13,8 @@ interface AgentDescriptor {
   port: number;
   token: string;
   codex_home: string;
+  process_owner?: "background" | "transient";
+  parent_pid?: number;
 }
 
 interface AgentSettingsFile {
@@ -27,7 +29,10 @@ export class AgentUnavailableError extends Error {
 }
 
 export class AgentClient {
-  private constructor(private readonly descriptor: AgentDescriptor) {}
+  private constructor(
+    private descriptor: AgentDescriptor,
+    private readonly descriptorPath: string,
+  ) {}
 
   static async discover(environment: NodeJS.ProcessEnv = process.env): Promise<AgentClient> {
     const codexHome = await resolveCodexHome(environment);
@@ -36,29 +41,57 @@ export class AgentClient {
 
   static async discoverAt(codexHome: string): Promise<AgentClient> {
     const descriptorPath = path.join(codexHome, ".codex-usage", "agent.json");
-    let descriptor: AgentDescriptor;
-    try {
-      descriptor = parseDescriptor(JSON.parse(await fs.readFile(descriptorPath, "utf8")));
-    } catch (error) {
-      throw new AgentUnavailableError(`Collector descriptor unavailable: ${errorMessage(error)}`);
-    }
-    if (!samePath(descriptor.codex_home, codexHome)) {
-      throw new AgentUnavailableError("Collector descriptor belongs to a different Codex home.");
-    }
-    const client = new AgentClient(descriptor);
-    const health = await client.request<{ api_version: number; ok: boolean }>("GET", "/v1/health", undefined, 2_000);
-    if (!health.ok || health.api_version !== API_VERSION) {
-      throw new AgentUnavailableError("Collector API is unavailable or incompatible.");
-    }
+    const descriptor = await readDescriptor(descriptorPath, codexHome);
+    const client = new AgentClient(descriptor, descriptorPath);
+    await client.verifyHealth();
     return client;
   }
 
   get<T>(requestPath: string): Promise<T> {
-    return this.request<T>("GET", requestPath);
+    return this.requestReadWithRetry<T>(requestPath);
   }
 
   post<T>(requestPath: string, body: Record<string, unknown> = {}): Promise<T> {
     return this.request<T>("POST", requestPath, body);
+  }
+
+  get processId(): number {
+    return this.descriptor.pid;
+  }
+
+  isSameAgent(other: AgentClient): boolean {
+    return this.descriptor.pid === other.descriptor.pid
+      && this.descriptor.token === other.descriptor.token
+      && samePath(this.descriptor.codex_home, other.descriptor.codex_home);
+  }
+
+  isTransientOwnedBy(parentPid: number, processId: number | undefined): boolean {
+    return processId !== undefined
+      && this.descriptor.process_owner === "transient"
+      && this.descriptor.parent_pid === parentPid
+      && this.descriptor.pid === processId;
+  }
+
+  private async requestReadWithRetry<T>(requestPath: string): Promise<T> {
+    try {
+      return await this.request<T>("GET", requestPath);
+    } catch (error) {
+      if (!(error instanceof AgentUnavailableError)) throw error;
+      await this.refreshDescriptor();
+      return this.request<T>("GET", requestPath);
+    }
+  }
+
+  private async refreshDescriptor(): Promise<void> {
+    this.descriptor = await readDescriptor(this.descriptorPath, this.descriptor.codex_home);
+    await this.verifyHealth();
+  }
+
+  private async verifyHealth(): Promise<void> {
+    const health = await this.request<{ api_version: number; ok: boolean }>("GET", "/v1/health", undefined, 2_000);
+    if (!health.ok || health.api_version !== API_VERSION) {
+      throw new AgentUnavailableError("Collector API is unavailable or incompatible.");
+    }
   }
 
   private request<T>(method: "GET" | "POST", requestPath: string, body?: Record<string, unknown>, timeoutMs?: number): Promise<T> {
@@ -157,7 +190,42 @@ function parseDescriptor(value: unknown): AgentDescriptor {
   if (!isRecord(value) || typeof value.pid !== "number" || !Number.isInteger(value.pid) || value.pid < 1 || value.api_version !== API_VERSION || typeof value.port !== "number" || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 || typeof value.token !== "string" || value.token.length < 32 || typeof value.codex_home !== "string") {
     throw new Error("descriptor has invalid connection details");
   }
-  return value as unknown as AgentDescriptor;
+  const processOwner = value.process_owner;
+  const parentPid = value.parent_pid;
+  if (processOwner !== undefined && processOwner !== "background" && processOwner !== "transient") {
+    throw new Error("descriptor has invalid process ownership details");
+  }
+  if (parentPid !== undefined && (typeof parentPid !== "number" || !Number.isInteger(parentPid) || parentPid < 1)) {
+    throw new Error("descriptor has invalid process ownership details");
+  }
+  if (processOwner === "transient" && parentPid === undefined) {
+    throw new Error("transient descriptor is missing its parent process");
+  }
+  if (processOwner !== "transient" && parentPid !== undefined) {
+    throw new Error("only transient descriptors may have a parent process");
+  }
+  return {
+    pid: value.pid,
+    api_version: value.api_version,
+    port: value.port,
+    token: value.token,
+    codex_home: value.codex_home,
+    ...(processOwner === undefined ? {} : { process_owner: processOwner }),
+    ...(parentPid === undefined ? {} : { parent_pid: parentPid }),
+  };
+}
+
+async function readDescriptor(descriptorPath: string, codexHome: string): Promise<AgentDescriptor> {
+  let descriptor: AgentDescriptor;
+  try {
+    descriptor = parseDescriptor(JSON.parse(await fs.readFile(descriptorPath, "utf8")));
+  } catch (error) {
+    throw new AgentUnavailableError(`Collector descriptor unavailable: ${errorMessage(error)}`);
+  }
+  if (!samePath(descriptor.codex_home, codexHome)) {
+    throw new AgentUnavailableError("Collector descriptor belongs to a different Codex home.");
+  }
+  return descriptor;
 }
 
 function expandHome(value: string): string {

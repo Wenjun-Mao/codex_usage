@@ -82,3 +82,73 @@ test("client rejects request smuggling paths and oversized request bodies", asyn
     else process.env.CODEX_USAGE_DATA_DIR = previous;
   }
 });
+
+test("read-only requests refresh one replaced descriptor while POST requests never replay", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-usage-companion-"));
+  const home = path.join(root, ".codex");
+  const descriptorPath = path.join(home, ".codex-usage", "agent.json");
+  await fs.mkdir(path.dirname(descriptorPath), { recursive: true });
+
+  const first = http.createServer((request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify(request.url === "/v1/health" ? { ok: true, api_version: 1 } : { stale: true }));
+  });
+  await new Promise((resolve) => first.listen(0, "127.0.0.1", resolve));
+  await fs.writeFile(descriptorPath, JSON.stringify({
+    pid: 1001,
+    api_version: 1,
+    port: first.address().port,
+    token: "c".repeat(40),
+    codex_home: home,
+    process_owner: "background",
+  }));
+  const client = await AgentClient.discoverAt(home);
+  await new Promise((resolve) => first.close(resolve));
+
+  const retriedRequests = [];
+  const second = http.createServer((request, response) => {
+    retriedRequests.push(request.url);
+    if (request.url === "/v1/capture") {
+      request.socket.destroy();
+      return;
+    }
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify(request.url === "/v1/health" ? { ok: true, api_version: 1 } : { ready: true }));
+  });
+  await new Promise((resolve) => second.listen(0, "127.0.0.1", resolve));
+  await fs.writeFile(descriptorPath, JSON.stringify({
+    pid: 1002,
+    api_version: 1,
+    port: second.address().port,
+    token: "d".repeat(40),
+    codex_home: home,
+    process_owner: "background",
+  }));
+
+  assert.deepEqual(await client.get("/v1/status"), { ready: true });
+  assert.deepEqual(retriedRequests, ["/v1/health", "/v1/status"]);
+
+  const replayedRequests = [];
+  const third = http.createServer((request, response) => {
+    replayedRequests.push(request.url);
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ ok: true, api_version: 1 }));
+  });
+  await new Promise((resolve) => third.listen(0, "127.0.0.1", resolve));
+  await fs.writeFile(descriptorPath, JSON.stringify({
+    pid: 1003,
+    api_version: 1,
+    port: third.address().port,
+    token: "e".repeat(40),
+    codex_home: home,
+    process_owner: "background",
+  }));
+
+  try {
+    await assert.rejects(client.post("/v1/capture"), /agent|socket|connect/i);
+    assert.deepEqual(replayedRequests, []);
+  } finally {
+    await new Promise((resolve) => second.close(resolve));
+    await new Promise((resolve) => third.close(resolve));
+  }
+});
