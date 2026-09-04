@@ -34,7 +34,7 @@ from codex_usage.report_breakdown import build_report_breakdown_from_valued
 from codex_usage.reporting import render_html_report
 
 
-PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}"
+PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}:bedrock-in-region-v1"
 REPORT_RENDER_REVISION = 2
 
 

@@ -61,6 +61,7 @@ def test_gpt_5_3_resolves_to_same_api_rate_as_gpt_5_3_codex() -> None:
 
 
 GPT_5_6_API_EFFECTIVE_AT = datetime(2026, 6, 26, tzinfo=UTC)
+BEDROCK_GPT_5_6_API_EFFECTIVE_AT = datetime(2026, 7, 13, tzinfo=UTC)
 GPT_5_6_CREDIT_EFFECTIVE_AT = datetime(2026, 7, 9, tzinfo=UTC)
 GPT_5_6_RATE_CASES = (
     (
@@ -85,6 +86,79 @@ GPT_5_6_RATE_CASES = (
         34.375,
     ),
 )
+
+BEDROCK_GPT_5_6_RATE_CASES = (
+    (
+        "openai.gpt-5.6-sol",
+        ("us.openai.gpt-5.6-sol",),
+        ModelRate(
+            input_per_1m=5.5,
+            cached_input_per_1m=0.55,
+            output_per_1m=33.0,
+            cache_write_input_per_1m=6.875,
+        ),
+    ),
+    (
+        "openai.gpt-5.6-terra",
+        ("us.openai.gpt-5.6-terra", "in.openai.gpt-5.6-terra"),
+        ModelRate(
+            input_per_1m=2.75,
+            cached_input_per_1m=0.275,
+            output_per_1m=16.5,
+            cache_write_input_per_1m=3.4375,
+        ),
+    ),
+    (
+        "openai.gpt-5.6-luna",
+        ("us.openai.gpt-5.6-luna",),
+        ModelRate(
+            input_per_1m=1.1,
+            cached_input_per_1m=0.11,
+            output_per_1m=6.6,
+            cache_write_input_per_1m=1.375,
+        ),
+    ),
+)
+
+
+@pytest.mark.parametrize(("model", "aliases", "expected_rate"), BEDROCK_GPT_5_6_RATE_CASES)
+def test_bedrock_gpt_5_6_in_region_rates_and_aliases(
+    model: str,
+    aliases: tuple[str, ...],
+    expected_rate: ModelRate,
+) -> None:
+    assert rate_for_model(model, at=BEDROCK_GPT_5_6_API_EFFECTIVE_AT) == expected_rate
+    for alias in aliases:
+        assert rate_for_model(alias, at=BEDROCK_GPT_5_6_API_EFFECTIVE_AT) == expected_rate
+
+    before_pricing = datetime(2026, 7, 12, 23, 59, 59, tzinfo=UTC)
+    assert rate_for_model(model, at=before_pricing) is None
+
+
+@pytest.mark.parametrize(
+    ("model", "expected_cost"),
+    (
+        ("openai.gpt-5.6-sol", 7.3667011),
+        ("openai.gpt-5.6-terra", 3.68335055),
+        ("openai.gpt-5.6-luna", 1.47334022),
+    ),
+)
+def test_bedrock_gpt_5_6_long_context_uses_request_level_rates(
+    model: str,
+    expected_cost: float,
+) -> None:
+    usage = TokenUsage(
+        input_tokens=272_001,
+        cached_input_tokens=72_001,
+        cache_write_input_tokens=50_000,
+        output_tokens=100_000,
+        total_tokens=372_001,
+    )
+
+    cost = estimate_cost(usage, model, at=BEDROCK_GPT_5_6_API_EFFECTIVE_AT)
+
+    assert cost is not None
+    assert cost.total_usd == pytest.approx(expected_cost)
 
 
 @pytest.mark.parametrize(

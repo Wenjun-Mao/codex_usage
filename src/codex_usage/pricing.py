@@ -12,6 +12,19 @@ PRICING_AS_OF = "2026-09-04"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
+BEDROCK_GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 7, 13, tzinfo=UTC)
+BEDROCK_GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM = datetime(
+    2026,
+    7,
+    30,
+    tzinfo=UTC,
+)
+BEDROCK_GPT_5_6_SOL_API_REDUCTION_EFFECTIVE_FROM = datetime(
+    2026,
+    8,
+    21,
+    tzinfo=UTC,
+)
 GPT_5_6_CREDIT_EFFECTIVE_FROM = datetime(2026, 7, 9, tzinfo=UTC)
 GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM = datetime(
     2026,
@@ -191,6 +204,70 @@ def _effective_rate(
 
 
 API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    # Amazon Bedrock Standard In-Region rates. These initial rows preserve
+    # the historical rates before each model's later reduction. The us./in.
+    # inference-profile IDs use the same rates as In-Region where documented;
+    # global.* IDs are intentionally not included because their rates differ.
+    _effective_rate(
+        "openai.gpt-5.6-sol",
+        input_per_1m=5.50,
+        cached_input_per_1m=0.55,
+        output_per_1m=33.00,
+        cache_write_input_per_1m=6.875,
+        effective_from=BEDROCK_GPT_5_6_API_EFFECTIVE_FROM,
+        aliases=("us.openai.gpt-5.6-sol",),
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
+    _effective_rate(
+        "openai.gpt-5.6-terra",
+        input_per_1m=2.75,
+        cached_input_per_1m=0.275,
+        output_per_1m=16.50,
+        cache_write_input_per_1m=3.4375,
+        effective_from=BEDROCK_GPT_5_6_API_EFFECTIVE_FROM,
+        aliases=("us.openai.gpt-5.6-terra", "in.openai.gpt-5.6-terra"),
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
+    _effective_rate(
+        "openai.gpt-5.6-luna",
+        input_per_1m=1.10,
+        cached_input_per_1m=0.11,
+        output_per_1m=6.60,
+        cache_write_input_per_1m=1.375,
+        effective_from=BEDROCK_GPT_5_6_API_EFFECTIVE_FROM,
+        aliases=("us.openai.gpt-5.6-luna",),
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
+    _effective_rate(
+        "openai.gpt-5.6-sol",
+        input_per_1m=4.40,
+        cached_input_per_1m=0.44,
+        output_per_1m=22.00,
+        cache_write_input_per_1m=5.50,
+        effective_from=BEDROCK_GPT_5_6_SOL_API_REDUCTION_EFFECTIVE_FROM,
+        aliases=("us.openai.gpt-5.6-sol",),
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
+    _effective_rate(
+        "openai.gpt-5.6-terra",
+        input_per_1m=2.20,
+        cached_input_per_1m=0.22,
+        output_per_1m=13.20,
+        cache_write_input_per_1m=2.75,
+        effective_from=BEDROCK_GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM,
+        aliases=("us.openai.gpt-5.6-terra", "in.openai.gpt-5.6-terra"),
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
+    _effective_rate(
+        "openai.gpt-5.6-luna",
+        input_per_1m=0.22,
+        cached_input_per_1m=0.022,
+        output_per_1m=1.32,
+        cache_write_input_per_1m=0.275,
+        effective_from=BEDROCK_GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM,
+        aliases=("us.openai.gpt-5.6-luna",),
+        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+    ),
     _effective_rate(
         "gpt-6-astra",
         input_per_1m=10.00,
