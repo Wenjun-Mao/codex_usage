@@ -14,6 +14,7 @@ function appState(): AppState {
       background_capture: true,
       daily_update_checks: false,
       onboarding_complete: true,
+      native_onboarding_complete: true,
       timezone: "UTC",
       theme: "night",
       auto_project_transitions: true,

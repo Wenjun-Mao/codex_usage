@@ -14,7 +14,12 @@ const RESPONSE_LIMIT: usize = 64 * 1024 * 1024;
 
 #[derive(Default)]
 pub struct AgentProcessState {
-    child: Mutex<Option<CommandChild>>,
+    child: Mutex<Option<ManagedTransient>>,
+}
+
+struct ManagedTransient {
+    pid: u32,
+    child: CommandChild,
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,10 +31,22 @@ pub struct AgentRequest {
 
 #[derive(Debug, Deserialize)]
 struct AgentDescriptor {
+    pid: u32,
     api_version: u32,
     port: u16,
     token: String,
     codex_home: String,
+    #[serde(default)]
+    process_owner: Option<ProcessOwner>,
+    #[serde(default)]
+    parent_pid: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum ProcessOwner {
+    Background,
+    Transient,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,10 +123,11 @@ pub async fn start_transient_agent(app: &AppHandle) -> Result<AgentConnection, S
         .args(["--background", "--parent-pid", parent_pid.as_str()])
         .spawn()
         .map_err(display_error)?;
+    let pid = child.pid();
     *app.state::<AgentProcessState>()
         .child
         .lock()
-        .map_err(display_error)? = Some(child);
+        .map_err(display_error)? = Some(ManagedTransient { pid, child });
     tauri::async_runtime::spawn(async move { while events.recv().await.is_some() {} });
     if let Ok(descriptor) = wait_for_live_descriptor().await {
         return Ok(AgentConnection {
@@ -121,9 +139,31 @@ pub async fn start_transient_agent(app: &AppHandle) -> Result<AgentConnection, S
     Err("The Codex Usage collector did not become ready.".to_owned())
 }
 
-pub async fn request_agent(request: AgentRequest) -> Result<Value, String> {
+pub async fn request_agent(app: &AppHandle, request: AgentRequest) -> Result<Value, String> {
     validate_request(&request)?;
-    let descriptor = live_descriptor().await?;
+    let descriptor = match live_descriptor().await {
+        Ok(descriptor) => descriptor,
+        Err(_) => {
+            ensure_agent(app).await?;
+            live_descriptor().await?
+        }
+    };
+    let result = request_agent_with_descriptor(&descriptor, &request).await;
+    if result.is_ok() || live_descriptor().await.is_ok() {
+        return result;
+    }
+    // A VS Code-owned transient can disappear after the initial health check.
+    // Reconnect through ensure_agent so this app starts only its own
+    // replacement rather than trying to stop the former owner.
+    ensure_agent(app).await?;
+    let replacement = live_descriptor().await?;
+    request_agent_with_descriptor(&replacement, &request).await
+}
+
+async fn request_agent_with_descriptor(
+    descriptor: &AgentDescriptor,
+    request: &AgentRequest,
+) -> Result<Value, String> {
     let method = match request.method.as_str() {
         "GET" => Method::GET,
         "POST" => Method::POST,
@@ -140,8 +180,8 @@ pub async fn request_agent(request: AgentRequest) -> Result<Value, String> {
         )
         .bearer_auth(descriptor.token)
         .header("Content-Type", "application/json");
-    if let Some(body) = request.body {
-        outgoing = outgoing.json(&body);
+    if let Some(body) = &request.body {
+        outgoing = outgoing.json(body);
     }
     let response = outgoing.send().await.map_err(display_error)?;
     let status = response.status();
@@ -167,11 +207,24 @@ pub async fn request_agent(request: AgentRequest) -> Result<Value, String> {
 }
 
 pub async fn shutdown_agent(app: &AppHandle) {
-    let _ = request_agent(AgentRequest {
-        method: "POST".to_owned(),
-        path: "/v1/shutdown".to_owned(),
-        body: Some(Value::Object(Default::default())),
-    })
+    let descriptor = match live_descriptor().await {
+        Ok(descriptor) => descriptor,
+        Err(_) => {
+            stop_transient(app);
+            return;
+        }
+    };
+    if !owns_transient(app, &descriptor) {
+        return;
+    }
+    let _ = request_agent_with_descriptor(
+        &descriptor,
+        &AgentRequest {
+            method: "POST".to_owned(),
+            path: "/v1/shutdown".to_owned(),
+            body: Some(Value::Object(Default::default())),
+        },
+    )
     .await;
     for _ in 0..50 {
         if live_descriptor().await.is_err() {
@@ -189,6 +242,14 @@ pub async fn quiesce_agent(app: &AppHandle) -> Result<bool, String> {
         stop_transient(app);
         wait_until_stopped().await?;
     } else {
+        if let Ok(descriptor) = live_descriptor().await {
+            if !owns_transient(app, &descriptor) {
+                return Err(
+                    "Another client owns the active collector. Stop it from its owning client before changing collector settings."
+                        .to_owned(),
+                );
+            }
+        }
         shutdown_agent(app).await;
     }
     Ok(installed)
@@ -235,10 +296,31 @@ pub async fn sidecar_control(app: &AppHandle, args: &[&str]) -> Result<Value, St
 pub fn stop_transient(app: &AppHandle) {
     let state = app.state::<AgentProcessState>();
     if let Ok(mut guard) = state.child.lock() {
-        if let Some(child) = guard.take() {
-            let _ = child.kill();
+        if let Some(managed) = guard.take() {
+            let _ = managed.child.kill();
         }
     };
+}
+
+fn owns_transient(app: &AppHandle, descriptor: &AgentDescriptor) -> bool {
+    let state = app.state::<AgentProcessState>();
+    let Ok(guard) = state.child.lock() else {
+        return false;
+    };
+    let Some(managed) = guard.as_ref() else {
+        return false;
+    };
+    descriptor_matches_transient(descriptor, std::process::id(), managed.pid)
+}
+
+fn descriptor_matches_transient(
+    descriptor: &AgentDescriptor,
+    parent_pid: u32,
+    managed_pid: u32,
+) -> bool {
+    descriptor.process_owner == Some(ProcessOwner::Transient)
+        && descriptor.parent_pid == Some(parent_pid)
+        && descriptor.pid == managed_pid
 }
 
 fn validate_request(request: &AgentRequest) -> Result<(), String> {
@@ -298,7 +380,8 @@ fn read_descriptor() -> Result<AgentDescriptor, String> {
     let descriptor: AgentDescriptor =
         serde_json::from_slice(&std::fs::read(&path).map_err(display_error)?)
             .map_err(display_error)?;
-    if descriptor.api_version != API_VERSION
+    if descriptor.pid == 0
+        || descriptor.api_version != API_VERSION
         || descriptor.port == 0
         || descriptor.token.len() < 32
         || !same_path(Path::new(&descriptor.codex_home), &home)
@@ -412,7 +495,10 @@ fn display_error(error: impl std::fmt::Display) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_codex_home, validate_request, AgentRequest, REQUEST_LIMIT};
+    use super::{
+        descriptor_matches_transient, validate_codex_home, validate_request, AgentDescriptor,
+        AgentRequest, ProcessOwner, REQUEST_LIMIT,
+    };
     use serde_json::{json, Value};
     use std::fs;
 
@@ -459,5 +545,25 @@ mod tests {
         fs::create_dir(root.join("archived_sessions")).unwrap();
         assert!(validate_codex_home(&root).is_ok());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn transient_shutdown_requires_the_native_parent_and_child_identity() {
+        let mut descriptor = AgentDescriptor {
+            pid: 42,
+            api_version: 1,
+            port: 1234,
+            token: "x".repeat(32),
+            codex_home: "/tmp/codex-home".to_owned(),
+            process_owner: Some(ProcessOwner::Transient),
+            parent_pid: Some(7),
+        };
+
+        assert!(descriptor_matches_transient(&descriptor, 7, 42));
+        assert!(!descriptor_matches_transient(&descriptor, 8, 42));
+        assert!(!descriptor_matches_transient(&descriptor, 7, 43));
+
+        descriptor.process_owner = Some(ProcessOwner::Background);
+        assert!(!descriptor_matches_transient(&descriptor, 7, 42));
     }
 }
