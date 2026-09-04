@@ -5,17 +5,38 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_usage.ledger_events import insert_generation_events
+from codex_usage.ledger_events import (
+    insert_generation_events,
+    rebuild_normalized_events,
+)
 from codex_usage.ledger_schema import increment_ledger_revision, open_ledger
 
 
-def synchronize_parser_workset(ledger_path: Path) -> tuple[int, bool]:
+_NORMALIZED_OWNERSHIP_VERSION = 2
+_NORMALIZED_OWNERSHIP_VERSION_KEY = "normalized_ownership_version"
+
+
+def synchronize_parser_workset(
+    ledger_path: Path,
+    *,
+    force_normalized_ownership: bool = False,
+) -> tuple[int, bool]:
     """Mirror parser-owned rows into the normalized, report-owned ledger."""
     with open_ledger(ledger_path) as connection:
         connection.execute("begin immediate")
         try:
             changed = _sync_sources(connection)
             changed |= _sync_transitions(connection)
+            if force_normalized_ownership or _normalized_ownership_requires_rebuild(connection):
+                rebuild_normalized_events(connection)
+                connection.execute(
+                    "insert or replace into ledger_meta (key, value) values (?, ?)",
+                    (
+                        _NORMALIZED_OWNERSHIP_VERSION_KEY,
+                        str(_NORMALIZED_OWNERSHIP_VERSION),
+                    ),
+                )
+                changed = True
             revision = (
                 increment_ledger_revision(connection)
                 if changed
@@ -382,3 +403,11 @@ def _current_revision(connection: sqlite3.Connection) -> int:
         "select value from ledger_meta where key = 'ledger_revision'"
     ).fetchone()
     return int(row["value"]) if row else 0
+
+
+def _normalized_ownership_requires_rebuild(connection: sqlite3.Connection) -> bool:
+    row = connection.execute(
+        "select value from ledger_meta where key = ?",
+        (_NORMALIZED_OWNERSHIP_VERSION_KEY,),
+    ).fetchone()
+    return row is None or str(row["value"]) != str(_NORMALIZED_OWNERSHIP_VERSION)

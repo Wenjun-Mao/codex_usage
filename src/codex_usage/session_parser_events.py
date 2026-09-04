@@ -108,6 +108,16 @@ def inherit_parent_project_identity(
     )
 
 
+def should_inherit_parent_project_identity(
+    record: UsageRecord,
+    parent: UsageRecord,
+) -> bool:
+    """Limit git-backed inheritance to a parent-proven replacement lineage."""
+    if not record.git_repository_url:
+        return True
+    return record.project_key in parent.project_aliases
+
+
 def extract_model(payload: dict[str, Any]) -> str:
     if payload.get("model"):
         return str(payload["model"])

@@ -42,3 +42,4 @@ The Codex-owned task lifecycle contract is recorded in [ADR 0031](0031-codex-own
 The cross-process cache refresh and rollout-relocation recovery contract is recorded in [ADR 0032](0032-cross-process-cache-refresh-recovery.md).
 The persistent collector and durable usage-ledger contract is recorded in [ADR 0033](0033-persistent-collector-and-durable-ledger.md).
 The Tauri native-app ownership and optional companion contract is recorded in [ADR 0034](0034-tauri-native-app-ownership.md).
+The verified local project-continuity contract is recorded in [ADR 0035](0035-verified-local-project-continuity.md).

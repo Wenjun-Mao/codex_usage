@@ -12,6 +12,10 @@ Codex session metadata can include a git repository URL, only a working director
 
 Use canonical project keys for grouping. Prefer JSONL git repository URL. If missing, resolve the local git origin from `cwd`. Normalize common HTTPS and SSH remotes. Fall back to normalized paths and keep aliases for backwards-compatible filtering.
 
+When a recorded repository URL disagrees with the origin of the same canonical
+local checkout, preserve the recorded identity unless ADR 0035's ancestry proof
+authorizes a verified replacement. A matching project name is never proof.
+
 ## Alternatives Considered
 
 - Group by display label. Easy, but merges unrelated projects with the same folder name.
@@ -24,5 +28,6 @@ Project breakdowns are more stable. Some cases, such as repo renames mid-convers
 
 ## Guardrails
 
-Do not merge by label alone. Keep aliases so old filters continue to work.
-
+Do not merge by label alone. Keep aliases so old filters continue to work. A
+local origin cannot replace recorded metadata without a recorded commit that is
+verified in that checkout's current history.

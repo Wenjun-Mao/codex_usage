@@ -44,6 +44,7 @@ class CacheRefreshOutcome:
     stats: CacheStats
     usage_run: ParallelRunReport
     affected_task_ids: frozenset[str]
+    rebased_project_task_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

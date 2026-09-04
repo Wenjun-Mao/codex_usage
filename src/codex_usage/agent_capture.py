@@ -91,7 +91,10 @@ def capture_once(
             preferred_paths=preferred_paths,
         )
         stats = outcome.stats
-        revision, _ = synchronize_parser_workset(ledger_path)
+        revision, _ = synchronize_parser_workset(
+            ledger_path,
+            force_normalized_ownership=bool(outcome.rebased_project_task_ids),
+        )
         status = load_ledger_status(ledger_path)
         _complete_capture(
             ledger_path,

@@ -29,11 +29,11 @@ from codex_usage.session_parser_events import (
     extract_effort as _extract_effort,
     extract_model as _extract_model,
     extract_repo_path_candidates as _extract_repo_path_candidates,
-    inherit_parent_project_identity as _inherit_parent_project_identity,
     parse_json_line as _parse_json_line,
     parse_session_metadata as _parse_session_metadata,
     parse_timestamp,
 )
+from codex_usage.session_project_lineage import finalize_session_records
 from codex_usage.session_chunk_reader import read_candidate_row
 from codex_usage.session_row_relevance import (
     CHECKPOINT_DIGEST_BYTES,
@@ -71,32 +71,6 @@ class _PartialSessionGenerationReadError(OSError):
 
 def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
     return finalize_session_records([parse_session_file(path) for path in paths])
-
-
-def finalize_session_records(
-    records_by_file: Iterable[list[UsageRecord]],
-    *,
-    identity_records: Iterable[UsageRecord] = (),
-) -> list[UsageRecord]:
-    grouped = list(records_by_file)
-    identity_by_session: dict[str, UsageRecord] = {}
-    for file_records in grouped:
-        for record in file_records:
-            if record.git_repository_url:
-                identity_by_session[record.session_id] = record
-    for record in identity_records:
-        if record.git_repository_url:
-            identity_by_session[record.session_id] = record
-
-    records: list[UsageRecord] = []
-    for file_records in grouped:
-        for record in file_records:
-            parent_identity = identity_by_session.get(record.parent_thread_id)
-            if parent_identity is not None and not record.git_repository_url:
-                records.append(_inherit_parent_project_identity(record, parent_identity))
-            else:
-                records.append(record)
-    return records
 
 
 def parse_session_file(path: Path) -> list[UsageRecord]:
@@ -378,7 +352,12 @@ def _parse_session_chunk(
                         project_label=project_identity.label,
                         project_aliases=project_identity.aliases,
                         cwd=metadata.cwd,
-                        git_repository_url=metadata.git_repository_url or project_identity.git_repository_url,
+                        git_repository_url=(
+                            project_identity.git_repository_url
+                            if project_identity.uses_current_checkout_origin
+                            else metadata.git_repository_url
+                            or project_identity.git_repository_url
+                        ),
                         git_branch=metadata.git_branch,
                         parent_thread_id=metadata.parent_thread_id,
                     )

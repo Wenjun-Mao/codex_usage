@@ -38,6 +38,9 @@ from codex_usage.session_cache_ownership import (
     is_reusable,
     promote_cached_session_owners,
 )
+from codex_usage.session_cache_project_identity import (
+    refresh_cached_project_identities,
+)
 from codex_usage.session_cache_requests import (
     assert_current_append_checkpoint as _assert_current_append_checkpoint,
     eligible_append_checkpoint as _eligible_append_checkpoint,
@@ -160,6 +163,11 @@ def refresh_files(
     _dedupe_inventory_by_cached_session_id(
         inventory, _load_cached_rows(connection)
     )
+    rebased_project_task_ids = refresh_cached_project_identities(
+        connection,
+        inventory,
+    )
+    affected_task_ids.update(rebased_project_task_ids)
 
     missing_count = int(
         connection.execute(
@@ -207,6 +215,7 @@ def refresh_files(
         stats=stats,
         usage_run=report,
         affected_task_ids=frozenset(affected_task_ids),
+        rebased_project_task_ids=rebased_project_task_ids,
     )
 
 
