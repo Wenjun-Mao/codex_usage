@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.0.1 - 2026-09-04 - Live Baseline Progress
+
+- Refreshed an open Usage dashboard automatically when the collector advances the ledger or baseline coverage, replacing stale partial-baseline notices without requiring **Refresh**.
+- Kept the 30-second automatic refresh quiet and ledger-only, and retained the last good dashboard if a background refresh fails.
+
 ## 2.0.0 - 2026-09-04 - Standalone Durable Ledger
 
 - Rebuilt the extension as standalone macOS Apple Silicon and Windows x64 packages, each bundling its matching parent-bound local collector; the native app, Python, `uv`, and a source checkout are not required.

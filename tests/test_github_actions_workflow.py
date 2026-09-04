@@ -124,7 +124,7 @@ def test_platform_vsix_packages_are_built_and_published_independently() -> None:
 
 
 def test_preview_artifacts_include_hash_based_integrity_metadata(tmp_path: Path) -> None:
-    version = "2.0.0"
+    version = "2.0.1"
     for platform, pattern in PREVIEW_ARTIFACTS.items():
         artifact_name = pattern.format(version=version)
         artifact = tmp_path / artifact_name
@@ -159,7 +159,7 @@ def test_preview_artifacts_include_hash_based_integrity_metadata(tmp_path: Path)
         )
 
 
-def test_release_metadata_is_consistently_2_0_0() -> None:
+def test_release_metadata_is_consistently_2_0_1() -> None:
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -192,7 +192,7 @@ def test_release_metadata_is_consistently_2_0_0() -> None:
         cargo["package"]["version"],
         rust_package["version"],
     }
-    assert versions == {"2.0.0"}
+    assert versions == {"2.0.1"}
     assert "scripts" not in pyproject["project"]
     assert "preview" not in extension
 

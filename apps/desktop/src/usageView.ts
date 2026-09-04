@@ -3,6 +3,7 @@ import { escapeHtml } from "./format";
 import type { AppState } from "./state";
 import type { RenderedReport } from "./types";
 import { errorMessage, refreshIcons, showToast } from "./ui";
+import { usageStatusFingerprint } from "./usageRefreshPolicy";
 
 const ranges = [
   ["today", "Today"],
@@ -35,36 +36,47 @@ export async function renderUsageView(root: HTMLElement, state: AppState): Promi
   refreshIcons(root);
   root.querySelector<HTMLSelectElement>("#usage-range")!.addEventListener("change", async (event) => {
     state.range = (event.currentTarget as HTMLSelectElement).value;
-    await loadReport(root, state);
+    await refreshUsageReport(root, state);
   });
   root.querySelector<HTMLButtonElement>("#usage-project-filter")!.addEventListener("click", () => {
     openProjectFilter(root, state);
   });
-  await loadReport(root, state);
+  await refreshUsageReport(root, state);
 }
 
-async function loadReport(root: HTMLElement, state: AppState): Promise<void> {
+export async function refreshUsageReport(
+  root: HTMLElement,
+  state: AppState,
+  options: { showLoading?: boolean } = {},
+): Promise<void> {
   const loading = root.querySelector<HTMLElement>("#report-loading");
   const frame = root.querySelector<HTMLIFrameElement>("#usage-report");
   const diagnostics = root.querySelector<HTMLElement>("#report-diagnostics");
   if (!loading || !frame || !diagnostics) return;
-  loading.hidden = false;
-  frame.hidden = true;
+  const showLoading = options.showLoading ?? true;
+  if (showLoading) {
+    loading.hidden = false;
+    frame.hidden = true;
+  }
   try {
     const query = new URLSearchParams({ range: state.range, theme: state.settings.theme });
     for (const key of state.selectedProjectKeys) query.append("project_key", key);
     const report = await agentRequest<RenderedReport>({ method: "GET", path: `/v1/report?${query}` });
     frame.srcdoc = report.html;
     frame.hidden = false;
+    root.dataset.usageStatusFingerprint = usageStatusFingerprint(report.status);
+    root.dataset.usageRenderedAt = String(Date.now());
     const cacheLabel = report.cache_hit ? "render cache" : "ledger query";
     diagnostics.textContent = `Loaded in ${report.elapsed_seconds.toFixed(2)} seconds from ${cacheLabel} · Ledger revision ${report.ledger_revision}`;
     renderCoverage(root, report.status.coverage);
   } catch (error) {
-    frame.srcdoc = "";
-    showToast(`Could not load usage: ${errorMessage(error)}`, "error");
-    diagnostics.textContent = "Usage report unavailable.";
+    if (showLoading) {
+      frame.srcdoc = "";
+      showToast(`Could not load usage: ${errorMessage(error)}`, "error");
+      diagnostics.textContent = "Usage report unavailable.";
+    }
   } finally {
-    loading.hidden = true;
+    if (showLoading) loading.hidden = true;
   }
 }
 
@@ -99,7 +111,7 @@ function openProjectFilter(root: HTMLElement, state: AppState): void {
       state.selectedProjectKeys = all.checked ? [] : projectChecks.filter((input) => input.checked).map((input) => input.value);
       const button = root.querySelector<HTMLElement>("#usage-project-filter span");
       if (button) button.textContent = projectLabel(state);
-      await loadReport(root, state);
+      await refreshUsageReport(root, state);
     }
     dialog.remove();
   });

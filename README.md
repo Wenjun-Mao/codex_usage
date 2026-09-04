@@ -44,7 +44,7 @@ macOS Gatekeeper or Windows SmartScreen may warn because the builds are not
 Developer ID notarized or Authenticode signed. The native preview is not needed
 for any extension command.
 
-Intel macOS, Windows ARM64, and Linux are not supported in 2.0.0.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.0 release line.
 
 ## Native App First Run
 

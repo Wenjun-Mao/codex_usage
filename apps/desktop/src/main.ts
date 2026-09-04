@@ -16,11 +16,14 @@ import { renderStorageView } from "./storageView";
 import { renderTransferView } from "./transferView";
 import type { AgentHealth, AgentSettings, AgentStatus, ProjectSummary, ViewName } from "./types";
 import { confirmDialog, errorMessage, refreshIcons, setBusy, showToast } from "./ui";
-import { renderUsageView } from "./usageView";
+import { refreshUsageReport, renderUsageView } from "./usageView";
+import { usageReportNeedsRefresh } from "./usageRefreshPolicy";
 
 const app = document.querySelector<HTMLElement>("#app")!;
 let state: AppState | null = null;
 let statusTimer = 0;
+
+const USAGE_AUTO_REFRESH_INTERVAL_MS = 30_000;
 
 void boot();
 
@@ -114,8 +117,19 @@ async function captureNow(): Promise<void> {
 async function refreshStatus(): Promise<void> {
   if (!state) return;
   try {
-    state.status = await agentRequest<AgentStatus>({ method: "GET", path: "/v1/status" });
+    const status = await agentRequest<AgentStatus>({ method: "GET", path: "/v1/status" });
+    state.status = status;
     renderAgentStatus();
+    const root = app.querySelector<HTMLElement>("#view-root");
+    if (root?.dataset.view === "usage") {
+      const renderedAt = Number(root.dataset.usageRenderedAt || 0);
+      if (
+        Date.now() - renderedAt >= USAGE_AUTO_REFRESH_INTERVAL_MS
+        && usageReportNeedsRefresh(root.dataset.usageStatusFingerprint, status)
+      ) {
+        await refreshUsageReport(root, state, { showLoading: false });
+      }
+    }
   } catch (error) {
     const indicator = app.querySelector<HTMLElement>("#agent-indicator");
     if (indicator) {

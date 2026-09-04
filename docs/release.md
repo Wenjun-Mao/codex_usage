@@ -13,7 +13,7 @@ update channel. Linux, Intel macOS, and Windows ARM64 are not release targets.
 
 - `VSCE_PAT` with Manage permission for publisher `wenjun-mao`.
 
-The 2.0.0 workflow has no Apple Developer, Azure Artifact Signing, or Tauri
+The 2.0 release workflow has no Apple Developer, Azure Artifact Signing, or Tauri
 updater-signing dependency.
 
 ## Local Gates
@@ -117,16 +117,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.0.0`, both
-changelogs have a dated `2.0.0` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.0.1`, both
+changelogs have a dated `2.0.1` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.0.0`. Create and push that
+The only valid release tag for this version is `v2.0.1`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.0.0
-git push origin v2.0.0
+git tag v2.0.1
+git push origin v2.0.1
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -140,8 +140,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.0.0-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.0.0-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.0.1-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.0.1-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

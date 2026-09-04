@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.0.1 - 2026-09-04 - Live Baseline Progress
+
+- Refreshed open Usage views automatically as the durable ledger revision or baseline coverage advances, so partial-baseline notices and totals no longer remain frozen until a manual refresh.
+- Kept automatic report refreshes ledger-only, quiet, and bounded to a 30-second cadence while preserving the last good report after transient background failures.
+- Used the native client's lightweight status poll to trigger coherent report-and-baseline updates without reopening Codex JSONL files.
+
 ## 2.0.0 - 2026-09-04 - Durable Ledger And Standalone Clients
 
 - Added a forward-migrated durable SQLite ledger for persistent history and one authenticated local collector with 15-minute default capture, configurable 1-1,440 minute or Manual Only scheduling, Capture Now coalescing, watcher reconciliation, bounded append reads, and resumable stale-source reconstruction.

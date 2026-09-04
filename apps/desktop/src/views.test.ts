@@ -4,6 +4,7 @@ import type { AppState } from "./state";
 import { renderStorageView } from "./storageView";
 import { renderTransferView, resetTransferSelection } from "./transferView";
 import { renderUsageView } from "./usageView";
+import { usageReportNeedsRefresh, usageStatusFingerprint } from "./usageRefreshPolicy";
 
 function appState(): AppState {
   return {
@@ -107,5 +108,28 @@ describe("native views", () => {
     expect(root.querySelector("#report-diagnostics")?.textContent).toContain(
       "Ledger revision 82",
     );
+    expect(JSON.parse(root.dataset.usageStatusFingerprint ?? "[]")[0]).toBe(82);
+  });
+
+  test("Usage refresh policy notices baseline progress without reacting to timers", () => {
+    const rendered = appState().status;
+    const fingerprint = usageStatusFingerprint(rendered);
+
+    expect(usageReportNeedsRefresh(fingerprint, rendered)).toBe(false);
+    expect(usageReportNeedsRefresh(fingerprint, {
+      ...rendered,
+      next_capture_seconds: 885,
+    })).toBe(false);
+    expect(usageReportNeedsRefresh(fingerprint, {
+      ...rendered,
+      ledger_revision: 83,
+      coverage: {
+        ...rendered.coverage,
+        complete: false,
+        fraction: 0.75,
+        pending_files: 1,
+        pending_bytes: 25,
+      },
+    })).toBe(true);
   });
 });

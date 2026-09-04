@@ -27,7 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.0.0. The optional native app is an unsigned,
+Linux are not supported in the 2.0 release line. The optional native app is an unsigned,
 self-contained native app preview with its own background collector and full
 native UI, but it is not required for Companion commands. Its CI artifacts
 include SHA-256 integrity metadata; the operating system may display an

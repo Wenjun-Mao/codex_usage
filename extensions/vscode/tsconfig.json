@@ -23,6 +23,7 @@
     "src/storageClient.ts",
     "src/taskTransferContract.ts",
     "src/taskTransferClient.ts",
-    "src/types.ts"
+    "src/types.ts",
+    "src/usageRefreshPolicy.ts"
   ]
 }

@@ -8,6 +8,7 @@ import { captureIntervalChoices, captureScheduleMessage, collectorSetupChoices, 
 import { StorageClient } from "./storageClient";
 import { TaskTransferClient } from "./taskTransferClient";
 import type { AgentSettings, AgentStatus, ProjectSummary, RenderedReport, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
+import { usageReportNeedsRefresh, usageStatusFingerprint } from "./usageRefreshPolicy";
 
 const RANGE_VALUES: readonly ReportRange[] = ["today", "yesterday", "7d", "30d", "month", "all"];
 const THEME_VALUES: readonly ReportTheme[] = ["auto", "day", "night"];
@@ -22,6 +23,9 @@ let taskTransferClient: TaskTransferClient;
 let activeView: ReportView = "usage";
 let refreshSerial = 0;
 let statusTimer: NodeJS.Timeout | undefined;
+let renderedUsageFingerprint: string | undefined;
+
+const STATUS_REFRESH_INTERVAL_MS = 30_000;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   contextRef = context;
@@ -42,7 +46,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     statusItem,
     vscode.commands.registerCommand("codexUsage.openDashboard", openDashboard),
-    vscode.commands.registerCommand("codexUsage.refreshDashboard", refreshVisibleDashboard),
+    vscode.commands.registerCommand("codexUsage.refreshDashboard", () => refreshVisibleDashboard()),
     vscode.commands.registerCommand("codexUsage.captureNow", captureNow),
     vscode.commands.registerCommand("codexUsage.selectRange", selectRange),
     vscode.commands.registerCommand("codexUsage.selectProjects", selectProjects),
@@ -63,7 +67,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
   await refreshStatus(false);
-  statusTimer = setInterval(() => void refreshStatus(false), 60_000);
+  statusTimer = setInterval(() => void refreshStatus(false), STATUS_REFRESH_INTERVAL_MS);
 }
 
 export function deactivate(): void {
@@ -79,19 +83,27 @@ async function openDashboard(): Promise<void> {
       localResourceRoots: [],
       retainContextWhenHidden: true,
     });
-    panel.onDidDispose(() => { panel = undefined; }, null, contextRef.subscriptions);
+    panel.onDidDispose(() => {
+      panel = undefined;
+      renderedUsageFingerprint = undefined;
+    }, null, contextRef.subscriptions);
   } else {
     panel.reveal(vscode.ViewColumn.One);
   }
   await refreshVisibleDashboard();
 }
 
-async function refreshVisibleDashboard(): Promise<void> {
+async function refreshVisibleDashboard(
+  options: { showLoading?: boolean } = {},
+): Promise<void> {
   if (!panel) return;
+  const showLoading = options.showLoading ?? true;
   const target = panel;
   const requestId = ++refreshSerial;
-  target.webview.html = renderLoading(activeView === "usage" ? "Loading usage from the local ledger" : "Checking Task Storage metadata", target.webview.cspSource);
-  const client = await acquireAgentClient(true);
+  if (showLoading) {
+    target.webview.html = renderLoading(activeView === "usage" ? "Loading usage from the local ledger" : "Checking Task Storage metadata", target.webview.cspSource);
+  }
+  const client = await acquireAgentClient(showLoading);
   if (!client || !panel || panel !== target || requestId !== refreshSerial) return;
   const started = performance.now();
   try {
@@ -101,6 +113,7 @@ async function refreshVisibleDashboard(): Promise<void> {
       for (const key of selectedProjects()) query.append("project_key", key);
       const report = await client.get<RenderedReport>(`/v1/report?${query.toString()}`);
       if (panel === target && requestId === refreshSerial) {
+        renderedUsageFingerprint = usageStatusFingerprint(report.status);
         target.webview.html = decorateUsageReport(report.html, {
           ...controls,
           loadedSeconds: report.elapsed_seconds,
@@ -122,8 +135,10 @@ async function refreshVisibleDashboard(): Promise<void> {
       }
     }
   } catch (error) {
-    if (panel === target && requestId === refreshSerial) {
+    if (showLoading && panel === target && requestId === refreshSerial) {
       target.webview.html = renderError(errorMessage(error), target.webview.cspSource);
+    } else {
+      output.appendLine(`[dashboard] Automatic refresh failed: ${errorMessage(error)}`);
     }
   }
 }
@@ -139,7 +154,7 @@ async function captureNow(): Promise<void> {
     );
     if (result.outcome !== "success") throw new Error("The collector reported a failed capture.");
     void vscode.window.showInformationMessage(`Codex usage captured in ${result.elapsed_seconds.toFixed(1)} seconds.`);
-    await refreshStatus(false);
+    await refreshStatus(false, false);
     await refreshVisibleDashboard();
   } catch (error) {
     void vscode.window.showErrorMessage(`Codex Usage capture failed: ${errorMessage(error)}`);
@@ -324,7 +339,7 @@ async function migrateLegacyUsage(client: AgentClient): Promise<void> {
     },
     () => client.post<LegacyMigrationResult>("/v1/migration/run", { precedence }),
   );
-  await refreshStatus(false);
+  await refreshStatus(false, false);
   await refreshVisibleDashboard();
   void vscode.window.showInformationMessage(
     `Migration complete: ${result.imported_caches} imported, ${result.skipped_caches} already present.`,
@@ -346,7 +361,10 @@ async function launchNativeApp(interactive: boolean): Promise<void> {
   }
 }
 
-async function refreshStatus(interactive: boolean): Promise<void> {
+async function refreshStatus(
+  interactive: boolean,
+  refreshDashboard = true,
+): Promise<void> {
   const client = await acquireAgentClient(interactive);
   if (!client) {
     statusItem.text = "$(tools) Codex Usage: Setup Required";
@@ -357,6 +375,15 @@ async function refreshStatus(interactive: boolean): Promise<void> {
     const status = await client.get<AgentStatus>("/v1/status");
     statusItem.text = status.capture_running ? "$(sync~spin) Codex Usage: Capturing" : `$(pulse) Codex Usage: ${relativeCapture(status.last_capture_at)}`;
     statusItem.tooltip = `${status.coverage.pending_files.toLocaleString()} files pending · ${status.coverage.stale_sources.toLocaleString()} stale sources · Ledger revision ${status.ledger_revision}\nScheduled capture runs only while VS Code is open unless the optional native app has installed background capture.`;
+    if (
+      panel
+      && panel.visible
+      && activeView === "usage"
+      && refreshDashboard
+      && usageReportNeedsRefresh(renderedUsageFingerprint, status)
+    ) {
+      await refreshVisibleDashboard({ showLoading: false });
+    }
   } catch (error) {
     statusItem.text = "$(warning) Codex Usage: Unavailable";
     statusItem.tooltip = errorMessage(error);
@@ -368,7 +395,7 @@ function controlState(): Pick<Parameters<typeof decorateUsageReport>[1], "range"
     range: reportRange(),
     theme: reportTheme(),
     projectCount: selectedProjects().length,
-    version: String(contextRef.extension.packageJSON.version ?? "2.0.0"),
+    version: String(contextRef.extension.packageJSON.version ?? "2.0.1"),
   };
 }
 

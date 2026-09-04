@@ -52,7 +52,7 @@ directly.
 ## Network Activity
 
 The native preview retains a user-controlled GitHub update-check setting, but
-2.0.0 does not publish an automatic native update channel. The VS Code extension
+The 2.0 release line does not publish an automatic native update channel. The VS Code extension
 can open the distribution-workflow page when the user explicitly asks to find a
 missing native preview. Marketplace extension updates are handled by VS Code.
 
