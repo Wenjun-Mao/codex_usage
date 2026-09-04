@@ -106,7 +106,12 @@ These controls query SQLite only. The reload icon re-queries the ledger without
 capturing task files; **Capture Usage** is the separate action that updates the
 ledger. The report shows generation time and whether its rendered-result cache was used.
 Pricing is bundled and effective-dated; the app makes no live pricing request.
-Estimates are not an OpenAI invoice and do not know the price of your plan.
+The bundled table recognizes GPT-6 Astra, including its cache-write and
+long-context API rates, from the first verified availability date. Credit
+estimates use published standard token rates; Codex Usage does not infer
+plan-specific or Fast-mode multipliers because task records do not identify
+them reliably. Estimates are not an OpenAI invoice and do not know the price of
+your plan.
 
 ## Task Storage
 

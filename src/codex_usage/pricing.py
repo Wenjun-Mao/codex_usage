@@ -8,7 +8,7 @@ from functools import cache
 from codex_usage.models import TokenUsage
 
 
-PRICING_AS_OF = "2026-08-22"
+PRICING_AS_OF = "2026-09-04"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
@@ -25,6 +25,8 @@ GPT_5_6_SOL_API_REDUCTION_EFFECTIVE_FROM = datetime(
     22,
     tzinfo=UTC,
 )
+GPT_6_ASTRA_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
+GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -73,7 +75,7 @@ class RequestPricingContract:
 
 
 STANDARD_REQUEST_PRICING = RequestPricingContract()
-GPT_5_6_API_LONG_CONTEXT_PRICING = RequestPricingContract(
+LARGE_CONTEXT_API_PRICING = RequestPricingContract(
     long_context_pricing=RequestLevelLongContextPricing(
         input_token_threshold=272_000,
         input_rate_multiplier=2.0,
@@ -190,6 +192,15 @@ def _effective_rate(
 
 API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
     _effective_rate(
+        "gpt-6-astra",
+        input_per_1m=10.00,
+        cached_input_per_1m=1.00,
+        output_per_1m=50.00,
+        cache_write_input_per_1m=12.50,
+        effective_from=GPT_6_ASTRA_PRICING_EFFECTIVE_FROM,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
+    ),
+    _effective_rate(
         "gpt-5.6-sol",
         input_per_1m=5.00,
         cached_input_per_1m=0.50,
@@ -197,7 +208,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         cache_write_input_per_1m=6.25,
         effective_from=GPT_5_6_API_EFFECTIVE_FROM,
         aliases=("gpt-5.6",),
-        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
     ),
     _effective_rate(
         "gpt-5.6-terra",
@@ -206,7 +217,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         output_per_1m=15.00,
         cache_write_input_per_1m=3.125,
         effective_from=GPT_5_6_API_EFFECTIVE_FROM,
-        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
     ),
     _effective_rate(
         "gpt-5.6-luna",
@@ -215,7 +226,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         output_per_1m=6.00,
         cache_write_input_per_1m=1.25,
         effective_from=GPT_5_6_API_EFFECTIVE_FROM,
-        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
     ),
     _effective_rate(
         "gpt-5.6-terra",
@@ -224,7 +235,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         output_per_1m=12.00,
         cache_write_input_per_1m=2.50,
         effective_from=GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM,
-        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
     ),
     _effective_rate(
         "gpt-5.6-luna",
@@ -233,7 +244,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         output_per_1m=1.20,
         cache_write_input_per_1m=0.25,
         effective_from=GPT_5_6_TERRA_LUNA_API_REDUCTION_EFFECTIVE_FROM,
-        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
     ),
     _effective_rate(
         "gpt-5.6-sol",
@@ -243,7 +254,7 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         cache_write_input_per_1m=5.00,
         effective_from=GPT_5_6_SOL_API_REDUCTION_EFFECTIVE_FROM,
         aliases=("gpt-5.6",),
-        request_pricing_contract=GPT_5_6_API_LONG_CONTEXT_PRICING,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
     ),
     _effective_rate("gpt-5.5", input_per_1m=5.00, cached_input_per_1m=0.50, output_per_1m=30.00),
     _effective_rate("gpt-5.4-mini", input_per_1m=0.75, cached_input_per_1m=0.075, output_per_1m=4.50),
@@ -253,6 +264,13 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = (
 )
 
 CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate(
+        "gpt-6-astra",
+        input_per_1m=250.0,
+        cached_input_per_1m=25.0,
+        output_per_1m=1_250.0,
+        effective_from=GPT_6_ASTRA_PRICING_EFFECTIVE_FROM,
+    ),
     _effective_rate(
         "gpt-5.6-sol",
         input_per_1m=125.0,
@@ -274,6 +292,28 @@ CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         cached_input_per_1m=2.5,
         output_per_1m=150.0,
         effective_from=GPT_5_6_CREDIT_EFFECTIVE_FROM,
+    ),
+    _effective_rate(
+        "gpt-5.6-sol",
+        input_per_1m=100.0,
+        cached_input_per_1m=10.0,
+        output_per_1m=500.0,
+        effective_from=GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM,
+        aliases=("gpt-5.6",),
+    ),
+    _effective_rate(
+        "gpt-5.6-terra",
+        input_per_1m=50.0,
+        cached_input_per_1m=5.0,
+        output_per_1m=300.0,
+        effective_from=GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM,
+    ),
+    _effective_rate(
+        "gpt-5.6-luna",
+        input_per_1m=5.0,
+        cached_input_per_1m=0.5,
+        output_per_1m=30.0,
+        effective_from=GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM,
     ),
     _effective_rate("gpt-5.5", input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0),
     _effective_rate("gpt-5.4-mini", input_per_1m=18.75, cached_input_per_1m=1.875, output_per_1m=113.0),

@@ -294,5 +294,5 @@ def test_terra_and_luna_reduced_long_context_costs(
     assert cost.total_usd == pytest.approx(expected_total)
 
 
-def test_pricing_table_date_covers_sol_reduction() -> None:
-    assert pricing.PRICING_AS_OF == "2026-08-22"
+def test_pricing_table_date_covers_latest_verified_rates() -> None:
+    assert pricing.PRICING_AS_OF == "2026-09-04"

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.1.1 - 2026-09-04 - GPT-6 Astra Pricing
+
+- Added exact `gpt-6-astra` API-equivalent and standard Codex credit pricing from the first verified availability date, including cache-write and long-context API rates.
+- Updated the GPT-5.6 Sol, Terra, and Luna standard credit schedules from the newly published rate table while preserving earlier usage at its historical rates.
+- Kept plan-specific and Fast-mode multipliers out of estimates because local task records do not identify those billing contexts reliably.
+
 ## 2.1.0 - 2026-09-04 - Unified Dashboard UI
 
 - Renamed the visible collection action to **Capture Usage** and replaced the ambiguous toolbar **Refresh** action with a view-specific reload icon, while preserving existing command IDs.

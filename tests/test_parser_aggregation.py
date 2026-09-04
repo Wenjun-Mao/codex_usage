@@ -275,6 +275,45 @@ def test_gpt_5_6_sol_ultra_is_priced_by_model(tmp_path: Path) -> None:
     assert total.credits.unpriced_tokens == 0
 
 
+def test_gpt_6_astra_report_aggregation_preserves_the_pricing_boundary(
+    tmp_path: Path,
+) -> None:
+    usage = TokenUsage(
+        input_tokens=1_000_000,
+        output_tokens=100_000,
+        total_tokens=1_100_000,
+    )
+    records = [
+        UsageRecord(
+            timestamp=datetime(2026, 9, 3, 23, 59, 59, tzinfo=UTC),
+            usage=usage,
+            session_id="before-astra-pricing",
+            file_path=tmp_path / "before.jsonl",
+            usage_role=ROOT_USAGE_ROLE,
+            model="gpt-6-astra",
+        ),
+        UsageRecord(
+            timestamp=datetime(2026, 9, 4, tzinfo=UTC),
+            usage=usage,
+            session_id="after-astra-pricing",
+            file_path=tmp_path / "after.jsonl",
+            usage_role=ROOT_USAGE_ROLE,
+            model="gpt-6-astra",
+        ),
+    ]
+
+    total = summarize_records(records)
+    rows = aggregate_records(records, "model", UTC)
+
+    assert rows[0].key == "gpt-6-astra"
+    assert total.cost.total_usd == pytest.approx(27.5)
+    assert total.cost.unpriced_tokens == 1_100_000
+    assert total.credits.total_credits == pytest.approx(375.0)
+    assert total.credits.unpriced_tokens == 1_100_000
+    assert rows[0].cost == total.cost
+    assert rows[0].credits == total.credits
+
+
 def test_gpt_5_6_long_context_pricing_uses_request_delta_not_cumulative_session_total(
     tmp_path: Path,
 ) -> None:

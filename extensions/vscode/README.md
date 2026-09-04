@@ -96,6 +96,11 @@ tasks and structured subagents, then stacks each role by model. Side-chat usage
 remains under the parent root task where Codex does not store a durable role
 discriminator.
 
+Pricing is bundled and effective-dated. GPT-6 Astra is recognized by its exact
+model ID, including cache-write and long-context API pricing. Credit estimates
+use published standard token rates and intentionally omit plan-specific or
+Fast-mode multipliers because task records do not identify them reliably.
+
 The collector normally checks every configured interval. Unchanged cycles may
 inspect filesystem metadata but open zero JSONLs; ordinary growth reads only
 guard windows and the new tail. **Capture Usage** coalesces with existing capture
