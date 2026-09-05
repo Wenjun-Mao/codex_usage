@@ -34,6 +34,10 @@ def test_generator_targets_built_native_frontend_and_two_views() -> None:
     assert 'name="Token Usage"' in source
     assert 'name="Task Storage"' in source
     assert "frame_locator" in source
+    assert 'token_control.press("ArrowRight")' in source
+    assert 'cost_control.press("ArrowLeft")' in source
+    assert 'for theme in ("day", "night")' in source
+    assert "for viewport in (VIEWPORT, NARROW_VIEWPORT)" in source
 
 
 def test_native_fixture_is_deterministic_and_synthetic() -> None:

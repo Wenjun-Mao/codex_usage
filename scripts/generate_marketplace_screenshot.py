@@ -205,43 +205,72 @@ def _exercise_usage_chart_controls(page: Page) -> None:
     role_fill = frame.locator(
         '.role-fill[data-project-key="persona_generators"][data-role="subagent"]'
     )
-    token_box = role_fill.bounding_box()
-    if token_box is None:
-        raise RuntimeError("usage fixture is missing the project role scale probe")
     model_fill = frame.locator(".mix-fill.luna")
-    model_token_box = model_fill.bounding_box()
-    if model_token_box is None:
-        raise RuntimeError("usage fixture is missing the Model Mix scale probe")
+    token_control = frame.locator("#compare-scale-tokens")
+    cost_control = frame.locator("#compare-scale-cost")
 
-    frame.locator('label[for="compare-scale-cost"]').click()
-    if not frame.locator("#compare-scale-cost").is_checked():
-        raise RuntimeError("usage fixture did not select the API cost scale")
-    cost_box = role_fill.bounding_box()
-    if cost_box is None or abs(token_box["width"] - cost_box["width"]) < 4:
-        raise RuntimeError("usage fixture API cost scale did not change bar geometry")
-    model_cost_box = model_fill.bounding_box()
-    if (
-        model_cost_box is None
-        or abs(model_token_box["width"] - model_cost_box["width"]) < 4
-    ):
-        raise RuntimeError("usage fixture API cost scale did not change Model Mix geometry")
+    for theme in ("day", "night"):
+        page.evaluate(
+            "theme => { document.documentElement.dataset.theme = theme; }",
+            theme,
+        )
+        frame.locator("html").evaluate(
+            "(element, theme) => { element.dataset.codexTheme = theme; }",
+            theme,
+        )
+        for viewport in (VIEWPORT, NARROW_VIEWPORT):
+            _set_viewport(page, viewport)
+            if not token_control.is_checked():
+                raise RuntimeError("usage fixture did not start from the token scale")
+            token_box = role_fill.bounding_box()
+            model_token_box = model_fill.bounding_box()
+            if token_box is None:
+                raise RuntimeError("usage fixture is missing the project role scale probe")
+            if model_token_box is None:
+                raise RuntimeError("usage fixture is missing the Model Mix scale probe")
 
-    tracks = frame.locator(".mix-track")
-    track_boxes = [tracks.nth(index).bounding_box() for index in range(tracks.count())]
-    if not track_boxes or any(box is None for box in track_boxes):
-        raise RuntimeError("usage fixture is missing Model Mix tracks")
-    first = track_boxes[0]
-    assert first is not None
-    if any(
-        abs(box["x"] - first["x"]) > 1 or abs(box["width"] - first["width"]) > 1
-        for box in track_boxes[1:]
-        if box is not None
-    ):
-        raise RuntimeError("usage fixture Model Mix tracks do not share equal bounds")
+            token_control.focus()
+            token_control.press("ArrowRight")
+            if not cost_control.is_checked():
+                raise RuntimeError("usage fixture keyboard did not select API cost")
+            cost_box = role_fill.bounding_box()
+            if cost_box is None or abs(token_box["width"] - cost_box["width"]) < 4:
+                raise RuntimeError(
+                    "usage fixture API cost scale did not change bar geometry"
+                )
+            model_cost_box = model_fill.bounding_box()
+            if (
+                model_cost_box is None
+                or abs(model_token_box["width"] - model_cost_box["width"]) < 4
+            ):
+                raise RuntimeError(
+                    "usage fixture API cost scale did not change Model Mix geometry"
+                )
 
-    frame.locator('label[for="compare-scale-tokens"]').click()
-    if not frame.locator("#compare-scale-tokens").is_checked():
-        raise RuntimeError("usage fixture did not restore the token scale")
+            tracks = frame.locator(".mix-track")
+            track_boxes = [
+                tracks.nth(index).bounding_box() for index in range(tracks.count())
+            ]
+            if not track_boxes or any(box is None for box in track_boxes):
+                raise RuntimeError("usage fixture is missing Model Mix tracks")
+            first = track_boxes[0]
+            assert first is not None
+            if any(
+                abs(box["x"] - first["x"]) > 1
+                or abs(box["width"] - first["width"]) > 1
+                for box in track_boxes[1:]
+                if box is not None
+            ):
+                raise RuntimeError(
+                    "usage fixture Model Mix tracks do not share equal bounds"
+                )
+
+            cost_control.focus()
+            cost_control.press("ArrowLeft")
+            if not token_control.is_checked():
+                raise RuntimeError("usage fixture keyboard did not restore Tokens")
+
+    _set_viewport(page, VIEWPORT)
 
 
 def _reject_private_fixture_data(page: Page) -> None:
