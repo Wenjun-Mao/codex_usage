@@ -26,9 +26,12 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-Native frontend and Rust host:
+Build the macOS packaged sidecar before checking the native frontend and Rust
+host. Tauri validates its configured `externalBin` during Rust builds, so a
+fresh checkout must establish that prerequisite first, matching the CI job:
 
 ```bash
+./scripts/build-agent-macos-arm64.sh
 cd apps/desktop
 npm ci
 npm test
@@ -41,12 +44,6 @@ CI=true npm run tauri build -- --target aarch64-apple-darwin --bundles dmg --ci
 
 `CI=true` makes the local DMG path match GitHub Actions and skips Finder-only
 window styling, which is not available reliably from a noninteractive build.
-
-macOS packaged sidecar:
-
-```bash
-./scripts/build-agent-macos-arm64.sh
-```
 
 Standalone VS Code extension:
 
