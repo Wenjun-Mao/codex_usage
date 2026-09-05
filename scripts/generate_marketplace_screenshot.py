@@ -137,6 +137,7 @@ def capture_marketplace_screenshots(
             _wait_for_usage(page)
             _reject_private_fixture_data(page)
             _exercise_theme_modes(page, view="usage")
+            _exercise_usage_chart_controls(page)
             page.screenshot(path=str(usage_path), full_page=False)
 
             page.get_by_role("button", name="Task Storage", exact=True).click()
@@ -197,6 +198,40 @@ def _exercise_theme_modes(page: Page, *, view: str) -> None:
     if colors["day"] == colors["night"]:
         raise RuntimeError(f"{view} day and night themes render the same background")
     _set_viewport(page, VIEWPORT)
+
+
+def _exercise_usage_chart_controls(page: Page) -> None:
+    frame = page.frame_locator("#usage-report")
+    role_fill = frame.locator(
+        '.role-fill[data-project-key="persona_generators"][data-role="subagent"]'
+    )
+    token_box = role_fill.bounding_box()
+    if token_box is None:
+        raise RuntimeError("usage fixture is missing the project role scale probe")
+
+    frame.locator('label[for="project-scale-cost"]').click()
+    if not frame.locator("#project-scale-cost").is_checked():
+        raise RuntimeError("usage fixture did not select the API cost scale")
+    cost_box = role_fill.bounding_box()
+    if cost_box is None or abs(token_box["width"] - cost_box["width"]) < 4:
+        raise RuntimeError("usage fixture API cost scale did not change bar geometry")
+
+    tracks = frame.locator(".mix-track")
+    track_boxes = [tracks.nth(index).bounding_box() for index in range(tracks.count())]
+    if not track_boxes or any(box is None for box in track_boxes):
+        raise RuntimeError("usage fixture is missing Model Mix tracks")
+    first = track_boxes[0]
+    assert first is not None
+    if any(
+        abs(box["x"] - first["x"]) > 1 or abs(box["width"] - first["width"]) > 1
+        for box in track_boxes[1:]
+        if box is not None
+    ):
+        raise RuntimeError("usage fixture Model Mix tracks do not share equal bounds")
+
+    frame.locator('label[for="project-scale-tokens"]').click()
+    if not frame.locator("#project-scale-tokens").is_checked():
+        raise RuntimeError("usage fixture did not restore the token scale")
 
 
 def _reject_private_fixture_data(page: Page) -> None:

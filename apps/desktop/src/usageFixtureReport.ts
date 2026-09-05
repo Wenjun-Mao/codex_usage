@@ -54,16 +54,27 @@ body {
 h2 { margin: 0 0 4px; font-size: 17px; }
 .help { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
 .project-scroll { overflow-x: auto; }
+.scale-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .scale-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-bottom: 9px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .scale-options { display: inline-flex; overflow: hidden; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
-.scale-options span { min-width: 58px; padding: 4px 8px; text-align: center; }
-.scale-options span + span { border-left: 1px solid var(--line); }
-.scale-options .selected { background: var(--soft); color: var(--text); }
+.scale-options label { min-width: 58px; padding: 4px 8px; cursor: pointer; text-align: center; }
+.scale-options label + label { border-left: 1px solid var(--line); }
+#project-scale-tokens:checked ~ .scale-toolbar label[for="project-scale-tokens"],
+#project-scale-cost:checked ~ .scale-toolbar label[for="project-scale-cost"] { background: var(--soft); color: var(--text); }
+#project-scale-tokens:focus-visible ~ .scale-toolbar label[for="project-scale-tokens"],
+#project-scale-cost:focus-visible ~ .scale-toolbar label[for="project-scale-cost"] { outline: 2px solid var(--astra); outline-offset: -2px; }
 .project-grid { display: grid; grid-template-columns: 145px minmax(210px, 1fr) minmax(170px, .65fr) 185px; gap: 8px 16px; align-items: center; }
 .column { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .project { text-align: right; }
 .role-metric { font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.track { display: flex; height: 30px; overflow: hidden; border-radius: 4px; background: var(--soft); }
+.track { height: 30px; overflow: hidden; border-radius: 4px; background: var(--soft); }
+.role-fill { display: flex; width: var(--token-width); height: 100%; overflow: hidden; border-radius: 4px; }
+.segment { display: block; flex: 0 0 auto; width: var(--token-width); height: 100%; }
+.cost-share { display: none; }
+#project-scale-cost:checked ~ .project-grid .role-fill,
+#project-scale-cost:checked ~ .project-grid .segment { width: var(--cost-width); }
+#project-scale-cost:checked ~ .project-grid .token-share { display: none; }
+#project-scale-cost:checked ~ .project-grid .cost-share { display: inline; }
 .astra { background: var(--astra); }
 .sol { background: var(--sol); }
 .terra { background: var(--terra); }
@@ -102,20 +113,22 @@ h2 { margin: 0 0 4px; font-size: 17px; }
   <h2>Project Breakdown</h2>
   <p class="help">Root task token usage includes side chats stored in the parent task.</p>
   <div class="project-scroll">
-    <div class="scale-toolbar"><span>Scale bars by</span><span class="scale-options"><span class="selected">Tokens</span><span>API cost</span></span></div>
+    <input class="scale-input" type="radio" name="project-scale" id="project-scale-tokens" value="tokens" checked>
+    <input class="scale-input" type="radio" name="project-scale" id="project-scale-cost" value="cost">
+    <div class="scale-toolbar"><span>Scale bars by</span><span class="scale-options" role="group" aria-label="Project bar scale"><label for="project-scale-tokens">Tokens</label><label for="project-scale-cost">API cost</label></span></div>
     <div class="project-grid">
       <span class="column project">Project</span><span class="column">Root tasks</span><span class="column">Subagents</span><span class="column">Total</span>
       <strong class="project">uk_dev</strong>
-      <div><div class="role-metric">371.3M · $190.40 · 70.0%</div><div class="track"><span class="astra" style="width:4%"></span><span class="sol" style="width:72%"></span><span class="terra" style="width:24%"></span></div></div>
-      <div><div class="role-metric">159.1M · $67.89 · 30.0%</div><div class="track"><span class="terra" style="width:82%"></span><span class="luna" style="width:18%"></span></div></div>
+      <div><div class="role-metric">371.3M · $190.40 · <span class="token-share">70.0%</span><span class="cost-share">73.7%</span></div><div class="track"><div class="role-fill" data-project-key="uk_dev" data-role="root" style="--token-width:100%;--cost-width:100%"><span class="segment astra" style="--token-width:4%;--cost-width:10%"></span><span class="segment sol" style="--token-width:72%;--cost-width:75%"></span><span class="segment terra" style="--token-width:24%;--cost-width:15%"></span></div></div></div>
+      <div><div class="role-metric">159.1M · $67.89 · <span class="token-share">30.0%</span><span class="cost-share">26.3%</span></div><div class="track"><div class="role-fill" data-project-key="uk_dev" data-role="subagent" style="--token-width:100%;--cost-width:100%"><span class="segment terra" style="--token-width:82%;--cost-width:95%"></span><span class="segment luna" style="--token-width:18%;--cost-width:5%"></span></div></div></div>
       <span class="total">530.4M · $258.29 · 8,181 cr</span>
       <strong class="project">codex_usage</strong>
-      <div><div class="role-metric">164.2M · $85.22 · 81.4%</div><div class="track"><span class="astra" style="width:3%"></span><span class="sol" style="width:59%"></span><span class="terra" style="width:38%"></span></div></div>
-      <div><div class="role-metric">37.4M · $11.90 · 18.6%</div><div class="track"><span class="terra" style="width:100%"></span></div></div>
+      <div><div class="role-metric">164.2M · $85.22 · <span class="token-share">81.4%</span><span class="cost-share">87.7%</span></div><div class="track"><div class="role-fill" data-project-key="codex_usage" data-role="root" style="--token-width:44.22%;--cost-width:44.76%"><span class="segment astra" style="--token-width:3%;--cost-width:8%"></span><span class="segment sol" style="--token-width:59%;--cost-width:75%"></span><span class="segment terra" style="--token-width:38%;--cost-width:17%"></span></div></div></div>
+      <div><div class="role-metric">37.4M · $11.90 · <span class="token-share">18.6%</span><span class="cost-share">12.3%</span></div><div class="track"><div class="role-fill" data-project-key="codex_usage" data-role="subagent" style="--token-width:23.51%;--cost-width:17.53%"><span class="segment terra" style="--token-width:100%;--cost-width:100%"></span></div></div></div>
       <span class="total">201.6M · $97.12 · 3,044 cr</span>
       <strong class="project">persona_generators</strong>
-      <div><div class="role-metric">107.5M · $79.02 · 62.5%</div><div class="track"><span class="sol" style="width:100%"></span></div></div>
-      <div><div class="role-metric">64.4M · $3.02 · 37.5%</div><div class="track"><span class="luna" style="width:100%"></span></div></div>
+      <div><div class="role-metric">107.5M · $79.02 · <span class="token-share">62.5%</span><span class="cost-share">96.3%</span></div><div class="track"><div class="role-fill" data-project-key="persona_generators" data-role="root" style="--token-width:28.95%;--cost-width:41.50%"><span class="segment sol" style="--token-width:100%;--cost-width:100%"></span></div></div></div>
+      <div><div class="role-metric">64.4M · $3.02 · <span class="token-share">37.5%</span><span class="cost-share">3.7%</span></div><div class="track"><div class="role-fill" data-project-key="persona_generators" data-role="subagent" style="--token-width:40.48%;--cost-width:4.45%"><span class="segment luna" style="--token-width:100%;--cost-width:100%"></span></div></div></div>
       <span class="total">171.9M · $82.04 · 2,611 cr</span>
     </div>
     <div class="legend">

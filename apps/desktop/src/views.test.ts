@@ -113,6 +113,8 @@ describe("native views", () => {
     expect(frame.srcdoc).toContain("Project Breakdown");
     expect(frame.srcdoc).toContain("Scale bars by");
     expect(frame.srcdoc).toContain("API cost");
+    expect(frame.srcdoc).toContain('id="project-scale-cost"');
+    expect(frame.srcdoc).toContain("--cost-width:");
     expect(frame.srcdoc.indexOf("gpt-6-astra")).toBeLessThan(
       frame.srcdoc.indexOf("gpt-5.6-sol"),
     );

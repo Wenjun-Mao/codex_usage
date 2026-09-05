@@ -157,6 +157,22 @@ def test_project_breakdown_exposes_distinct_token_and_cost_scales(tmp_path: Path
     )
 
 
+def test_project_breakdown_cost_scale_keeps_unpriced_usage_at_zero_width(
+    tmp_path: Path,
+) -> None:
+    html = _render_report(
+        tmp_path,
+        [_record("root", "unpriced-model", 1_000, project="unpriced")],
+    )
+    project = html.split('data-project-key="unpriced"', 1)[1].split(
+        '<div class="model-legend"', 1
+    )[0]
+
+    assert "--token-width:100.0000%;--cost-width:0.0000%" in project
+    assert project.count("--cost-width:0.0000%") >= 2
+    assert '<span class="project-role-metric-cost">$0.00</span>' in project
+
+
 def test_project_details_and_exact_model_details_keep_complete_disclosures(
     tmp_path: Path,
 ) -> None:
