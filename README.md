@@ -102,8 +102,9 @@ Open **Usage** to review:
 - exact model details, including unknown or currently unpriced usage.
 
 Choose a date range, project filter, and explicit Auto, Day, or Night theme.
-Project Breakdown always shows role-level tokens and API-equivalent dollars;
-its compact control scales the role and model bars by either Tokens or API cost.
+Project Breakdown always shows role-level tokens and API-equivalent dollars.
+The shared **Compare by** control scales both Project Breakdown and Model Mix by
+either Tokens or API cost without rereading the ledger or task files.
 Models are presented by generation and product tier with stable, distinct
 colors, while the bounded visual set still favors the highest-volume models.
 These controls query SQLite only. The reload icon re-queries the ledger without

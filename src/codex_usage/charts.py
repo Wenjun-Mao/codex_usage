@@ -113,16 +113,6 @@ def render_project_breakdown_chart(
     }
     chunks = [
         f'<div class="project-breakdown-chart" role="group" aria-label="{_esc(title)}">',
-        '<input class="project-scale-input" type="radio" name="project-bar-scale" '
-        'id="project-scale-tokens" value="tokens" checked>',
-        '<input class="project-scale-input" type="radio" name="project-bar-scale" '
-        'id="project-scale-cost" value="cost">',
-        '<div class="project-scale-toolbar">'
-        '<span class="project-scale-label">Scale bars by</span>'
-        '<span class="project-scale-options" role="group" aria-label="Project bar scale">'
-        '<label for="project-scale-tokens">Tokens</label>'
-        '<label for="project-scale-cost">API cost</label>'
-        '</span></div>',
         f'<div class="project-breakdown-matrix" role="table" aria-label="{_esc(title)}">',
         '<div class="project-breakdown-header" role="row">',
         '<span class="project-column-heading" role="columnheader">Project</span>',
@@ -153,9 +143,11 @@ def render_model_mix_chart(points: list[ModelMixPoint]) -> str:
         return _empty_svg(title, "No usage found for this range.")
 
     max_tokens = max(point.total_tokens for point in points) or 1
+    max_cost_usd = max(point.cost_usd for point in points)
     chunks = [f'<div class="model-mix-chart" role="group" aria-label="{_esc(title)}">']
     for point in points:
-        width = point.total_tokens / max_tokens * 100
+        token_width = point.total_tokens / max_tokens * 100
+        cost_width = point.cost_usd / max_cost_usd * 100 if max_cost_usd else 0
         detail = _model_detail(point)
         aria = f"{point.label}, {detail.replace(' | ', ', ')}"
         chunks.append(
@@ -163,7 +155,8 @@ def render_model_mix_chart(points: list[ModelMixPoint]) -> str:
             f'<span class="breakdown-bar-label">{_esc(point.label)}</span>'
             '<div class="model-mix-track">'
             f'<span class="model-mix-fill model-color-slot-{point.color_slot}" '
-            f'style="width:{width:.4f}%" tabindex="0" aria-label="{_esc(aria)}">'
+            f'style="--token-width:{token_width:.4f}%;--cost-width:{cost_width:.4f}%" '
+            f'tabindex="0" aria-label="{_esc(aria)}">'
             f"{_chart_tooltip(point.label, detail)}"
             "</span></div>"
             f'<span class="breakdown-bar-value">{_esc(_breakdown_value(point))}</span>'

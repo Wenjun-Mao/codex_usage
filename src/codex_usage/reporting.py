@@ -255,8 +255,21 @@ def _render_usage_view(
         '<div class="dashboard-grid">'
         f'{_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), render_aggregate_table("Daily Details", view_model.daily_rows, section_id="daily-details"), section_id="daily-cost", scroll_class="tooltip-chart-scroll")}'
         f'{_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table("Hourly Details", view_model.hourly_rows, section_id="hourly-details"), section_id="hourly-heatmap", scroll_class="heatmap-chart-scroll")}'
+        '<section class="usage-comparison" aria-label="Usage chart comparison">'
+        '<input class="comparison-scale-input" type="radio" name="usage-chart-scale" '
+        'id="compare-scale-tokens" value="tokens" checked>'
+        '<input class="comparison-scale-input" type="radio" name="usage-chart-scale" '
+        'id="compare-scale-cost" value="cost">'
+        '<div class="comparison-scale-toolbar">'
+        '<span class="comparison-scale-label">Compare by</span>'
+        '<span class="comparison-scale-options" role="group" aria-label="Compare chart bars by">'
+        '<label for="compare-scale-tokens">Tokens</label>'
+        '<label for="compare-scale-cost">API cost</label>'
+        '</span></div>'
+        '<div class="comparison-charts">'
         f'{_chart_section("Project Breakdown", render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table("Project Details", view_model.project_detail_points, section_id="project-details"), section_id="project-breakdown", scroll_class="tooltip-chart-scroll", help_text="Root task token usage includes side chats stored in the parent task.")}'
         f'{_chart_section("Model Mix", render_model_mix_chart(view_model.model_points), render_aggregate_table("Model Details", view_model.model_rows, section_id="model-details"), section_id="model-mix", scroll_class="tooltip-chart-scroll")}'
+        '</div></section>'
         "</div>"
     )
 

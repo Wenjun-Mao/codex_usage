@@ -59,10 +59,10 @@ h2 { margin: 0 0 4px; font-size: 17px; }
 .scale-options { display: inline-flex; overflow: hidden; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
 .scale-options label { min-width: 58px; padding: 4px 8px; cursor: pointer; text-align: center; }
 .scale-options label + label { border-left: 1px solid var(--line); }
-#project-scale-tokens:checked ~ .scale-toolbar label[for="project-scale-tokens"],
-#project-scale-cost:checked ~ .scale-toolbar label[for="project-scale-cost"] { background: var(--soft); color: var(--text); }
-#project-scale-tokens:focus-visible ~ .scale-toolbar label[for="project-scale-tokens"],
-#project-scale-cost:focus-visible ~ .scale-toolbar label[for="project-scale-cost"] { outline: 2px solid var(--astra); outline-offset: -2px; }
+#compare-scale-tokens:checked ~ .scale-toolbar label[for="compare-scale-tokens"],
+#compare-scale-cost:checked ~ .scale-toolbar label[for="compare-scale-cost"] { background: var(--soft); color: var(--text); }
+#compare-scale-tokens:focus-visible ~ .scale-toolbar label[for="compare-scale-tokens"],
+#compare-scale-cost:focus-visible ~ .scale-toolbar label[for="compare-scale-cost"] { outline: 2px solid var(--astra); outline-offset: -2px; }
 .project-grid { display: grid; grid-template-columns: 145px minmax(210px, 1fr) minmax(170px, .65fr) 185px; gap: 8px 16px; align-items: center; }
 .column { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .project { text-align: right; }
@@ -71,10 +71,11 @@ h2 { margin: 0 0 4px; font-size: 17px; }
 .role-fill { display: flex; width: var(--token-width); height: 100%; overflow: hidden; border-radius: 4px; }
 .segment { display: block; flex: 0 0 auto; width: var(--token-width); height: 100%; }
 .cost-share { display: none; }
-#project-scale-cost:checked ~ .project-grid .role-fill,
-#project-scale-cost:checked ~ .project-grid .segment { width: var(--cost-width); }
-#project-scale-cost:checked ~ .project-grid .token-share { display: none; }
-#project-scale-cost:checked ~ .project-grid .cost-share { display: inline; }
+#compare-scale-cost:checked ~ .comparison-charts .role-fill,
+#compare-scale-cost:checked ~ .comparison-charts .segment,
+#compare-scale-cost:checked ~ .comparison-charts .mix-fill { width: var(--cost-width); }
+#compare-scale-cost:checked ~ .comparison-charts .token-share { display: none; }
+#compare-scale-cost:checked ~ .comparison-charts .cost-share { display: inline; }
 .astra { background: var(--astra); }
 .sol { background: var(--sol); }
 .terra { background: var(--terra); }
@@ -86,7 +87,9 @@ h2 { margin: 0 0 4px; font-size: 17px; }
 .model-row { display: contents; }
 .model-name { text-align: right; font-size: 12px; }
 .mix-track { height: 24px; border-radius: 4px; background: var(--soft); }
-.mix-fill { display: block; height: 100%; border-radius: 4px; }
+.mix-fill { display: block; width: var(--token-width); height: 100%; border-radius: 4px; }
+.comparison-charts { display: grid; min-width: 0; gap: 24px; }
+.comparison-charts > .section { min-width: 0; }
 @media (max-width: 720px) {
   body { padding: 16px; }
   .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -109,13 +112,15 @@ h2 { margin: 0 0 4px; font-size: 17px; }
   <div><span>Cache hit share</span><strong>97.8%</strong><small>881.7M cached input</small></div>
   <div><span>API-excluded tokens</span><strong>0</strong><small>All models have rates</small></div>
 </section>
+<section class="section usage-comparison">
+  <input class="scale-input" type="radio" name="usage-chart-scale" id="compare-scale-tokens" value="tokens" checked>
+  <input class="scale-input" type="radio" name="usage-chart-scale" id="compare-scale-cost" value="cost">
+  <div class="scale-toolbar"><span>Compare by</span><span class="scale-options" role="group" aria-label="Compare chart bars by"><label for="compare-scale-tokens">Tokens</label><label for="compare-scale-cost">API cost</label></span></div>
+  <div class="comparison-charts">
 <section class="section">
   <h2>Project Breakdown</h2>
   <p class="help">Root task token usage includes side chats stored in the parent task.</p>
   <div class="project-scroll">
-    <input class="scale-input" type="radio" name="project-scale" id="project-scale-tokens" value="tokens" checked>
-    <input class="scale-input" type="radio" name="project-scale" id="project-scale-cost" value="cost">
-    <div class="scale-toolbar"><span>Scale bars by</span><span class="scale-options" role="group" aria-label="Project bar scale"><label for="project-scale-tokens">Tokens</label><label for="project-scale-cost">API cost</label></span></div>
     <div class="project-grid">
       <span class="column project">Project</span><span class="column">Root tasks</span><span class="column">Subagents</span><span class="column">Total</span>
       <strong class="project">uk_dev</strong>
@@ -142,11 +147,13 @@ h2 { margin: 0 0 4px; font-size: 17px; }
 <section class="section">
   <h2>Model Mix</h2>
   <div class="model-mix">
-    <div class="model-row"><strong class="model-name">gpt-6-astra</strong><div class="mix-track"><span class="mix-fill astra" style="width:3.4%"></span></div><span class="mix-value">20.0M · $31.00 · 775 cr</span></div>
-    <div class="model-row"><strong class="model-name">gpt-5.6-sol</strong><div class="mix-track"><span class="mix-fill sol" style="width:100%"></span></div><span class="mix-value">588.2M · $300.00 · 9,029 cr</span></div>
-    <div class="model-row"><strong class="model-name">gpt-5.6-terra</strong><div class="mix-track"><span class="mix-fill terra" style="width:39.3%"></span></div><span class="mix-value">231.3M · $100.00 · 3,507 cr</span></div>
-    <div class="model-row"><strong class="model-name">gpt-5.6-luna</strong><div class="mix-track"><span class="mix-fill luna" style="width:10.9%"></span></div><span class="mix-value">64.4M · $6.45 · 526 cr</span></div>
+    <div class="model-row"><strong class="model-name">gpt-6-astra</strong><div class="mix-track"><span class="mix-fill astra" style="--token-width:3.4%;--cost-width:10.3%"></span></div><span class="mix-value">20.0M · $31.00 · 775 cr</span></div>
+    <div class="model-row"><strong class="model-name">gpt-5.6-sol</strong><div class="mix-track"><span class="mix-fill sol" style="--token-width:100%;--cost-width:100%"></span></div><span class="mix-value">588.2M · $300.00 · 9,029 cr</span></div>
+    <div class="model-row"><strong class="model-name">gpt-5.6-terra</strong><div class="mix-track"><span class="mix-fill terra" style="--token-width:39.3%;--cost-width:33.3%"></span></div><span class="mix-value">231.3M · $100.00 · 3,507 cr</span></div>
+    <div class="model-row"><strong class="model-name">gpt-5.6-luna</strong><div class="mix-track"><span class="mix-fill luna" style="--token-width:10.9%;--cost-width:2.2%"></span></div><span class="mix-value">64.4M · $6.45 · 526 cr</span></div>
   </div>
+</section>
+</div>
 </section>
 </body>
 </html>`;

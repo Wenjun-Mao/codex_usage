@@ -85,6 +85,9 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
     assert "daily-bar-chart" in html
     assert "project-breakdown-chart" in html
     assert "model-mix-chart" in html
+    assert '<section class="usage-comparison" aria-label="Usage chart comparison">' in html
+    assert 'id="compare-scale-tokens" value="tokens" checked' in html
+    assert 'id="compare-scale-cost" value="cost"' in html
     assert "chart-tooltip-main" in html
     assert '<span class="chart-tooltip-main">2026-04-29</span>' in html
     assert '<span class="chart-tooltip-detail">$1.7500 | 1,100 tokens</span>' in html

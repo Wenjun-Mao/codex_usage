@@ -35,6 +35,9 @@ _MODEL_COLOR_CSS = """
 """
 
 _PROJECT_BREAKDOWN_CSS = """
+    .usage-comparison { border-top: 1px solid var(--border); padding-top: 18px; }
+    .comparison-charts { display: grid; min-width: 0; gap: 24px; }
+    .comparison-charts > .section { min-width: 0; }
     .project-breakdown-chart, .model-mix-chart {
       display: grid;
       min-width: 680px;
@@ -48,14 +51,14 @@ _PROJECT_BREAKDOWN_CSS = """
     }
     .project-breakdown-matrix { display: contents; }
     .project-breakdown-header, .project-breakdown-row { display: contents; }
-    .project-scale-input {
+    .comparison-scale-input {
       position: absolute;
       width: 1px;
       height: 1px;
       opacity: 0;
       pointer-events: none;
     }
-    .project-scale-toolbar {
+    .comparison-scale-toolbar {
       display: flex;
       grid-column: 1 / -1;
       align-items: center;
@@ -63,15 +66,15 @@ _PROJECT_BREAKDOWN_CSS = """
       gap: 7px;
       min-height: 26px;
     }
-    .project-scale-label { color: var(--muted); font-size: 11px; font-weight: 650; }
-    .project-scale-options {
+    .comparison-scale-label { color: var(--muted); font-size: 11px; font-weight: 650; }
+    .comparison-scale-options {
       display: inline-flex;
       overflow: hidden;
       border: 1px solid var(--border);
       border-radius: 4px;
       background: var(--surface);
     }
-    .project-scale-options label {
+    .comparison-scale-options label {
       min-width: 58px;
       padding: 4px 8px;
       color: var(--muted);
@@ -80,14 +83,14 @@ _PROJECT_BREAKDOWN_CSS = """
       font-weight: 650;
       text-align: center;
     }
-    .project-scale-options label + label { border-left: 1px solid var(--border); }
-    #project-scale-tokens:checked ~ .project-scale-toolbar label[for="project-scale-tokens"],
-    #project-scale-cost:checked ~ .project-scale-toolbar label[for="project-scale-cost"] {
+    .comparison-scale-options label + label { border-left: 1px solid var(--border); }
+    #compare-scale-tokens:checked ~ .comparison-scale-toolbar label[for="compare-scale-tokens"],
+    #compare-scale-cost:checked ~ .comparison-scale-toolbar label[for="compare-scale-cost"] {
       background: var(--surface-soft);
       color: var(--text);
     }
-    #project-scale-tokens:focus-visible ~ .project-scale-toolbar label[for="project-scale-tokens"],
-    #project-scale-cost:focus-visible ~ .project-scale-toolbar label[for="project-scale-cost"] {
+    #compare-scale-tokens:focus-visible ~ .comparison-scale-toolbar label[for="compare-scale-tokens"],
+    #compare-scale-cost:focus-visible ~ .comparison-scale-toolbar label[for="compare-scale-cost"] {
       outline: 2px solid var(--accent-strong);
       outline-offset: -2px;
     }
@@ -143,12 +146,13 @@ _PROJECT_BREAKDOWN_CSS = """
     .project-role-cost-share { display: none; }
     .project-role-track { min-width: 0; height: 30px; border-radius: 4px; background: var(--surface-soft); }
     .project-role-fill { min-width: 0; width: var(--token-width, 0%); height: 100%; }
-    #project-scale-cost:checked ~ .project-breakdown-matrix .project-role-fill,
-    #project-scale-cost:checked ~ .project-breakdown-matrix .model-segment {
+    #compare-scale-cost:checked ~ .comparison-charts .project-role-fill,
+    #compare-scale-cost:checked ~ .comparison-charts .model-segment,
+    #compare-scale-cost:checked ~ .comparison-charts .model-mix-fill {
       width: var(--cost-width, 0%);
     }
-    #project-scale-cost:checked ~ .project-breakdown-matrix .project-role-token-share { display: none; }
-    #project-scale-cost:checked ~ .project-breakdown-matrix .project-role-cost-share { display: inline; }
+    #compare-scale-cost:checked ~ .comparison-charts .project-role-token-share { display: none; }
+    #compare-scale-cost:checked ~ .comparison-charts .project-role-cost-share { display: inline; }
     .project-role-group { position: relative; display: flex; overflow: visible; width: 100%; height: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 4px; }
     .model-segment { position: relative; display: block; flex: 0 0 auto; width: var(--token-width, 0%); height: 100%; outline: none; }
     .model-segment:first-child { border-radius: 3px 0 0 3px; }
@@ -176,7 +180,7 @@ _PROJECT_BREAKDOWN_CSS = """
     .project-role-cell-subagent .model-segment:last-child:focus-visible .chart-tooltip { transform: translate(0, 0); }
     @media (max-width: 720px) {
       .project-breakdown-chart { display: block; min-width: 0; }
-      .project-scale-toolbar { justify-content: flex-end; margin-bottom: 10px; }
+      .comparison-scale-toolbar { justify-content: flex-end; margin-bottom: 10px; }
       .project-breakdown-matrix { display: block; }
       .project-breakdown-header { display: none; }
       .project-breakdown-row {
@@ -222,7 +226,7 @@ _PROJECT_BREAKDOWN_CSS = """
 
 _MODEL_MIX_CSS = """
     .model-mix-track { height: 24px; position: relative; }
-    .model-mix-fill { position: relative; display: block; height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--model-separator); outline: none; }
+    .model-mix-fill { position: relative; display: block; width: var(--token-width, 0%); height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--model-separator); outline: none; }
     .model-mix-fill:hover, .model-mix-fill:focus-visible { filter: brightness(1.12); z-index: 3; }
     .model-mix-fill:focus-visible { box-shadow: inset 0 0 0 2px var(--model-focus-inner), 0 0 0 2px var(--model-focus-outer); }
     .model-mix-fill:hover .chart-tooltip,

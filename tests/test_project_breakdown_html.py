@@ -49,10 +49,11 @@ def test_project_breakdown_renders_nested_roles_models_and_shared_legend(
     assert 'class="model-segment model-color-slot-1"' in html
     assert 'class="model-segment model-color-slot-2"' in html
     assert 'class="project-role-metric-cost">$' in html
-    assert 'id="project-scale-tokens" value="tokens" checked' in html
-    assert 'id="project-scale-cost" value="cost"' in html
-    assert '<label for="project-scale-tokens">Tokens</label>' in html
-    assert '<label for="project-scale-cost">API cost</label>' in html
+    assert 'id="compare-scale-tokens" value="tokens" checked' in html
+    assert 'id="compare-scale-cost" value="cost"' in html
+    assert '<label for="compare-scale-tokens">Tokens</label>' in html
+    assert '<label for="compare-scale-cost">API cost</label>' in html
+    assert 'aria-label="Compare chart bars by"' in html
 
     legend_html = html.split('<div class="model-legend" aria-label="Model colors">', 1)[
         1
@@ -148,12 +149,43 @@ def test_project_breakdown_exposes_distinct_token_and_cost_scales(tmp_path: Path
     assert float(outer_fill.group("tokens")) == 100.0
     assert 0 < float(outer_fill.group("cost")) < 100.0
     assert (
-        "#project-scale-cost:checked ~ .project-breakdown-matrix .project-role-fill"
+        "#compare-scale-cost:checked ~ .comparison-charts .project-role-fill"
         in html
     )
     assert (
-        "#project-scale-cost:checked ~ .project-breakdown-matrix .project-role-cost-share"
+        "#compare-scale-cost:checked ~ .comparison-charts .project-role-cost-share"
         in html
+    )
+
+
+def test_shared_comparison_scale_controls_project_breakdown_and_model_mix(
+    tmp_path: Path,
+) -> None:
+    html = _render_report(
+        tmp_path,
+        [
+            _record("root", "gpt-5.6-sol", 1_000),
+            _record("root", "gpt-5.6-luna", 1_000),
+        ],
+    )
+
+    control = html.split('<section class="usage-comparison"', 1)[1].split(
+        '<div class="comparison-charts">', 1
+    )[0]
+    widths = re.findall(
+        r'class="model-mix-fill model-color-slot-\d+" '
+        r'style="--token-width:([\d.]+)%;--cost-width:([\d.]+)%"',
+        html,
+    )
+
+    assert 'id="compare-scale-tokens"' in control
+    assert 'id="compare-scale-cost"' in control
+    assert [float(tokens) for tokens, _ in widths] == [100.0, 100.0]
+    assert min(float(cost) for _, cost in widths) < max(
+        float(cost) for _, cost in widths
+    )
+    assert (
+        "#compare-scale-cost:checked ~ .comparison-charts .model-mix-fill" in html
     )
 
 
@@ -242,12 +274,13 @@ def test_breakdown_css_uses_non_layout_segment_and_model_mix_boundaries(
     html = _render_report(tmp_path, [])
 
     segment_css = html.split(".model-segment {", 1)[1].split("}", 1)[0]
-    model_mix_css = html.split(".model-mix-fill {", 1)[1].split("}", 1)[0]
+    model_mix_css = html.rsplit(".model-mix-fill {", 1)[1].split("}", 1)[0]
 
     assert "border:" not in segment_css
     assert "min-width:" not in segment_css
     assert "border:" not in model_mix_css
     assert "min-width:" not in model_mix_css
+    assert "width: var(--token-width, 0%);" in model_mix_css
     assert "box-shadow: inset 1px 0 0 var(--model-separator);" in html
     assert "box-shadow: inset 0 0 0 1px var(--model-separator);" in html
 
@@ -299,6 +332,15 @@ def test_project_rows_share_role_columns_and_headings_render_once(
     assert header.count('role="columnheader"') == 4
     assert header.count("Root tasks") == 1
     assert header.count("Subagents") == 1
+
+
+def test_shared_comparison_container_allows_narrow_chart_scrollers_to_shrink(
+    tmp_path: Path,
+) -> None:
+    html = _render_report(tmp_path, [])
+
+    assert ".comparison-charts { display: grid; min-width: 0; gap: 24px; }" in html
+    assert ".comparison-charts > .section { min-width: 0; }" in html
 
 
 def test_model_mix_rows_share_one_track_grid(tmp_path: Path) -> None:

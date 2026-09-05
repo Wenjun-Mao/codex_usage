@@ -81,10 +81,10 @@ sizes (1440 x 900 and 760 x 900). Confirm:
 - Usage and Task Storage render distinctly in Day and Night at both viewport sizes;
 - Usage clearly shows last/next capture, pending work, incomplete baseline, and
   stale-source states;
-- Project Breakdown orders models by generation and tier, uses distinct stable
-  colors, shows role-level API-equivalent cost, and switches coherently between
-  token-scaled and cost-scaled bars;
-- every Model Mix row uses an equal-length neutral track;
+- Project Breakdown and Model Mix share one accessible **Compare by** control,
+  use distinct stable colors, preserve role-level API-equivalent cost, and
+  switch coherently between token-scaled and cost-scaled bars;
+- every Model Mix row uses an equal-length neutral track in both comparison modes;
 - report content and tooltips are not clipped;
 - Task Storage exposes Analyze and cancellation without unrelated operations;
 - Task Transfer has separate one-project and task-selection stages, zero default
@@ -127,16 +127,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.2.0`, both
-changelogs have a dated `2.2.0` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.3.0`, both
+changelogs have a dated `2.3.0` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.2.0`. Create and push that
+The only valid release tag for this version is `v2.3.0`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.2.0
-git push origin v2.2.0
+git tag v2.3.0
+git push origin v2.3.0
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -150,8 +150,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.2.0-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.2.0-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.3.0-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.3.0-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

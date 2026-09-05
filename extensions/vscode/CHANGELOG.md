@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.3.0 - 2026-09-05 - Shared Usage Comparison
+
+- Replaced the Project Breakdown-only scale switch with one script-free **Compare by** control for Project Breakdown and Model Mix.
+- Kept the interaction local to the rendered report by storing both token and API-cost widths in each bar, including explicit zero-cost widths for unpriced models.
+
 ## 2.2.0 - 2026-09-04 - Comparative Usage Charts
 
 - Ordered model charts and details by GPT generation and product tier, and assigned stable, more distinguishable colors to current named models.

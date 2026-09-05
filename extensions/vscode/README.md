@@ -96,9 +96,9 @@ tasks and structured subagents, then stacks each role by model. Side-chat usage
 remains under the parent root task where Codex does not store a durable role
 discriminator.
 
-Each role cell shows both tokens and API-equivalent dollars. Use the embedded
-Tokens/API cost control to change the role and model bar scale without
-regenerating the report. Models are shown by generation and product tier with
+Each role cell shows both tokens and API-equivalent dollars. Use the shared
+**Compare by** control to change both Project Breakdown and Model Mix between
+Tokens and API cost without regenerating the report. Models are shown by generation and product tier with
 stable, distinct colors; the bounded visual set still prioritizes the models
 responsible for the most tokens.
 

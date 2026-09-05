@@ -208,13 +208,23 @@ def _exercise_usage_chart_controls(page: Page) -> None:
     token_box = role_fill.bounding_box()
     if token_box is None:
         raise RuntimeError("usage fixture is missing the project role scale probe")
+    model_fill = frame.locator(".mix-fill.luna")
+    model_token_box = model_fill.bounding_box()
+    if model_token_box is None:
+        raise RuntimeError("usage fixture is missing the Model Mix scale probe")
 
-    frame.locator('label[for="project-scale-cost"]').click()
-    if not frame.locator("#project-scale-cost").is_checked():
+    frame.locator('label[for="compare-scale-cost"]').click()
+    if not frame.locator("#compare-scale-cost").is_checked():
         raise RuntimeError("usage fixture did not select the API cost scale")
     cost_box = role_fill.bounding_box()
     if cost_box is None or abs(token_box["width"] - cost_box["width"]) < 4:
         raise RuntimeError("usage fixture API cost scale did not change bar geometry")
+    model_cost_box = model_fill.bounding_box()
+    if (
+        model_cost_box is None
+        or abs(model_token_box["width"] - model_cost_box["width"]) < 4
+    ):
+        raise RuntimeError("usage fixture API cost scale did not change Model Mix geometry")
 
     tracks = frame.locator(".mix-track")
     track_boxes = [tracks.nth(index).bounding_box() for index in range(tracks.count())]
@@ -229,8 +239,8 @@ def _exercise_usage_chart_controls(page: Page) -> None:
     ):
         raise RuntimeError("usage fixture Model Mix tracks do not share equal bounds")
 
-    frame.locator('label[for="project-scale-tokens"]').click()
-    if not frame.locator("#project-scale-tokens").is_checked():
+    frame.locator('label[for="compare-scale-tokens"]').click()
+    if not frame.locator("#compare-scale-tokens").is_checked():
         raise RuntimeError("usage fixture did not restore the token scale")
 
 
