@@ -2,26 +2,26 @@ from __future__ import annotations
 
 _MODEL_COLOR_CSS = """
     :root {
-      --model-0: #8fb1f5;
-      --model-1: #3978e6;
-      --model-2: #315a9f;
-      --model-3: #b59af1;
-      --model-4: #7d4dde;
-      --model-5: #dd6a9e;
-      --model-6: #d9aa2b;
+      --model-0: #087f8c;
+      --model-1: #c47f00;
+      --model-2: #2e8b57;
+      --model-3: #7656c7;
+      --model-4: #3568c8;
+      --model-5: #bb477d;
+      --model-6: #c74f37;
       --model-7: #8b949f;
       --model-separator: var(--surface);
       --model-focus-inner: var(--text);
       --model-focus-outer: var(--accent-strong);
     }
     html[data-codex-theme="night"] {
-      --model-0: #a7c2fa;
-      --model-1: #5b91f2;
-      --model-2: #6188c8;
-      --model-3: #c7b2f7;
-      --model-4: #9b74e7;
-      --model-5: #ee8bb8;
-      --model-6: #e5be53;
+      --model-0: #45c5d6;
+      --model-1: #f2b84b;
+      --model-2: #5fc98a;
+      --model-3: #b59af1;
+      --model-4: #6f9cf4;
+      --model-5: #ee7aaa;
+      --model-6: #ef806b;
       --model-7: #a5adb8;
     }
     .model-color-slot-0 { background: var(--model-0); }
@@ -48,6 +48,49 @@ _PROJECT_BREAKDOWN_CSS = """
     }
     .project-breakdown-matrix { display: contents; }
     .project-breakdown-header, .project-breakdown-row { display: contents; }
+    .project-scale-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .project-scale-toolbar {
+      display: flex;
+      grid-column: 1 / -1;
+      align-items: center;
+      justify-self: end;
+      gap: 7px;
+      min-height: 26px;
+    }
+    .project-scale-label { color: var(--muted); font-size: 11px; font-weight: 650; }
+    .project-scale-options {
+      display: inline-flex;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+    }
+    .project-scale-options label {
+      min-width: 58px;
+      padding: 4px 8px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+      text-align: center;
+    }
+    .project-scale-options label + label { border-left: 1px solid var(--border); }
+    #project-scale-tokens:checked ~ .project-scale-toolbar label[for="project-scale-tokens"],
+    #project-scale-cost:checked ~ .project-scale-toolbar label[for="project-scale-cost"] {
+      background: var(--surface-soft);
+      color: var(--text);
+    }
+    #project-scale-tokens:focus-visible ~ .project-scale-toolbar label[for="project-scale-tokens"],
+    #project-scale-cost:focus-visible ~ .project-scale-toolbar label[for="project-scale-cost"] {
+      outline: 2px solid var(--accent-strong);
+      outline-offset: -2px;
+    }
     .project-column-heading, .role-column-heading, .project-total-heading {
       min-width: 0;
       color: var(--muted);
@@ -56,13 +99,13 @@ _PROJECT_BREAKDOWN_CSS = """
       white-space: nowrap;
     }
     .project-column-heading { text-align: right; }
-    .model-mix-chart { gap: 12px; max-width: 920px; }
-    .model-mix-row {
-      display: grid;
+    .model-mix-chart {
       grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;
-      gap: 10px;
+      gap: 12px 10px;
       align-items: center;
+      max-width: 920px;
     }
+    .model-mix-row { display: contents; }
     .breakdown-bar-label {
       color: var(--text);
       font-size: 12px;
@@ -97,10 +140,17 @@ _PROJECT_BREAKDOWN_CSS = """
       white-space: nowrap;
     }
     .project-role-metric-total { color: var(--text); font-weight: 650; }
+    .project-role-cost-share { display: none; }
     .project-role-track { min-width: 0; height: 30px; border-radius: 4px; background: var(--surface-soft); }
-    .project-role-fill { min-width: 0; height: 100%; }
+    .project-role-fill { min-width: 0; width: var(--token-width, 0%); height: 100%; }
+    #project-scale-cost:checked ~ .project-breakdown-matrix .project-role-fill,
+    #project-scale-cost:checked ~ .project-breakdown-matrix .model-segment {
+      width: var(--cost-width, 0%);
+    }
+    #project-scale-cost:checked ~ .project-breakdown-matrix .project-role-token-share { display: none; }
+    #project-scale-cost:checked ~ .project-breakdown-matrix .project-role-cost-share { display: inline; }
     .project-role-group { position: relative; display: flex; overflow: visible; width: 100%; height: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 4px; }
-    .model-segment { position: relative; display: block; flex: 0 0 auto; height: 100%; outline: none; }
+    .model-segment { position: relative; display: block; flex: 0 0 auto; width: var(--token-width, 0%); height: 100%; outline: none; }
     .model-segment:first-child { border-radius: 3px 0 0 3px; }
     .model-segment:last-child { border-radius: 0 3px 3px 0; }
     .model-segment:only-child { border-radius: 3px; }
@@ -126,6 +176,7 @@ _PROJECT_BREAKDOWN_CSS = """
     .project-role-cell-subagent .model-segment:last-child:focus-visible .chart-tooltip { transform: translate(0, 0); }
     @media (max-width: 720px) {
       .project-breakdown-chart { display: block; min-width: 0; }
+      .project-scale-toolbar { justify-content: flex-end; margin-bottom: 10px; }
       .project-breakdown-matrix { display: block; }
       .project-breakdown-header { display: none; }
       .project-breakdown-row {
@@ -145,8 +196,7 @@ _PROJECT_BREAKDOWN_CSS = """
       .project-role-metric { grid-area: metric; height: auto; margin: 0; align-self: center; }
       .project-role-track { grid-area: track; }
       .model-legend { margin-top: 10px; }
-      .model-mix-chart { min-width: 560px; }
-      .model-mix-row { grid-template-columns: 96px minmax(220px, 1fr) max-content; gap: 8px; }
+      .model-mix-chart { min-width: 560px; grid-template-columns: 96px minmax(220px, 1fr) max-content; gap: 12px 8px; }
       .breakdown-bar-label { text-align: left; }
     }
     body.vscode-high-contrast {

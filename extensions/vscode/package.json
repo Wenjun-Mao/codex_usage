@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Companion",
   "description": "Standalone VS Code usage dashboard with a bundled, parent-bound local collector.",
   "publisher": "wenjun-mao",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": { "type": "git", "url": "https://github.com/Wenjun-Mao/codex_usage.git" },

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; token-only metric and scale partially superseded by ADR 0038
 
 ## Context
 

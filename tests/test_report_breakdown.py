@@ -113,6 +113,31 @@ def test_build_report_breakdown_builds_project_role_model_cube_and_conserves_fie
     _assert_summary_equal(_summary(breakdown.model_rows), _summary(breakdown.visual_model_rows))
 
 
+def test_build_report_breakdown_orders_models_by_generation_then_tier() -> None:
+    records = [
+        _record("alpha", "Alpha", "root", "gpt-5.5", total=500),
+        _record("alpha", "Alpha", "root", "gpt-5.6-luna", total=100),
+        _record("alpha", "Alpha", "root", "gpt-5.6-terra", total=200),
+        _record("alpha", "Alpha", "root", "gpt-5.6-sol", total=300),
+        _record("alpha", "Alpha", "root", "gpt-6-astra", total=10),
+    ]
+    expected = [
+        "gpt-6-astra",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.5",
+    ]
+
+    breakdown = build_report_breakdown(records)
+    reversed_breakdown = build_report_breakdown(list(reversed(records)))
+
+    assert [bucket.label for bucket in breakdown.visual_models] == expected
+    assert [row.label for row in breakdown.model_rows] == expected
+    assert breakdown.visual_models == reversed_breakdown.visual_models
+    assert breakdown.model_rows == reversed_breakdown.model_rows
+
+
 def test_build_report_breakdown_keeps_top_seven_visual_models_and_groups_the_rest() -> None:
     totals = {
         "model-01": 100,
@@ -174,7 +199,10 @@ def test_build_report_breakdown_handles_small_unknown_role_only_and_empty_inputs
 
     breakdown = build_report_breakdown(records)
 
-    assert [bucket.label for bucket in breakdown.visual_models] == ["unknown-model", "gpt-5.6-luna"]
+    assert [bucket.label for bucket in breakdown.visual_models] == [
+        "gpt-5.6-luna",
+        "unknown-model",
+    ]
     assert [role.role for role in breakdown.projects[0].roles] == ["root"]
     assert [role.role for role in breakdown.projects[1].roles] == ["subagent"]
     assert build_report_breakdown([]).projects == ()

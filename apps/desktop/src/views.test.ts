@@ -111,6 +111,11 @@ describe("native views", () => {
 
     const frame = root.querySelector<HTMLIFrameElement>("#usage-report")!;
     expect(frame.srcdoc).toContain("Project Breakdown");
+    expect(frame.srcdoc).toContain("Scale bars by");
+    expect(frame.srcdoc).toContain("API cost");
+    expect(frame.srcdoc.indexOf("gpt-6-astra")).toBeLessThan(
+      frame.srcdoc.indexOf("gpt-5.6-sol"),
+    );
     expect(frame.srcdoc).toContain('data-codex-host="native"');
     expect(root.querySelector("#report-diagnostics")?.textContent).toContain(
       "Ledger revision 82",

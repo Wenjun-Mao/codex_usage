@@ -45,3 +45,4 @@ The Tauri native-app ownership and optional companion contract is recorded in [A
 The verified local project-continuity contract is recorded in [ADR 0035](0035-verified-local-project-continuity.md).
 The standalone VS Code runtime and unsigned native-preview distribution contract is recorded in [ADR 0036](0036-standalone-extension-and-native-preview.md).
 The unified dashboard interaction and theme contract is recorded in [ADR 0037](0037-unified-dashboard-interaction-and-theme.md).
+The semantic model presentation and Project Breakdown cost-scale contract is recorded in [ADR 0038](0038-semantic-model-presentation-and-cost-scale.md).

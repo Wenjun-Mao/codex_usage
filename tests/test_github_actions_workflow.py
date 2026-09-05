@@ -159,7 +159,7 @@ def test_preview_artifacts_include_hash_based_integrity_metadata(tmp_path: Path)
         )
 
 
-def test_release_metadata_is_consistently_2_1_1() -> None:
+def test_release_metadata_is_consistently_2_2_0() -> None:
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -192,7 +192,7 @@ def test_release_metadata_is_consistently_2_1_1() -> None:
         cargo["package"]["version"],
         rust_package["version"],
     }
-    assert versions == {"2.1.1"}
+    assert versions == {"2.2.0"}
     assert "scripts" not in pyproject["project"]
     assert "preview" not in extension
 

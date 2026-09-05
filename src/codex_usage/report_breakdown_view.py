@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from codex_usage.aggregation import AggregateRow
 from codex_usage.models import TokenUsage, UsageRole
+from codex_usage.model_presentation import assign_model_color_slots
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
 from codex_usage.report_breakdown import (
     OTHER_MODEL_KEY,
@@ -36,6 +37,7 @@ class ModelSegmentPoint:
     credit_unpriced_tokens: int
     record_count: int
     project_share: float
+    project_cost_share: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +45,9 @@ class RoleGroupPoint:
     role: UsageRole
     label: str
     total_tokens: int
+    cost_usd: float
     project_share: float
+    project_cost_share: float
     segments: tuple[ModelSegmentPoint, ...]
 
 
@@ -57,6 +61,8 @@ class ProjectBreakdownPoint:
     record_count: int
     root_tokens: int
     subagent_tokens: int
+    root_cost_usd: float
+    subagent_cost_usd: float
     roles: tuple[RoleGroupPoint, ...]
 
     @property
@@ -101,10 +107,12 @@ class BreakdownView:
 
 
 def build_breakdown_view(breakdown: ReportBreakdown) -> BreakdownView:
-    color_slots = {
-        bucket.key: 7 if bucket.key == OTHER_MODEL_KEY else index
-        for index, bucket in enumerate(breakdown.visual_models)
-    }
+    exact_model_keys = tuple(
+        bucket.key for bucket in breakdown.visual_models if bucket.key != OTHER_MODEL_KEY
+    )
+    color_slots = assign_model_color_slots(exact_model_keys)
+    if any(bucket.key == OTHER_MODEL_KEY for bucket in breakdown.visual_models):
+        color_slots[OTHER_MODEL_KEY] = 7
     model_legend = tuple(
         ModelLegendItem(
             key=bucket.key,
@@ -134,8 +142,12 @@ def _project_point(
     color_slots: dict[str, int],
 ) -> ProjectBreakdownPoint:
     total_tokens = row.usage.total_tokens
-    role_points = tuple(_role_point(role, total_tokens, color_slots) for role in roles)
+    total_cost_usd = row.cost.total_usd
+    role_points = tuple(
+        _role_point(role, total_tokens, total_cost_usd, color_slots) for role in roles
+    )
     role_totals = {role.role: role.total.usage.total_tokens for role in roles}
+    role_costs = {role.role: role.total.cost.total_usd for role in roles}
     return ProjectBreakdownPoint(
         key=row.key,
         label=row.label,
@@ -145,29 +157,45 @@ def _project_point(
         record_count=row.record_count,
         root_tokens=role_totals.get("root", 0),
         subagent_tokens=role_totals.get("subagent", 0),
+        root_cost_usd=role_costs.get("root", 0.0),
+        subagent_cost_usd=role_costs.get("subagent", 0.0),
         roles=role_points,
     )
 
 
 def _role_point(
     role: RoleModelBreakdown,
-    project_total: int,
+    project_total_tokens: int,
+    project_total_cost_usd: float,
     color_slots: dict[str, int],
 ) -> RoleGroupPoint:
     total_tokens = role.total.usage.total_tokens
+    cost_usd = role.total.cost.total_usd
     return RoleGroupPoint(
         role=role.role,
         label=_ROLE_LABELS[role.role],
         total_tokens=total_tokens,
-        project_share=_project_share(total_tokens, project_total),
+        cost_usd=cost_usd,
+        project_share=_share(total_tokens, project_total_tokens),
+        project_cost_share=_share(cost_usd, project_total_cost_usd),
         segments=tuple(
-            _segment_point(row, color_slots[row.key], project_total)
+            _segment_point(
+                row,
+                color_slots[row.key],
+                project_total_tokens,
+                project_total_cost_usd,
+            )
             for row in role.model_rows
         ),
     )
 
 
-def _segment_point(row: AggregateRow, color_slot: int, project_total: int) -> ModelSegmentPoint:
+def _segment_point(
+    row: AggregateRow,
+    color_slot: int,
+    project_total_tokens: int,
+    project_total_cost_usd: float,
+) -> ModelSegmentPoint:
     return ModelSegmentPoint(
         key=row.key,
         label=row.label,
@@ -178,7 +206,8 @@ def _segment_point(row: AggregateRow, color_slot: int, project_total: int) -> Mo
         unpriced_tokens=row.cost.unpriced_tokens,
         credit_unpriced_tokens=row.credits.unpriced_tokens,
         record_count=row.record_count,
-        project_share=_project_share(row.usage.total_tokens, project_total),
+        project_share=_share(row.usage.total_tokens, project_total_tokens),
+        project_cost_share=_share(row.cost.total_usd, project_total_cost_usd),
     )
 
 
@@ -196,5 +225,5 @@ def _model_point(row: AggregateRow, color_slot: int) -> ModelMixPoint:
     )
 
 
-def _project_share(value: int, project_total: int) -> float:
-    return value / project_total if project_total else 0.0
+def _share(value: int | float, total: int | float) -> float:
+    return value / total if total else 0.0

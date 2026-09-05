@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.2.0 - 2026-09-04 - Comparative Usage Charts
+
+- Ordered visual and exact model breakdowns by GPT generation and product tier, with stable multi-hue colors for current named models.
+- Added role-level API-equivalent dollars and a script-free Tokens/API cost scale to Project Breakdown.
+- Made every Model Mix row share one grid so neutral bar tracks have identical geometry.
+
 ## 2.1.1 - 2026-09-04 - GPT-6 Astra Pricing
 
 - Added exact `gpt-6-astra` API-equivalent and standard Codex credit pricing from the first verified availability date, including cache-write and long-context API rates.

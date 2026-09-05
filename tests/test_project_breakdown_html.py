@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+import re
 
 from codex_usage.aggregation import summarize_records
 from codex_usage.models import TokenUsage, UsageRecord
@@ -42,19 +43,25 @@ def test_project_breakdown_renders_nested_roles_models_and_shared_legend(
     assert 'tabindex="0"' in html
     assert "demo, Root tasks, gpt-5.6-sol" in html
     assert "tokens, 54.5% of project" in html
-    assert 'class="model-color-slot-0"' in html
     assert 'class="model-color-slot-1"' in html
-    assert 'class="model-segment model-color-slot-0"' in html
+    assert 'class="model-color-slot-2"' in html
+    assert 'class="model-color-slot-3"' in html
     assert 'class="model-segment model-color-slot-1"' in html
+    assert 'class="model-segment model-color-slot-2"' in html
+    assert 'class="project-role-metric-cost">$' in html
+    assert 'id="project-scale-tokens" value="tokens" checked' in html
+    assert 'id="project-scale-cost" value="cost"' in html
+    assert '<label for="project-scale-tokens">Tokens</label>' in html
+    assert '<label for="project-scale-cost">API cost</label>' in html
 
     legend_html = html.split('<div class="model-legend" aria-label="Model colors">', 1)[
         1
     ].split("</div>", 1)[0]
     for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
         assert legend_html.count(f">{model}</span>") == 1
-    assert "model-mix-fill model-color-slot-0" in html
     assert "model-mix-fill model-color-slot-1" in html
     assert "model-mix-fill model-color-slot-2" in html
+    assert "model-mix-fill model-color-slot-3" in html
 
 
 def test_project_breakdown_role_edges_keep_tiny_positive_shares_accessible(
@@ -72,17 +79,21 @@ def test_project_breakdown_role_edges_keep_tiny_positive_shares_accessible(
         ],
     )
 
-    assert 'class="project-role-fill" style="width:100.0000%"' in root_only_html
+    assert (
+        'class="project-role-fill" style="--token-width:100.0000%;--cost-width:100.0000%"'
+        in root_only_html
+    )
     assert 'aria-label="demo Subagents, no usage"' in root_only_html
     assert 'aria-label="demo Root tasks, no usage"' in subagent_only_html
-    assert 'class="project-role-fill" style="width:100.0000%"' in subagent_only_html
-    assert tiny_share_html.count(
-        'class="project-role-fill" style="width:100.0000%"'
-    ) == 2
+    assert (
+        'class="project-role-fill" style="--token-width:100.0000%;--cost-width:100.0000%"'
+        in subagent_only_html
+    )
+    assert tiny_share_html.count("--token-width:100.0000%;--cost-width:100.0000%") >= 2
     assert (
         "demo, Subagents, gpt-5.6-terra, 1 tokens, 0.0% of project" in tiny_share_html
     )
-    assert "width:1.0000%" not in tiny_share_html
+    assert "--token-width:1.0000%" not in tiny_share_html
 
 
 def test_project_breakdown_scales_each_role_column_independently(
@@ -105,10 +116,45 @@ def test_project_breakdown_scales_each_role_column_independently(
         '<div class="model-legend"', 1
     )[0]
 
-    assert 'style="width:100.0000%"' in alpha
-    assert 'style="width:50.0000%"' in alpha
-    assert 'style="width:50.0000%"' in beta
-    assert 'style="width:100.0000%"' in beta
+    assert 'style="--token-width:100.0000%;--cost-width:100.0000%"' in alpha
+    assert re.search(
+        r'style="--token-width:50\.0000%;--cost-width:[\d.]+%"', alpha
+    )
+    assert re.search(
+        r'style="--token-width:50\.0000%;--cost-width:[\d.]+%"', beta
+    )
+    assert 'style="--token-width:100.0000%;--cost-width:100.0000%"' in beta
+
+
+def test_project_breakdown_exposes_distinct_token_and_cost_scales(tmp_path: Path) -> None:
+    html = _render_report(
+        tmp_path,
+        [
+            _record("root", "gpt-5.6-sol", 1_000, project="sol-project"),
+            _record("root", "gpt-5.6-luna", 1_000, project="luna-project"),
+        ],
+    )
+
+    luna = html.split('data-project-key="luna-project"', 1)[1].split(
+        '<div class="model-legend"', 1
+    )[0]
+    outer_fill = re.search(
+        r'class="project-role-fill" style="--token-width:(?P<tokens>[\d.]+)%;'
+        r'--cost-width:(?P<cost>[\d.]+)%"',
+        luna,
+    )
+
+    assert outer_fill is not None
+    assert float(outer_fill.group("tokens")) == 100.0
+    assert 0 < float(outer_fill.group("cost")) < 100.0
+    assert (
+        "#project-scale-cost:checked ~ .project-breakdown-matrix .project-role-fill"
+        in html
+    )
+    assert (
+        "#project-scale-cost:checked ~ .project-breakdown-matrix .project-role-cost-share"
+        in html
+    )
 
 
 def test_project_details_and_exact_model_details_keep_complete_disclosures(
@@ -144,7 +190,9 @@ def test_project_breakdown_empty_state_and_styles_are_self_contained(
 
     assert html.count("<svg") == 4
     assert "No usage found for this range." in html
-    assert "--model-0: #8fb1f5;" in html
+    assert "--model-0: #087f8c;" in html
+    assert "--model-1: #c47f00;" in html
+    assert "--model-2: #2e8b57;" in html
     assert "--model-7: #8b949f;" in html
     assert "body.vscode-high-contrast" in html
     assert ".model-segment:focus-visible" in html
@@ -206,7 +254,10 @@ def test_project_role_cells_reserve_space_for_metrics_and_tracks(tmp_path: Path)
 
     assert ".project-role-metric {" in html
     assert ".project-role-track { min-width: 0; height: 30px;" in html
-    assert ".project-role-fill { min-width: 0; height: 100%; }" in html
+    assert (
+        ".project-role-fill { min-width: 0; width: var(--token-width, 0%); height: 100%; }"
+        in html
+    )
 
 
 def test_project_rows_share_role_columns_and_headings_render_once(
@@ -221,6 +272,7 @@ def test_project_rows_share_role_columns_and_headings_render_once(
     )
 
     assert ".project-breakdown-header, .project-breakdown-row { display: contents; }" in html
+    assert "grid-column: 1 / -1;" in html
     assert (
         "grid-template-columns: minmax(120px, 190px) minmax(190px, 1fr) "
         "minmax(190px, 1fr) max-content;" in html
@@ -231,6 +283,16 @@ def test_project_rows_share_role_columns_and_headings_render_once(
     assert header.count('role="columnheader"') == 4
     assert header.count("Root tasks") == 1
     assert header.count("Subagents") == 1
+
+
+def test_model_mix_rows_share_one_track_grid(tmp_path: Path) -> None:
+    html = _render_report(tmp_path, [])
+
+    assert ".model-mix-row { display: contents; }" in html
+    assert (
+        "grid-template-columns: minmax(120px, 200px) minmax(220px, 1fr) max-content;"
+        in html
+    )
 
 
 def test_model_details_keeps_all_exact_models_beyond_two_hundred_rows(

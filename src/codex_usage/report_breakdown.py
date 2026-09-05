@@ -17,6 +17,7 @@ from codex_usage.models import (
     UsageRecord,
     UsageRole,
 )
+from codex_usage.model_presentation import model_display_sort_key
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
 
 OTHER_MODEL_KEY = "__codex_usage_other_models__"
@@ -102,7 +103,7 @@ def build_report_breakdown_from_valued(
     model_rows = tuple(
         _row(model, model, summary)
         for model, summary in sorted(
-            model_totals.items(), key=lambda item: (-item[1].usage.total_tokens, item[0])
+            model_totals.items(), key=lambda item: model_display_sort_key(item[0])
         )
         if summary.usage.total_tokens > 0
     )
@@ -147,7 +148,10 @@ def _visual_models(
         model_totals,
         key=lambda model: (-model_totals[model].usage.total_tokens, model),
     )
-    exact_models = ranked_models[:visual_model_limit]
+    exact_models = sorted(
+        ranked_models[:visual_model_limit],
+        key=model_display_sort_key,
+    )
     buckets = [
         VisualModelBucket(key=model, label=model, exact_models=(model,))
         for model in exact_models

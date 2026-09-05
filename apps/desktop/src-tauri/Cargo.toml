@@ -1,6 +1,6 @@
 [package]
 name = "codex-usage-desktop"
-version = "2.1.1"
+version = "2.2.0"
 description = "Native local Codex usage ledger and task tools"
 authors = ["Wenjun Mao"]
 license = "MIT"

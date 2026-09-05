@@ -102,6 +102,10 @@ Open **Usage** to review:
 - exact model details, including unknown or currently unpriced usage.
 
 Choose a date range, project filter, and explicit Auto, Day, or Night theme.
+Project Breakdown always shows role-level tokens and API-equivalent dollars;
+its compact control scales the role and model bars by either Tokens or API cost.
+Models are presented by generation and product tier with stable, distinct
+colors, while the bounded visual set still favors the highest-volume models.
 These controls query SQLite only. The reload icon re-queries the ledger without
 capturing task files; **Capture Usage** is the separate action that updates the
 ledger. The report shows generation time and whether its rendered-result cache was used.

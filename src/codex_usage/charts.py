@@ -103,12 +103,26 @@ def render_project_breakdown_chart(
     if not points:
         return _empty_svg(title, "No usage found for this range.")
 
-    role_max_tokens = {
+    role_max_tokens: dict[str, int | float] = {
         "root": max(point.root_tokens for point in points) or 1,
         "subagent": max(point.subagent_tokens for point in points) or 1,
     }
+    role_max_costs: dict[str, int | float] = {
+        "root": max(point.root_cost_usd for point in points),
+        "subagent": max(point.subagent_cost_usd for point in points),
+    }
     chunks = [
         f'<div class="project-breakdown-chart" role="group" aria-label="{_esc(title)}">',
+        '<input class="project-scale-input" type="radio" name="project-bar-scale" '
+        'id="project-scale-tokens" value="tokens" checked>',
+        '<input class="project-scale-input" type="radio" name="project-bar-scale" '
+        'id="project-scale-cost" value="cost">',
+        '<div class="project-scale-toolbar">'
+        '<span class="project-scale-label">Scale bars by</span>'
+        '<span class="project-scale-options" role="group" aria-label="Project bar scale">'
+        '<label for="project-scale-tokens">Tokens</label>'
+        '<label for="project-scale-cost">API cost</label>'
+        '</span></div>',
         f'<div class="project-breakdown-matrix" role="table" aria-label="{_esc(title)}">',
         '<div class="project-breakdown-header" role="row">',
         '<span class="project-column-heading" role="columnheader">Project</span>',
@@ -121,8 +135,8 @@ def render_project_breakdown_chart(
         row_html = (
             f'<div class="project-breakdown-row" role="row" data-project-key="{_esc(point.key)}">'
             f'<span class="breakdown-bar-label" role="rowheader">{_esc(point.label)}</span>'
-            f'{_render_role_cell(point, "root", role_max_tokens["root"])}'
-            f'{_render_role_cell(point, "subagent", role_max_tokens["subagent"])}'
+            f'{_render_role_cell(point, "root", role_max_tokens["root"], role_max_costs["root"])}'
+            f'{_render_role_cell(point, "subagent", role_max_tokens["subagent"], role_max_costs["subagent"])}'
             f'<span class="breakdown-bar-value" role="cell">{_esc(_breakdown_value(point))}</span>'
             "</div>"
         )
@@ -160,7 +174,10 @@ def render_model_mix_chart(points: list[ModelMixPoint]) -> str:
 
 
 def _render_role_cell(
-    point: ProjectBreakdownPoint, role_name: str, max_tokens: int
+    point: ProjectBreakdownPoint,
+    role_name: str,
+    max_tokens: int | float,
+    max_cost_usd: int | float,
 ) -> str:
     role = next((item for item in point.roles if item.role == role_name), None)
     label = "Root tasks" if role_name == "root" else "Subagents"
@@ -172,22 +189,29 @@ def _render_role_cell(
             f'data-role-label="{_esc(label)}" aria-label="{_esc(aria)}">'
             '<div class="project-role-metric">'
             '<span class="project-role-metric-total">0</span>'
-            '<span aria-hidden="true">|</span><span>0.0%</span>'
+            '<span aria-hidden="true">|</span><span class="project-role-metric-cost">$0.00</span>'
+            '<span aria-hidden="true">|</span>'
+            '<span class="project-role-share project-role-token-share">0.0%</span>'
+            '<span class="project-role-share project-role-cost-share">0.0%</span>'
             "</div>"
             '<div class="project-role-track"></div>'
             "</div>"
         )
 
-    width = role.total_tokens / max_tokens * 100 if max_tokens else 0
+    token_width = role.total_tokens / max_tokens * 100 if max_tokens else 0
+    cost_width = role.cost_usd / max_cost_usd * 100 if max_cost_usd else 0
     return (
         f'<div class="project-role-cell {role_class}" role="cell" '
         f'data-role-label="{_esc(label)}">'
         '<div class="project-role-metric">'
         f'<span class="project-role-metric-total">{_fmt_compact(role.total_tokens)}</span>'
-        f'<span aria-hidden="true">|</span><span>{role.project_share:.1%}</span>'
+        f'<span aria-hidden="true">|</span><span class="project-role-metric-cost">${role.cost_usd:.2f}</span>'
+        '<span aria-hidden="true">|</span>'
+        f'<span class="project-role-share project-role-token-share">{role.project_share:.1%}</span>'
+        f'<span class="project-role-share project-role-cost-share">{role.project_cost_share:.1%}</span>'
         "</div>"
         '<div class="project-role-track">'
-        f'<div class="project-role-fill" style="width:{width:.4f}%">'
+        f'<div class="project-role-fill" style="--token-width:{token_width:.4f}%;--cost-width:{cost_width:.4f}%">'
         f"{_render_role_group(point, role)}"
         "</div></div></div>"
     )
@@ -196,19 +220,21 @@ def _render_role_cell(
 def _render_role_group(point: ProjectBreakdownPoint, role: RoleGroupPoint) -> str:
     role_aria = (
         f"{point.label} {role.label}, {_fmt_int(role.total_tokens)} tokens, "
-        f"{role.project_share:.1%} of project"
+        f"${role.cost_usd:.4f}, {role.project_share:.1%} of project tokens, "
+        f"{role.project_cost_share:.1%} of project API cost"
     )
     segments = []
     for segment in role.segments:
-        segment_width = (
+        token_width = (
             segment.total_tokens / role.total_tokens * 100 if role.total_tokens else 0
         )
+        cost_width = segment.cost_usd / role.cost_usd * 100 if role.cost_usd else 0
         tooltip_title = f"{point.label} · {role.label} · {segment.label}"
         tooltip_detail = _segment_detail(segment)
         segment_aria = f"{point.label}, {role.label}, {segment.label}, {tooltip_detail.replace(' | ', ', ')}"
         segments.append(
             f'<span class="model-segment model-color-slot-{segment.color_slot}" '
-            f'style="width:{segment_width:.4f}%" tabindex="0" '
+            f'style="--token-width:{token_width:.4f}%;--cost-width:{cost_width:.4f}%" tabindex="0" '
             f'aria-label="{_esc(segment_aria)}">'
             '<span class="chart-tooltip" aria-hidden="true">'
             f"<strong>{_esc(tooltip_title)}</strong><span>{_esc(tooltip_detail)}</span>"
@@ -235,6 +261,7 @@ def _segment_detail(segment: ModelSegmentPoint) -> str:
     return _detail_text(
         total_tokens=segment.total_tokens,
         project_share=segment.project_share,
+        project_cost_share=segment.project_cost_share,
         cost_usd=segment.cost_usd,
         total_credits=segment.total_credits,
         unpriced_tokens=segment.unpriced_tokens,
@@ -246,6 +273,7 @@ def _model_detail(point: ModelMixPoint) -> str:
     return _detail_text(
         total_tokens=point.total_tokens,
         project_share=None,
+        project_cost_share=None,
         cost_usd=point.cost_usd,
         total_credits=point.total_credits,
         unpriced_tokens=point.unpriced_tokens,
@@ -266,6 +294,7 @@ def _detail_text(
     *,
     total_tokens: int,
     project_share: float | None,
+    project_cost_share: float | None,
     cost_usd: float,
     total_credits: float,
     unpriced_tokens: int,
@@ -273,8 +302,11 @@ def _detail_text(
 ) -> str:
     detail = f"{_fmt_int(total_tokens)} tokens"
     if project_share is not None:
-        detail += f" | {project_share:.1%} of project"
-    detail += f" | ${cost_usd:.4f} | {_fmt_credits(total_credits)} credits"
+        detail += f" | {project_share:.1%} of project tokens"
+    detail += f" | ${cost_usd:.4f}"
+    if project_cost_share is not None:
+        detail += f" | {project_cost_share:.1%} of project API cost"
+    detail += f" | {_fmt_credits(total_credits)} credits"
     if unpriced_tokens:
         detail += f" | {_fmt_int(unpriced_tokens)} API-excluded"
     if credit_unpriced_tokens:

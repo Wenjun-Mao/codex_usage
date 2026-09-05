@@ -35,7 +35,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}"
-REPORT_RENDER_REVISION = 2
+REPORT_RENDER_REVISION = 3
 
 
 @dataclass(frozen=True, slots=True)
