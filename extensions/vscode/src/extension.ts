@@ -398,7 +398,7 @@ function controlState(): Pick<Parameters<typeof decorateUsageReport>[1], "range"
     range: reportRange(),
     theme: reportTheme(),
     projectCount: selectedProjects().length,
-    version: String(contextRef.extension.packageJSON.version ?? "2.4.0"),
+    version: String(contextRef.extension.packageJSON.version ?? "2.4.1"),
     lastCaptureAt: latestStatus?.last_capture_at ?? "",
   };
 }

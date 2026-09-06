@@ -14,7 +14,7 @@ const controls = {
   projectCount: 0,
   loadedSeconds: 0.04,
   cacheHit: true,
-  version: "2.4.0",
+  version: "2.4.1",
   view: "usage",
   lastCaptureAt: "2026-09-04T12:30:00Z",
 };

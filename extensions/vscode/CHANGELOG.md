@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.4.1 - 2026-09-06 - AWS Bedrock GPT-5.6 Pricing
+
+- Added effective-dated Amazon Bedrock Standard In-Region API-equivalent rates for GPT-5.6 Sol, Terra, and Luna, including documented `us.` and `in.` inference-profile aliases.
+- Preserved each historical Bedrock rate transition and excluded `global.` profiles because their pricing differs from In-Region usage.
+- Advanced the report pricing revision so cached reports are revalued with the new Bedrock schedule.
+
 ## 2.4.0 - 2026-09-06 - Readable Long-Range Cost Trends
 
 - Added one accessible **Week | Month** control to all-history Usage reports, defaulting to Monday-through-Sunday weeks and switching locally to calendar months without querying the ledger or reopening task files.
