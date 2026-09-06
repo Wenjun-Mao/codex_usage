@@ -10,7 +10,6 @@ from typing import TextIO
 
 from codex_usage.aggregation import AggregateRow, UsageSummary
 from codex_usage.charts import (
-    render_daily_cost_svg,
     render_hourly_heatmap_html,
     render_model_mix_chart,
     render_project_breakdown_chart,
@@ -27,6 +26,7 @@ from codex_usage.report_tables import (
     render_aggregate_table,
     render_project_details_table,
 )
+from codex_usage.report_temporal import render_temporal_chart
 from codex_usage.report_theme import normalize_report_theme, report_css
 from codex_usage.report_view import ReportViewModel, build_report_view_model
 from codex_usage.report_views import (
@@ -180,7 +180,9 @@ def render_html_report(
     pricing_notice_html = _pricing_notice(view_model)
     project_filter_label = _project_filter_label(project_keys)
     project_transitions_html = _project_transitions_section(project_transitions)
-    task_storage_html = render_task_storage_section(build_task_storage_view(storage_snapshot))
+    task_storage_html = render_task_storage_section(
+        build_task_storage_view(storage_snapshot)
+    )
     storage_summary = " | ".join(
         _storage_bits(
             files_scanned=view_model.files_scanned,
@@ -242,21 +244,7 @@ def _render_usage_view(
     pricing_notice_html: str,
     project_transitions_html: str,
 ) -> str:
-    temporal_period = {"day": "Daily", "week": "Weekly", "month": "Monthly"}[
-        view_model.temporal_granularity
-    ]
-    temporal_chart = _chart_section(
-        view_model.temporal_chart_title,
-        render_daily_cost_svg(
-            view_model.daily_points,
-            title=f"{temporal_period} API-equivalent cost trend",
-        ),
-        render_aggregate_table(
-            "Daily Details", view_model.daily_rows, section_id="daily-details"
-        ),
-        section_id="daily-cost",
-        scroll_class="tooltip-chart-scroll",
-    )
+    temporal_chart = render_temporal_chart(view_model, range_name)
     return (
         '<div class="usage-view-context">'
         f'<div class="muted summary-line">Usage range: {html.escape(range_name)} | '
@@ -269,7 +257,7 @@ def _render_usage_view(
         f"{project_transitions_html}"
         '<div class="dashboard-grid">'
         f"{temporal_chart}"
-        f'{_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table("Hourly Details", view_model.hourly_rows, section_id="hourly-details"), section_id="hourly-heatmap", scroll_class="heatmap-chart-scroll")}'
+        f"{_chart_section('Hourly Heatmap', render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table('Hourly Details', view_model.hourly_rows, section_id='hourly-details'), section_id='hourly-heatmap', scroll_class='heatmap-chart-scroll')}"
         '<section class="usage-comparison" aria-label="Usage chart comparison">'
         '<input class="comparison-scale-input" type="radio" name="usage-chart-scale" '
         'id="compare-scale-tokens" value="tokens" checked>'
@@ -280,11 +268,11 @@ def _render_usage_view(
         '<span class="comparison-scale-options" role="group" aria-label="Compare chart bars by">'
         '<label for="compare-scale-tokens">Tokens</label>'
         '<label for="compare-scale-cost">API cost</label>'
-        '</span></div>'
+        "</span></div>"
         '<div class="comparison-charts">'
-        f'{_chart_section("Project Breakdown", render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table("Project Details", view_model.project_detail_points, section_id="project-details"), section_id="project-breakdown", scroll_class="tooltip-chart-scroll", help_text="Root task token usage includes side chats stored in the parent task.")}'
-        f'{_chart_section("Model Mix", render_model_mix_chart(view_model.model_points), render_aggregate_table("Model Details", view_model.model_rows, section_id="model-details"), section_id="model-mix", scroll_class="tooltip-chart-scroll")}'
-        '</div></section>'
+        f"{_chart_section('Project Breakdown', render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table('Project Details', view_model.project_detail_points, section_id='project-details'), section_id='project-breakdown', scroll_class='tooltip-chart-scroll', help_text='Root task token usage includes side chats stored in the parent task.')}"
+        f"{_chart_section('Model Mix', render_model_mix_chart(view_model.model_points), render_aggregate_table('Model Details', view_model.model_rows, section_id='model-details'), section_id='model-mix', scroll_class='tooltip-chart-scroll')}"
+        "</div></section>"
         "</div>"
     )
 

@@ -111,6 +111,9 @@ describe("native views", () => {
 
     const frame = root.querySelector<HTMLIFrameElement>("#usage-report")!;
     expect(frame.srcdoc).toContain("Project Breakdown");
+    expect(frame.srcdoc).toContain("Cost Trend");
+    expect(frame.srcdoc).toContain('id="cost-trend-week"');
+    expect(frame.srcdoc).toContain('id="cost-trend-month"');
     expect(frame.srcdoc).toContain("Compare by");
     expect(frame.srcdoc).toContain("API cost");
     expect(frame.srcdoc).toContain('id="compare-scale-cost"');

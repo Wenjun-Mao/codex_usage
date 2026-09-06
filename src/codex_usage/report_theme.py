@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from codex_usage.report_breakdown_theme import report_breakdown_css
 from codex_usage.report_metric_theme import report_metric_strip_css
+from codex_usage.report_temporal_theme import report_temporal_css
 from codex_usage.report_views import report_views_css
 
 REPORT_THEME_CHOICES = ("auto", "day", "night")
@@ -16,7 +17,8 @@ def normalize_report_theme(value: str | None) -> str:
 
 
 def report_css() -> str:
-    return """
+    return (
+        """
     :root {
       color-scheme: light;
       --day-bg: #f5f7f9;
@@ -205,10 +207,7 @@ def report_css() -> str:
     * { box-sizing: border-box; }
     body {
       font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.4;
+      margin: 0; background: var(--bg); color: var(--text); line-height: 1.4;
     }
     main { max-width: 1180px; margin: 0 auto; padding: 24px; }
     h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: 0; }
@@ -292,6 +291,7 @@ def report_css() -> str:
       margin-top: 6px;
       overflow: hidden;
       text-align: center;
+      visibility: hidden;
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
@@ -305,11 +305,10 @@ def report_css() -> str:
     }
     .chart-tooltip {
       position: absolute;
-      left: 50%;
-      bottom: calc(100% + 8px);
+      left: 50%; bottom: calc(100% + 8px);
       z-index: 4;
       width: max-content;
-      max-width: 280px;
+      max-width: min(280px, calc(100vw - 48px));
       padding: 6px 8px;
       border-radius: 6px;
       background: var(--tooltip-bg);
@@ -319,8 +318,7 @@ def report_css() -> str:
       line-height: 1.3;
       pointer-events: none;
       transform: translate(-50%, 2px);
-      opacity: 0;
-      visibility: hidden;
+      opacity: 0; visibility: hidden;
       transition: opacity 0.06s linear, transform 0.06s linear, visibility 0s linear 0.06s;
       white-space: normal;
     }
@@ -342,8 +340,7 @@ def report_css() -> str:
       display: block;
     }
     .chart-tooltip-detail {
-      margin-top: 2px;
-      opacity: 0.86;
+      margin-top: 2px; opacity: 0.86;
     }
     .heatmap-grid {
       --heatmap-cell-size: 20px;
@@ -493,4 +490,9 @@ def report_css() -> str:
       .storage-bar-label { text-align: left; }
       .storage-legend { margin-left: 104px; }
     }
-""" + report_metric_strip_css() + report_views_css() + report_breakdown_css()
+"""
+        + report_metric_strip_css()
+        + report_views_css()
+        + report_breakdown_css()
+        + report_temporal_css()
+    )

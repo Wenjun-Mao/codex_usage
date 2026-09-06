@@ -54,8 +54,8 @@ class ReportViewModel:
     total: UsageSummary
     kpis: list[KpiCard]
     daily_points: list[DailyPoint]
-    temporal_chart_title: str
-    temporal_granularity: str
+    weekly_points: list[DailyPoint]
+    monthly_points: list[DailyPoint]
     hourly_cells: list[HourlyCell]
     breakdown_view: BreakdownView
     model_legend: list[ModelLegendItem]
@@ -103,8 +103,9 @@ def build_report_view_model(
     storage_roots: list[str] | tuple[str, ...] | None = None,
 ) -> ReportViewModel:
     breakdown_view = build_breakdown_view(breakdown)
-    daily_points, temporal_granularity = _build_temporal_points(
-        daily_rows, range_name
+    daily_points = [_daily_point(row) for row in daily_rows]
+    weekly_points, monthly_points = _build_all_history_points(
+        daily_points, range_name
     )
     return ReportViewModel(
         generated_at=generated_at,
@@ -117,8 +118,8 @@ def build_report_view_model(
         total=total,
         kpis=_build_kpis(total),
         daily_points=daily_points,
-        temporal_chart_title=_temporal_chart_title(temporal_granularity),
-        temporal_granularity=temporal_granularity,
+        weekly_points=weekly_points,
+        monthly_points=monthly_points,
         hourly_cells=[cell for row in hourly_rows if (cell := _hourly_cell(row)) is not None],
         breakdown_view=breakdown_view,
         model_legend=list(breakdown_view.model_legend),
@@ -164,28 +165,24 @@ def _daily_point(row: AggregateRow) -> DailyPoint:
     )
 
 
-def _build_temporal_points(
-    daily_rows: list[AggregateRow], range_name: str
-) -> tuple[list[DailyPoint], str]:
-    """Keep exact daily rows for details while reducing an unbounded chart to readable bins."""
-    daily_points = [_daily_point(row) for row in daily_rows]
+def _build_all_history_points(
+    daily_points: list[DailyPoint], range_name: str
+) -> tuple[list[DailyPoint], list[DailyPoint]]:
+    """Build both local-calendar views without changing the ledger-owned daily series."""
     if range_name != "all" or not daily_points:
-        return daily_points, "day"
+        return [], []
 
     dated_points = [(_parse_day(point.key), point) for point in daily_points]
     if any(day is None for day, _ in dated_points):
-        # The day aggregate contract normally makes this unreachable. Retaining the
-        # exact points is safer than silently assigning a malformed key to a period.
-        return daily_points, "day"
+        # The day aggregate contract normally makes this unreachable. Suppressing
+        # derived views is safer than assigning a malformed local day to a period.
+        return [], []
 
     points_by_day = [(day, point) for day, point in dated_points if day is not None]
-    first_day = min(day for day, _ in points_by_day)
-    last_day = max(day for day, _ in points_by_day)
-    if (last_day - first_day).days < 31:
-        return daily_points, "day"
-    week_count = (last_day - first_day).days // 7 + 1
-    granularity = "week" if week_count <= 26 else "month"
-    return _aggregate_temporal_points(points_by_day, granularity), granularity
+    return (
+        _aggregate_temporal_points(points_by_day, "week"),
+        _aggregate_temporal_points(points_by_day, "month"),
+    )
 
 
 def _aggregate_temporal_points(
@@ -206,11 +203,17 @@ def _aggregate_temporal_points(
             period_end = bucket + timedelta(days=6)
             key = f"{bucket.isoformat()} to {period_end.isoformat()}"
             label = f"{_month_abbreviation(bucket.month)} {bucket.day}"
-            tooltip_label = f"Week of {bucket.isoformat()}"
+            tooltip_label = _format_period(bucket, period_end)
         else:
+            next_month = (
+                bucket.replace(year=bucket.year + 1, month=1)
+                if bucket.month == 12
+                else bucket.replace(month=bucket.month + 1)
+            )
+            period_end = next_month - timedelta(days=1)
             key = bucket.strftime("%Y-%m")
             label = f"{_month_abbreviation(bucket.month)} {bucket.year}"
-            tooltip_label = bucket.strftime("%B %Y")
+            tooltip_label = _format_period(bucket, period_end)
         points.append(
             DailyPoint(
                 key=key,
@@ -232,14 +235,6 @@ def _parse_day(value: str) -> date | None:
         return None
 
 
-def _temporal_chart_title(granularity: str) -> str:
-    return {
-        "day": "Daily Cost Trend",
-        "week": "Weekly Cost Trend",
-        "month": "Monthly Cost Trend",
-    }[granularity]
-
-
 def _month_abbreviation(month: int) -> str:
     return (
         "Jan",
@@ -255,6 +250,19 @@ def _month_abbreviation(month: int) -> str:
         "Nov",
         "Dec",
     )[month - 1]
+
+
+def _format_period(start: date, end: date) -> str:
+    start_month = _month_abbreviation(start.month)
+    end_month = _month_abbreviation(end.month)
+    if start.year == end.year and start.month == end.month:
+        return f"{start_month} {start.day}\u2013{end.day}, {start.year}"
+    if start.year == end.year:
+        return f"{start_month} {start.day}\u2013{end_month} {end.day}, {start.year}"
+    return (
+        f"{start_month} {start.day}, {start.year}\u2013"
+        f"{end_month} {end.day}, {end.year}"
+    )
 
 
 def _hourly_cell(row: AggregateRow) -> HourlyCell | None:

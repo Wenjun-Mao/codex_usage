@@ -35,8 +35,18 @@ def test_project_breakdown_renders_nested_roles_models_and_shared_legend(
     assert 'class="project-breakdown-chart" role="group"' in html
     assert 'class="project-breakdown-matrix" role="table"' in html
     assert 'class="project-breakdown-header" role="row"' in html
-    assert html.count('<span class="role-column-heading" role="columnheader">Root tasks</span>') == 1
-    assert html.count('<span class="role-column-heading" role="columnheader">Subagents</span>') == 1
+    assert (
+        html.count(
+            '<span class="role-column-heading" role="columnheader">Root tasks</span>'
+        )
+        == 1
+    )
+    assert (
+        html.count(
+            '<span class="role-column-heading" role="columnheader">Subagents</span>'
+        )
+        == 1
+    )
     assert 'class="project-role-cell project-role-cell-root"' in html
     assert 'class="project-role-cell project-role-cell-subagent"' in html
     assert 'role="group" aria-label="demo Root tasks' in html
@@ -118,16 +128,14 @@ def test_project_breakdown_scales_each_role_column_independently(
     )[0]
 
     assert 'style="--token-width:100.0000%;--cost-width:100.0000%"' in alpha
-    assert re.search(
-        r'style="--token-width:50\.0000%;--cost-width:[\d.]+%"', alpha
-    )
-    assert re.search(
-        r'style="--token-width:50\.0000%;--cost-width:[\d.]+%"', beta
-    )
+    assert re.search(r'style="--token-width:50\.0000%;--cost-width:[\d.]+%"', alpha)
+    assert re.search(r'style="--token-width:50\.0000%;--cost-width:[\d.]+%"', beta)
     assert 'style="--token-width:100.0000%;--cost-width:100.0000%"' in beta
 
 
-def test_project_breakdown_exposes_distinct_token_and_cost_scales(tmp_path: Path) -> None:
+def test_project_breakdown_exposes_distinct_token_and_cost_scales(
+    tmp_path: Path,
+) -> None:
     html = _render_report(
         tmp_path,
         [
@@ -148,10 +156,7 @@ def test_project_breakdown_exposes_distinct_token_and_cost_scales(tmp_path: Path
     assert outer_fill is not None
     assert float(outer_fill.group("tokens")) == 100.0
     assert 0 < float(outer_fill.group("cost")) < 100.0
-    assert (
-        "#compare-scale-cost:checked ~ .comparison-charts .project-role-fill"
-        in html
-    )
+    assert "#compare-scale-cost:checked ~ .comparison-charts .project-role-fill" in html
     assert (
         "#compare-scale-cost:checked ~ .comparison-charts .project-role-cost-share"
         in html
@@ -184,9 +189,7 @@ def test_shared_comparison_scale_controls_project_breakdown_and_model_mix(
     assert min(float(cost) for _, cost in widths) < max(
         float(cost) for _, cost in widths
     )
-    assert (
-        "#compare-scale-cost:checked ~ .comparison-charts .model-mix-fill" in html
-    )
+    assert "#compare-scale-cost:checked ~ .comparison-charts .model-mix-fill" in html
 
 
 def test_project_breakdown_cost_scale_keeps_unpriced_usage_at_zero_width(
@@ -236,7 +239,8 @@ def test_project_breakdown_empty_state_and_styles_are_self_contained(
 ) -> None:
     html = _render_report(tmp_path, [])
 
-    assert html.count("<svg") == 4
+    # All-history reports pre-render both Week and Month cost views for local switching.
+    assert html.count("<svg") == 5
     assert "No usage found for this range." in html
     assert "--model-0: #087f8c;" in html
     assert "--model-1: #c47f00;" in html
@@ -244,7 +248,9 @@ def test_project_breakdown_empty_state_and_styles_are_self_contained(
     assert "--model-7: #8b949f;" in html
     assert "body.vscode-high-contrast" in html
     assert ".model-segment:focus-visible" in html
-    assert 'grid-template-areas: "project total" "root root" "subagent subagent";' in html
+    assert (
+        'grid-template-areas: "project total" "root root" "subagent subagent";' in html
+    )
     assert "<script" not in html
     assert " src=" not in html
     assert 'href="#report-view-usage"' in html
@@ -285,7 +291,9 @@ def test_breakdown_css_uses_non_layout_segment_and_model_mix_boundaries(
     assert "box-shadow: inset 0 0 0 1px var(--model-separator);" in html
 
 
-def test_project_role_fill_boundary_keeps_tooltips_outside_its_clip(tmp_path: Path) -> None:
+def test_project_role_fill_boundary_keeps_tooltips_outside_its_clip(
+    tmp_path: Path,
+) -> None:
     html = _render_report(tmp_path, [])
 
     role_group_css = html.split(".project-role-group {", 1)[1].split("}", 1)[0]
@@ -295,10 +303,14 @@ def test_project_role_fill_boundary_keeps_tooltips_outside_its_clip(tmp_path: Pa
     assert ".model-segment:last-child { border-radius: 0 3px 3px 0; }" in html
     assert ".model-segment:only-child { border-radius: 3px; }" in html
     assert ".project-role-cell-root .model-segment:first-child .chart-tooltip" in html
-    assert ".project-role-cell-subagent .model-segment:last-child .chart-tooltip" in html
+    assert (
+        ".project-role-cell-subagent .model-segment:last-child .chart-tooltip" in html
+    )
 
 
-def test_project_role_cells_reserve_space_for_metrics_and_tracks(tmp_path: Path) -> None:
+def test_project_role_cells_reserve_space_for_metrics_and_tracks(
+    tmp_path: Path,
+) -> None:
     html = _render_report(tmp_path, [])
 
     assert ".project-role-metric {" in html
@@ -320,15 +332,18 @@ def test_project_rows_share_role_columns_and_headings_render_once(
         ],
     )
 
-    assert ".project-breakdown-header, .project-breakdown-row { display: contents; }" in html
+    assert (
+        ".project-breakdown-header, .project-breakdown-row { display: contents; }"
+        in html
+    )
     assert "grid-column: 1 / -1;" in html
     assert (
         "grid-template-columns: minmax(120px, 190px) minmax(190px, 1fr) "
         "minmax(190px, 1fr) max-content;" in html
     )
-    header = html.split('<div class="project-breakdown-header" role="row">', 1)[1].split(
-        "</div>", 1
-    )[0]
+    header = html.split('<div class="project-breakdown-header" role="row">', 1)[
+        1
+    ].split("</div>", 1)[0]
     assert header.count('role="columnheader"') == 4
     assert header.count("Root tasks") == 1
     assert header.count("Subagents") == 1
@@ -386,9 +401,7 @@ def _render_report(tmp_path: Path, records: list[UsageRecord]) -> str:
     return output.read_text(encoding="utf-8")
 
 
-def _record(
-    role: str, model: str, total: int, *, project: str = "demo"
-) -> UsageRecord:
+def _record(role: str, model: str, total: int, *, project: str = "demo") -> UsageRecord:
     return UsageRecord(
         timestamp=datetime(2026, 8, 1, tzinfo=UTC),
         usage=TokenUsage(

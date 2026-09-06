@@ -1,17 +1,13 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_usage.aggregation import AggregateRow, UsageSummary
+from codex_usage.aggregation import UsageSummary
 from codex_usage.models import TokenUsage
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
 from codex_usage.project_transitions import ProjectTransition
-from codex_usage.report_breakdown import (
-    ProjectRoleModelBreakdown,
-    ReportBreakdown,
-    RoleModelBreakdown,
-    VisualModelBucket,
-)
 from codex_usage.reporting import render_html_report
+from reporting_html_helpers import breakdown as _breakdown
+from reporting_html_helpers import row as _row
 
 
 def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
@@ -71,12 +67,15 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
     assert "body.vscode-dark" in html
     assert "body.vscode-high-contrast" in html
     assert "Projects: repo" in html
-    assert "Daily Cost Trend" in html
+    assert "Cost Trend" in html
+    assert 'id="cost-trend-week" value="week"' in html
+    assert 'id="cost-trend-month" value="month"' in html
     assert "Hourly Heatmap" in html
     assert "Project Breakdown" in html
     assert "Model Mix" in html
     assert html.count("<svg") == 0
-    assert 'role="img" aria-label="Daily API-equivalent cost trend"' in html
+    assert 'role="img" aria-label="Weekly API-equivalent cost trend"' in html
+    assert 'role="img" aria-label="Monthly API-equivalent cost trend"' in html
     assert 'role="grid" aria-label="Hourly API-equivalent cost heatmap"' in html
     assert 'class="chart-scroll tooltip-chart-scroll"' in html
     assert "--chart-tooltip-top-reserve: 80px;" in html
@@ -85,11 +84,13 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
     assert "daily-bar-chart" in html
     assert "project-breakdown-chart" in html
     assert "model-mix-chart" in html
-    assert '<section class="usage-comparison" aria-label="Usage chart comparison">' in html
+    assert (
+        '<section class="usage-comparison" aria-label="Usage chart comparison">' in html
+    )
     assert 'id="compare-scale-tokens" value="tokens" checked' in html
     assert 'id="compare-scale-cost" value="cost"' in html
     assert "chart-tooltip-main" in html
-    assert '<span class="chart-tooltip-main">2026-04-29</span>' in html
+    assert '<span class="chart-tooltip-main">Apr 27\u2013May 3, 2026</span>' in html
     assert '<span class="chart-tooltip-detail">$1.7500 | 1,100 tokens</span>' in html
     assert "demo · Root tasks · gpt-5.5" in html
     assert 'class="model-legend" aria-label="Model colors"' in html
@@ -207,7 +208,7 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     assert "--heat-5: #d8a72f" not in html
 
 
-def test_dashboard_all_history_uses_monthly_cost_periods_and_contained_tooltips(
+def test_dashboard_all_history_has_local_zero_io_period_switch_and_contained_tooltips(
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "long-history.html"
@@ -233,14 +234,61 @@ def test_dashboard_all_history_uses_monthly_cost_periods_and_contained_tooltips(
 
     html = output.read_text(encoding="utf-8")
 
-    assert "Monthly Cost Trend" in html
+    assert "<h2>Cost Trend</h2>" in html
+    assert (
+        'id="cost-trend-week" value="week" aria-label="Group cost trend by week" checked'
+        in html
+    )
+    assert (
+        'id="cost-trend-month" value="month" aria-label="Group cost trend by month"'
+        in html
+    )
+    assert 'role="radiogroup" aria-label="Cost trend period"' in html
+    assert '<label for="cost-trend-week">Week</label>' in html
+    assert '<label for="cost-trend-month">Month</label>' in html
+    assert 'class="daily-bar-chart temporal-week"' in html
     assert 'class="daily-bar-chart temporal-month"' in html
     assert "--bar-min-width: 72px" in html
-    assert '<span class="chart-tooltip-main">August 2026</span>' in html
+    assert '<span class="chart-tooltip-main">Aug 1\u201331, 2026</span>' in html
+    assert "$1.0000 | 1,000 tokens" in html
     assert "Daily Details" in html
     assert "2026-01-15" in html and "2026-08-15" in html
+    assert "#cost-trend-month:checked ~ .cost-trend-panels" in html
+    assert "fetch(" not in html and "XMLHttpRequest" not in html
+    assert "<script" not in html
+    assert ".daily-bar-label.tick-medium" in html
+    assert ".daily-bar-label.tick-narrow" in html
+    assert "max-width: min(280px, calc(100vw - 48px));" in html
     assert ".daily-bar-slot:first-child .chart-tooltip" in html
+    assert ".daily-bar-slot:last-child .chart-tooltip" in html
     assert ".model-mix-fill .chart-tooltip" in html
+
+
+def test_short_range_retains_daily_chart_without_period_control(tmp_path: Path) -> None:
+    output = tmp_path / "short.html"
+    render_html_report(
+        output_path=output,
+        generated_at=datetime(2026, 9, 6, 12, tzinfo=UTC),
+        range_name="30d",
+        total=UsageSummary(
+            usage=TokenUsage(total_tokens=10),
+            cost=CostBreakdown(total_usd=0.5),
+            credits=CreditBreakdown(),
+            record_count=1,
+        ),
+        daily_rows=[_row("2026-09-01", "2026-09-01", 10, cost=0.5)],
+        hourly_rows=[],
+        breakdown=_breakdown([], []),
+        sessions_dirs=[Path("sessions")],
+        files_scanned=1,
+    )
+
+    html = output.read_text(encoding="utf-8")
+
+    assert "Daily Cost Trend" in html
+    assert 'aria-label="Daily API-equivalent cost trend"' in html
+    assert 'id="cost-trend-week"' not in html
+    assert 'id="cost-trend-month"' not in html
 
 
 def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:
@@ -431,66 +479,3 @@ def test_dashboard_report_has_empty_states(tmp_path: Path) -> None:
     assert "Project Transitions" not in html
     assert "No daily usage found for this range." in html
     assert html.count("<svg") == 4
-
-
-def _row(
-    key: str,
-    label: str,
-    total: int,
-    cost: float = 0.0,
-    credits: float = 0.0,
-    unpriced: int = 0,
-    credit_unpriced: int = 0,
-    cache_write: int = 0,
-) -> AggregateRow:
-    return AggregateRow(
-        key=key,
-        label=label,
-        usage=TokenUsage(
-            input_tokens=total,
-            cached_input_tokens=total // 2,
-            cache_write_input_tokens=cache_write,
-            output_tokens=10,
-            total_tokens=total,
-        ),
-        cost=CostBreakdown(total_usd=cost, unpriced_tokens=unpriced),
-        credits=CreditBreakdown(total_credits=credits, unpriced_tokens=credit_unpriced),
-        record_count=1,
-    )
-
-
-def _breakdown(
-    project_rows: list[AggregateRow], model_rows: list[AggregateRow]
-) -> ReportBreakdown:
-    visual_models = tuple(
-        VisualModelBucket(key=row.key, label=row.label, exact_models=(row.key,))
-        for row in model_rows
-    )
-    projects = tuple(
-        ProjectRoleModelBreakdown(
-            row=row,
-            roles=(
-                RoleModelBreakdown(
-                    role="root",
-                    total=_summary(row),
-                    model_rows=tuple(model_rows),
-                ),
-            ),
-        )
-        for row in project_rows
-    )
-    return ReportBreakdown(
-        visual_models=visual_models,
-        projects=projects,
-        model_rows=tuple(model_rows),
-        visual_model_rows=tuple(model_rows),
-    )
-
-
-def _summary(row: AggregateRow) -> UsageSummary:
-    return UsageSummary(
-        usage=row.usage,
-        cost=row.cost,
-        credits=row.credits,
-        record_count=row.record_count,
-    )

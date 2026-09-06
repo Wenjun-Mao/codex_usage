@@ -50,6 +50,26 @@ body {
 .metric-strip span { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .metric-strip strong { display: block; margin-top: 4px; font-size: 20px; overflow-wrap: anywhere; }
 .metric-strip small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+.cost-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.cost-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin: -31px 0 10px; color: var(--muted); font-size: 10px; font-weight: 700; }
+.cost-options { display: inline-flex; overflow: hidden; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+.cost-options label { min-width: 62px; padding: 4px 8px; cursor: pointer; text-align: center; }
+.cost-options label + label { border-left: 1px solid var(--line); }
+#cost-trend-week:checked ~ .cost-toolbar label[for="cost-trend-week"],
+#cost-trend-month:checked ~ .cost-toolbar label[for="cost-trend-month"] { background: var(--soft); color: var(--text); }
+#cost-trend-week:focus-visible ~ .cost-toolbar label[for="cost-trend-week"],
+#cost-trend-month:focus-visible ~ .cost-toolbar label[for="cost-trend-month"] { outline: 2px solid var(--astra); outline-offset: -2px; }
+.cost-month-panel { display: none; }
+#cost-trend-month:checked ~ .cost-panels .cost-week-panel { display: none; }
+#cost-trend-month:checked ~ .cost-panels .cost-month-panel { display: block; }
+.cost-panels { padding-bottom: 20px; }
+.trend-bars { display: grid; grid-template-columns: repeat(var(--count), minmax(1px, 1fr)); gap: 5px; width: 100%; height: 132px; padding: 0 12px; align-items: end; border-bottom: 1px solid var(--line); }
+.trend-bar { position: relative; display: block; height: var(--height); min-height: 3px; border-radius: 3px 3px 0 0; background: var(--astra); outline: none; }
+.trend-bar::after { position: absolute; left: 50%; top: calc(100% + 6px); color: var(--muted); content: attr(data-label); font-size: 9px; white-space: nowrap; transform: translateX(-50%); }
+.trend-tooltip { position: absolute; left: 50%; bottom: calc(100% + 7px); width: max-content; max-width: min(220px, calc(100vw - 48px)); padding: 5px 7px; border-radius: 4px; background: var(--text); color: var(--bg); font-size: 10px; opacity: 0; pointer-events: none; transform: translateX(-50%); }
+.trend-bar:hover .trend-tooltip, .trend-bar:focus-visible .trend-tooltip { opacity: 1; }
+.trend-bar:first-child .trend-tooltip { left: 0; transform: none; }
+.trend-bar:last-child .trend-tooltip { right: 0; left: auto; transform: none; }
 .section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 h2 { margin: 0 0 4px; font-size: 17px; }
 .help { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
@@ -99,11 +119,12 @@ h2 { margin: 0 0 4px; font-size: 17px; }
   .project-grid { min-width: 690px; grid-template-columns: 90px minmax(210px, 1fr) minmax(180px, .75fr) 165px; }
   .legend { min-width: 690px; margin-left: 106px; }
   .model-mix { min-width: 600px; grid-template-columns: 96px minmax(260px, 1fr) max-content; }
+  .cost-toolbar { margin-top: 0; justify-content: flex-start; }
 }
 </style>
 </head>
 <body>
-<div class="muted">Usage range: 7 days · Pricing table as of 2026-09-04</div>
+<div class="muted">Usage range: All time · Pricing table as of 2026-09-04</div>
 <div class="muted">Pricing uses rates effective at each usage event.</div>
 <section class="metric-strip" aria-label="Usage summary">
   <div><span>Total tokens</span><strong>903.9M</strong><small>6,418 usage events</small></div>
@@ -111,6 +132,32 @@ h2 { margin: 0 0 4px; font-size: 17px; }
   <div><span>Codex credits</span><strong>13,837</strong><small>100% credit-priced</small></div>
   <div><span>Cache hit share</span><strong>97.8%</strong><small>881.7M cached input</small></div>
   <div><span>API-excluded tokens</span><strong>0</strong><small>All models have rates</small></div>
+</section>
+<section class="section cost-trend" data-report-section="daily-cost">
+  <h2>Cost Trend</h2>
+  <div class="cost-trend-interaction" role="radiogroup" aria-label="Cost trend period">
+  <input class="cost-input" type="radio" name="cost-trend-granularity" id="cost-trend-week" value="week" aria-label="Group cost trend by week" checked>
+  <input class="cost-input" type="radio" name="cost-trend-granularity" id="cost-trend-month" value="month" aria-label="Group cost trend by month">
+  <div class="cost-toolbar"><span>Group by</span><span class="cost-options"><label for="cost-trend-week">Week</label><label for="cost-trend-month">Month</label></span></div>
+  <div class="cost-panels project-scroll">
+    <div class="cost-week-panel"><div class="trend-bars" style="--count:8">
+      <span class="trend-bar" tabindex="0" data-label="Jul 13" style="--height:35%"><span class="trend-tooltip">Jul 13–19, 2026 · $29.18 · 62.1M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Jul 20" style="--height:48%"><span class="trend-tooltip">Jul 20–26, 2026 · $40.04 · 84.3M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Jul 27" style="--height:64%"><span class="trend-tooltip">Jul 27–Aug 2, 2026 · $53.37 · 110.8M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Aug 3" style="--height:55%"><span class="trend-tooltip">Aug 3–9, 2026 · $45.86 · 98.4M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Aug 10" style="--height:76%"><span class="trend-tooltip">Aug 10–16, 2026 · $63.38 · 132.5M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Aug 17" style="--height:90%"><span class="trend-tooltip">Aug 17–23, 2026 · $75.06 · 154.7M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Aug 24" style="--height:68%"><span class="trend-tooltip">Aug 24–30, 2026 · $56.71 · 121.4M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Aug 31" style="--height:100%"><span class="trend-tooltip">Aug 31–Sep 6, 2026 · $83.40 · 139.7M tokens</span></span>
+    </div></div>
+    <div class="cost-month-panel"><div class="trend-bars" style="--count:5">
+      <span class="trend-bar" tabindex="0" data-label="May 2026" style="--height:42%"><span class="trend-tooltip">May 1–31, 2026 · $88.10 · 181.6M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Jun 2026" style="--height:58%"><span class="trend-tooltip">Jun 1–30, 2026 · $121.77 · 249.4M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Jul 2026" style="--height:73%"><span class="trend-tooltip">Jul 1–31, 2026 · $153.30 · 318.9M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Aug 2026" style="--height:100%"><span class="trend-tooltip">Aug 1–31, 2026 · $210.01 · 438.2M tokens</span></span>
+      <span class="trend-bar" tabindex="0" data-label="Sep 2026" style="--height:31%"><span class="trend-tooltip">Sep 1–30, 2026 · $64.27 · 132.8M tokens</span></span>
+    </div></div>
+  </div></div>
 </section>
 <section class="section usage-comparison">
   <input class="scale-input" type="radio" name="usage-chart-scale" id="compare-scale-tokens" value="tokens" checked>

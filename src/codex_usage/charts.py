@@ -22,7 +22,9 @@ def render_daily_cost_svg(
     if max_cost <= 0:
         return _empty_svg(title, "No priced daily cost is available for this range.")
 
-    label_step = max(1, round(len(points) / 8))
+    wide_ticks = _tick_indices(len(points), 8)
+    medium_ticks = _tick_indices(len(points), 5)
+    narrow_ticks = _tick_indices(len(points), 3)
 
     granularity = points[0].granularity
     min_width = {"day": 42, "week": 64, "month": 72}.get(granularity, 42)
@@ -36,9 +38,6 @@ def render_daily_cost_svg(
     chunks.append('<div class="daily-bars">')
     for index, point in enumerate(points):
         height_pct = max(1.0, point.cost_usd / max_cost * 100)
-        label = (
-            point.label if index % label_step == 0 or index == len(points) - 1 else ""
-        )
         main_text = point.tooltip_label or point.key
         detail_text = f"${point.cost_usd:.4f} | {_fmt_int(point.total_tokens)} tokens"
         aria_text = f"{main_text}: {detail_text.replace(' | ', ', ')}"
@@ -48,11 +47,37 @@ def render_daily_cost_svg(
             f'<span class="daily-bar-fill" style="height: {height_pct:.2f}%"></span>'
             f"{_chart_tooltip(main_text, detail_text)}"
             "</span>"
-            f'<span class="daily-bar-label">{_esc(label)}</span>'
+            f'<span class="daily-bar-label{_tick_classes(index, wide_ticks, medium_ticks, narrow_ticks)}">'
+            f"{_esc(point.label)}</span>"
             "</span>"
         )
     chunks.append("</div></div>")
     return "".join(chunks)
+
+
+def _tick_indices(point_count: int, maximum: int) -> set[int]:
+    if point_count <= maximum:
+        return set(range(point_count))
+    return {
+        round(position * (point_count - 1) / (maximum - 1))
+        for position in range(maximum)
+    }
+
+
+def _tick_classes(
+    index: int,
+    wide_ticks: set[int],
+    medium_ticks: set[int],
+    narrow_ticks: set[int],
+) -> str:
+    classes = []
+    if index in wide_ticks:
+        classes.append("tick-wide")
+    if index in medium_ticks:
+        classes.append("tick-medium")
+    if index in narrow_ticks:
+        classes.append("tick-narrow")
+    return "" if not classes else " " + " ".join(classes)
 
 
 def render_hourly_heatmap_html(cells: list[HourlyCell]) -> str:

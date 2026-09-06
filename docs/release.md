@@ -1,6 +1,6 @@
 # 2.4 Distribution Checklist
 
-Version 2.2 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.4 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
@@ -76,6 +76,9 @@ sizes (1440 x 900 and 760 x 900). Confirm:
 - the sidebar and Capture Usage remain usable without overlap;
 - each view exposes one contextual reload icon with an accurate accessible label;
 - Usage and Task Storage render distinctly in Day and Night at both viewport sizes;
+- all-history Usage exposes one keyboard-operable **Week | Month** control,
+  defaults to Week, shows readable first/last periods, and contains both edge
+  tooltips within the report viewport;
 - Usage clearly shows last/next capture, pending work, incomplete baseline, and
   stale-source states;
 - Project Breakdown and Model Mix share one accessible **Compare by** control,

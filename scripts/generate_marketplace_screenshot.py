@@ -135,6 +135,8 @@ def capture_marketplace_screenshots(
             )
             page.goto(url, wait_until="networkidle")
             _wait_for_usage(page)
+            page.locator("#usage-range").select_option("all")
+            page.wait_for_timeout(150)
             _reject_private_fixture_data(page)
             _exercise_theme_modes(page, view="usage")
             _exercise_usage_chart_controls(page)
@@ -208,6 +210,8 @@ def _exercise_usage_chart_controls(page: Page) -> None:
     model_fill = frame.locator(".mix-fill.luna")
     token_control = frame.locator("#compare-scale-tokens")
     cost_control = frame.locator("#compare-scale-cost")
+    week_control = frame.locator("#cost-trend-week")
+    month_control = frame.locator("#cost-trend-month")
 
     for theme in ("day", "night"):
         page.evaluate(
@@ -220,6 +224,42 @@ def _exercise_usage_chart_controls(page: Page) -> None:
         )
         for viewport in (VIEWPORT, NARROW_VIEWPORT):
             _set_viewport(page, viewport)
+            if not week_control.is_checked():
+                raise RuntimeError("all-history cost trend did not default to Week")
+            if not frame.locator(".cost-week-panel").is_visible():
+                raise RuntimeError("weekly cost panel is not visible by default")
+            week_control.focus()
+            week_control.press("ArrowRight")
+            if not month_control.is_checked() or not frame.locator(
+                ".cost-month-panel"
+            ).is_visible():
+                raise RuntimeError("cost trend keyboard did not select Month")
+            month_control.focus()
+            month_control.press("ArrowLeft")
+            if not week_control.is_checked():
+                raise RuntimeError("cost trend keyboard did not restore Week")
+
+            for selector in (
+                ".cost-week-panel .trend-bar:first-child",
+                ".cost-week-panel .trend-bar:last-child",
+            ):
+                bar = frame.locator(selector)
+                bar.focus()
+                tooltip_box = bar.locator(".trend-tooltip").bounding_box()
+                frame_box = page.locator("#usage-report").bounding_box()
+                if tooltip_box is None or frame_box is None:
+                    raise RuntimeError("cost trend tooltip containment probe is missing")
+                if (
+                    tooltip_box["x"] < frame_box["x"] - 1
+                    or tooltip_box["x"] + tooltip_box["width"]
+                    > frame_box["x"] + frame_box["width"] + 1
+                ):
+                    raise RuntimeError(
+                        "cost trend edge tooltip escapes the report viewport: "
+                        f"tooltip={tooltip_box}, frame={frame_box}, selector={selector}, "
+                        f"viewport={viewport}"
+                    )
+
             if not token_control.is_checked():
                 raise RuntimeError("usage fixture did not start from the token scale")
             token_box = role_fill.bounding_box()
