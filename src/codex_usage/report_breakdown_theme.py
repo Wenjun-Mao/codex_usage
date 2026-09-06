@@ -229,8 +229,9 @@ _MODEL_MIX_CSS = """
     .model-mix-fill { position: relative; display: block; width: var(--token-width, 0%); height: 100%; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--model-separator); outline: none; }
     .model-mix-fill:hover, .model-mix-fill:focus-visible { filter: brightness(1.12); z-index: 3; }
     .model-mix-fill:focus-visible { box-shadow: inset 0 0 0 2px var(--model-focus-inner), 0 0 0 2px var(--model-focus-outer); }
+    .model-mix-fill .chart-tooltip { left: 0; transform: translate(0, 2px); }
     .model-mix-fill:hover .chart-tooltip,
-    .model-mix-fill:focus-visible .chart-tooltip { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s; }
+    .model-mix-fill:focus-visible .chart-tooltip { opacity: 1; visibility: visible; transform: translate(0, 0); transition-delay: 0s; }
 """
 
 

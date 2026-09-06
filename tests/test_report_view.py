@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_usage.aggregation import UsageSummary
+from codex_usage.aggregation import AggregateRow, UsageSummary
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
 from codex_usage.report_breakdown import OTHER_MODEL_KEY, build_report_breakdown
@@ -43,9 +43,17 @@ def test_report_view_model_prepares_role_and_model_presentation_points() -> None
     assert view_model.project_detail_points == view_model.breakdown_view.project_points
 
 
-def test_report_view_model_keeps_all_project_details_but_limits_chart_to_twelve() -> None:
+def test_report_view_model_keeps_all_project_details_but_limits_chart_to_twelve() -> (
+    None
+):
     records = [
-        _record(f"project-{number:02d}", f"Project {number:02d}", "root", "gpt-5.6-sol", total=100 - number)
+        _record(
+            f"project-{number:02d}",
+            f"Project {number:02d}",
+            "root",
+            "gpt-5.6-sol",
+            total=100 - number,
+        )
         for number in range(13)
     ]
 
@@ -95,9 +103,75 @@ def test_report_view_model_reserves_other_model_color_slot_seven() -> None:
     assert view_model.model_points[-1].color_slot == 7
 
 
+def test_all_range_chart_aggregates_daily_rows_into_readable_weekly_bins() -> None:
+    view_model = _view_model_with_daily_rows(
+        [
+            _daily_row("2026-01-01", total=100, cost=1.0),
+            _daily_row("2026-01-03", total=50, cost=0.5),
+            _daily_row("2026-02-10", total=25, cost=0.25),
+        ]
+    )
+
+    assert view_model.temporal_granularity == "week"
+    assert view_model.temporal_chart_title == "Weekly Cost Trend"
+    assert [
+        (point.key, point.total_tokens, point.cost_usd)
+        for point in view_model.daily_points
+    ] == [
+        ("2025-12-29 to 2026-01-04", 150, 1.5),
+        ("2026-02-09 to 2026-02-15", 25, 0.25),
+    ]
+    assert [point.tooltip_label for point in view_model.daily_points] == [
+        "Week of 2025-12-29",
+        "Week of 2026-02-09",
+    ]
+    assert [row.key for row in view_model.daily_rows] == [
+        "2026-01-01",
+        "2026-01-03",
+        "2026-02-10",
+    ]
+
+
+def test_all_range_chart_switches_to_months_for_long_history() -> None:
+    view_model = _view_model_with_daily_rows(
+        [
+            _daily_row("2026-01-15", total=100, cost=1.0),
+            _daily_row("2026-08-02", total=300, cost=3.0),
+            _daily_row("2026-08-20", total=25, cost=0.25),
+        ]
+    )
+
+    assert view_model.temporal_granularity == "month"
+    assert view_model.temporal_chart_title == "Monthly Cost Trend"
+    assert [
+        (point.key, point.label, point.total_tokens, point.cost_usd)
+        for point in view_model.daily_points
+    ] == [
+        ("2026-01", "Jan 2026", 100, 1.0),
+        ("2026-08", "Aug 2026", 325, 3.25),
+    ]
+
+
+def test_short_all_range_keeps_daily_detail_in_the_chart() -> None:
+    view_model = _view_model_with_daily_rows(
+        [
+            _daily_row("2026-01-01", total=100, cost=1.0),
+            _daily_row("2026-01-30", total=50, cost=0.5),
+        ]
+    )
+
+    assert view_model.temporal_granularity == "day"
+    assert [point.key for point in view_model.daily_points] == [
+        "2026-01-01",
+        "2026-01-30",
+    ]
+
+
 def _view_model(records: list[UsageRecord]):
     total = UsageSummary(
-        usage=TokenUsage(total_tokens=sum(record.usage.total_tokens for record in records)),
+        usage=TokenUsage(
+            total_tokens=sum(record.usage.total_tokens for record in records)
+        ),
         cost=CostBreakdown(),
         credits=CreditBreakdown(),
         record_count=len(records),
@@ -111,6 +185,37 @@ def _view_model(records: list[UsageRecord]):
         breakdown=build_report_breakdown(records),
         sessions_dirs=[Path("sessions")],
         files_scanned=1,
+    )
+
+
+def _view_model_with_daily_rows(daily_rows: list[AggregateRow]):
+    return build_report_view_model(
+        generated_at=datetime(2026, 8, 1, tzinfo=UTC),
+        range_name="all",
+        total=UsageSummary(
+            usage=TokenUsage(
+                total_tokens=sum(row.usage.total_tokens for row in daily_rows)
+            ),
+            cost=CostBreakdown(total_usd=sum(row.cost.total_usd for row in daily_rows)),
+            credits=CreditBreakdown(),
+            record_count=sum(row.record_count for row in daily_rows),
+        ),
+        daily_rows=daily_rows,
+        hourly_rows=[],
+        breakdown=build_report_breakdown([]),
+        sessions_dirs=[Path("sessions")],
+        files_scanned=1,
+    )
+
+
+def _daily_row(key: str, *, total: int, cost: float) -> AggregateRow:
+    return AggregateRow(
+        key=key,
+        label=key,
+        usage=TokenUsage(total_tokens=total),
+        cost=CostBreakdown(total_usd=cost),
+        credits=CreditBreakdown(),
+        record_count=1,
     )
 
 

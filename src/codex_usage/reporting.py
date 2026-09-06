@@ -242,6 +242,21 @@ def _render_usage_view(
     pricing_notice_html: str,
     project_transitions_html: str,
 ) -> str:
+    temporal_period = {"day": "Daily", "week": "Weekly", "month": "Monthly"}[
+        view_model.temporal_granularity
+    ]
+    temporal_chart = _chart_section(
+        view_model.temporal_chart_title,
+        render_daily_cost_svg(
+            view_model.daily_points,
+            title=f"{temporal_period} API-equivalent cost trend",
+        ),
+        render_aggregate_table(
+            "Daily Details", view_model.daily_rows, section_id="daily-details"
+        ),
+        section_id="daily-cost",
+        scroll_class="tooltip-chart-scroll",
+    )
     return (
         '<div class="usage-view-context">'
         f'<div class="muted summary-line">Usage range: {html.escape(range_name)} | '
@@ -253,7 +268,7 @@ def _render_usage_view(
         f"{_empty_report_notice(view_model)}"
         f"{project_transitions_html}"
         '<div class="dashboard-grid">'
-        f'{_chart_section("Daily Cost Trend", render_daily_cost_svg(view_model.daily_points), render_aggregate_table("Daily Details", view_model.daily_rows, section_id="daily-details"), section_id="daily-cost", scroll_class="tooltip-chart-scroll")}'
+        f"{temporal_chart}"
         f'{_chart_section("Hourly Heatmap", render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table("Hourly Details", view_model.hourly_rows, section_id="hourly-details"), section_id="hourly-heatmap", scroll_class="heatmap-chart-scroll")}'
         '<section class="usage-comparison" aria-label="Usage chart comparison">'
         '<input class="comparison-scale-input" type="radio" name="usage-chart-scale" '

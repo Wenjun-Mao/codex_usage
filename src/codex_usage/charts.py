@@ -12,8 +12,9 @@ from codex_usage.report_breakdown_view import (
 from codex_usage.report_view import DailyPoint, HourlyCell
 
 
-def render_daily_cost_svg(points: list[DailyPoint]) -> str:
-    title = "Daily API-equivalent cost trend"
+def render_daily_cost_svg(
+    points: list[DailyPoint], *, title: str = "Daily API-equivalent cost trend"
+) -> str:
     if not points:
         return _empty_svg(title, "No daily usage found for this range.")
 
@@ -23,15 +24,22 @@ def render_daily_cost_svg(points: list[DailyPoint]) -> str:
 
     label_step = max(1, round(len(points) / 8))
 
-    chunks = [f'<div class="daily-bar-chart" role="img" aria-label="{_esc(title)}">']
-    chunks.append(f'<div class="chart-max-label">${max_cost:.2f} max day</div>')
-    chunks.append(f'<div class="daily-bars" style="--bar-count: {len(points)};">')
+    granularity = points[0].granularity
+    min_width = {"day": 42, "week": 64, "month": 72}.get(granularity, 42)
+    chunks = [
+        f'<div class="daily-bar-chart temporal-{_esc(granularity)}" '
+        f'style="--bar-count: {len(points)}; --bar-min-width: {min_width}px" '
+        f'role="img" aria-label="{_esc(title)}">'
+    ]
+    period = {"day": "day", "week": "week", "month": "month"}.get(granularity, "period")
+    chunks.append(f'<div class="chart-max-label">${max_cost:.2f} max {period}</div>')
+    chunks.append('<div class="daily-bars">')
     for index, point in enumerate(points):
         height_pct = max(1.0, point.cost_usd / max_cost * 100)
         label = (
             point.label if index % label_step == 0 or index == len(points) - 1 else ""
         )
-        main_text = point.key
+        main_text = point.tooltip_label or point.key
         detail_text = f"${point.cost_usd:.4f} | {_fmt_int(point.total_tokens)} tokens"
         aria_text = f"{main_text}: {detail_text.replace(' | ', ', ')}"
         chunks.append(

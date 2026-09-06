@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from codex_usage.aggregation import AggregateRow, UsageSummary
@@ -29,6 +29,8 @@ class DailyPoint:
     total_tokens: int
     cost_usd: float
     unpriced_tokens: int
+    tooltip_label: str = ""
+    granularity: str = "day"
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,8 @@ class ReportViewModel:
     total: UsageSummary
     kpis: list[KpiCard]
     daily_points: list[DailyPoint]
+    temporal_chart_title: str
+    temporal_granularity: str
     hourly_cells: list[HourlyCell]
     breakdown_view: BreakdownView
     model_legend: list[ModelLegendItem]
@@ -99,6 +103,9 @@ def build_report_view_model(
     storage_roots: list[str] | tuple[str, ...] | None = None,
 ) -> ReportViewModel:
     breakdown_view = build_breakdown_view(breakdown)
+    daily_points, temporal_granularity = _build_temporal_points(
+        daily_rows, range_name
+    )
     return ReportViewModel(
         generated_at=generated_at,
         range_name=range_name,
@@ -109,7 +116,9 @@ def build_report_view_model(
         storage_roots=tuple(storage_roots or [str(path) for path in sessions_dirs]),
         total=total,
         kpis=_build_kpis(total),
-        daily_points=[_daily_point(row) for row in daily_rows],
+        daily_points=daily_points,
+        temporal_chart_title=_temporal_chart_title(temporal_granularity),
+        temporal_granularity=temporal_granularity,
         hourly_cells=[cell for row in hourly_rows if (cell := _hourly_cell(row)) is not None],
         breakdown_view=breakdown_view,
         model_legend=list(breakdown_view.model_legend),
@@ -151,7 +160,101 @@ def _daily_point(row: AggregateRow) -> DailyPoint:
         total_tokens=row.usage.total_tokens,
         cost_usd=row.cost.total_usd,
         unpriced_tokens=row.cost.unpriced_tokens,
+        tooltip_label=row.key,
     )
+
+
+def _build_temporal_points(
+    daily_rows: list[AggregateRow], range_name: str
+) -> tuple[list[DailyPoint], str]:
+    """Keep exact daily rows for details while reducing an unbounded chart to readable bins."""
+    daily_points = [_daily_point(row) for row in daily_rows]
+    if range_name != "all" or not daily_points:
+        return daily_points, "day"
+
+    dated_points = [(_parse_day(point.key), point) for point in daily_points]
+    if any(day is None for day, _ in dated_points):
+        # The day aggregate contract normally makes this unreachable. Retaining the
+        # exact points is safer than silently assigning a malformed key to a period.
+        return daily_points, "day"
+
+    points_by_day = [(day, point) for day, point in dated_points if day is not None]
+    first_day = min(day for day, _ in points_by_day)
+    last_day = max(day for day, _ in points_by_day)
+    if (last_day - first_day).days < 31:
+        return daily_points, "day"
+    week_count = (last_day - first_day).days // 7 + 1
+    granularity = "week" if week_count <= 26 else "month"
+    return _aggregate_temporal_points(points_by_day, granularity), granularity
+
+
+def _aggregate_temporal_points(
+    points_by_day: list[tuple[date, DailyPoint]], granularity: str
+) -> list[DailyPoint]:
+    buckets: dict[date, list[DailyPoint]] = {}
+    for day, point in points_by_day:
+        bucket = (
+            day - timedelta(days=day.weekday())
+            if granularity == "week"
+            else day.replace(day=1)
+        )
+        buckets.setdefault(bucket, []).append(point)
+
+    points: list[DailyPoint] = []
+    for bucket, values in sorted(buckets.items()):
+        if granularity == "week":
+            period_end = bucket + timedelta(days=6)
+            key = f"{bucket.isoformat()} to {period_end.isoformat()}"
+            label = f"{_month_abbreviation(bucket.month)} {bucket.day}"
+            tooltip_label = f"Week of {bucket.isoformat()}"
+        else:
+            key = bucket.strftime("%Y-%m")
+            label = f"{_month_abbreviation(bucket.month)} {bucket.year}"
+            tooltip_label = bucket.strftime("%B %Y")
+        points.append(
+            DailyPoint(
+                key=key,
+                label=label,
+                total_tokens=sum(point.total_tokens for point in values),
+                cost_usd=sum(point.cost_usd for point in values),
+                unpriced_tokens=sum(point.unpriced_tokens for point in values),
+                tooltip_label=tooltip_label,
+                granularity=granularity,
+            )
+        )
+    return points
+
+
+def _parse_day(value: str) -> date | None:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _temporal_chart_title(granularity: str) -> str:
+    return {
+        "day": "Daily Cost Trend",
+        "week": "Weekly Cost Trend",
+        "month": "Monthly Cost Trend",
+    }[granularity]
+
+
+def _month_abbreviation(month: int) -> str:
+    return (
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    )[month - 1]
 
 
 def _hourly_cell(row: AggregateRow) -> HourlyCell | None:

@@ -1,4 +1,4 @@
-# 2.2 Distribution Checklist
+# 2.4 Distribution Checklist
 
 Version 2.2 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
@@ -124,16 +124,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.3.0`, both
-changelogs have a dated `2.3.0` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.4.0`, both
+changelogs have a dated `2.4.0` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.3.0`. Create and push that
+The only valid release tag for this version is `v2.4.0`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.3.0
-git push origin v2.3.0
+git tag v2.4.0
+git push origin v2.4.0
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -147,8 +147,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.3.0-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.3.0-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.4.0-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.4.0-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.4.0 - 2026-09-06 - Readable Long-Range Cost Trends
+
+- Aggregate unbounded Usage cost charts into calendar weeks, then calendar months for histories longer than six months, while retaining exact daily rows in the details table.
+- Give temporal bars readable minimum label widths and anchor edge tooltips within their chart tracks, including Model Mix, at desktop and narrow layouts.
+
 ## 2.3.0 - 2026-09-05 - Shared Usage Comparison
 
 - Replaced the Project Breakdown-only scale switch with one script-free **Compare by** control for Project Breakdown and Model Mix.

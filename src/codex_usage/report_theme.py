@@ -244,8 +244,7 @@ def report_css() -> str:
     .cost-bar:hover { fill: var(--accent-strong); }
     .daily-bar-chart {
       min-width: 680px;
-      max-width: 920px;
-      width: 100%;
+      width: max(100%, calc(var(--bar-count) * var(--bar-min-width)));
     }
     .chart-max-label {
       color: var(--muted);
@@ -255,7 +254,7 @@ def report_css() -> str:
     }
     .daily-bars {
       display: grid;
-      grid-template-columns: repeat(var(--bar-count), minmax(5px, 1fr));
+      grid-template-columns: repeat(var(--bar-count), minmax(var(--bar-min-width), 1fr));
       gap: 3px;
       min-height: 226px;
       padding: 0 18px 0 54px;
@@ -332,6 +331,12 @@ def report_css() -> str:
       transform: translate(-50%, 0);
       transition-delay: 0s;
     }
+    .daily-bar-slot:first-child .chart-tooltip { left: 0; transform: translate(0, 2px); }
+    .daily-bar-slot:last-child .chart-tooltip { right: 0; left: auto; transform: translate(0, 2px); }
+    .daily-bar-slot:first-child .chart-bar-hit:hover .chart-tooltip,
+    .daily-bar-slot:first-child .chart-bar-hit:focus-visible .chart-tooltip,
+    .daily-bar-slot:last-child .chart-bar-hit:hover .chart-tooltip,
+    .daily-bar-slot:last-child .chart-bar-hit:focus-visible .chart-tooltip { transform: translate(0, 0); }
     .chart-tooltip-main,
     .chart-tooltip-detail {
       display: block;

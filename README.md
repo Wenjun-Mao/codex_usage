@@ -96,7 +96,7 @@ Open **Usage** to review:
 
 - total, input, cache-read, cache-write, and output tokens;
 - effective-dated API-equivalent USD and estimated Codex credits;
-- daily and hourly patterns;
+- daily and hourly patterns, with long all-history cost trends summarized by calendar week or month while the detail table stays daily;
 - project totals and project transitions;
 - root-task versus structured-subagent usage, split again by model;
 - exact model details, including unknown or currently unpriced usage.

@@ -207,6 +207,42 @@ def test_dashboard_heatmap_uses_themeable_classes(tmp_path: Path) -> None:
     assert "--heat-5: #d8a72f" not in html
 
 
+def test_dashboard_all_history_uses_monthly_cost_periods_and_contained_tooltips(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "long-history.html"
+    render_html_report(
+        output_path=output,
+        generated_at=datetime(2026, 9, 6, 12, tzinfo=UTC),
+        range_name="all",
+        total=UsageSummary(
+            usage=TokenUsage(total_tokens=1_500),
+            cost=CostBreakdown(total_usd=1.5),
+            credits=CreditBreakdown(),
+            record_count=2,
+        ),
+        daily_rows=[
+            _row("2026-01-15", "2026-01-15", 500, cost=0.5),
+            _row("2026-08-15", "2026-08-15", 1_000, cost=1.0),
+        ],
+        hourly_rows=[],
+        breakdown=_breakdown([], []),
+        sessions_dirs=[Path("sessions")],
+        files_scanned=1,
+    )
+
+    html = output.read_text(encoding="utf-8")
+
+    assert "Monthly Cost Trend" in html
+    assert 'class="daily-bar-chart temporal-month"' in html
+    assert "--bar-min-width: 72px" in html
+    assert '<span class="chart-tooltip-main">August 2026</span>' in html
+    assert "Daily Details" in html
+    assert "2026-01-15" in html and "2026-08-15" in html
+    assert ".daily-bar-slot:first-child .chart-tooltip" in html
+    assert ".model-mix-fill .chart-tooltip" in html
+
+
 def test_dashboard_report_shows_project_transitions(tmp_path: Path) -> None:
     output = tmp_path / "transitions.html"
     total = UsageSummary(
