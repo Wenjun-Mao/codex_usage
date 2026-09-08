@@ -19,9 +19,12 @@ OpenAI API.
   windows and the new tail.
 - **Immediate capture:** **Capture Usage** coalesces with any running capture and
   resets the next scheduled interval after success.
-- **Fast reports:** date, project, and theme changes query the ledger without
-  reopening task files. An all-history **Week | Month** cost view switches
-  entirely inside the rendered report.
+- **Fast reports:** preset and inclusive local-calendar custom ranges, project
+  filters, theme changes, Agent Activity, and CSV export query the ledger
+  without reopening task files. Long ranges retain a script-free **Week |
+  Month** cost view inside the rendered report.
+- **Agent Activity:** inspect daily token and response deltas plus the top 50
+  agents in the dashboard, then export every selected agent-day row to CSV.
 - **Honest accounting:** Project Breakdown separates root tasks from structured
   subagents and stacks each role by model. Side chats remain disclosed under
   their parent root task when Codex stores no durable discriminator.
@@ -98,11 +101,17 @@ Open **Usage** to review:
 - total, input, cache-read, cache-write, and output tokens;
 - effective-dated API-equivalent USD and estimated Codex credits;
 - daily and hourly patterns, with all-history costs switchable between local-calendar Monday-through-Sunday weeks and calendar months while the detail table stays daily;
+- inclusive custom local-calendar dates, including single-day ranges, with
+  daily charts through 90 days and readable Week/Month periods for longer spans;
+- Agent Activity daily totals and the highest-token agents, with a complete
+  host-saved CSV for the selected range and project filter;
 - project totals and project transitions;
 - root-task versus structured-subagent usage, split again by model;
 - exact model details, including unknown or currently unpriced usage.
 
-Choose a date range, project filter, and explicit Auto, Day, or Night theme.
+Choose a preset or **Custom date range**, project filter, and explicit Auto,
+Day, or Night theme. Custom dates use the configured local timezone, include
+both endpoints, reject future dates, and do not accept arbitrary timestamps.
 Project Breakdown always shows role-level tokens and API-equivalent dollars.
 The shared **Compare by** control scales both Project Breakdown and Model Mix by
 either Tokens or API cost without rereading the ledger or task files.
@@ -110,7 +119,7 @@ For the all-history range, **Week | Month** defaults to Week and switches the
 cost chart without another ledger query or report generation.
 Models are presented by generation and product tier with stable, distinct
 colors, while the bounded visual set still favors the highest-volume models.
-Date and project changes query SQLite; chart-only controls do not. The reload icon re-queries the ledger without
+Date, Agent Activity, export, and project changes query SQLite; chart-only controls do not. The reload icon re-queries the ledger without
 capturing task files; **Capture Usage** is the separate action that updates the
 ledger. The report shows generation time and whether its rendered-result cache was used.
 Pricing is bundled and effective-dated; the app makes no live pricing request.

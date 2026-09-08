@@ -16,7 +16,7 @@ import { renderStorageView } from "./storageView";
 import { renderTransferView } from "./transferView";
 import type { AgentHealth, AgentSettings, AgentStatus, ProjectSummary, ViewName } from "./types";
 import { confirmDialog, errorMessage, refreshIcons, setBusy, showToast } from "./ui";
-import { refreshUsageReport, renderUsageView } from "./usageView";
+import { loadStoredCustomRange, refreshUsageReport, renderUsageView } from "./usageView";
 import { usageReportNeedsRefresh } from "./usageRefreshPolicy";
 
 const app = document.querySelector<HTMLElement>("#app")!;
@@ -44,6 +44,7 @@ async function boot(): Promise<void> {
       projects: projectPayload.projects,
       selectedProjectKeys: [],
       range: "30d",
+      customRange: loadStoredCustomRange(),
       view: "usage",
     };
     document.documentElement.dataset.theme = settings.theme;

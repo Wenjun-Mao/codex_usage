@@ -24,6 +24,7 @@ const status: AgentStatus = {
   last_capture_at: new Date(FIXTURE_NOW - 216_000).toISOString(),
   last_capture_outcome: "success",
   last_capture_error: "",
+  capabilities: ["custom-report-range", "agent-activity"],
   coverage: {
     complete: true,
     fraction: 1,
@@ -116,6 +117,13 @@ export async function fixtureRequest<T>(request: AgentRequest): Promise<T> {
     return settings as T;
   }
   if (request.path === "/v1/projects") return { projects } as T;
+  if (request.path.startsWith("/v1/agent-activity")) {
+    return {
+      filename: "codex-usage-agent-activity-2026-08-27_2026-09-02.csv",
+      csv: "date,agent_id,agent_label,role,root_task_id,project_keys,project_labels,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,total_tokens,responses\n2026-09-02,fixture-agent,Fixture agent,Root,fixture-agent,codex_usage,codex_usage,100,20,50,10,150,1\n",
+      row_count: 1,
+    } as T;
+  }
   if (request.path.startsWith("/v1/report")) {
     return { html: reportHtml, ledger_revision: 82, cache_hit: true, elapsed_seconds: .038, status } as RenderedReport as T;
   }

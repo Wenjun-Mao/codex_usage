@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.5.0 - 2026-09-07 - Custom Ranges And Agent Activity
+
+- Added inclusive local-calendar custom date ranges with sequential validated
+  date inputs and range labels that stay readable in the Usage report.
+- Added ledger-only Agent Activity and complete agent-by-day CSV export through
+  VS Code's native save dialog, without exposing collector credentials to the
+  webview or rescanning task files.
+
 ## 2.4.1 - 2026-09-06 - AWS Bedrock GPT-5.6 Pricing
 
 - Added effective-dated Amazon Bedrock Standard In-Region API-equivalent rates for GPT-5.6 Sol, Terra, and Luna, including documented `us.` and `in.` inference-profile aliases.

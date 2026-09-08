@@ -66,6 +66,7 @@ class ReportViewModel:
     hourly_rows: list[AggregateRow]
     project_rows: list[AggregateRow]
     model_rows: list[AggregateRow]
+    uses_period_trend: bool
 
     @property
     def has_usage(self) -> bool:
@@ -101,11 +102,12 @@ def build_report_view_model(
     files_archived: int = 0,
     files_retained_missing: int = 0,
     storage_roots: list[str] | tuple[str, ...] | None = None,
+    uses_period_trend: bool = False,
 ) -> ReportViewModel:
     breakdown_view = build_breakdown_view(breakdown)
     daily_points = [_daily_point(row) for row in daily_rows]
     weekly_points, monthly_points = _build_all_history_points(
-        daily_points, range_name
+        daily_points, range_name, uses_period_trend
     )
     return ReportViewModel(
         generated_at=generated_at,
@@ -130,6 +132,7 @@ def build_report_view_model(
         hourly_rows=hourly_rows,
         project_rows=list(breakdown.project_rows),
         model_rows=list(breakdown.model_rows),
+        uses_period_trend=uses_period_trend,
     )
 
 
@@ -166,10 +169,10 @@ def _daily_point(row: AggregateRow) -> DailyPoint:
 
 
 def _build_all_history_points(
-    daily_points: list[DailyPoint], range_name: str
+    daily_points: list[DailyPoint], range_name: str, uses_period_trend: bool
 ) -> tuple[list[DailyPoint], list[DailyPoint]]:
     """Build both local-calendar views without changing the ledger-owned daily series."""
-    if range_name != "all" or not daily_points:
+    if (range_name != "all" and not uses_period_trend) or not daily_points:
         return [], []
 
     dated_points = [(_parse_day(point.key), point) for point in daily_points]

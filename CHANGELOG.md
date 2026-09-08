@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.5.0 - 2026-09-07 - Custom Ranges And Agent Activity
+
+- Added inclusive local-calendar custom date ranges, including DST-safe UTC
+  query bounds and cache identities that roll over with moving presets.
+- Added ledger-only Agent Activity daily and per-agent summaries, bounded to
+  the highest 50 agents in the dashboard while retaining complete CSV export.
+- Added native and VS Code calendar-range selection plus host-owned CSV save
+  dialogs; range changes, Agent Activity, and export never trigger capture or
+  reopen Codex JSONL files.
+
 ## 2.4.1 - 2026-09-06 - AWS Bedrock GPT-5.6 Pricing
 
 - Added effective-dated Amazon Bedrock Standard In-Region API-equivalent rates for GPT-5.6 Sol, Terra, and Luna, including documented `us.` and `in.` inference-profile aliases.

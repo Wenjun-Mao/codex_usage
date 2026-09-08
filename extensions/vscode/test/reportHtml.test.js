@@ -14,7 +14,7 @@ const controls = {
   projectCount: 0,
   loadedSeconds: 0.04,
   cacheHit: true,
-  version: "2.4.1",
+  version: "2.5.0",
   view: "usage",
   lastCaptureAt: "2026-09-04T12:30:00Z",
 };
@@ -26,6 +26,8 @@ test("usage report receives companion controls and restrictive CSP", () => {
   assert.match(result, />Capture Usage</);
   assert.match(result, /aria-label="Reload usage from ledger"/);
   assert.match(result, /Range: 30d/);
+  assert.match(result, /Export Agent Activity CSV/);
+  assert.match(result, /command:codexUsage\.exportAgentActivityCsv/);
   assert.match(result, /data-codex-theme="night"/);
   assert.doesNotMatch(result, />Refresh</);
   assert.match(result, /Loaded in 0\.04s/);

@@ -69,7 +69,19 @@ def test_capture_populates_durable_ledger_and_reports_without_jsonl_reads(
     )
 
     assert "100" in report.html
+    assert "Agent Activity" in report.html
     assert report.status.coverage.complete
+    export = reports_module.export_agent_activity_csv(
+        home,
+        range_name="custom",
+        start_date="2026-09-02",
+        end_date="2026-09-02",
+        project_keys=[],
+        timezone_name="UTC",
+    )
+    assert export.filename == "codex-usage-agent-activity-2026-09-02_2026-09-02.csv"
+    assert export.row_count == 1
+    assert "task-1" in export.csv
     assert load_ledger_records(ledger)[0].usage.total_tokens == 100
     assert path.exists()
 

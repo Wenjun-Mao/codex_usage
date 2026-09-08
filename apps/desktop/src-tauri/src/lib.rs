@@ -47,6 +47,27 @@ async fn choose_directory(app: AppHandle, title: String) -> Result<Option<String
 }
 
 #[tauri::command]
+async fn save_text_file(
+    app: AppHandle,
+    title: String,
+    default_name: String,
+    contents: String,
+) -> Result<bool, String> {
+    let selected = app
+        .dialog()
+        .file()
+        .set_title(title)
+        .set_file_name(default_name)
+        .add_filter("CSV", &["csv"])
+        .blocking_save_file();
+    let Some(path) = selected.and_then(|path| path.into_path().ok()) else {
+        return Ok(false);
+    };
+    std::fs::write(path, contents).map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
 async fn reveal_path(app: AppHandle, path: String) -> Result<(), String> {
     app.opener()
         .reveal_item_in_dir(PathBuf::from(path))
@@ -171,6 +192,7 @@ pub fn run() {
             prepare_codex_home,
             agent_request,
             choose_directory,
+            save_text_file,
             reveal_path,
             configure_background,
             switch_codex_home,

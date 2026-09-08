@@ -32,6 +32,7 @@ function appState(): AppState {
       last_capture_at: "2026-09-02T12:00:00Z",
       last_capture_outcome: "success",
       last_capture_error: "",
+      capabilities: ["custom-report-range", "agent-activity"],
       coverage: {
         complete: true,
         fraction: 1,
@@ -47,12 +48,14 @@ function appState(): AppState {
     projects: [],
     selectedProjectKeys: [],
     range: "30d",
+    customRange: null,
     view: "usage",
   };
 }
 
 beforeEach(() => {
   resetTransferSelection();
+  localStorage.clear();
   document.body.innerHTML = '<div id="toast-region"></div><main id="root"></main>';
 });
 
@@ -154,5 +157,42 @@ describe("native views", () => {
         pending_bytes: 25,
       },
     })).toBe(true);
+  });
+
+  test("Usage keeps a custom calendar range per native client and cancellation preserves the report", async () => {
+    const root = document.querySelector<HTMLElement>("#root")!;
+    const state = appState();
+    await renderUsageView(root, state);
+    const dialog = root.querySelector<HTMLDialogElement>("#custom-range-dialog")!;
+    Object.defineProperty(dialog, "showModal", { value: () => dialog.setAttribute("open", ""), configurable: true });
+    Object.defineProperty(dialog, "close", { value: () => dialog.removeAttribute("open"), configurable: true });
+    const range = root.querySelector<HTMLSelectElement>("#usage-range")!;
+    range.value = "custom";
+    range.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(dialog.open).toBe(true);
+    root.querySelector<HTMLButtonElement>("#custom-range-cancel")!.click();
+    expect(state.range).toBe("30d");
+
+    range.value = "custom";
+    range.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLInputElement>("#custom-range-start")!.value = "2026-08-27";
+    root.querySelector<HTMLInputElement>("#custom-range-end")!.value = "2026-09-02";
+    root.querySelector<HTMLFormElement>("#custom-range-form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    expect(state.range).toBe("custom");
+    expect(state.customRange).toEqual({ startDate: "2026-08-27", endDate: "2026-09-02" });
+    expect(JSON.parse(localStorage.getItem("codex-usage-custom-report-range") || "null")).toEqual(state.customRange);
+  });
+
+  test("Usage surfaces capability mismatch instead of issuing unsupported custom or export requests", async () => {
+    const root = document.querySelector<HTMLElement>("#root")!;
+    const state = appState();
+    state.status.capabilities = [];
+    await renderUsageView(root, state);
+    const range = root.querySelector<HTMLSelectElement>("#usage-range")!;
+    range.value = "custom";
+    range.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(state.range).toBe("30d");
+    root.querySelector<HTMLButtonElement>("#export-agent-activity")!.click();
+    expect(document.querySelector("#toast-region")?.textContent).toContain("out of date");
   });
 });

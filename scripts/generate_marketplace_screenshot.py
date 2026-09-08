@@ -140,6 +140,10 @@ def capture_marketplace_screenshots(
             _reject_private_fixture_data(page)
             _exercise_theme_modes(page, view="usage")
             _exercise_usage_chart_controls(page)
+            page.frame_locator("#usage-report").locator(".agent-activity").evaluate(
+                "element => element.scrollIntoView({block: 'start'})"
+            )
+            page.wait_for_timeout(100)
             page.screenshot(path=str(usage_path), full_page=False)
 
             page.get_by_role("button", name="Task Storage", exact=True).click()

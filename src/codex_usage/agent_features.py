@@ -9,7 +9,12 @@ from codex_usage.agent_capture import session_dirs_for_home
 from codex_usage.agent_jobs import HeavyIOLane, JobPriority
 from codex_usage.agent_operations import OperationRegistry
 from codex_usage.agent_paths import ledger_database_path, storage_database_path
-from codex_usage.agent_reports import RenderedLedgerReport, render_ledger_report
+from codex_usage.agent_reports import (
+    AgentActivityExport,
+    RenderedLedgerReport,
+    export_agent_activity_csv,
+    render_ledger_report,
+)
 from codex_usage.agent_service import background_agent_status
 from codex_usage.agent_settings import AgentSettings
 from codex_usage.agent_transfer import (
@@ -57,13 +62,36 @@ class AgentFeatures:
         range_name: str,
         project_keys: list[str],
         theme: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> RenderedLedgerReport:
         settings = self._settings()
         return render_ledger_report(
             self._codex_home,
             range_name=range_name,
+            start_date=start_date,
+            end_date=end_date,
             project_keys=project_keys,
             theme=theme,
+            timezone_name=settings.timezone,
+            auto_transitions=settings.auto_project_transitions,
+        )
+
+    def export_agent_activity(
+        self,
+        *,
+        range_name: str,
+        start_date: str | None,
+        end_date: str | None,
+        project_keys: list[str],
+    ) -> AgentActivityExport:
+        settings = self._settings()
+        return export_agent_activity_csv(
+            self._codex_home,
+            range_name=range_name,
+            start_date=start_date,
+            end_date=end_date,
+            project_keys=project_keys,
             timezone_name=settings.timezone,
             auto_transitions=settings.auto_project_transitions,
         )

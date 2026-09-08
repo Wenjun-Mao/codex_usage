@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import TextIO
 
 from codex_usage.aggregation import AggregateRow, UsageSummary
+from codex_usage.agent_activity import AgentActivity
+from codex_usage.report_agent_activity import render_agent_activity_section
 from codex_usage.charts import (
     render_hourly_heatmap_html,
     render_model_mix_chart,
@@ -152,6 +154,8 @@ def render_html_report(
     breakdown: ReportBreakdown,
     sessions_dirs: list[Path],
     files_scanned: int,
+    range_label: str | None = None,
+    use_period_trend: bool = False,
     storage_roots: list[str] | None = None,
     files_archived: int = 0,
     files_retained_missing: int = 0,
@@ -161,6 +165,7 @@ def render_html_report(
     theme: str = "auto",
     data_status_html: str = "",
     embedded_usage_only: bool = False,
+    agent_activity: AgentActivity | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     theme = normalize_report_theme(theme)
@@ -176,6 +181,7 @@ def render_html_report(
         files_archived=files_archived,
         files_retained_missing=files_retained_missing,
         storage_roots=storage_roots,
+        uses_period_trend=use_period_trend,
     )
     pricing_notice_html = _pricing_notice(view_model)
     project_filter_label = _project_filter_label(project_keys)
@@ -195,8 +201,11 @@ def render_html_report(
         _render_usage_view(
             view_model=view_model,
             range_name=range_name,
+            range_label=range_label or range_name,
+            use_period_trend=use_period_trend,
             pricing_notice_html=pricing_notice_html,
             project_transitions_html=project_transitions_html,
+            agent_activity=agent_activity,
         ),
     )
     storage_view_html = render_report_view(STORAGE_REPORT_VIEW, task_storage_html)
@@ -241,13 +250,18 @@ def _render_usage_view(
     *,
     view_model: ReportViewModel,
     range_name: str,
+    range_label: str,
+    use_period_trend: bool,
     pricing_notice_html: str,
     project_transitions_html: str,
+    agent_activity: AgentActivity | None,
 ) -> str:
-    temporal_chart = render_temporal_chart(view_model, range_name)
+    temporal_chart = render_temporal_chart(
+        view_model, range_name, use_period_trend=use_period_trend
+    )
     return (
         '<div class="usage-view-context">'
-        f'<div class="muted summary-line">Usage range: {html.escape(range_name)} | '
+        f'<div class="muted summary-line">Usage range: {html.escape(range_label)} | '
         f"Pricing table as of {PRICING_AS_OF}</div>"
         '<div class="muted summary-line">Pricing uses rates effective at each usage event.</div>'
         "</div>"
@@ -258,6 +272,8 @@ def _render_usage_view(
         '<div class="dashboard-grid">'
         f"{temporal_chart}"
         f"{_chart_section('Hourly Heatmap', render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table('Hourly Details', view_model.hourly_rows, section_id='hourly-details'), section_id='hourly-heatmap', scroll_class='heatmap-chart-scroll')}"
+        "</div>"
+        f"{render_agent_activity_section(agent_activity)}"
         '<section class="usage-comparison" aria-label="Usage chart comparison">'
         '<input class="comparison-scale-input" type="radio" name="usage-chart-scale" '
         'id="compare-scale-tokens" value="tokens" checked>'
@@ -273,7 +289,6 @@ def _render_usage_view(
         f"{_chart_section('Project Breakdown', render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table('Project Details', view_model.project_detail_points, section_id='project-details'), section_id='project-breakdown', scroll_class='tooltip-chart-scroll', help_text='Root task token usage includes side chats stored in the parent task.')}"
         f"{_chart_section('Model Mix', render_model_mix_chart(view_model.model_points), render_aggregate_table('Model Details', view_model.model_rows, section_id='model-details'), section_id='model-mix', scroll_class='tooltip-chart-scroll')}"
         "</div></section>"
-        "</div>"
     )
 
 

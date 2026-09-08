@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from codex_usage.models import TokenUsage, UsageRecord
@@ -22,6 +23,46 @@ _UTC_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 class RangeBounds:
     start_us: int | None
     end_us: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ReportRange:
+    """A validated local-calendar report selection and its UTC query bounds.
+
+    The product chooses calendar dates, while the durable ledger indexes UTC
+    instants. Keeping both representations together prevents callers from
+    accidentally treating a custom range as an arbitrary timestamp filter.
+    """
+
+    kind: str
+    start_date: date | None
+    end_date: date | None
+    bounds: RangeBounds
+    display_label: str
+    timezone_name: str
+
+    @property
+    def cache_identity(self) -> str:
+        """Stable identity for rendered output, including moving range bounds."""
+        return ":".join(
+            (
+                self.kind,
+                self.start_date.isoformat() if self.start_date else "",
+                self.end_date.isoformat() if self.end_date else "",
+                str(self.bounds.start_us or ""),
+                str(self.bounds.end_us or ""),
+                self.timezone_name,
+            )
+        )
+
+    @property
+    def uses_period_trend(self) -> bool:
+        return self.kind == "all" or (
+            self.kind == "custom"
+            and self.start_date is not None
+            and self.end_date is not None
+            and (self.end_date - self.start_date).days + 1 > 90
+        )
 
 
 @dataclass(frozen=True)
@@ -116,6 +157,78 @@ def resolve_range_bounds(
     )
 
 
+def resolve_report_range(
+    range_name: str,
+    timezone: tzinfo,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    now: datetime | None = None,
+) -> ReportRange:
+    """Resolve a supported report range to inclusive local dates and UTC bounds.
+
+    `custom` deliberately accepts dates only. Its end date is converted to the
+    next local midnight, so a DST transition cannot make an inclusive calendar
+    day 23 or 25 hours short in the ledger query.
+    """
+    now_local = (now or datetime.now(timezone)).astimezone(timezone)
+    timezone_name = _timezone_name(timezone)
+    if range_name == "custom":
+        start = _parse_calendar_date(start_date, "start_date")
+        end = _parse_calendar_date(end_date, "end_date")
+        if start > end:
+            raise ValueError("start_date must be on or before end_date")
+        if end > now_local.date():
+            raise ValueError("custom report ranges cannot include future dates")
+        start_at = datetime.combine(start, datetime.min.time(), tzinfo=timezone)
+        end_at = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=timezone)
+        bounds = RangeBounds(
+            start_us=datetime_to_utc_microseconds(start_at),
+            end_us=datetime_to_utc_microseconds(end_at),
+        )
+        return ReportRange(
+            kind="custom",
+            start_date=start,
+            end_date=end,
+            bounds=bounds,
+            display_label=_format_calendar_label(start, end),
+            timezone_name=timezone_name,
+        )
+
+    if range_name not in RANGE_CHOICES:
+        raise ValueError(f"Unknown range: {range_name}")
+    if start_date is not None or end_date is not None:
+        raise ValueError("start_date and end_date are only valid for range=custom")
+    start_at, end_at = resolve_local_range_datetimes(range_name, timezone, now_local)
+    bounds = RangeBounds(
+        start_us=datetime_to_utc_microseconds(start_at) if start_at else None,
+        end_us=datetime_to_utc_microseconds(end_at) if end_at else None,
+    )
+    if start_at is None or end_at is None:
+        return ReportRange(
+            kind=range_name,
+            start_date=None,
+            end_date=None,
+            bounds=bounds,
+            display_label="All time",
+            timezone_name=timezone_name,
+        )
+    return ReportRange(
+        kind=range_name,
+        start_date=start_at.date(),
+        end_date=(end_at - timedelta(microseconds=1)).date(),
+        bounds=bounds,
+        display_label={
+            "today": "Today",
+            "yesterday": "Yesterday",
+            "7d": "Last 7 days",
+            "30d": "Last 30 days",
+            "month": "This month",
+        }[range_name],
+        timezone_name=timezone_name,
+    )
+
+
 def resolve_local_range_datetimes(
     range_name: str,
     timezone: tzinfo,
@@ -148,6 +261,31 @@ def resolve_local_range_datetimes(
         start, end = today_start, tomorrow_start
 
     return start, end
+
+
+def _parse_calendar_date(value: str | None, field: str) -> date:
+    if value is None:
+        raise ValueError(f"{field} is required for range=custom")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError(f"{field} must use YYYY-MM-DD")
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be a valid calendar date") from exc
+
+
+def _timezone_name(timezone: tzinfo) -> str:
+    return str(getattr(timezone, "key", timezone))
+
+
+def _format_calendar_label(start: date, end: date) -> str:
+    if start == end:
+        return f"{start.strftime('%b')} {start.day}, {start.year}"
+    if start.year == end.year and start.month == end.month:
+        return f"{start.strftime('%b')} {start.day}\N{EN DASH}{end.day}, {start.year}"
+    if start.year == end.year:
+        return f"{start.strftime('%b')} {start.day}\N{EN DASH}{end.strftime('%b')} {end.day}, {start.year}"
+    return f"{start.strftime('%b')} {start.day}, {start.year}\N{EN DASH}{end.strftime('%b')} {end.day}, {end.year}"
 
 
 def datetime_to_utc_microseconds(timestamp: datetime) -> int:

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from codex_usage.aggregation import RangeBounds
+from codex_usage.agent_activity import LedgerTask
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.models import TokenUsage, UsageRecord, parse_usage_role
 from codex_usage.parser import parse_timestamp
@@ -158,6 +159,25 @@ def query_ledger_transitions(
             )
         )
     return transitions
+
+
+def query_ledger_task_graph(connection: sqlite3.Connection) -> dict[str, LedgerTask]:
+    """Read durable task metadata for ledger-only agent attribution."""
+    rows = connection.execute(
+        """
+        select task_id, parent_task_id, usage_role, title
+        from ledger_tasks
+        """
+    ).fetchall()
+    return {
+        str(row["task_id"]): LedgerTask(
+            task_id=str(row["task_id"]),
+            parent_task_id=str(row["parent_task_id"]),
+            usage_role=str(row["usage_role"]),
+            title=str(row["title"]),
+        )
+        for row in rows
+    }
 
 
 def load_ledger_status(ledger_path: Path) -> LedgerStatus:

@@ -5,11 +5,13 @@ from codex_usage.report_tables import render_aggregate_table
 from codex_usage.report_view import ReportViewModel
 
 
-def render_temporal_chart(view_model: ReportViewModel, range_name: str) -> str:
+def render_temporal_chart(
+    view_model: ReportViewModel, range_name: str, *, use_period_trend: bool = False
+) -> str:
     details = render_aggregate_table(
         "Daily Details", view_model.daily_rows, section_id="daily-details"
     )
-    if range_name != "all":
+    if range_name != "all" and not use_period_trend:
         chart = render_daily_cost_svg(view_model.daily_points)
         return _chart_section("Daily Cost Trend", chart, details)
 

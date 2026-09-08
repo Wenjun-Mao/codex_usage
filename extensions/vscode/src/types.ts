@@ -1,4 +1,4 @@
-export type ReportRange = "today" | "yesterday" | "7d" | "30d" | "month" | "all";
+export type ReportRange = "today" | "yesterday" | "7d" | "30d" | "month" | "all" | "custom";
 export type ReportTheme = "auto" | "day" | "night";
 export type ReportView = "usage" | "storage";
 
@@ -10,6 +10,7 @@ export interface AgentStatus {
   last_capture_at: string;
   last_capture_outcome: string;
   last_capture_error: string;
+  capabilities?: string[];
   coverage: {
     complete: boolean;
     fraction: number;
@@ -17,6 +18,17 @@ export interface AgentStatus {
     pending_files: number;
     pending_bytes: number;
   };
+}
+
+export interface CustomDateRange {
+  startDate: string;
+  endDate: string;
+}
+
+export interface AgentActivityExport {
+  filename: string;
+  csv: string;
+  row_count: number;
 }
 
 export interface AgentSettings {

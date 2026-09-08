@@ -26,6 +26,7 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 | [0016](0016-register-imported-tasks-through-codex.md) | Register imported tasks through Codex's supported app-server read-repair path. |
 | [0017](0017-one-project-per-transfer-operation.md) | Constrain each Import and Export to one Codex project while keeping the transfer folder multi-project. |
 | [0040](0040-range-aware-temporal-cost-chart.md) | Preserve exact daily details while presenting long all-history cost trends in readable calendar periods. |
+| [0041](0041-custom-calendar-ranges-and-agent-activity.md) | Keep calendar ranges and Agent Activity ledger-only, bounded in the dashboard, and complete in host-saved CSV. |
 The current Task Transfer inventory contract is recorded in [ADR 0018](0018-user-visible-task-transfer-inventory.md).
 The bounded parallel cache refresh recovery contract is recorded in [ADR 0019](0019-bounded-parallel-cache-refresh.md).
 The incremental range-aware usage-cache contract is recorded in [ADR 0020](0020-incremental-range-aware-usage-cache.md).
@@ -49,3 +50,4 @@ The unified dashboard interaction and theme contract is recorded in [ADR 0037](0
 The semantic model presentation and Project Breakdown cost-scale contract is recorded in [ADR 0038](0038-semantic-model-presentation-and-cost-scale.md).
 The shared Usage comparison-scale contract is recorded in [ADR 0039](0039-shared-usage-comparison-scale.md).
 The range-aware temporal cost-chart contract is recorded in [ADR 0040](0040-range-aware-temporal-cost-chart.md).
+The custom calendar-range and ledger-only Agent Activity contract is recorded in [ADR 0041](0041-custom-calendar-ranges-and-agent-activity.md).

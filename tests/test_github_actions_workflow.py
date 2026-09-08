@@ -192,7 +192,7 @@ def test_release_metadata_is_consistently_2_4_1() -> None:
         cargo["package"]["version"],
         rust_package["version"],
     }
-    assert versions == {"2.4.1"}
+    assert versions == {"2.5.0"}
     assert "scripts" not in pyproject["project"]
     assert "preview" not in extension
 

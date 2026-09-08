@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import * as os from "os";
+import * as path from "path";
 import { AgentClient, resolveCodexHome, settingsFilePath } from "./agentClient";
 import { AgentSupervisor } from "./agentSupervisor";
 import { resolveBundledAgent } from "./bundledAgent";
@@ -7,12 +9,13 @@ import { decorateUsageReport, renderError, renderLoading, renderStorageReport, W
 import { captureIntervalChoices, captureScheduleMessage, collectorSetupChoices, projectTransitionChoices, validateCaptureInterval } from "./setupPresentation";
 import { StorageClient } from "./storageClient";
 import { TaskTransferClient } from "./taskTransferClient";
-import type { AgentSettings, AgentStatus, ProjectSummary, RenderedReport, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
+import type { AgentActivityExport, AgentSettings, AgentStatus, CustomDateRange, ProjectSummary, RenderedReport, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
 import { usageReportNeedsRefresh, usageStatusFingerprint } from "./usageRefreshPolicy";
 
-const RANGE_VALUES: readonly ReportRange[] = ["today", "yesterday", "7d", "30d", "month", "all"];
+const RANGE_VALUES: readonly Exclude<ReportRange, "custom">[] = ["today", "yesterday", "7d", "30d", "month", "all"];
 const THEME_VALUES: readonly ReportTheme[] = ["auto", "day", "night"];
 const PROJECT_STATE_KEY = "selectedProjectKeys";
+const CUSTOM_RANGE_STATE_KEY = "customReportRange";
 
 let panel: vscode.WebviewPanel | undefined;
 let output: vscode.OutputChannel;
@@ -50,6 +53,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.refreshDashboard", () => refreshVisibleDashboard()),
     vscode.commands.registerCommand("codexUsage.captureNow", captureNow),
     vscode.commands.registerCommand("codexUsage.selectRange", selectRange),
+    vscode.commands.registerCommand("codexUsage.exportAgentActivityCsv", exportAgentActivityCsv),
     vscode.commands.registerCommand("codexUsage.selectProjects", selectProjects),
     vscode.commands.registerCommand("codexUsage.selectTheme", selectTheme),
     vscode.commands.registerCommand("codexUsage.showUsageView", () => selectView("usage")),
@@ -110,8 +114,7 @@ async function refreshVisibleDashboard(
   try {
     const controls = controlState();
     if (activeView === "usage") {
-      const query = new URLSearchParams({ range: controls.range, theme: controls.theme });
-      for (const key of selectedProjects()) query.append("project_key", key);
+      const query = reportQuery(controls.theme);
       const report = await client.get<RenderedReport>(`/v1/report?${query.toString()}`);
       if (panel === target && requestId === refreshSerial) {
         latestStatus = report.status;
@@ -166,9 +169,71 @@ async function captureNow(): Promise<void> {
 
 async function selectRange(): Promise<void> {
   const current = reportRange();
-  const selected = await vscode.window.showQuickPick(RANGE_VALUES.map((range) => ({ label: range, range, picked: range === current })), { placeHolder: "Choose a usage range" });
+  const selected = await vscode.window.showQuickPick([
+    ...RANGE_VALUES.map((range) => ({ label: rangeLabel(range), range, picked: range === current })),
+    { label: "Custom date range…", range: "custom" as const, picked: current === "custom" },
+  ], { placeHolder: "Choose a usage range" });
   if (!selected) return;
+  if (selected.range === "custom") {
+    const client = await acquireAgentClient(true);
+    if (!client) return;
+    const status = await client.get<AgentStatus>("/v1/status");
+    if (!supportsAgentActivity(status)) {
+      void vscode.window.showErrorMessage("The current collector is out of date and does not support custom report ranges.");
+      return;
+    }
+    const selectedCustom = await selectCustomRange();
+    if (!selectedCustom) return;
+    await contextRef.globalState.update(CUSTOM_RANGE_STATE_KEY, selectedCustom);
+  }
   await vscode.workspace.getConfiguration("codexUsage").update("range", selected.range, vscode.ConfigurationTarget.Global);
+}
+
+async function selectCustomRange(): Promise<CustomDateRange | undefined> {
+  const current = customRange() || latestSevenDays();
+  const today = localCalendarDate(new Date());
+  const startDate = await vscode.window.showInputBox({
+    title: "Custom usage range: start date",
+    prompt: "Enter an inclusive local calendar date (YYYY-MM-DD).",
+    value: current.startDate,
+    validateInput: (value) => validateCalendarDate(value, today),
+  });
+  if (startDate === undefined) return undefined;
+  const endDate = await vscode.window.showInputBox({
+    title: "Custom usage range: end date",
+    prompt: "Enter an inclusive local calendar date (YYYY-MM-DD).",
+    value: current.endDate,
+    validateInput: (value) => {
+      const validation = validateCalendarDate(value, today);
+      return validation || (value < startDate ? "End date must be on or after the start date." : undefined);
+    },
+  });
+  if (endDate === undefined) return undefined;
+  return { startDate, endDate };
+}
+
+async function exportAgentActivityCsv(): Promise<void> {
+  const client = await acquireAgentClient(true);
+  if (!client) return;
+  const status = await client.get<AgentStatus>("/v1/status");
+  if (!supportsAgentActivity(status)) {
+    void vscode.window.showErrorMessage("The current collector is out of date and does not support Agent Activity exports.");
+    return;
+  }
+  try {
+    const payload = await client.get<AgentActivityExport>(`/v1/agent-activity?${reportQuery().toString()}`);
+    const target = await vscode.window.showSaveDialog({
+      title: "Export Agent Activity CSV",
+      defaultUri: vscode.Uri.file(path.join(os.homedir(), payload.filename)),
+      filters: { CSV: ["csv"] },
+      saveLabel: "Export",
+    });
+    if (!target) return;
+    await vscode.workspace.fs.writeFile(target, Buffer.from(payload.csv, "utf8"));
+    void vscode.window.showInformationMessage(`Exported ${payload.row_count.toLocaleString()} Agent Activity rows.`);
+  } catch (error) {
+    void vscode.window.showErrorMessage(`Could not export Agent Activity: ${errorMessage(error)}`);
+  }
 }
 
 async function selectTheme(): Promise<void> {
@@ -394,18 +459,77 @@ async function refreshStatus(
 }
 
 function controlState(): Pick<Parameters<typeof decorateUsageReport>[1], "range" | "theme" | "projectCount" | "version" | "lastCaptureAt"> {
+  const selectedRange = reportRange();
   return {
-    range: reportRange(),
+    range: selectedRange === "custom" ? customRangeLabel() : rangeLabel(selectedRange),
     theme: reportTheme(),
     projectCount: selectedProjects().length,
-    version: String(contextRef.extension.packageJSON.version ?? "2.4.1"),
+    version: String(contextRef.extension.packageJSON.version ?? "2.5.0"),
     lastCaptureAt: latestStatus?.last_capture_at ?? "",
   };
 }
 
 function reportRange(): ReportRange {
   const value = vscode.workspace.getConfiguration("codexUsage").get<string>("range", "30d");
-  return RANGE_VALUES.includes(value as ReportRange) ? value as ReportRange : "30d";
+  return value === "custom" || RANGE_VALUES.includes(value as Exclude<ReportRange, "custom">)
+    ? value as ReportRange
+    : "30d";
+}
+
+function reportQuery(theme?: ReportTheme): URLSearchParams {
+  const range = reportRange();
+  const query = new URLSearchParams({ range });
+  if (theme) query.set("theme", theme);
+  if (range === "custom") {
+    const selected = customRange();
+    if (!selected) throw new Error("Choose a custom start and end date before loading this report.");
+    query.set("start_date", selected.startDate);
+    query.set("end_date", selected.endDate);
+  }
+  for (const key of selectedProjects()) query.append("project_key", key);
+  return query;
+}
+
+function customRange(): CustomDateRange | undefined {
+  const value = contextRef.globalState.get<unknown>(CUSTOM_RANGE_STATE_KEY);
+  if (!value || typeof value !== "object") return undefined;
+  const range = value as Partial<CustomDateRange>;
+  return typeof range.startDate === "string" && typeof range.endDate === "string"
+    ? { startDate: range.startDate, endDate: range.endDate }
+    : undefined;
+}
+
+function supportsAgentActivity(status: AgentStatus): boolean {
+  const capabilities = status.capabilities || [];
+  return capabilities.includes("custom-report-range") && capabilities.includes("agent-activity");
+}
+
+function latestSevenDays(): CustomDateRange {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  return { startDate: localCalendarDate(start), endDate: localCalendarDate(end) };
+}
+
+function localCalendarDate(value: Date): string {
+  const offset = value.getTimezoneOffset() * 60_000;
+  return new Date(value.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function validateCalendarDate(value: string, today: string): string | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    return "Enter a valid YYYY-MM-DD calendar date.";
+  }
+  return value > today ? "Custom ranges cannot include future dates." : undefined;
+}
+
+function rangeLabel(range: Exclude<ReportRange, "custom">): string {
+  return ({ today: "Today", yesterday: "Yesterday", "7d": "Last 7 days", "30d": "Last 30 days", month: "This month", all: "All time" })[range];
+}
+
+function customRangeLabel(): string {
+  const selected = customRange();
+  return selected ? `${selected.startDate} to ${selected.endDate}` : "Custom date range";
 }
 
 function reportTheme(): ReportTheme {

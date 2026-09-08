@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -118,8 +119,15 @@ def _request(
             "Content-Type": "application/json",
         },
     )
-    with urlopen(request, timeout=30) as response:  # noqa: S310 - fixed loopback.
-        decoded = json.loads(response.read())
+    try:
+        with urlopen(request, timeout=30) as response:  # noqa: S310 - fixed loopback.
+            decoded = json.loads(response.read())
+    except HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"packaged agent request {method} {path} failed with "
+            f"HTTP {error.code}: {detail}"
+        ) from error
     if not isinstance(decoded, dict):
         raise RuntimeError("packaged agent response was not an object")
     return decoded

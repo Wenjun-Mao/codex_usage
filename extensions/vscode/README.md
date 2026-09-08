@@ -39,8 +39,9 @@ an unidentified-developer or unknown-publisher warning.
 - Run **Capture Usage** when you want current totals immediately.
 - Set `CODEX_HOME`, scheduled capture or **Manual only**, and migrate compatible
   legacy usage caches entirely inside VS Code.
-- Filter Usage by range and project, switch theme, and review verified project
-  transitions.
+- Filter Usage by preset or inclusive custom local-calendar range and project,
+  switch theme, review verified project transitions, and export complete Agent
+  Activity CSV rows through the VS Code save dialog.
 - Inspect current Task Storage and explicitly analyze one selected task tree.
 - Import, export, or review selected active tasks through Task Transfer.
 - See last capture, pending work, stale-source warnings, and ledger revision in
@@ -72,7 +73,8 @@ minutes.
 | `Codex Usage: Open Dashboard` | Open the Usage or Task Storage report. |
 | `Codex Usage: Capture Usage` | Scan changed task data into the durable ledger. |
 | `Codex Usage: Reload Current View` | Re-query the Usage ledger or current Task Storage inventory without capturing task data. |
-| `Codex Usage: Select Range` | Select Today, Yesterday, 7d, 30d, Month, or All. |
+| `Codex Usage: Select Range` | Select a preset or inclusive custom local-calendar range. |
+| `Codex Usage: Export Agent Activity CSV` | Save every selected agent-by-day row without re-reading task files. |
 | `Codex Usage: Select Projects` | Filter Usage and Task Storage by project. |
 | `Codex Usage: Select Theme` | Choose Auto, Day, or Night report styling. |
 | `Codex Usage: Review Project Transitions` | Inspect verified repository switch points. |
@@ -89,9 +91,13 @@ minutes.
 
 ## Usage And Capture
 
-Usage reports come entirely from
+Usage reports, Agent Activity, and its CSV export come entirely from
 `CODEX_HOME/.codex-usage/usage-ledger.sqlite3`. Changing range, project filter,
-or theme does not reopen Codex task files. Project Breakdown separates root
+theme, Agent Activity, or export does not reopen Codex task files. Custom ranges
+require inclusive `YYYY-MM-DD` start and end dates in the collector's configured
+timezone; malformed, reversed, and future dates are rejected. Agent Activity
+shows daily totals and at most 50 agents in the dashboard while CSV retains
+every selected agent-day row. Project Breakdown separates root
 tasks and structured subagents, then stacks each role by model. Side-chat usage
 remains under the parent root task where Codex does not store a durable role
 discriminator.

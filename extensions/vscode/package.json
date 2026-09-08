@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Companion",
   "description": "Standalone VS Code usage dashboard with a bundled, parent-bound local collector.",
   "publisher": "wenjun-mao",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": { "type": "git", "url": "https://github.com/Wenjun-Mao/codex_usage.git" },
@@ -32,6 +32,7 @@
       { "command": "codexUsage.captureNow", "title": "Codex Usage: Capture Usage" },
       { "command": "codexUsage.refreshDashboard", "title": "Codex Usage: Reload Current View" },
       { "command": "codexUsage.selectRange", "title": "Codex Usage: Select Range" },
+      { "command": "codexUsage.exportAgentActivityCsv", "title": "Codex Usage: Export Agent Activity CSV" },
       { "command": "codexUsage.selectProjects", "title": "Codex Usage: Select Projects" },
       { "command": "codexUsage.selectTheme", "title": "Codex Usage: Select Theme" },
       { "command": "codexUsage.reviewProjectTransitions", "title": "Codex Usage: Review Project Transitions" },
@@ -49,7 +50,7 @@
     "configuration": {
       "title": "Codex Usage Companion",
       "properties": {
-        "codexUsage.range": { "type": "string", "enum": ["today", "yesterday", "7d", "30d", "month", "all"], "default": "30d", "description": "Time range requested from the Codex Usage ledger." },
+        "codexUsage.range": { "type": "string", "enum": ["today", "yesterday", "7d", "30d", "month", "all", "custom"], "default": "30d", "description": "Calendar range requested from the Codex Usage ledger." },
         "codexUsage.theme": { "type": "string", "enum": ["auto", "day", "night"], "default": "auto", "description": "Dashboard report theme." }
       }
     }

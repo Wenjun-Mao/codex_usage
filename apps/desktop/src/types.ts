@@ -39,12 +39,14 @@ export interface AgentStatus {
   last_capture_at: string;
   last_capture_outcome: string;
   last_capture_error: string;
+  capabilities?: string[];
   coverage: Coverage;
 }
 
 export interface AgentHealth {
   ok: boolean;
   api_version: number;
+  capabilities?: string[];
   status: AgentStatus;
 }
 
@@ -61,6 +63,12 @@ export interface RenderedReport {
   cache_hit: boolean;
   elapsed_seconds: number;
   status: Omit<AgentStatus, "agent_pid" | "api_version" | "codex_home" | "capture_running" | "next_capture_seconds" | "dirty_paths">;
+}
+
+export interface AgentActivityExport {
+  filename: string;
+  csv: string;
+  row_count: number;
 }
 
 export interface StorageTotals {

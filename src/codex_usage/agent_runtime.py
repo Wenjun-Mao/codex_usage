@@ -196,12 +196,31 @@ class CodexUsageAgent:
         range_name: str,
         project_keys: list[str],
         theme: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> RenderedLedgerReport:
         return self._features.report(
             range_name=range_name,
+            start_date=start_date,
+            end_date=end_date,
             project_keys=project_keys,
             theme=theme,
         )
+
+    def export_agent_activity(
+        self,
+        *,
+        range_name: str,
+        start_date: str | None,
+        end_date: str | None,
+        project_keys: list[str],
+    ) -> dict[str, object]:
+        return self._features.export_agent_activity(
+            range_name=range_name,
+            start_date=start_date,
+            end_date=end_date,
+            project_keys=project_keys,
+        ).to_dict()
 
     def status_payload(self) -> dict[str, object]:
         status = load_ledger_status(ledger_database_path(self.codex_home)).to_dict()
@@ -215,6 +234,7 @@ class CodexUsageAgent:
                     self._clock()
                 ),
                 "dirty_paths": len(self._dirty_paths.snapshot()),
+                "capabilities": ["custom-report-range", "agent-activity"],
             }
         )
         return status

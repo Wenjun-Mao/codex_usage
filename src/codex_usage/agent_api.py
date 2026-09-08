@@ -46,12 +46,14 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
             path, query = self._path_and_query()
             try:
                 if path == "/v1/health":
+                    status = agent.status_payload()
                     self._json(
                         HTTPStatus.OK,
                         {
                             "ok": True,
                             "api_version": AGENT_API_VERSION,
-                            "status": agent.status_payload(),
+                            "capabilities": status.get("capabilities", []),
+                            "status": status,
                         },
                     )
                 elif path == "/v1/status":
@@ -74,10 +76,22 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                 elif path == "/v1/report":
                     report = agent.report(
                         range_name=_first(query, "range") or "30d",
+                        start_date=_optional(query, "start_date"),
+                        end_date=_optional(query, "end_date"),
                         project_keys=query.get("project_key", []),
                         theme=_first(query, "theme") or agent.settings.theme,
                     )
                     self._json(HTTPStatus.OK, report.to_dict())
+                elif path == "/v1/agent-activity":
+                    self._json(
+                        HTTPStatus.OK,
+                        agent.export_agent_activity(
+                            range_name=_first(query, "range") or "30d",
+                            start_date=_optional(query, "start_date"),
+                            end_date=_optional(query, "end_date"),
+                            project_keys=query.get("project_key", []),
+                        ),
+                    )
                 elif path == "/v1/storage/snapshot":
                     self._json(
                         HTTPStatus.OK,
@@ -226,6 +240,11 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
 def _first(query: dict[str, list[str]], key: str) -> str:
     values = query.get(key, [])
     return values[0] if values else ""
+
+
+def _optional(query: dict[str, list[str]], key: str) -> str | None:
+    value = _first(query, key)
+    return value or None
 
 
 def _path_identifier(path: str, prefix: str) -> str:

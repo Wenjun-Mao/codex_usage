@@ -49,6 +49,15 @@ export async function chooseDirectory(title: string): Promise<string | null> {
   return invoke<string | null>("choose_directory", { title });
 }
 
+export async function saveTextFile(
+  title: string,
+  defaultName: string,
+  contents: string,
+): Promise<boolean> {
+  if (!inTauri) return true;
+  return invoke<boolean>("save_text_file", { title, defaultName, contents });
+}
+
 export async function configureBackground(enabled: boolean): Promise<void> {
   if (inTauri) {
     await invoke("configure_background", { enabled });
@@ -77,8 +86,8 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
   if (!inTauri) {
     return {
       available: false,
-      current_version: "2.4.1",
-      version: "2.4.1",
+      current_version: "2.5.0",
+      version: "2.5.0",
       date: null,
       body: null,
     };
