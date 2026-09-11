@@ -31,6 +31,7 @@ from codex_usage.ledger_queries import (
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.parser import finalize_session_records
 from codex_usage.pricing import PRICING_AS_OF
+from codex_usage.project_economics import build_project_economics
 from codex_usage.project_transitions import apply_project_transitions
 from codex_usage.report_breakdown import build_report_breakdown_from_valued
 from codex_usage.reporting import render_html_report
@@ -146,6 +147,7 @@ def render_ledger_report(
             daily_rows=aggregate_valued_records(valued, "day", timezone),
             hourly_rows=aggregate_valued_records(valued, "hour", timezone),
             breakdown=build_report_breakdown_from_valued(valued),
+            project_economics=build_project_economics(valued),
             sessions_dirs=[],
             files_scanned=int(source_counts["total"] or 0),
             files_archived=int(source_counts["archived"] or 0),

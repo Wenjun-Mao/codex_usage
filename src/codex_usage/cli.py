@@ -14,6 +14,7 @@ from codex_usage.aggregation import (
     value_records,
 )
 from codex_usage.performance_timing import PhaseTimer, write_timing_sidecar
+from codex_usage.project_economics import build_project_economics
 from codex_usage.project_transitions import ProjectTransition
 from codex_usage.report_breakdown import build_report_breakdown_from_valued
 from codex_usage.report_theme import REPORT_THEME_CHOICES, normalize_report_theme
@@ -240,6 +241,7 @@ def handle_report(args: argparse.Namespace) -> int:
                 context.timezone,
             ),
             breakdown=breakdown,
+            project_economics=build_project_economics(valued_records),
             sessions_dirs=context.session_dirs,
             files_scanned=len(context.files),
             storage_roots=[str(path) for path in context.session_dirs],
