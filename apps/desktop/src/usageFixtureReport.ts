@@ -73,6 +73,26 @@ body {
 .section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 h2 { margin: 0 0 4px; font-size: 17px; }
 .help { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.project-economics-heading { display: flex; justify-content: space-between; gap: 12px; }
+.project-economics-heading p { max-width: 760px; }
+.economics-source, .sample-badge { display: inline-block; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; font-weight: 700; line-height: 1.2; padding: 3px 7px; white-space: nowrap; }
+.sample-badge { border-color: var(--sol); color: var(--sol); margin-left: 7px; }
+.economics-benchmark { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
+.economics-benchmark-heading { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.economics-benchmark-heading > span { color: var(--muted); }
+.economics-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 0; }
+.economics-metrics > div { min-width: 0; }
+.economics-metrics dt, .economics-metrics span { color: var(--muted); font-size: 10px; }
+.economics-metrics dd { margin: 2px 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.economics-metrics span { display: block; line-height: 1.3; }
+.project-economics-project { margin-top: 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+.project-economics-project[open] { padding-bottom: 10px; }
+.project-economics-project summary, .token-accounting summary { cursor: pointer; color: var(--text); font-weight: 700; }
+.project-economics-project summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 42px; }
+.project-economics-summary { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+.economics-models { margin-top: 12px; }
+.token-accounting { margin-top: 12px; }
+.token-accounting p { margin: 8px 0 0; }
 .project-scroll { overflow-x: auto; }
 .scale-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .scale-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-bottom: 9px; color: var(--muted); font-size: 10px; font-weight: 700; }
@@ -125,6 +145,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .legend { min-width: 690px; margin-left: 106px; }
   .model-mix { min-width: 600px; grid-template-columns: 96px minmax(260px, 1fr) max-content; }
   .cost-toolbar { margin-top: 0; justify-content: flex-start; }
+  .project-economics-heading, .project-economics-project summary { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .project-economics-summary { text-align: left; }
+  .economics-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
 </head>
@@ -137,6 +160,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   <div><span>Codex credits</span><strong>13,837</strong><small>100% credit-priced</small></div>
   <div><span>Cache hit share</span><strong>97.8%</strong><small>881.7M cached input</small></div>
   <div><span>API-excluded tokens</span><strong>0</strong><small>All models have rates</small></div>
+</section>
+<section class="section project-economics" data-report-section="project-economics" aria-labelledby="project-economics-heading">
+  <div class="project-economics-heading"><div><h2 id="project-economics-heading">Project Economics</h2><p class="help">Turn measures use selected ledger responses with a non-empty turn ID. The benchmark is weighted across those responses, not averaged from projects.</p></div><span class="economics-source">Ledger only</span></div>
+  <section class="economics-benchmark" aria-label="Weighted all-project benchmark"><div class="economics-benchmark-heading"><strong>Weighted all-project benchmark</strong><span>4,981 measured turns</span></div><dl class="economics-metrics"><div><dt>Average cost / turn</dt><dd>$0.09</dd><span>4,981 of 4,981 turns priceable</span></div><div><dt>Median cost / turn</dt><dd>$0.07</dd><span>Priceable turns only</span></div><div><dt>Tokens / turn</dt><dd>181.5K</dd><span>6,418 responses across 4,981 turns</span></div><div><dt>Turn coverage</dt><dd>94% responses</dd><span>6,012 of 6,418 responses · 97% of tokens</span></div></dl></section>
+  <details class="project-economics-project"><summary><span>codex_usage<span class="sample-badge">Small sample</span></span><span class="project-economics-summary">201.6M tokens · $0.08 / turn · 3 turns</span></summary><div><dl class="economics-metrics"><div><dt>Average cost / response</dt><dd>$0.05</dd><span>5 of 5 responses priceable</span></div><div><dt>Responses / turn</dt><dd>1.7</dd><span>5 responses across 3 turns</span></div><div><dt>Tokens / turn</dt><dd>67.2M</dd><span>100% of tokens covered</span></div><div><dt>Turn coverage</dt><dd>100% responses</dd><span>5 of 5 responses · 100% of tokens</span></div></dl><div class="table-wrap"><table class="economics-models"><thead><tr><th>Model</th><th class="num">Tokens</th><th class="num">Token share</th><th class="num">Cost share</th><th class="num">Turns</th><th class="num">Average cost / turn</th></tr></thead><tbody><tr><td>gpt-5.6-sol</td><td class="num">164.2M</td><td class="num">81.4%</td><td class="num">87.7%</td><td class="num">3</td><td class="num">$0.09</td></tr><tr><td>gpt-5.6-terra</td><td class="num">37.4M</td><td class="num">18.6%</td><td class="num">12.3%</td><td class="num">2</td><td class="num">$0.03</td></tr></tbody></table></div></div></details>
+  <details class="token-accounting"><summary>Token Accounting</summary><p class="muted">Cache Write (reported) is taken from the selected ledger exactly as Codex reported it; it is never inferred from cache reads or reconstructed during report rendering.</p><div class="table-wrap"><table><thead><tr><th>Project</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Write (reported)</th><th class="num">Output</th></tr></thead><tbody><tr><td>codex_usage</td><td class="num">2.1M</td><td class="num">194.8M</td><td class="num">0.3M</td><td class="num">3.1M</td></tr></tbody></table></div></details>
 </section>
 <section class="section cost-trend" data-report-section="daily-cost">
   <h2>Cost Trend</h2>

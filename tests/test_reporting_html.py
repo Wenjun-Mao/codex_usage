@@ -99,7 +99,7 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
     assert "<title>gpt-5.5," not in html
     assert "Codex Credits" in html
     assert '<th class="num">Cache Read</th>' in html
-    assert '<th class="num">Cache Write</th>' in html
+    assert '<th class="num">Cache Write (reported)</th>' in html
     assert '<td class="num">125</td>' in html
     assert (
         "Newer token details may be unavailable until source files are restored"

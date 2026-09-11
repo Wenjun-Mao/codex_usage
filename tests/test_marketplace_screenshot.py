@@ -9,6 +9,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "scripts" / "generate_marketplace_screenshot.py"
 FIXTURE_PATH = ROOT / "apps" / "desktop" / "src" / "fixtures.ts"
+USAGE_REPORT_FIXTURE_PATH = ROOT / "apps" / "desktop" / "src" / "usageFixtureReport.ts"
 
 
 def _load_screenshot_module():
@@ -36,17 +37,26 @@ def test_generator_targets_built_native_frontend_and_two_views() -> None:
     assert "frame_locator" in source
     assert 'token_control.press("ArrowRight")' in source
     assert 'cost_control.press("ArrowLeft")' in source
+    assert "_exercise_disclosure" in source
+    assert '"Project Economics details"' in source
+    assert '"Token Accounting"' in source
     assert 'for theme in ("day", "night")' in source
     assert "for viewport in (VIEWPORT, NARROW_VIEWPORT)" in source
 
 
 def test_native_fixture_is_deterministic_and_synthetic() -> None:
     fixture = FIXTURE_PATH.read_text(encoding="utf-8")
+    report_fixture = USAGE_REPORT_FIXTURE_PATH.read_text(encoding="utf-8")
 
     assert 'FIXTURE_NOW = new Date("2026-09-02T16:00:00.000Z")' in fixture
     assert "new Date(Date.now()" not in fixture
     assert "Ship native persistent collector" in fixture
     assert "Task Transfer verification" in fixture
+    assert "Project Economics" in report_fixture
+    assert "Weighted all-project benchmark" in report_fixture
+    assert "Cache Write (reported)" in report_fixture
+    assert '<details class="project-economics-project">' in report_fixture
+    assert '<details class="token-accounting">' in report_fixture
     assert "/Users/wjmao" not in fixture
     assert "C:\\Users\\wjmao" not in fixture
 

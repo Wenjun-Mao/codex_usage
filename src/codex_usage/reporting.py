@@ -17,6 +17,7 @@ from codex_usage.charts import (
     render_project_breakdown_chart,
 )
 from codex_usage.pricing import PRICING_AS_OF, PRICING_METHOD
+from codex_usage.project_economics import ProjectEconomicsReport
 from codex_usage.report_breakdown import ReportBreakdown
 from codex_usage.report_storage import (
     build_task_storage_view,
@@ -26,7 +27,10 @@ from codex_usage.report_tables import (
     format_credits,
     format_int,
     render_aggregate_table,
+    render_project_economics_section,
     render_project_details_table,
+    render_token_accounting_details,
+    project_economics_css,
 )
 from codex_usage.report_temporal import render_temporal_chart
 from codex_usage.report_theme import normalize_report_theme, report_css
@@ -166,6 +170,7 @@ def render_html_report(
     data_status_html: str = "",
     embedded_usage_only: bool = False,
     agent_activity: AgentActivity | None = None,
+    project_economics: ProjectEconomicsReport | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     theme = normalize_report_theme(theme)
@@ -182,6 +187,7 @@ def render_html_report(
         files_retained_missing=files_retained_missing,
         storage_roots=storage_roots,
         uses_period_trend=use_period_trend,
+        project_economics=project_economics,
     )
     pricing_notice_html = _pricing_notice(view_model)
     project_filter_label = _project_filter_label(project_keys)
@@ -234,6 +240,7 @@ def render_html_report(
   <title>Codex Usage Report</title>
   <style>
 {report_css()}
+{project_economics_css()}
   </style>
 </head>
 <body>
@@ -269,6 +276,7 @@ def _render_usage_view(
         f"{pricing_notice_html}"
         f"{_empty_report_notice(view_model)}"
         f"{project_transitions_html}"
+        f"{render_project_economics_section(view_model.project_economics)}"
         '<div class="dashboard-grid">'
         f"{temporal_chart}"
         f"{_chart_section('Hourly Heatmap', render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table('Hourly Details', view_model.hourly_rows, section_id='hourly-details'), section_id='hourly-heatmap', scroll_class='heatmap-chart-scroll')}"
@@ -446,7 +454,7 @@ def _chart_section(
         f"<h2>{html.escape(title)}</h2>"
         f"{help_html}"
         f'<div class="{classes}">{chart_html}</div>'
-        f"{table_html}"
+        f"{render_token_accounting_details(table_html)}"
         "</section>"
     )
 

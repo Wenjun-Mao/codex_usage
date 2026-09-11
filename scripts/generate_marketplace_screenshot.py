@@ -140,7 +140,7 @@ def capture_marketplace_screenshots(
             _reject_private_fixture_data(page)
             _exercise_theme_modes(page, view="usage")
             _exercise_usage_chart_controls(page)
-            page.frame_locator("#usage-report").locator(".agent-activity").evaluate(
+            page.frame_locator("#usage-report").locator(".project-economics").evaluate(
                 "element => element.scrollIntoView({block: 'start'})"
             )
             page.wait_for_timeout(100)
@@ -216,6 +216,8 @@ def _exercise_usage_chart_controls(page: Page) -> None:
     cost_control = frame.locator("#compare-scale-cost")
     week_control = frame.locator("#cost-trend-week")
     month_control = frame.locator("#cost-trend-month")
+    project_economics = frame.locator(".project-economics-project").first
+    token_accounting = frame.locator(".token-accounting").first
 
     for theme in ("day", "night"):
         page.evaluate(
@@ -228,6 +230,14 @@ def _exercise_usage_chart_controls(page: Page) -> None:
         )
         for viewport in (VIEWPORT, NARROW_VIEWPORT):
             _set_viewport(page, viewport)
+            _exercise_disclosure(
+                project_economics,
+                "Project Economics details",
+            )
+            _exercise_disclosure(
+                token_accounting,
+                "Token Accounting",
+            )
             if not week_control.is_checked():
                 raise RuntimeError("all-history cost trend did not default to Week")
             if not frame.locator(".cost-week-panel").is_visible():
@@ -315,6 +325,15 @@ def _exercise_usage_chart_controls(page: Page) -> None:
                 raise RuntimeError("usage fixture keyboard did not restore Tokens")
 
     _set_viewport(page, VIEWPORT)
+
+
+def _exercise_disclosure(disclosure, label: str) -> None:
+    disclosure.evaluate("element => { element.open = false; }")
+    summary = disclosure.locator("summary")
+    summary.focus()
+    summary.press("Enter")
+    if not disclosure.evaluate("element => element.open"):
+        raise RuntimeError(f"usage fixture keyboard did not expand {label}")
 
 
 def _reject_private_fixture_data(page: Page) -> None:
