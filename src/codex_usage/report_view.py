@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from codex_usage.aggregation import AggregateRow, UsageSummary
+from codex_usage.project_economics import ProjectEconomicsReport
 from codex_usage.report_breakdown import ReportBreakdown
 from codex_usage.report_breakdown_view import (
     BreakdownView,
@@ -67,6 +68,7 @@ class ReportViewModel:
     project_rows: list[AggregateRow]
     model_rows: list[AggregateRow]
     uses_period_trend: bool
+    project_economics: ProjectEconomicsReport | None
 
     @property
     def has_usage(self) -> bool:
@@ -103,6 +105,7 @@ def build_report_view_model(
     files_retained_missing: int = 0,
     storage_roots: list[str] | tuple[str, ...] | None = None,
     uses_period_trend: bool = False,
+    project_economics: ProjectEconomicsReport | None = None,
 ) -> ReportViewModel:
     breakdown_view = build_breakdown_view(breakdown)
     daily_points = [_daily_point(row) for row in daily_rows]
@@ -133,6 +136,7 @@ def build_report_view_model(
         project_rows=list(breakdown.project_rows),
         model_rows=list(breakdown.model_rows),
         uses_period_trend=uses_period_trend,
+        project_economics=project_economics,
     )
 
 
