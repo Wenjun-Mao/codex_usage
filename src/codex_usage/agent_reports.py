@@ -38,7 +38,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}:bedrock-in-region-v1"
-REPORT_RENDER_REVISION = 5
+REPORT_RENDER_REVISION = 6
 
 
 @dataclass(frozen=True, slots=True)

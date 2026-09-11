@@ -61,6 +61,7 @@ def test_handle_report_builds_one_breakdown_without_project_or_model_aggregation
         daily_rows,
         hourly_rows,
         breakdown,
+        project_economics,
         sessions_dirs,
         files_scanned,
         storage_roots=None,
@@ -72,6 +73,7 @@ def test_handle_report_builds_one_breakdown_without_project_or_model_aggregation
         theme="auto",
     ):
         captured["breakdown"] = breakdown
+        captured["project_economics"] = project_economics
         return output_path
 
     def track_breakdown(valued_records):
@@ -90,6 +92,7 @@ def test_handle_report_builds_one_breakdown_without_project_or_model_aggregation
     assert aggregate_groups == ["day", "hour"]
     assert breakdown_calls == 1
     assert captured["breakdown"].project_rows[0].key == "repo"  # type: ignore[union-attr]
+    assert captured["project_economics"].projects[0].key == "repo"  # type: ignore[union-attr]
 
 
 def test_handle_report_passes_cached_data_and_one_storage_snapshot(

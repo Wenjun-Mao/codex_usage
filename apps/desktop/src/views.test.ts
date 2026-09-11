@@ -121,8 +121,9 @@ describe("native views", () => {
     expect(frame.srcdoc).toContain("API cost");
     expect(frame.srcdoc).toContain('id="compare-scale-cost"');
     expect(frame.srcdoc).toContain("--cost-width:");
-    expect(frame.srcdoc.indexOf("gpt-6-astra")).toBeLessThan(
-      frame.srcdoc.indexOf("gpt-5.6-sol"),
+    const modelMix = frame.srcdoc.slice(frame.srcdoc.indexOf("<h2>Model Mix</h2>"));
+    expect(modelMix.indexOf("gpt-6-astra")).toBeLessThan(
+      modelMix.indexOf("gpt-5.6-sol"),
     );
     expect(frame.srcdoc).toContain('data-codex-host="native"');
     expect(root.querySelector("#report-diagnostics")?.textContent).toContain(

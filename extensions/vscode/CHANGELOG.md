@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.6.0 - 2026-09-10 - Project Economics And Reported Cache Writes
+
+- Added compact ledger-only Project Economics with weighted all-project
+  benchmarks, project and model turn economics, coverage, medians, and
+  small-sample labels.
+- Kept economics on the extension collector's selected valued-record stream;
+  range, project, and theme changes still reopen zero task JSONLs.
+- Collapsed detailed Token Accounting and labeled cache writes as **Cache Write
+  (reported)** to distinguish source ledger data from any inferred value.
+
 ## 2.5.0 - 2026-09-07 - Custom Ranges And Agent Activity
 
 - Added inclusive local-calendar custom date ranges with sequential validated

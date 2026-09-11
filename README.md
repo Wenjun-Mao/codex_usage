@@ -105,6 +105,8 @@ Open **Usage** to review:
   daily charts through 90 days and readable Week/Month periods for longer spans;
 - Agent Activity daily totals and the highest-token agents, with a complete
   host-saved CSV for the selected range and project filter;
+- ledger-only Project Economics with weighted all-project benchmarks plus
+  project and model turn cost, density, coverage, and small-sample context;
 - project totals and project transitions;
 - root-task versus structured-subagent usage, split again by model;
 - exact model details, including unknown or currently unpriced usage.
@@ -119,6 +121,13 @@ For the all-history range, **Week | Month** defaults to Week and switches the
 cost chart without another ledger query or report generation.
 Models are presented by generation and product tier with stable, distinct
 colors, while the bounded visual set still favors the highest-volume models.
+Project Economics counts distinct non-empty project/task/turn identities and
+weights the all-project benchmark from measured, priceable turns rather than
+averaging project averages. Blank turn IDs remain in totals and coverage but
+not turn denominators; unpriced usage remains in token totals and coverage but
+not cost denominators. Detailed Token Accounting is collapsed by default, and
+**Cache Write (reported)** always means the value stored in the selected ledger,
+not a value inferred from cache reads or reconstructed while rendering.
 Date, Agent Activity, export, and project changes query SQLite; chart-only controls do not. The reload icon re-queries the ledger without
 capturing task files; **Capture Usage** is the separate action that updates the
 ledger. The report shows generation time and whether its rendered-result cache was used.

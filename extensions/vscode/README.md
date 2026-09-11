@@ -108,6 +108,13 @@ Tokens and API cost without regenerating the report. Models are shown by generat
 stable, distinct colors; the bounded visual set still prioritizes the models
 responsible for the most tokens.
 
+Project Economics adds a weighted all-project benchmark and expandable project
+and model turn metrics from the same selected ledger rows. Distinct non-empty
+project/task/turn identities define turns; blank turn IDs remain in totals and
+coverage, while unpriced turns are excluded only from cost denominators.
+Detailed Token Accounting is collapsed by default, and **Cache Write
+(reported)** is copied from the ledger rather than inferred or reconstructed.
+
 Pricing is bundled and effective-dated. GPT-6 Astra is recognized by its exact
 model ID, including cache-write and long-context API pricing. Credit estimates
 use published standard token rates and intentionally omit plan-specific or

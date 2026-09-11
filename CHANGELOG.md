@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.6.0 - 2026-09-10 - Project Economics And Reported Cache Writes
+
+- Added ledger-only Project Economics with distinct project/task/turn and
+  per-model turn metrics, weighted all-project cost benchmarks, priceability
+  coverage, medians, response density, and explicit small-sample treatment.
+- Kept total and role/model conservation on the existing filtered,
+  transition-attributed valued stream while excluding blank turn IDs only from
+  turn metrics and excluding unpriced turns only from cost denominators.
+- Collapsed detailed Token Accounting beneath the decision-oriented report and
+  renamed cache-write fields to **Cache Write (reported)** so the UI never
+  implies inferred or reconstructed cache data.
+
 ## 2.5.0 - 2026-09-07 - Custom Ranges And Agent Activity
 
 - Added inclusive local-calendar custom date ranges, including DST-safe UTC
