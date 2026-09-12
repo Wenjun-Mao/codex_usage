@@ -28,6 +28,7 @@ Read the learning notebook in [../learning](../learning) for the story behind th
 | [0040](0040-range-aware-temporal-cost-chart.md) | Preserve exact daily details while presenting long all-history cost trends in readable calendar periods. |
 | [0041](0041-custom-calendar-ranges-and-agent-activity.md) | Keep calendar ranges and Agent Activity ledger-only, bounded in the dashboard, and complete in host-saved CSV. |
 | [0042](0042-project-economics-and-cache-write-telemetry.md) | Define ledger-only project-turn economics and present cache-write values as reported source telemetry. |
+| [0043](0043-image-generation-accounting.md) | Keep image operations separate from language accounting and recover history through bounded, fair, artifact-first capture. |
 The current Task Transfer inventory contract is recorded in [ADR 0018](0018-user-visible-task-transfer-inventory.md).
 The bounded parallel cache refresh recovery contract is recorded in [ADR 0019](0019-bounded-parallel-cache-refresh.md).
 The incremental range-aware usage-cache contract is recorded in [ADR 0020](0020-incremental-range-aware-usage-cache.md).
@@ -53,3 +54,4 @@ The shared Usage comparison-scale contract is recorded in [ADR 0039](0039-shared
 The range-aware temporal cost-chart contract is recorded in [ADR 0040](0040-range-aware-temporal-cost-chart.md).
 The custom calendar-range and ledger-only Agent Activity contract is recorded in [ADR 0041](0041-custom-calendar-ranges-and-agent-activity.md).
 The project-turn economics and reported cache-write telemetry contract is recorded in [ADR 0042](0042-project-economics-and-cache-write-telemetry.md).
+The independent image-generation accounting and bounded historical-recovery contract is recorded in [ADR 0043](0043-image-generation-accounting.md).

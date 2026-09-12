@@ -116,6 +116,22 @@ GPT Image 2 documents the family and snapshots, while GPT Image 2.5 Sunburst
 documents matching token rates, its separate quality contract, and that the GPT
 Image 2 calculator does not estimate GPT Image 2.5 token consumption.
 
+### Version 2.7.1 recovery amendment
+
+One capture may spend at most four existing 16 MiB parser slices on historical
+image recovery, preserving a hard 64 MiB rollout-read ceiling. Startup,
+scheduled, and manual captures all participate. Newly discovered owners are
+served newest-artifact first; afterward, persisted service order selects the
+least-recently-served owner. Stable task identity breaks equal-priority ties.
+An unavailable owner is recorded and skipped without consuming the parser slice
+that a valid owner can use.
+
+Coverage is part of the report contract, not only collector status. Reports
+carry complete, pending, unavailable, and artifact counts. A zero-event
+selection may use the ordinary no-activity message only when historical image
+coverage is complete; otherwise it must disclose that earlier activity may be
+missing. These rules change neither the ledger schema nor language accounting.
+
 ## Rejected Alternatives
 
 - Treating image calls as language responses would distort language totals and

@@ -40,10 +40,12 @@ an unidentified-developer or unknown-publisher warning.
 - Set `CODEX_HOME`, scheduled capture or **Manual only**, and migrate compatible
   legacy usage caches entirely inside VS Code.
 - Filter Usage by preset or inclusive custom local-calendar range and project,
-  switch theme, review verified project transitions, and export complete Agent
-  Activity CSV rows through the VS Code save dialog.
+  switch theme, review verified project transitions, keep the Agent Activity
+  Daily Summary visible, expand its collapsed agent table when needed, and
+  export complete CSV rows through the VS Code save dialog.
 - Review global, model, and expandable project Image Generation activity without
-  mixing it into language token or cost totals.
+  mixing it into language token or cost totals; incomplete history reports
+  complete, pending, unavailable, and artifact counts.
 - Inspect current Task Storage and explicitly analyze one selected task tree.
 - Import, export, or review selected active tasks through Task Transfer.
 - See last capture, pending work, stale-source warnings, and ledger revision in
@@ -98,8 +100,8 @@ Usage reports, Agent Activity, and its CSV export come entirely from
 theme, Agent Activity, or export does not reopen Codex task files. Custom ranges
 require inclusive `YYYY-MM-DD` start and end dates in the collector's configured
 timezone; malformed, reversed, and future dates are rejected. Agent Activity
-shows daily totals and at most 50 agents in the dashboard while CSV retains
-every selected agent-day row. Project Breakdown separates root
+shows daily totals immediately and at most 50 agents in a collapsed disclosure,
+while CSV retains every selected agent-day row. Project Breakdown separates root
 tasks and structured subagents, then stacks each role by model. Side-chat usage
 remains under the parent root task where Codex does not store a durable role
 discriminator.
@@ -122,6 +124,12 @@ operations, outputs, model evidence, exact values, and unpriced coverage
 separate from language accounting; prompts, paths, bytes, and image contents
 are not retained. Unknown or conflicting model evidence is shown as unpriced
 rather than estimated.
+
+Historical image recovery participates in startup, scheduled, and manual
+captures. One capture reads no more than four 16 MiB rollout slices (64 MiB
+total), serves new recent artifact owners first, and then rotates the least
+recently served owners fairly. Missing or ambiguous owners remain visibly
+unavailable without blocking a valid owner from using the bounded slice.
 
 Pricing is bundled and effective-dated. GPT-6 Astra is recognized by its exact
 model ID, including cache-write and long-context API pricing. Credit estimates

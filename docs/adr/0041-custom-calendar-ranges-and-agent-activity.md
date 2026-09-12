@@ -43,3 +43,8 @@ totals must each conserve the selected raw token categories and positive-delta
 response count. Health and status advertise the additive capabilities while
 the API remains version 1, allowing independently updated clients to present a
 clear collector-update error. The renderer revision invalidates 2.4.x HTML.
+
+For version 2.7.1, the Daily Summary remains immediately visible while the
+bounded per-agent table is a closed-by-default native `details` disclosure.
+Its summary remains keyboard-operable, and presentation does not reduce or
+otherwise change the complete selected agent-day CSV contract.

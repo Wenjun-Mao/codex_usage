@@ -64,6 +64,8 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
     assert '<html lang="en" data-codex-theme="night">' in html
     assert "--bg: #f5f7f9" in html
     assert "--night-bg: #101316" in html
+    assert ".agent-activity-agents { margin-top: 16px; }" in html
+    assert ".agent-activity-agents > summary { cursor: pointer; }" in html
     assert "body.vscode-dark" in html
     assert "body.vscode-high-contrast" in html
     assert "Projects: repo" in html

@@ -1,6 +1,6 @@
-# 2.7 Distribution Checklist
+# 2.7.1 Distribution Checklist
 
-Version 2.7 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.7.1 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
@@ -90,6 +90,10 @@ sizes (1440 x 900 and 760 x 900). Confirm:
 - Image Generation keeps global, model, and project image activity separate
   from language totals, exposes its disclosures accessibly, and contains no
   prompt, path, or image-content fixture data;
+- incomplete image history reports complete, pending, unavailable, and artifact
+  counts instead of claiming that an incomplete empty selection has no activity;
+- Agent Activity keeps Daily Summary visible while its keyboard-operable Agents
+  disclosure is closed by default, and CSV export remains complete;
 - Token Accounting is collapsed by default and every cache-write label says
   **Cache Write (reported)**;
 - every Model Mix row uses an equal-length neutral track in both comparison modes;
@@ -137,16 +141,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.7.0`, both
-changelogs have a dated `2.7.0` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.7.1`, both
+changelogs have a dated `2.7.1` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.7.0`. Create and push that
+The only valid release tag for this version is `v2.7.1`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.7.0
-git push origin v2.7.0
+git tag v2.7.1
+git push origin v2.7.1
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -160,8 +164,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.7.0-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.7.0-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.7.1-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.7.1-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

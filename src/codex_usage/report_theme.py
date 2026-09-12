@@ -421,8 +421,6 @@ def report_css() -> str:
     .heat-5 { fill: var(--heat-5); background: var(--heat-5); }
     .empty-chart { fill: var(--muted); font-size: 14px; }
     .table-wrap { overflow-x: auto; }
-    .agent-activity-agents { margin-top: 16px; }
-    .agent-activity-agents > summary { cursor: pointer; }
     .section-help { margin: -4px 0 10px; }
     .storage-intro { max-width: 840px; margin: -2px 0 8px; }
     .storage-summary { margin: 0 0 12px; font-variant-numeric: tabular-nums; }

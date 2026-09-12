@@ -14,7 +14,9 @@ from codex_usage import agent_capture, image_backfill
 from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.image_backfill import (
+    IMAGE_BACKFILL_CAPTURE_BYTES,
     IMAGE_BACKFILL_SLICE_COUNT,
+    IMAGE_BACKFILL_SLICE_BYTES,
     ImageBackfillResult,
     run_image_backfill_slice,
 )
@@ -288,6 +290,8 @@ def test_backfill_scheduler_is_capped_at_four_slices(monkeypatch, tmp_path: Path
     result = image_backfill.run_image_backfill(tmp_path, tmp_path / "ledger.sqlite3")
 
     assert IMAGE_BACKFILL_SLICE_COUNT == 4
+    assert IMAGE_BACKFILL_SLICE_BYTES == 16 * 1024 * 1024
+    assert IMAGE_BACKFILL_CAPTURE_BYTES == 64 * 1024 * 1024
     assert calls == IMAGE_BACKFILL_SLICE_COUNT
     assert result.changed is True
 
@@ -309,6 +313,28 @@ def test_scheduler_prefers_recent_then_least_recently_served() -> None:
             {older_task, newer_task}, artifacts, {older_task: 4, newer_task: 9}
         )
         == older_task
+    )
+
+
+def test_scheduler_breaks_equal_priority_ties_deterministically() -> None:
+    lower_task = "11111111-1111-1111-1111-111111111111"
+    higher_task = "22222222-2222-2222-2222-222222222222"
+    artifacts = {
+        lower_task: image_backfill._ArtifactTask(1, 1),
+        higher_task: image_backfill._ArtifactTask(1, 1),
+    }
+
+    assert (
+        image_backfill._select_next_task({lower_task, higher_task}, artifacts, {})
+        == higher_task
+    )
+    assert (
+        image_backfill._select_next_task(
+            {lower_task, higher_task},
+            artifacts,
+            {lower_task: 4, higher_task: 4},
+        )
+        == lower_task
     )
 
 

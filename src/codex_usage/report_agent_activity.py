@@ -6,6 +6,14 @@ from codex_usage.agent_activity import AgentActivity
 from codex_usage.report_tables import format_int
 
 
+def agent_activity_css() -> str:
+    """Return styles owned by the Agent Activity report section."""
+    return """
+    .agent-activity-agents { margin-top: 16px; }
+    .agent-activity-agents > summary { cursor: pointer; }
+    """
+
+
 def render_agent_activity_section(activity: AgentActivity | None) -> str:
     """Render the bounded Agent Activity dashboard from report-scoped data."""
     if activity is None:

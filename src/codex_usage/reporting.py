@@ -10,7 +10,10 @@ from typing import TextIO
 
 from codex_usage.aggregation import AggregateRow, UsageSummary
 from codex_usage.agent_activity import AgentActivity
-from codex_usage.report_agent_activity import render_agent_activity_section
+from codex_usage.report_agent_activity import (
+    agent_activity_css,
+    render_agent_activity_section,
+)
 from codex_usage.image_reporting import ImageReport
 from codex_usage.report_images import image_activity_css, render_image_activity_section
 from codex_usage.charts import (
@@ -245,6 +248,7 @@ def render_html_report(
   <style>
 {report_css()}
 {project_economics_css()}
+{agent_activity_css()}
 {image_activity_css()}
   </style>
 </head>

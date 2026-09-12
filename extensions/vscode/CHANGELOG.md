@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.7.1 - 2026-09-12 - Fair Image Recovery
+
+- Made bounded historical image recovery fair across large artifact-owning
+  tasks and exposed complete, pending, unavailable, and artifact coverage in
+  the Usage report instead of presenting incomplete empty history as no image
+  activity.
+- Kept the Agent Activity Daily Summary visible, collapsed the accessible
+  per-agent table by default, and retained complete selected agent-day CSV
+  export.
+
 ## 2.7.0 - 2026-09-12 - Image Generation Accounting
 
 - Added accessible ledger-only Image Generation reporting with global, model,

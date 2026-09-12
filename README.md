@@ -24,10 +24,12 @@ OpenAI API.
   without reopening task files. Long ranges retain a script-free **Week |
   Month** cost view inside the rendered report.
 - **Agent Activity:** inspect daily token and response deltas plus the top 50
-  agents in the dashboard, then export every selected agent-day row to CSV.
+  agents in a collapsed detail table, then export every selected agent-day row
+  to CSV; the Daily Summary stays visible.
 - **Image Generation:** inspect global, model, and project image operations
-  separately from language tokens and costs; incomplete or conflicting billing
-  evidence remains explicitly unpriced.
+  separately from language tokens and costs; historical coverage reports
+  complete, pending, unavailable, and artifact counts, while incomplete or
+  conflicting billing evidence remains explicit.
 - **Honest accounting:** Project Breakdown separates root tasks from structured
   subagents and stacks each role by model. Side chats remain disclosed under
   their parent root task when Codex stores no durable discriminator.
@@ -78,6 +80,12 @@ interval. Filesystem notifications only mark paths as dirty; notification
 callbacks never read task content. Overdue work after startup, sleep/wake, or a
 watcher recovery produces one catch-up rather than replaying every missed tick.
 
+Historical image recovery participates in startup, scheduled, and manual
+captures. Each capture reads at most four 16 MiB rollout slices (64 MiB total),
+serving new recent artifact owners first and then rotating the least recently
+served owners. Missing or ambiguous owners are reported as unavailable without
+blocking a valid owner from using the bounded slice.
+
 The status header shows the last capture, next scheduled capture, pending files
 and bytes, baseline progress, and stale-source warnings. Use **Capture Usage**
 when you want current data immediately.
@@ -106,12 +114,14 @@ Open **Usage** to review:
 - daily and hourly patterns, with all-history costs switchable between local-calendar Monday-through-Sunday weeks and calendar months while the detail table stays daily;
 - inclusive custom local-calendar dates, including single-day ranges, with
   daily charts through 90 days and readable Week/Month periods for longer spans;
-- Agent Activity daily totals and the highest-token agents, with a complete
-  host-saved CSV for the selected range and project filter;
+- Agent Activity daily totals with the highest-token agents collapsed by
+  default, plus a complete host-saved CSV for the selected range and project
+  filter;
 - ledger-only Project Economics with weighted all-project benchmarks plus
   project and model turn cost, density, coverage, and small-sample context;
 - ledger-only Image Generation operations, outputs, model evidence, and
-  expandable project coverage, with image values never added to language totals;
+  expandable project coverage, including explicit incomplete-history counts,
+  with image values never added to language totals;
 - project totals and project transitions;
 - root-task versus structured-subagent usage, split again by model;
 - exact model details, including unknown or currently unpriced usage.

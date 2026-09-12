@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 2.7.1 - 2026-09-12 - Fair Image Recovery
+
+- Made historical image recovery serve the newest unserved artifact owners
+  first, then rotate least-recently-served owners with deterministic ties and
+  unavailable-owner fallthrough, within four 16 MiB slices and 64 MiB per
+  startup, scheduled, or manual capture.
+- Reported complete, pending, unavailable, and artifact coverage explicitly so
+  an incomplete zero-event selection no longer claims that no image activity
+  occurred, while complete empty selections retain the ordinary message.
+- Kept Agent Activity's Daily Summary visible, collapsed the keyboard-accessible
+  per-agent table by default, and preserved complete selected agent-day CSV
+  export.
+
 ## 2.7.0 - 2026-09-12 - Image Generation Accounting
 
 - Added accessible global, model, and expandable project Image Generation
