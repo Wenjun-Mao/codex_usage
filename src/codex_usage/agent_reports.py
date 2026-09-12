@@ -129,9 +129,7 @@ def render_ledger_report(
             project_keys=normalized_keys,
         )
         task_graph = query_ledger_task_graph(connection)
-        transitions = (
-            query_ledger_transitions(connection) if auto_transitions else []
-        )
+        transitions = query_ledger_transitions(connection) if auto_transitions else []
         source_counts = connection.execute(
             """
             select count(*) total,
@@ -208,23 +206,37 @@ def export_agent_activity_csv(
             [query_ledger_records(connection, bounds=report_range.bounds)]
         )
         task_graph = query_ledger_task_graph(connection)
-        transitions = (
-            query_ledger_transitions(connection) if auto_transitions else []
-        )
+        transitions = query_ledger_transitions(connection) if auto_transitions else []
     if transitions:
         records = apply_project_transitions(records, transitions)
     records = filter_records_by_project_keys(records, normalized_keys)
     activity = build_agent_activity(records, task_graph, timezone)
     return AgentActivityExport(
-        filename=_agent_activity_filename(report_range.start_date, report_range.end_date),
+        filename=_agent_activity_filename(
+            report_range.start_date, report_range.end_date
+        ),
         csv=agent_activity_csv(activity),
         row_count=len(activity.agent_day_rows),
     )
 
 
 def _status_banner(status: LedgerStatus) -> str:
-    if status.coverage.complete:
+    if status.coverage.complete and status.image_backfill.complete:
         return ""
+    if not status.image_backfill.complete:
+        image = status.image_backfill
+        return (
+            '<div class="notice warning" role="status">'
+            "Historical image coverage is "
+            f"{html.escape(image.status)}: {image.tasks_completed:,} of "
+            f"{image.tasks_total:,} artifact-owning tasks recovered"
+            + (
+                f"; {image.tasks_unavailable:,} unavailable."
+                if image.tasks_unavailable
+                else ". A background capture will continue the bounded backfill."
+            )
+            + "</div>"
+        )
     percentage = status.coverage.fraction * 100
     detail = (
         f"Baseline capture is {percentage:.1f}% complete. Totals shown below are partial; "
@@ -305,5 +317,7 @@ def _store_cached_report(
                 rendered,
             ),
         )
-        connection.execute("delete from rendered_reports where ledger_revision < ?", (revision,))
+        connection.execute(
+            "delete from rendered_reports where ledger_revision < ?", (revision,)
+        )
         connection.commit()

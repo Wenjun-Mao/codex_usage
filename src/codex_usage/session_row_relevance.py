@@ -16,6 +16,7 @@ _USAGE_EVENT_MARKERS_BYTES = tuple(
         '"inter_agent_communication_metadata"',
         '"token_count"',
         '"task_started"',
+        '"item_completed"',
     )
 )
 _FUNCTION_CALL_MARKERS_BYTES = (b'"response_item"', b'"function_call"')
@@ -46,6 +47,8 @@ def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
         if outer_type == b"response_item" and payload_type in {
             b"function_call",
             b"function_call_output",
+            b"custom_tool_call",
+            b"custom_tool_call_output",
         }:
             # Calls and results can contain data URLs or generated-image base64.
             # Keep only a prefix while streaming the rest to the newline.
@@ -57,6 +60,7 @@ def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
             if (outer_type, payload_type)
             in {
                 (b"response_item", b"function_call"),
+                (b"response_item", b"custom_tool_call"),
                 (b"event_msg", b"token_count"),
                 (b"event_msg", b"task_started"),
             }
@@ -75,9 +79,7 @@ def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
             return "irrelevant"
     if complete:
         return (
-            "relevant"
-            if _legacy_line_bytes_may_affect_usage(prefix)
-            else "irrelevant"
+            "relevant" if _legacy_line_bytes_may_affect_usage(prefix) else "irrelevant"
         )
     return "unclassified"
 

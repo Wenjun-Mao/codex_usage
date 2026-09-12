@@ -18,6 +18,7 @@ from codex_usage.image_models import (
     ImageOutcome,
     ImageUsage,
 )
+from codex_usage.image_backfill import IMAGE_BACKFILL_STATE_KEY
 from codex_usage.models import TokenUsage, UsageRecord, parse_usage_role
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_transitions import ProjectTransition
@@ -62,12 +63,40 @@ class LedgerCoverage:
 
 
 @dataclass(frozen=True, slots=True)
+class ImageBackfillCoverage:
+    status: str = "pending"
+    artifacts_total: int = 0
+    tasks_total: int = 0
+    tasks_completed: int = 0
+    tasks_unavailable: int = 0
+
+    @property
+    def complete(self) -> bool:
+        return self.status == "complete"
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "complete": self.complete,
+            "artifacts_total": self.artifacts_total,
+            "tasks_total": self.tasks_total,
+            "tasks_completed": self.tasks_completed,
+            "tasks_unavailable": self.tasks_unavailable,
+            "pending_tasks": max(
+                0,
+                self.tasks_total - self.tasks_completed - self.tasks_unavailable,
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class LedgerStatus:
     revision: int
     last_capture_at: str
     last_capture_outcome: str
     last_capture_error: str
     coverage: LedgerCoverage
+    image_backfill: ImageBackfillCoverage = ImageBackfillCoverage()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -76,6 +105,7 @@ class LedgerStatus:
             "last_capture_outcome": self.last_capture_outcome,
             "last_capture_error": self.last_capture_error,
             "coverage": self.coverage.to_dict(),
+            "image_backfill": self.image_backfill.to_dict(),
         }
 
 
@@ -120,7 +150,7 @@ def query_ledger_records(
         join ledger_models using (model_id)
         join ledger_contexts using (context_id)
         join ledger_projects on ledger_projects.project_id = ledger_contexts.project_id
-        where {' and '.join(clauses)}
+        where {" and ".join(clauses)}
         order by ledger_sources.source_key, ledger_usage_events.source_record_index
     """
     selected = {key for key in project_keys or [] if key}
@@ -208,6 +238,31 @@ def query_ledger_status(connection: sqlite3.Connection) -> LedgerStatus:
         last_capture_outcome=str(capture["outcome"]) if capture else "never",
         last_capture_error=str(capture["error"] or "") if capture else "",
         coverage=coverage,
+        image_backfill=_image_backfill_coverage(connection),
+    )
+
+
+def _image_backfill_coverage(connection: sqlite3.Connection) -> ImageBackfillCoverage:
+    row = connection.execute(
+        "select value from ledger_meta where key = ?",
+        (IMAGE_BACKFILL_STATE_KEY,),
+    ).fetchone()
+    if row is None:
+        return ImageBackfillCoverage()
+    try:
+        value = json.loads(str(row["value"]))
+    except (TypeError, ValueError):
+        return ImageBackfillCoverage(status="partial")
+    if not isinstance(value, dict):
+        return ImageBackfillCoverage(status="partial")
+    completed = value.get("completed")
+    unavailable = value.get("unavailable")
+    return ImageBackfillCoverage(
+        status=str(value.get("status") or "partial"),
+        artifacts_total=int(value.get("artifacts_total") or 0),
+        tasks_total=int(value.get("tasks_total") or 0),
+        tasks_completed=len(completed) if isinstance(completed, list) else 0,
+        tasks_unavailable=len(unavailable) if isinstance(unavailable, dict) else 0,
     )
 
 
@@ -246,7 +301,7 @@ def query_ledger_image_operations(
         from ledger_image_events
         join ledger_generations using (generation_id)
         join ledger_projects using (project_id)
-        where {' and '.join(clauses)}
+        where {" and ".join(clauses)}
         order by ledger_image_events.timestamp_us, ledger_image_events.image_event_id
         """,
         parameters,
@@ -256,7 +311,9 @@ def query_ledger_image_operations(
     return (
         operations
         if not selected
-        else [operation for operation in operations if operation.project_key in selected]
+        else [
+            operation for operation in operations if operation.project_key in selected
+        ]
     )
 
 

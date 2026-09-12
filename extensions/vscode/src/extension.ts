@@ -27,7 +27,7 @@ let activeView: ReportView = "usage";
 let refreshSerial = 0;
 let statusTimer: NodeJS.Timeout | undefined;
 let renderedUsageFingerprint: string | undefined;
-let latestStatus: RenderedReport["status"] | undefined;
+let latestStatus: AgentStatus | undefined;
 
 const STATUS_REFRESH_INTERVAL_MS = 30_000;
 
@@ -114,10 +114,19 @@ async function refreshVisibleDashboard(
   try {
     const controls = controlState();
     if (activeView === "usage") {
+      const status = latestStatus ?? await client.get<AgentStatus>("/v1/status");
+      latestStatus = status;
+      if (!supportsImageAccounting(status)) {
+        target.webview.html = renderError(
+          "Update the Codex Usage collector before loading this report. The current collector does not support image-generation accounting; reinstall the matching VSIX package.",
+          target.webview.cspSource,
+          reportTheme(),
+        );
+        return;
+      }
       const query = reportQuery(controls.theme);
       const report = await client.get<RenderedReport>(`/v1/report?${query.toString()}`);
       if (panel === target && requestId === refreshSerial) {
-        latestStatus = report.status;
         renderedUsageFingerprint = usageStatusFingerprint(report.status);
         target.webview.html = decorateUsageReport(report.html, {
           ...controls,
@@ -502,6 +511,10 @@ function customRange(): CustomDateRange | undefined {
 function supportsAgentActivity(status: AgentStatus): boolean {
   const capabilities = status.capabilities || [];
   return capabilities.includes("custom-report-range") && capabilities.includes("agent-activity");
+}
+
+function supportsImageAccounting(status: AgentStatus): boolean {
+  return (status.capabilities || []).includes("image-generation-accounting");
 }
 
 function latestSevenDays(): CustomDateRange {

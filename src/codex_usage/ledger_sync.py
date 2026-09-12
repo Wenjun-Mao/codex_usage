@@ -8,6 +8,7 @@ from pathlib import Path
 from codex_usage.ledger_events import (
     insert_generation_events,
     insert_generation_image_events,
+    rebuild_image_events,
     rebuild_normalized_events,
 )
 from codex_usage.ledger_schema import increment_ledger_revision, open_ledger
@@ -21,6 +22,7 @@ def synchronize_parser_workset(
     ledger_path: Path,
     *,
     force_normalized_ownership: bool = False,
+    force_image_events: bool = False,
 ) -> tuple[int, bool]:
     """Mirror parser-owned rows into the normalized, report-owned ledger."""
     with open_ledger(ledger_path) as connection:
@@ -28,7 +30,12 @@ def synchronize_parser_workset(
         try:
             changed = _sync_sources(connection)
             changed |= _sync_transitions(connection)
-            if force_normalized_ownership or _normalized_ownership_requires_rebuild(connection):
+            if force_image_events:
+                rebuild_image_events(connection)
+                changed = True
+            if force_normalized_ownership or _normalized_ownership_requires_rebuild(
+                connection
+            ):
                 rebuild_normalized_events(connection)
                 connection.execute(
                     "insert or replace into ledger_meta (key, value) values (?, ?)",
@@ -204,13 +211,19 @@ def _sync_generation(
     ).fetchone()
     record_count = int(row["record_count"])
     captured_size = int(row["byte_offset"])
-    requires_replace = trusted is None or str(trusted["generation_key"]) != generation_key
-    changed = force_event_rebuild or requires_replace or bool(
-        trusted is not None
-        and (
-            int(trusted["captured_size"]) != captured_size
-            or int(trusted["captured_mtime_ns"]) != int(row["mtime_ns"])
-            or int(trusted["record_count"]) != record_count
+    requires_replace = (
+        trusted is None or str(trusted["generation_key"]) != generation_key
+    )
+    changed = (
+        force_event_rebuild
+        or requires_replace
+        or bool(
+            trusted is not None
+            and (
+                int(trusted["captured_size"]) != captured_size
+                or int(trusted["captured_mtime_ns"]) != int(row["mtime_ns"])
+                or int(trusted["record_count"]) != record_count
+            )
         )
     )
     if not changed:

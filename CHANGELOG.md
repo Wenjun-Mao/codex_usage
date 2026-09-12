@@ -10,8 +10,11 @@
 - Valued only complete, non-conflicting upstream image telemetry using the
   effective-dated image schedule; unresolved or conflicting evidence remains
   visible as unpriced coverage.
-- Added the additive `image-reporting` collector capability and refreshed the
-  native Marketplace fixture and screenshot around the new content-free view.
+- Added bounded parsing for current nested image-tool calls and signed artifact
+  metadata, plus a resumable artifact-first historical backfill that preserves
+  language accounting and exposes partial coverage.
+- Added the additive `image-generation-accounting` collector capability and
+  refreshed canonical Day/Night, wide/narrow native Marketplace screenshots.
 
 ## 2.6.0 - 2026-09-10 - Project Economics And Reported Cache Writes
 

@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import struct
 from pathlib import Path
+
+from image_capture_test_support import (
+    image_call as _image_call,
+    image_failure as _image_failure,
+    image_result as _image_result,
+    session_meta as _session_meta,
+    token_count as _token_count,
+    turn_context as _turn_context,
+)
 
 from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
@@ -16,10 +26,16 @@ from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
 from codex_usage.session_parser_models import parser_state_to_json
 
 
-def test_image_result_arriving_in_an_append_settles_the_original_call(tmp_path: Path) -> None:
+def test_image_result_arriving_in_an_append_settles_the_original_call(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "session.jsonl"
     secret_prompt = "do-not-persist-this-prompt"
-    rows = [_session_meta("task-image"), _turn_context(), _image_call("call-1", secret_prompt)]
+    rows = [
+        _session_meta("task-image"),
+        _turn_context(),
+        _image_call("call-1", secret_prompt),
+    ]
     path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
 
     first = parse_session_generation(path)
@@ -31,7 +47,9 @@ def test_image_result_arriving_in_an_append_settles_the_original_call(tmp_path: 
 
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(_image_result("call-1", count=2)) + "\n")
-    appended = parse_session_append(path, first.checkpoint, stop_offset=path.stat().st_size)
+    appended = parse_session_append(
+        path, first.checkpoint, stop_offset=path.stat().st_size
+    )
 
     assert len(appended.image_operations) == 1
     operation = appended.image_operations[0]
@@ -59,7 +77,11 @@ def test_large_base64_tool_rows_are_drained_without_becoming_ledger_content(
                 "name": "image_gen",
                 "call_id": "call-large",
                 "arguments": json.dumps(
-                    {"model": "gpt-image-2", "prompt": "private", "input_image": content}
+                    {
+                        "model": "gpt-image-2",
+                        "prompt": "private",
+                        "input_image": content,
+                    }
                 ),
             },
         },
@@ -91,8 +113,14 @@ def test_incomplete_image_result_and_direct_events_preserve_operation_contract(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "partial.jsonl"
-    initial = [_session_meta("task-partial"), _turn_context(), _image_call("call-1", "secret")]
-    path.write_text("".join(f"{json.dumps(row)}\n" for row in initial), encoding="utf-8")
+    initial = [
+        _session_meta("task-partial"),
+        _turn_context(),
+        _image_call("call-1", "secret"),
+    ]
+    path.write_text(
+        "".join(f"{json.dumps(row)}\n" for row in initial), encoding="utf-8"
+    )
     partial = json.dumps(_image_result("call-1", count=2)).encode()
     with path.open("ab") as handle:
         split = len(partial) // 2
@@ -120,9 +148,14 @@ def test_incomplete_image_result_and_direct_events_preserve_operation_contract(
             ).encode()
             + b"\n"
         )
-    appended = parse_session_append(path, first.checkpoint, stop_offset=path.stat().st_size)
+    appended = parse_session_append(
+        path, first.checkpoint, stop_offset=path.stat().st_size
+    )
 
-    assert [(item.tool_call_id, item.outcome, item.output_count) for item in appended.image_operations] == [
+    assert [
+        (item.tool_call_id, item.outcome, item.output_count)
+        for item in appended.image_operations
+    ] == [
         ("call-1", ImageOutcome.SUCCEEDED, 2),
         ("direct-1", ImageOutcome.SUCCEEDED, 3),
     ]
@@ -154,7 +187,9 @@ def test_mapping_result_preserves_an_explicit_zero_output_count(tmp_path: Path) 
     ]
 
 
-def test_large_escaped_error_result_settles_a_pending_image_call(tmp_path: Path) -> None:
+def test_large_escaped_error_result_settles_a_pending_image_call(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "large-error.jsonl"
     detail = "a" * 2_000_000
     rows = [
@@ -181,6 +216,144 @@ def test_large_escaped_error_result_settles_a_pending_image_call(tmp_path: Path)
     ]
 
 
+def test_nested_exec_image_call_uses_signed_artifact_metadata(tmp_path: Path) -> None:
+    home = tmp_path / ".codex"
+    sessions = home / "sessions" / "2026" / "09" / "12"
+    sessions.mkdir(parents=True)
+    task_id = "task-nested"
+    artifact_name = "exec-07b936fd-4c91-4430-b953-677e7abaafe7.png"
+    artifacts = home / "generated_images" / task_id
+    artifacts.mkdir(parents=True)
+    (artifacts / artifact_name).write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + struct.pack(">I", 13)
+        + b"IHDR"
+        + struct.pack(">II", 1536, 1024)
+        + b"\x08\x06\x00\x00\x00"
+        + b"c2pa.actions.v2 c2pa.signature softwareAgent name gpt-image version 2.0"
+    )
+    path = sessions / f"rollout-{task_id}.jsonl"
+    rows = [
+        _session_meta(task_id),
+        _turn_context(),
+        {
+            "timestamp": "2026-09-12T10:00:02Z",
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "name": "exec",
+                "call_id": "call-nested",
+                "input": "await tools.image_gen__imagegen({prompt: 'private', referenced_image_paths: ['/private/input.png']});",
+            },
+        },
+        {
+            "timestamp": "2026-09-12T10:00:03Z",
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call_output",
+                "call_id": "call-nested",
+                "output": [
+                    {"type": "input_text", "text": f"output_hint: {artifact_name}"},
+                    {
+                        "type": "input_text",
+                        "text": "image_url: data:image/png;base64,private",
+                    },
+                ],
+            },
+        },
+    ]
+    path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
+
+    parsed = parse_session_generation(path)
+
+    attempted, succeeded = parsed.image_operations
+    assert attempted.kind is ImageOperationKind.EDIT_REFERENCE
+    assert succeeded.outcome is ImageOutcome.SUCCEEDED
+    assert (
+        succeeded.output_count,
+        succeeded.output_width,
+        succeeded.output_height,
+    ) == (
+        1,
+        1536,
+        1024,
+    )
+    assert [(item.raw_identity, item.version) for item in succeeded.evidence] == [
+        ("gpt-image", "2.0")
+    ]
+
+
+def test_nested_exec_quoted_json_arguments_are_recognized(tmp_path: Path) -> None:
+    path = tmp_path / "quoted.jsonl"
+    nested = json.dumps(
+        json.dumps({"prompt": "private", "num_last_images_to_include": 1})
+    )
+    rows = [
+        _session_meta("task-quoted"),
+        _turn_context(),
+        {
+            "timestamp": "2026-09-12T10:00:02Z",
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "name": "exec",
+                "call_id": "call-quoted",
+                "input": f"await tools.image_gen__imagegen({nested});",
+            },
+        },
+    ]
+    path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
+
+    parsed = parse_session_generation(path)
+
+    assert parsed.image_operations[0].kind is ImageOperationKind.EDIT_REFERENCE
+
+
+def test_extension_completion_settles_nested_call_before_large_output(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "extension.jsonl"
+    rows = [
+        _session_meta("task-extension"),
+        _turn_context(),
+        {
+            "timestamp": "2026-09-12T10:00:02Z",
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "name": "exec",
+                "call_id": "call-extension",
+                "input": "await tools.image_gen__imagegen({prompt: 'private'});",
+            },
+        },
+        {
+            "timestamp": "2026-09-12T10:00:03Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "item_completed",
+                "item": {
+                    "type": "Extension",
+                    "kind": "image_gen.generation",
+                    "id": "exec-07b936fd-4c91-4430-b953-677e7abaafe7",
+                    "status": "completed",
+                    "failure": None,
+                    "savedPath": "/private/never-persist.png",
+                },
+            },
+        },
+    ]
+    path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
+
+    parsed = parse_session_generation(path)
+
+    assert [item.outcome for item in parsed.image_operations] == [
+        ImageOutcome.ATTEMPTED,
+        ImageOutcome.SUCCEEDED,
+    ]
+    assert parsed.image_operations[-1].output_count == 1
+    assert "never-persist" not in parser_state_to_json(parsed.checkpoint.state)
+
+
 def test_targeted_legacy_backfill_recovers_image_operations(tmp_path: Path) -> None:
     sessions = tmp_path / "legacy" / "sessions" / "2026" / "09" / "12"
     sessions.mkdir(parents=True)
@@ -198,7 +371,12 @@ def test_targeted_legacy_backfill_recovers_image_operations(tmp_path: Path) -> N
         encoding="utf-8",
     )
     cache_dir = tmp_path / "legacy" / "cache"
-    load_cached_session_data([sessions.parents[2]], cache_dir=cache_dir, auto_transitions=False, max_workers=1)
+    load_cached_session_data(
+        [sessions.parents[2]],
+        cache_dir=cache_dir,
+        auto_transitions=False,
+        max_workers=1,
+    )
     cache = cache_dir / CACHE_DB_NAME
     ledger = tmp_path / "ledger.sqlite3"
     with open_ledger(ledger):
@@ -216,13 +394,20 @@ def test_targeted_legacy_backfill_recovers_image_operations(tmp_path: Path) -> N
         ).fetchall() == [("call-backfill", "succeeded", 2)]
 
 
-def test_capture_persists_only_image_metadata_and_updates_retry_in_place(tmp_path: Path) -> None:
+def test_capture_persists_only_image_metadata_and_updates_retry_in_place(
+    tmp_path: Path,
+) -> None:
     home = tmp_path / ".codex"
     directory = home / "sessions" / "2026" / "09" / "12"
     directory.mkdir(parents=True)
     path = directory / "rollout-task-image.jsonl"
     secret = "private-prompt-text"
-    rows = [_session_meta("task-image"), _turn_context(), _image_call("call-1", secret), _image_result("call-1", count=1)]
+    rows = [
+        _session_meta("task-image"),
+        _turn_context(),
+        _image_call("call-1", secret),
+        _image_result("call-1", count=1),
+    ]
     path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
 
     result = capture_once(home, request_kind="manual", max_workers=1)
@@ -249,7 +434,9 @@ def test_capture_persists_only_image_metadata_and_updates_retry_in_place(tmp_pat
         handle.write(json.dumps(_image_failure("call-2")) + "\n")
         handle.write(json.dumps(_image_call("call-3", "retry-secret")) + "\n")
         handle.write(json.dumps(_image_result("call-3", count=3)) + "\n")
-    assert capture_once(home, request_kind="scheduled", max_workers=1).outcome == "success"
+    assert (
+        capture_once(home, request_kind="scheduled", max_workers=1).outcome == "success"
+    )
     with sqlite3.connect(ledger) as connection:
         rows = connection.execute(
             "select tool_call_id, outcome, output_count from ledger_image_events order by tool_call_id"
@@ -290,128 +477,7 @@ def test_image_capture_keeps_language_ledger_rows_unchanged(tmp_path: Path) -> N
             "total_tokens": 125,
         }
     ]
-    assert [(operation.tool_call_id, operation.usage.image_output_tokens) for operation in load_ledger_image_operations(ledger)] == [
-        ("call-language", 20)
-    ]
-
-
-def test_image_ledger_migration_creates_a_pre_migration_backup(tmp_path: Path) -> None:
-    ledger = tmp_path / "usage-ledger.sqlite3"
-    with open_ledger(ledger):
-        pass
-    with sqlite3.connect(ledger) as connection:
-        connection.execute("drop table ledger_image_events")
-        connection.execute("update ledger_meta set value = '1' where key = 'schema_version'")
-        connection.commit()
-
-    with open_ledger(ledger) as connection:
-        version = connection.execute(
-            "select value from ledger_meta where key = 'schema_version'"
-        ).fetchone()[0]
-        assert connection.execute(
-            "select 1 from sqlite_master where type = 'table' and name = 'ledger_image_events'"
-        ).fetchone() is not None
-
-    backups = list(tmp_path.glob("usage-ledger.sqlite3.schema-1-backup-*"))
-    assert version == "2"
-    assert len(backups) == 1
-    with sqlite3.connect(backups[0]) as connection:
-        assert connection.execute(
-            "select value from ledger_meta where key = 'schema_version'"
-        ).fetchone()[0] == "1"
-        assert connection.execute(
-            "select 1 from sqlite_master where type = 'table' and name = 'ledger_image_events'"
-        ).fetchone() is None
-
-
-def _session_meta(task_id: str) -> dict[str, object]:
-    return {
-        "timestamp": "2026-09-12T10:00:00Z",
-        "type": "session_meta",
-        "payload": {"id": task_id, "cwd": "/repo/image"},
-    }
-
-
-def _turn_context() -> dict[str, object]:
-    return {
-        "timestamp": "2026-09-12T10:00:01Z",
-        "type": "turn_context",
-        "payload": {"turn_id": "turn-image", "model": "gpt-5.6-terra"},
-    }
-
-
-def _image_call(call_id: str, prompt: str) -> dict[str, object]:
-    return {
-        "timestamp": "2026-09-12T10:00:02Z",
-        "type": "response_item",
-        "payload": {
-            "type": "function_call",
-            "name": "image_gen",
-            "call_id": call_id,
-            "arguments": json.dumps(
-                {
-                    "model": "gpt-image-2",
-                    "size": "1024x1024",
-                    "quality": "high",
-                    "prompt": prompt,
-                    "referenced_image_paths": ["/private/input.png"],
-                }
-            ),
-        },
-    }
-
-
-def _image_result(call_id: str, *, count: int) -> dict[str, object]:
-    return {
-        "timestamp": "2026-09-12T10:00:03Z",
-        "type": "response_item",
-        "payload": {
-            "type": "function_call_output",
-            "call_id": call_id,
-            "output": json.dumps(
-                {
-                    "model": "gpt-image-2",
-                    "data": [{} for _ in range(count)],
-                    "usage": {
-                        "text_input_tokens": 10,
-                        "cached_text_input_tokens": 0,
-                        "image_input_tokens": 0,
-                        "cached_image_input_tokens": 0,
-                        "image_output_tokens": 20,
-                    },
-                }
-            ),
-        },
-    }
-
-
-def _image_failure(call_id: str) -> dict[str, object]:
-    return {
-        "timestamp": "2026-09-12T10:00:03Z",
-        "type": "response_item",
-        "payload": {
-            "type": "function_call_output",
-            "call_id": call_id,
-            "output": json.dumps({"status": "failed", "error": "generation failed"}),
-        },
-    }
-
-
-def _token_count(total_tokens: int) -> dict[str, object]:
-    return {
-        "timestamp": "2026-09-12T10:00:01Z",
-        "type": "event_msg",
-        "payload": {
-            "type": "token_count",
-            "info": {
-                "total_token_usage": {
-                    "input_tokens": total_tokens,
-                    "cached_input_tokens": 0,
-                    "cache_write_input_tokens": 0,
-                    "output_tokens": 0,
-                    "reasoning_output_tokens": 0,
-                    "total_tokens": total_tokens,
-                }
-            },
-        },
-    }
+    assert [
+        (operation.tool_call_id, operation.usage.image_output_tokens)
+        for operation in load_ledger_image_operations(ledger)
+    ] == [("call-language", 20)]

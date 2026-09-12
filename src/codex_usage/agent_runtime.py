@@ -237,7 +237,7 @@ class CodexUsageAgent:
                 "capabilities": [
                     "custom-report-range",
                     "agent-activity",
-                    "image-reporting",
+                    "image-generation-accounting",
                 ],
             }
         )

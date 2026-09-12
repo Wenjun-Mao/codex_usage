@@ -41,6 +41,15 @@ export interface AgentStatus {
   last_capture_error: string;
   capabilities?: string[];
   coverage: Coverage;
+  image_backfill?: {
+    status: string;
+    complete: boolean;
+    artifacts_total: number;
+    tasks_total: number;
+    tasks_completed: number;
+    tasks_unavailable: number;
+    pending_tasks: number;
+  };
 }
 
 export interface AgentHealth {

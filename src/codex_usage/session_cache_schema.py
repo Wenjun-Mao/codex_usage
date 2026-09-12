@@ -54,6 +54,17 @@ def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
     try:
         prior_tables = _existing_cache_tables(connection)
         prior_version = _prior_schema_version(connection)
+        if _can_migrate_v8_to_v9(connection):
+            _create_image_operations_schema(connection)
+            connection.executemany(
+                "insert or replace into schema_meta (key, value) values (?, ?)",
+                (
+                    ("schema_version", str(CACHE_SCHEMA_VERSION)),
+                    ("parser_version", str(PARSER_CACHE_VERSION)),
+                ),
+            )
+            connection.commit()
+            return CacheSchemaState()
         _drop_cache_schema(connection)
         _create_cache_schema(connection)
         connection.executemany(
@@ -188,30 +199,6 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         )
         """,
         """
-        create table image_operations (
-            file_key text not null,
-            tool_call_id text not null,
-            timestamp text not null,
-            timestamp_us integer not null,
-            task_id text not null,
-            root_task_id text not null,
-            usage_role text not null check (usage_role in ('root', 'subagent')),
-            turn_id text not null,
-            project_key text not null,
-            project_label text not null,
-            kind text not null check (kind in ('generate', 'edit_reference', 'unknown')),
-            outcome text not null check (outcome in ('attempted', 'succeeded', 'failed')),
-            output_count integer not null check (output_count >= 0),
-            output_width integer,
-            output_height integer,
-            output_format text not null,
-            quality text not null,
-            evidence_json text not null,
-            usage_json text not null,
-            primary key (file_key, tool_call_id)
-        )
-        """,
-        """
         create table storage_content_diagnostics (
             path text primary key,
             task_id text not null,
@@ -267,10 +254,74 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         "create index storage_files_task_idx on storage_files (task_id)",
         "create index storage_files_project_idx on storage_files (project_key)",
         "create index storage_content_diagnostics_task_idx on storage_content_diagnostics (task_id)",
-        "create index image_operations_task_idx on image_operations (task_id, timestamp_us)",
     )
     for statement in statements:
         connection.execute(statement)
+    _create_image_operations_schema(connection)
+
+
+def _create_image_operations_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        create table image_operations (
+            file_key text not null,
+            tool_call_id text not null,
+            timestamp text not null,
+            timestamp_us integer not null,
+            task_id text not null,
+            root_task_id text not null,
+            usage_role text not null check (usage_role in ('root', 'subagent')),
+            turn_id text not null,
+            project_key text not null,
+            project_label text not null,
+            kind text not null check (kind in ('generate', 'edit_reference', 'unknown')),
+            outcome text not null check (outcome in ('attempted', 'succeeded', 'failed')),
+            output_count integer not null check (output_count >= 0),
+            output_width integer,
+            output_height integer,
+            output_format text not null,
+            quality text not null,
+            evidence_json text not null,
+            usage_json text not null,
+            primary key (file_key, tool_call_id)
+        )
+        """
+    )
+    connection.execute(
+        "create index image_operations_task_idx on image_operations (task_id, timestamp_us)"
+    )
+
+
+def _can_migrate_v8_to_v9(connection: sqlite3.Connection) -> bool:
+    """Recognize only the exact additive predecessor; unknown schemas reset."""
+    if _prior_schema_version(connection) != "8":
+        return False
+    try:
+        metadata = {
+            str(row[0]): str(row[1])
+            for row in connection.execute("select key, value from schema_meta")
+        }
+        tables = _existing_cache_tables(connection)
+    except sqlite3.Error:
+        return False
+    return (
+        metadata.get("parser_version") == "6"
+        and metadata.get("project_transition_version")
+        == str(PROJECT_TRANSITION_CACHE_VERSION)
+        and "image_operations" not in tables
+        and {
+            "schema_meta",
+            "files",
+            "usage_records",
+            "session_metadata",
+            "storage_files",
+            "parser_checkpoints",
+            "storage_content_diagnostics",
+            "transition_candidates",
+            "dirty_transition_tasks",
+            "project_transitions",
+        }.issubset(tables)
+    )
 
 
 def _schema_matches(connection: sqlite3.Connection) -> bool:

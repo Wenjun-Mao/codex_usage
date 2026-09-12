@@ -11,14 +11,30 @@ from typing import Iterator
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from PIL import Image
 from playwright.sync_api import Page, sync_playwright
+
+from codex_usage.marketplace_screenshot_validation import validate_screenshot
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DESKTOP_ROOT = REPOSITORY_ROOT / "apps" / "desktop"
 USAGE_SCREENSHOT_PATH = (
     REPOSITORY_ROOT / "docs" / "marketplace" / "native-usage-synthetic.png"
 )
+USAGE_SCREENSHOT_PATHS = {
+    ("day", "wide"): REPOSITORY_ROOT
+    / "docs"
+    / "marketplace"
+    / "native-usage-day-wide-synthetic.png",
+    ("night", "wide"): USAGE_SCREENSHOT_PATH,
+    ("day", "narrow"): REPOSITORY_ROOT
+    / "docs"
+    / "marketplace"
+    / "native-usage-day-narrow-synthetic.png",
+    ("night", "narrow"): REPOSITORY_ROOT
+    / "docs"
+    / "marketplace"
+    / "native-usage-night-narrow-synthetic.png",
+}
 STORAGE_SCREENSHOT_PATH = (
     REPOSITORY_ROOT / "docs" / "marketplace" / "native-storage-synthetic.png"
 )
@@ -42,21 +58,28 @@ def main(argv: list[str] | None = None) -> int:
         with TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
             _render_capture_and_validate(
-                temporary / "native-usage.png",
+                {
+                    key: temporary / path.name
+                    for key, path in USAGE_SCREENSHOT_PATHS.items()
+                },
                 temporary / "native-storage.png",
             )
         return 0
 
-    _render_capture_and_validate(USAGE_SCREENSHOT_PATH, STORAGE_SCREENSHOT_PATH)
+    _render_capture_and_validate(USAGE_SCREENSHOT_PATHS, STORAGE_SCREENSHOT_PATH)
     return 0
 
 
-def _render_capture_and_validate(usage_path: Path, storage_path: Path) -> None:
+def _render_capture_and_validate(
+    usage_paths: dict[tuple[str, str], Path],
+    storage_path: Path,
+) -> None:
     _build_frontend()
     with _preview_server() as url:
-        capture_marketplace_screenshots(url, usage_path, storage_path)
-    validate_screenshot(usage_path)
-    validate_screenshot(storage_path)
+        capture_marketplace_screenshots(url, usage_paths, storage_path)
+    for (_theme, size), path in usage_paths.items():
+        validate_screenshot(path, NARROW_VIEWPORT if size == "narrow" else VIEWPORT)
+    validate_screenshot(storage_path, VIEWPORT)
 
 
 def _build_frontend() -> None:
@@ -92,7 +115,9 @@ def _preview_server() -> Iterator[str]:
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             if process.poll() is not None:
-                raise RuntimeError("native frontend preview exited before becoming ready")
+                raise RuntimeError(
+                    "native frontend preview exited before becoming ready"
+                )
             try:
                 with urlopen(url, timeout=0.5) as response:  # noqa: S310
                     if response.status == 200:
@@ -119,10 +144,11 @@ def _unused_loopback_port() -> int:
 
 def capture_marketplace_screenshots(
     url: str,
-    usage_path: Path,
+    usage_paths: dict[tuple[str, str], Path],
     storage_path: Path,
 ) -> None:
-    usage_path.parent.mkdir(parents=True, exist_ok=True)
+    for usage_path in usage_paths.values():
+        usage_path.parent.mkdir(parents=True, exist_ok=True)
     storage_path.parent.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -144,7 +170,28 @@ def capture_marketplace_screenshots(
                 "element => element.scrollIntoView({block: 'start'})"
             )
             page.wait_for_timeout(100)
-            page.screenshot(path=str(usage_path), full_page=False)
+            for theme in ("day", "night"):
+                page.evaluate(
+                    "theme => { document.documentElement.dataset.theme = theme; }",
+                    theme,
+                )
+                page.frame_locator("#usage-report").locator("html").evaluate(
+                    "(element, theme) => { element.dataset.codexTheme = theme; }",
+                    theme,
+                )
+                for size, viewport in (("wide", VIEWPORT), ("narrow", NARROW_VIEWPORT)):
+                    _set_viewport(page, viewport)
+                    _validate_layout(page, view="usage", viewport=viewport)
+                    page.frame_locator("#usage-report").locator(
+                        ".image-activity"
+                    ).evaluate("element => element.scrollIntoView({block: 'start'})")
+                    page.wait_for_timeout(100)
+                    page.screenshot(
+                        path=str(usage_paths[(theme, size)]),
+                        full_page=False,
+                    )
+
+            _set_viewport(page, VIEWPORT)
 
             page.get_by_role("button", name="Task Storage", exact=True).click()
             _wait_for_storage(page)
@@ -169,7 +216,9 @@ def _wait_for_storage(page: Page) -> None:
     page.get_by_role("heading", name="Task Storage", exact=True).wait_for()
     page.get_by_role("heading", name="Largest Task Trees", exact=True).wait_for()
     page.get_by_text("Ship native persistent collector", exact=True).wait_for()
-    page.get_by_role("button", name="Analyze Ship native persistent collector").wait_for()
+    page.get_by_role(
+        "button", name="Analyze Ship native persistent collector"
+    ).wait_for()
 
 
 def _set_viewport(page: Page, viewport: dict[str, int]) -> None:
@@ -222,9 +271,13 @@ def _exercise_usage_chart_controls(page: Page) -> None:
 
     if not image_activity.is_visible():
         raise RuntimeError("usage fixture is missing Image Generation reporting")
-    image_activity.get_by_role("heading", name="Image Generation", exact=True).wait_for()
+    image_activity.get_by_role(
+        "heading", name="Image Generation", exact=True
+    ).wait_for()
     if "Separate accounting" not in image_activity.inner_text():
-        raise RuntimeError("image reporting fixture lost its separate-accounting disclosure")
+        raise RuntimeError(
+            "image reporting fixture lost its separate-accounting disclosure"
+        )
 
     for theme in ("day", "night"):
         page.evaluate(
@@ -251,9 +304,10 @@ def _exercise_usage_chart_controls(page: Page) -> None:
                 raise RuntimeError("weekly cost panel is not visible by default")
             week_control.focus()
             week_control.press("ArrowRight")
-            if not month_control.is_checked() or not frame.locator(
-                ".cost-month-panel"
-            ).is_visible():
+            if (
+                not month_control.is_checked()
+                or not frame.locator(".cost-month-panel").is_visible()
+            ):
                 raise RuntimeError("cost trend keyboard did not select Month")
             month_control.focus()
             month_control.press("ArrowLeft")
@@ -269,7 +323,9 @@ def _exercise_usage_chart_controls(page: Page) -> None:
                 tooltip_box = bar.locator(".trend-tooltip").bounding_box()
                 frame_box = page.locator("#usage-report").bounding_box()
                 if tooltip_box is None or frame_box is None:
-                    raise RuntimeError("cost trend tooltip containment probe is missing")
+                    raise RuntimeError(
+                        "cost trend tooltip containment probe is missing"
+                    )
                 if (
                     tooltip_box["x"] < frame_box["x"] - 1
                     or tooltip_box["x"] + tooltip_box["width"]
@@ -286,7 +342,9 @@ def _exercise_usage_chart_controls(page: Page) -> None:
             token_box = role_fill.bounding_box()
             model_token_box = model_fill.bounding_box()
             if token_box is None:
-                raise RuntimeError("usage fixture is missing the project role scale probe")
+                raise RuntimeError(
+                    "usage fixture is missing the project role scale probe"
+                )
             if model_token_box is None:
                 raise RuntimeError("usage fixture is missing the Model Mix scale probe")
 
@@ -317,8 +375,7 @@ def _exercise_usage_chart_controls(page: Page) -> None:
             first = track_boxes[0]
             assert first is not None
             if any(
-                abs(box["x"] - first["x"]) > 1
-                or abs(box["width"] - first["width"]) > 1
+                abs(box["x"] - first["x"]) > 1 or abs(box["width"] - first["width"]) > 1
                 for box in track_boxes[1:]
                 if box is not None
             ):
@@ -435,22 +492,7 @@ def _assert_no_overlap(
         or second["y"] + second["height"] <= first["y"]
     )
     if not separated:
-        raise RuntimeError(
-            f"{view} top-bar controls overlap at {viewport['width']}px"
-        )
-
-
-def validate_screenshot(path: Path) -> None:
-    with Image.open(path) as image:
-        if image.size != (VIEWPORT["width"], VIEWPORT["height"]):
-            raise RuntimeError(f"unexpected screenshot dimensions for {path}: {image.size}")
-        rgb = image.convert("RGB")
-        extrema = rgb.getextrema()
-        if not all(high > low for low, high in extrema):
-            raise RuntimeError(f"screenshot has a flat color channel: {path}")
-        colors = rgb.resize((180, 112)).getcolors(maxcolors=180 * 112)
-        if colors is None or len(colors) < 32:
-            raise RuntimeError(f"screenshot lacks meaningful visual variation: {path}")
+        raise RuntimeError(f"{view} top-bar controls overlap at {viewport['width']}px")
 
 
 if __name__ == "__main__":

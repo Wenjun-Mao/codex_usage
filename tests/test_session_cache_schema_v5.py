@@ -57,12 +57,18 @@ def test_schema_four_is_discarded_instead_of_migrated(tmp_path: Path) -> None:
     assert state.reset is True
     assert state.reset_reason == "schema 4"
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute("select count(*) from usage_records").fetchone()[0] == 0
-        assert connection.execute(
-            "select value from schema_meta where key = 'schema_version'"
-        ).fetchone()[0] == "9"
+        assert (
+            connection.execute("select count(*) from usage_records").fetchone()[0] == 0
+        )
+        assert (
+            connection.execute(
+                "select value from schema_meta where key = 'schema_version'"
+            ).fetchone()[0]
+            == "9"
+        )
         columns = {
-            row[1]: row for row in connection.execute("pragma table_info(usage_records)")
+            row[1]: row
+            for row in connection.execute("pragma table_info(usage_records)")
         }
     assert columns["usage_role"][3] == 1
 
@@ -84,6 +90,49 @@ def test_schema_six_is_discarded_and_rebuilt_as_nine(tmp_path: Path) -> None:
         assert connection.execute(
             "select value from schema_meta where key = 'schema_version'"
         ).fetchone() == ("9",)
+
+
+def test_exact_schema_eight_is_upgraded_without_discarding_language_rows(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / CACHE_DB_NAME
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        cache_schema._ensure_schema(connection)
+        connection.execute("drop index image_operations_task_idx")
+        connection.execute("drop table image_operations")
+        connection.execute(
+            "update schema_meta set value = '8' where key = 'schema_version'"
+        )
+        connection.execute(
+            "update schema_meta set value = '6' where key = 'parser_version'"
+        )
+        connection.execute(
+            "insert into usage_records (file_key, file_path, record_index, timestamp, timestamp_us, session_id, turn_id, model, effort, collaboration_mode, project_key, project_label, project_aliases_json, cwd, git_repository_url, git_branch, parent_thread_id, usage_role, input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_output_tokens, total_tokens) values ('sentinel', '', 0, '2026-09-12T00:00:00+00:00', 0, 'task', '', 'gpt-5.6', '', '', 'project', 'Project', '[]', '', '', '', '', 'root', 10, 0, 0, 2, 0, 12)"
+        )
+        connection.commit()
+
+        state = cache_schema._ensure_schema(connection)
+
+        assert state.reset is False
+        assert (
+            connection.execute(
+                "select total_tokens from usage_records where file_key = 'sentinel'"
+            ).fetchone()[0]
+            == 12
+        )
+        assert (
+            connection.execute(
+                "select value from schema_meta where key = 'schema_version'"
+            ).fetchone()[0]
+            == "9"
+        )
+        assert (
+            connection.execute(
+                "select 1 from sqlite_master where type = 'table' and name = 'image_operations'"
+            ).fetchone()
+            is not None
+        )
 
 
 def test_schema_eight_contains_incremental_and_storage_contract(
@@ -171,9 +220,10 @@ def test_matching_version_without_checkpoint_table_is_rebuilt(tmp_path: Path) ->
 
     assert state.reset is True
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute(
-            "select 1 from parser_checkpoints limit 1"
-        ).fetchone() is None
+        assert (
+            connection.execute("select 1 from parser_checkpoints limit 1").fetchone()
+            is None
+        )
 
 
 def test_matching_version_without_storage_index_is_rebuilt(tmp_path: Path) -> None:
@@ -187,9 +237,12 @@ def test_matching_version_without_storage_index_is_rebuilt(tmp_path: Path) -> No
 
     assert state.reset is True
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute(
-            "select 1 from sqlite_master where type = 'index' and name = 'storage_files_task_idx'"
-        ).fetchone() is not None
+        assert (
+            connection.execute(
+                "select 1 from sqlite_master where type = 'index' and name = 'storage_files_task_idx'"
+            ).fetchone()
+            is not None
+        )
 
 
 def test_matching_schema_returns_empty_state(tmp_path: Path) -> None:
@@ -220,8 +273,23 @@ def test_invalid_usage_role_resets_matching_schema(tmp_path: Path) -> None:
             ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "file", "file.jsonl", 0, "2026-08-04T00:00:00+00:00", 0, "thread",
-                "gpt-5", "project", "Project", "[]", "worker", 1, 0, 0, 0, 0, 1,
+                "file",
+                "file.jsonl",
+                0,
+                "2026-08-04T00:00:00+00:00",
+                0,
+                "thread",
+                "gpt-5",
+                "project",
+                "Project",
+                "[]",
+                "worker",
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
             ),
         )
         connection.commit()
@@ -229,4 +297,6 @@ def test_invalid_usage_role_resets_matching_schema(tmp_path: Path) -> None:
 
     assert state.reset is True
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute("select count(*) from usage_records").fetchone()[0] == 0
+        assert (
+            connection.execute("select count(*) from usage_records").fetchone()[0] == 0
+        )

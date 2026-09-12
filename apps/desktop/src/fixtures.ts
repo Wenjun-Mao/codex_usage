@@ -24,7 +24,7 @@ const status: AgentStatus = {
   last_capture_at: new Date(FIXTURE_NOW - 216_000).toISOString(),
   last_capture_outcome: "success",
   last_capture_error: "",
-  capabilities: ["custom-report-range", "agent-activity", "image-reporting"],
+  capabilities: ["custom-report-range", "agent-activity", "image-generation-accounting"],
   coverage: {
     complete: true,
     fraction: 1,

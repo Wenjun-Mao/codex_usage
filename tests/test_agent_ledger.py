@@ -40,19 +40,35 @@ def test_capture_populates_durable_ledger_and_reports_without_jsonl_reads(
     assert ledger.is_file()
     with sqlite3.connect(ledger) as connection:
         assert connection.execute("pragma journal_mode").fetchone()[0] == "wal"
-        assert connection.execute("select count(*) from ledger_sources").fetchone()[0] == 1
-        assert connection.execute("select count(*) from ledger_usage_events").fetchone()[0] == 1
-        assert connection.execute("select count(*) from ledger_models").fetchone()[0] == 1
+        assert (
+            connection.execute("select count(*) from ledger_sources").fetchone()[0] == 1
+        )
+        assert (
+            connection.execute("select count(*) from ledger_usage_events").fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute("select count(*) from ledger_models").fetchone()[0] == 1
+        )
 
     original_open = Path.open
     original_connect = sqlite3.connect
 
-    def reject_jsonl_open(candidate: Path, *args, **kwargs):
-        if candidate.suffix == ".jsonl":
-            raise AssertionError(f"report reopened source JSONL: {candidate}")
+    def reject_source_or_image_open(candidate: Path, *args, **kwargs):
+        if candidate.suffix.casefold() in {".jsonl", ".png", ".jpg", ".jpeg", ".webp"}:
+            raise AssertionError(
+                f"report reopened source or image artifact: {candidate}"
+            )
         return original_open(candidate, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "open", reject_jsonl_open)
+    monkeypatch.setattr(Path, "open", reject_source_or_image_open)
+    monkeypatch.setattr(
+        capture_module,
+        "capture_once",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("report triggered a capture")
+        ),
+    )
 
     def reject_storage_database(database, *args, **kwargs):
         if "storage-diagnostics.sqlite3" in str(database):
@@ -96,12 +112,15 @@ def test_deleted_source_history_remains_in_ledger(tmp_path: Path) -> None:
 
     assert first.outcome == second.outcome == "success"
     ledger = ledger_database_path(home)
-    assert [record.usage.total_tokens for record in load_ledger_records(ledger)] == [120]
+    assert [record.usage.total_tokens for record in load_ledger_records(ledger)] == [
+        120
+    ]
     assert load_ledger_status(ledger).coverage.total_sources == 1
     with sqlite3.connect(ledger) as connection:
-        assert connection.execute(
-            "select is_missing from ledger_sources"
-        ).fetchone()[0] == 1
+        assert (
+            connection.execute("select is_missing from ledger_sources").fetchone()[0]
+            == 1
+        )
 
 
 def test_bounded_baseline_coverage_includes_files_not_yet_scheduled(
@@ -187,7 +206,9 @@ def test_report_uses_one_ledger_snapshot_during_concurrent_capture(
 ) -> None:
     home = tmp_path / ".codex"
     path = _write_session(home, "task-1", total=100)
-    assert capture_once(home, request_kind="startup", max_workers=1).outcome == "success"
+    assert (
+        capture_once(home, request_kind="startup", max_workers=1).outcome == "success"
+    )
     ledger = ledger_database_path(home)
     starting_revision = load_ledger_status(ledger).revision
     observed_totals: list[int] = []
@@ -241,7 +262,10 @@ def test_report_uses_one_ledger_snapshot_during_concurrent_capture(
     assert first.ledger_revision == starting_revision
     assert observed_totals == [100]
     with sqlite3.connect(ledger) as connection:
-        assert connection.execute("select count(*) from rendered_reports").fetchone()[0] == 0
+        assert (
+            connection.execute("select count(*) from rendered_reports").fetchone()[0]
+            == 0
+        )
 
     second = render_ledger_report(
         home,
@@ -259,11 +283,13 @@ def test_guard_failure_retains_trusted_rows_until_staged_rebuild_completes(
 ) -> None:
     home = tmp_path / ".codex"
     path = _write_session(home, "task-1", total=100)
-    assert capture_once(home, request_kind="startup", max_workers=1).outcome == "success"
+    assert (
+        capture_once(home, request_kind="startup", max_workers=1).outcome == "success"
+    )
     path.write_text(
-        path.read_text(encoding="utf-8").replace(
-            '"input_tokens": 100', '"input_tokens": 200'
-        ).replace('"total_tokens": 100', '"total_tokens": 200'),
+        path.read_text(encoding="utf-8")
+        .replace('"input_tokens": 100', '"input_tokens": 200')
+        .replace('"total_tokens": 100', '"total_tokens": 200'),
         encoding="utf-8",
     )
 
@@ -272,14 +298,18 @@ def test_guard_failure_retains_trusted_rows_until_staged_rebuild_completes(
     ledger = ledger_database_path(home)
     assert stale.outcome == "success"
     assert load_ledger_status(ledger).coverage.stale_sources == 1
-    assert [record.usage.total_tokens for record in load_ledger_records(ledger)] == [100]
+    assert [record.usage.total_tokens for record in load_ledger_records(ledger)] == [
+        100
+    ]
 
     rebuilt = rebuild_stale_source_slice(home, "task-1", max_bytes=64)
     while not rebuilt.complete:
         rebuilt = rebuild_stale_source_slice(home, "task-1", max_bytes=64)
 
     assert load_ledger_status(ledger).coverage.stale_sources == 0
-    assert [record.usage.total_tokens for record in load_ledger_records(ledger)] == [200]
+    assert [record.usage.total_tokens for record in load_ledger_records(ledger)] == [
+        200
+    ]
 
 
 def _write_session(home: Path, task_id: str, *, total: int) -> Path:

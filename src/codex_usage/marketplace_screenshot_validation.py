@@ -1,9 +1,31 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from pathlib import Path
+
+from PIL import Image
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
+
+
+def validate_screenshot(
+    path: Path,
+    viewport: dict[str, int] | None = None,
+) -> None:
+    viewport = viewport or {"width": 1440, "height": 900}
+    with Image.open(path) as image:
+        if image.size != (viewport["width"], viewport["height"]):
+            raise RuntimeError(
+                f"unexpected screenshot dimensions for {path}: {image.size}"
+            )
+        rgb = image.convert("RGB")
+        extrema = rgb.getextrema()
+        if not all(high > low for low, high in extrema):
+            raise RuntimeError(f"screenshot has a flat color channel: {path}")
+        colors = rgb.resize((180, 112)).getcolors(maxcolors=180 * 112)
+        if colors is None or len(colors) < 32:
+            raise RuntimeError(f"screenshot lacks meaningful visual variation: {path}")
 
 
 def _validate_browser_layout(page: Page, viewport_width: int, view: str) -> None:
@@ -179,7 +201,9 @@ def _validate_project_track_geometry(page: Page) -> None:
         """
     )
     if clipped_labels:
-        raise RuntimeError(f"project role column headings are clipped: {clipped_labels}")
+        raise RuntimeError(
+            f"project role column headings are clipped: {clipped_labels}"
+        )
 
 
 def _validate_scroll_containers(page: Page, view: str) -> None:

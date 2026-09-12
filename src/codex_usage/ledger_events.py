@@ -80,7 +80,9 @@ def rebuild_normalized_events(connection: sqlite3.Connection) -> None:
 
     default_titles = {
         str(row["file_key"]): str(row["session_id"])
-        for row in connection.execute("select file_key, session_id from session_metadata")
+        for row in connection.execute(
+            "select file_key, session_id from session_metadata"
+        )
     }
     for row, record in zip(source_rows, resolved_records, strict=True):
         _insert_event(
@@ -88,8 +90,16 @@ def rebuild_normalized_events(connection: sqlite3.Connection) -> None:
             generation_id=int(row["generation_id"]),
             source_record_index=int(row["record_index"]),
             record=record,
-            default_title=default_titles.get(str(row["file_key"]), str(row["file_key"])),
+            default_title=default_titles.get(
+                str(row["file_key"]), str(row["file_key"])
+            ),
         )
+    _rebuild_image_events(connection)
+
+
+def rebuild_image_events(connection: sqlite3.Connection) -> None:
+    """Rebuild image events alone, preserving all language accounting rows."""
+    connection.execute("delete from ledger_image_events")
     _rebuild_image_events(connection)
 
 
@@ -241,7 +251,9 @@ def _insert_image_event(
             "usage": json.loads(str(row["usage_json"])),
         }
     )
-    project_id = _image_project_id(connection, operation.project_key, operation.project_label)
+    project_id = _image_project_id(
+        connection, operation.project_key, operation.project_label
+    )
     _upsert_image_task(connection, operation, project_id)
     resolved = resolve_image_model_evidence(operation.evidence)
     timestamp_us = int(operation.timestamp.astimezone(UTC).timestamp() * 1_000_000)
@@ -364,7 +376,9 @@ def _upsert_image_task(
         """,
         (
             operation.task_id,
-            "" if operation.root_task_id == operation.task_id else operation.root_task_id,
+            ""
+            if operation.root_task_id == operation.task_id
+            else operation.root_task_id,
             operation.usage_role,
             operation.task_id,
             project_id,

@@ -82,6 +82,27 @@ low-confidence evidence; it must not trust file names. It uses bounded metadata
 readers and a bounded parser that skips content payloads. Reports consume only
 the durable ledger and do not reopen JSONLs or image files.
 
+Current Codex rollouts encode image generation as an exact nested
+`tools.image_gen__imagegen(...)` invocation inside an `exec` custom-tool call,
+followed by an Image Generation Extension completion. The parser recognizes
+that wrapper contract without treating arbitrary command text containing the
+word “imagegen” as activity. It retains only call identity and non-content
+metadata, and uses the exact generated-artifact basename solely to read a
+bounded PNG header and signed C2PA software-agent assertion.
+
+Upgrades preserve the schema-8 language cache and its parser checkpoints.
+Historical image recovery is a separate, resumable artifact-first backfill:
+validated generated-image directories nominate task IDs, only the exact owning
+rollout filename may then be read, and each capture consumes one bounded parser
+slice. Durable status distinguishes pending, complete, and partial coverage;
+missing or ambiguous owning rollouts remain unavailable rather than becoming
+fabricated zero activity. Rebuilding recovered image events never rebuilds or
+changes language events.
+
+Clients require the additive `image-generation-accounting` capability before
+requesting the combined report and show an actionable collector-update message
+when it is absent.
+
 The rate and family contracts are grounded in the official OpenAI model pages:
 GPT Image 2 documents the family and snapshots, while GPT Image 2.5 Sunburst
 documents matching token rates, its separate quality contract, and that the GPT

@@ -33,11 +33,14 @@ def test_manual_only_agent_performs_one_startup_capture(tmp_path: Path) -> None:
 
         assert status["next_capture_seconds"] is None
         assert status["last_capture_outcome"] == "success"
+        assert "image-generation-accounting" in status["capabilities"]
     finally:
         agent.stop()
 
 
-def test_transient_agent_descriptor_records_its_parent_ownership(tmp_path: Path) -> None:
+def test_transient_agent_descriptor_records_its_parent_ownership(
+    tmp_path: Path,
+) -> None:
     home = _codex_home(tmp_path)
     agent = CodexUsageAgent(
         settings_file=_settings_file(tmp_path, home, interval=None),
@@ -72,11 +75,14 @@ def test_scheduler_requests_catch_up_after_suspend_and_watcher_recovery(
         lambda kind, priority: requests.append((kind, priority))
     )
     try:
-        assert agent._scheduler_step(
-            now=20.0,
-            wall_now=200.0,
-            last_wall_tick=100.0,
-        ) == 200.0
+        assert (
+            agent._scheduler_step(
+                now=20.0,
+                wall_now=200.0,
+                last_wall_tick=100.0,
+            )
+            == 200.0
+        )
         assert requests == [
             ("wake-catch-up", JobPriority.SCHEDULED_CAPTURE),
             ("watcher-recovery", JobPriority.SCHEDULED_CAPTURE),

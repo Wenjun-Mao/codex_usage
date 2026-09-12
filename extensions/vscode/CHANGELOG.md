@@ -6,8 +6,9 @@
 
 - Added accessible ledger-only Image Generation reporting with global, model,
   and expandable project views that remain separate from language accounting.
-- Advertised the additive `image-reporting` collector capability and kept
-  report reloads, filters, and themes on the existing local ledger path.
+- Required the additive `image-generation-accounting` collector capability
+  before loading the combined report, with an actionable update message for
+  older collectors; report reloads, filters, and themes remain ledger-only.
 
 ## 2.6.0 - 2026-09-10 - Project Economics And Reported Cache Writes
 

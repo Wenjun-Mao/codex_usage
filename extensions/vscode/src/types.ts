@@ -18,6 +18,15 @@ export interface AgentStatus {
     pending_files: number;
     pending_bytes: number;
   };
+  image_backfill?: {
+    status: string;
+    complete: boolean;
+    artifacts_total: number;
+    tasks_total: number;
+    tasks_completed: number;
+    tasks_unavailable: number;
+    pending_tasks: number;
+  };
 }
 
 export interface CustomDateRange {
@@ -54,7 +63,7 @@ export interface RenderedReport {
   ledger_revision: number;
   cache_hit: boolean;
   elapsed_seconds: number;
-  status: Pick<AgentStatus, "ledger_revision" | "last_capture_at" | "last_capture_outcome" | "last_capture_error" | "coverage">;
+  status: Pick<AgentStatus, "ledger_revision" | "last_capture_at" | "last_capture_outcome" | "last_capture_error" | "coverage" | "image_backfill">;
 }
 
 export interface StorageTree {

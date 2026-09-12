@@ -32,7 +32,7 @@ function appState(): AppState {
       last_capture_at: "2026-09-02T12:00:00Z",
       last_capture_outcome: "success",
       last_capture_error: "",
-      capabilities: ["custom-report-range", "agent-activity", "image-reporting"],
+      capabilities: ["custom-report-range", "agent-activity", "image-generation-accounting"],
       coverage: {
         complete: true,
         fraction: 1,
@@ -195,5 +195,16 @@ describe("native views", () => {
     expect(state.range).toBe("30d");
     root.querySelector<HTMLButtonElement>("#export-agent-activity")!.click();
     expect(document.querySelector("#toast-region")?.textContent).toContain("out of date");
+  });
+
+  test("Usage requires image accounting before requesting the report", async () => {
+    const root = document.querySelector<HTMLElement>("#root")!;
+    const state = appState();
+    state.status.capabilities = ["custom-report-range", "agent-activity"];
+
+    await renderUsageView(root, state);
+
+    expect(root.textContent).toContain("Update the Codex Usage collector");
+    expect(root.querySelector<HTMLIFrameElement>("#usage-report")?.srcdoc).toBe("");
   });
 });

@@ -78,6 +78,15 @@ export async function renderUsageView(root: HTMLElement, state: AppState): Promi
   root.querySelector<HTMLButtonElement>("#usage-reload")!.addEventListener("click", () => refreshUsageReport(root, state));
   root.querySelector<HTMLButtonElement>("#export-agent-activity")!.addEventListener("click", () => void exportAgentActivity(root, state));
   bindCustomRangeDialog(root, state);
+  if (!supportsImageAccounting(state)) {
+    root.querySelector<HTMLElement>("#report-loading")!.hidden = true;
+    root.querySelector<HTMLIFrameElement>("#usage-report")!.hidden = true;
+    root.querySelector<HTMLElement>("#baseline-warning")!.innerHTML = `
+      <div class="notice warning" role="alert"><strong>Update the Codex Usage collector.</strong>
+      This version cannot provide image-generation accounting. Update from Settings or reinstall the matching app or extension package before loading this report.</div>`;
+    root.querySelector<HTMLElement>("#report-diagnostics")!.textContent = "Usage report blocked until the collector is updated.";
+    return;
+  }
   await refreshUsageReport(root, state);
 }
 
@@ -192,6 +201,10 @@ function reportQuery(state: AppState, includeTheme: boolean): URLSearchParams {
 function hasCapabilities(state: AppState): boolean {
   const capabilities = state.status.capabilities || [];
   return capabilities.includes("custom-report-range") && capabilities.includes("agent-activity");
+}
+
+function supportsImageAccounting(state: AppState): boolean {
+  return (state.status.capabilities || []).includes("image-generation-accounting");
 }
 
 function sevenDayDefault(): CustomDateRange {

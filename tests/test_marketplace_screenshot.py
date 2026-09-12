@@ -28,6 +28,12 @@ def test_generator_targets_built_native_frontend_and_two_views() -> None:
 
     assert module.DESKTOP_ROOT == ROOT / "apps" / "desktop"
     assert module.USAGE_SCREENSHOT_PATH.name == "native-usage-synthetic.png"
+    assert set(module.USAGE_SCREENSHOT_PATHS) == {
+        ("day", "wide"),
+        ("night", "wide"),
+        ("day", "narrow"),
+        ("night", "narrow"),
+    }
     assert module.STORAGE_SCREENSHOT_PATH.name == "native-storage-synthetic.png"
     assert module.VIEWPORT == {"width": 1440, "height": 900}
     assert module.NARROW_VIEWPORT["width"] == 760
@@ -64,21 +70,27 @@ def test_native_fixture_is_deterministic_and_synthetic() -> None:
 def test_check_mode_never_replaces_tracked_images(monkeypatch) -> None:
     module = _load_screenshot_module()
     originals = {
-        module.USAGE_SCREENSHOT_PATH: module.USAGE_SCREENSHOT_PATH.read_bytes(),
+        **{
+            path: path.read_bytes()
+            for path in module.USAGE_SCREENSHOT_PATHS.values()
+            if path.is_file()
+        },
         module.STORAGE_SCREENSHOT_PATH: module.STORAGE_SCREENSHOT_PATH.read_bytes(),
     }
-    captured: list[tuple[Path, Path]] = []
+    captured: list[tuple[dict[tuple[str, str], Path], Path]] = []
 
-    def render(usage_path: Path, storage_path: Path) -> None:
-        captured.append((usage_path, storage_path))
-        usage_path.write_bytes(b"temporary usage")
+    def render(usage_paths: dict[tuple[str, str], Path], storage_path: Path) -> None:
+        captured.append((usage_paths, storage_path))
+        for path in usage_paths.values():
+            path.write_bytes(b"temporary usage")
         storage_path.write_bytes(b"temporary storage")
 
     monkeypatch.setattr(module, "_render_capture_and_validate", render)
 
     assert module.main(["--check"]) == 0
     assert len(captured) == 1
-    assert all(path not in originals for path in captured[0])
+    assert all(path not in originals for path in captured[0][0].values())
+    assert captured[0][1] not in originals
     assert all(path.read_bytes() == contents for path, contents in originals.items())
 
 

@@ -109,9 +109,11 @@ uv run python scripts/generate_marketplace_screenshot.py
 uv run python scripts/generate_marketplace_screenshot.py --check
 ```
 
-Visually review both generated images before committing them. The automated
-gate catches geometry and overflow regressions, but it does not replace a human
-check for hierarchy, readability, and representative product copy.
+Visually review the canonical Usage images in Day and Night at both wide and
+narrow widths, plus the Task Storage image, before committing them. The
+automated gate catches geometry and overflow regressions, but it does not
+replace a human check for hierarchy, readability, and representative product
+copy.
 
 ## Non-Publishing Native Gate
 
