@@ -20,7 +20,7 @@ const controls = {
 };
 
 test("usage report receives companion controls and restrictive CSP", () => {
-  const result = decorateUsageReport("<html><head></head><body><main><h1>Report</h1></main></body></html>", controls, "vscode-resource:");
+  const result = decorateUsageReport("<html><head></head><body><main><h1>Report</h1><details class=\"agent-activity-agents\"><summary>Agents</summary><table></table></details></main></body></html>", controls, "vscode-resource:");
   assert.match(result, /Content-Security-Policy/);
   assert.match(result, /command:codexUsage\.captureNow/);
   assert.match(result, />Capture Usage</);
@@ -31,6 +31,8 @@ test("usage report receives companion controls and restrictive CSP", () => {
   assert.match(result, /data-codex-theme="night"/);
   assert.doesNotMatch(result, />Refresh</);
   assert.match(result, /Loaded in 0\.04s/);
+  assert.match(result, /<details class="agent-activity-agents"><summary>Agents<\/summary><table><\/table><\/details>/);
+  assert.doesNotMatch(result, /agent-activity-agents" open/);
   assert.doesNotMatch(result, /<script/i);
 });
 

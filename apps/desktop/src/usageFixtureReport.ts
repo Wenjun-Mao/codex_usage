@@ -208,12 +208,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   <div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Total</th><th class="num">Input</th><th class="num">Cached Input</th><th class="num">Output</th><th class="num">Reasoning</th><th class="num">Responses</th><th class="num">Root Tasks</th><th class="num">Subagents</th></tr></thead><tbody>
     <tr><td>Sep 6, 2026</td><td class="num">139.7M</td><td class="num">1.4M</td><td class="num">136.1M</td><td class="num">1.8M</td><td class="num">0.4M</td><td class="num">1,142</td><td class="num">18</td><td class="num">42</td></tr>
   </tbody></table></div>
-  <p class="help">Showing 3 of 3 agents by total tokens. Export Agent Activity CSV includes every selected agent-day row.</p>
+  <h3>Agents</h3>
+  <details class="agent-activity-agents"><summary>Show 3 of 3 agents by total tokens.</summary>
+  <p class="help">Export Agent Activity CSV includes every selected agent-day row.</p>
   <div class="table-wrap"><table><thead><tr><th>Agent</th><th>Role</th><th>Root Task</th><th>Projects</th><th class="num">Days</th><th class="num">Input</th><th class="num">Cached Input</th><th class="num">Output</th><th class="num">Reasoning</th><th class="num">Total</th><th class="num">Responses</th></tr></thead><tbody>
     <tr><td>Ship native persistent collector</td><td>Root</td><td><code>019f…0001</code></td><td>codex_usage</td><td class="num">18</td><td class="num">2.3M</td><td class="num">194.8M</td><td class="num">3.1M</td><td class="num">0.7M</td><td class="num">200.9M</td><td class="num">1,202</td></tr>
     <tr><td>Evaluate report visuals</td><td>Subagent</td><td><code>019f…0001</code></td><td>codex_usage</td><td class="num">6</td><td class="num">0.4M</td><td class="num">35.9M</td><td class="num">0.5M</td><td class="num">0.1M</td><td class="num">36.9M</td><td class="num">221</td></tr>
     <tr><td>Research product metrics</td><td>Subagent</td><td><code>019f…0001</code></td><td>persona_generators</td><td class="num">4</td><td class="num">0.3M</td><td class="num">28.1M</td><td class="num">0.4M</td><td class="num">0.1M</td><td class="num">28.9M</td><td class="num">184</td></tr>
-  </tbody></table></div>
+  </tbody></table></div></details>
 </section>
 <section class="section usage-comparison">
   <input class="scale-input" type="radio" name="usage-chart-scale" id="compare-scale-tokens" value="tokens" checked>

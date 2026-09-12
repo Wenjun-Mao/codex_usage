@@ -13,6 +13,7 @@ from codex_usage.agent_activity import (
     agent_activity_csv,
     build_agent_activity,
 )
+from codex_usage.report_agent_activity import render_agent_activity_section
 from codex_usage.aggregation import resolve_report_range
 from codex_usage.models import TokenUsage, UsageRecord
 
@@ -106,6 +107,14 @@ def test_agent_activity_conserves_selected_ledger_records_and_csv_is_complete() 
     assert len(csv_rows) == 5
     assert sum(int(row["total_tokens"]) for row in csv_rows) == 72
     assert any(row["agent_label"] == "Éditeur" for row in csv_rows)
+
+    html = render_agent_activity_section(activity)
+    assert "<h3>Daily Summary</h3>" in html
+    assert '<details class="agent-activity-agents">' in html
+    assert "<h3>Agents</h3>" in html
+    assert "<summary>Show 5 of 5 agents by total tokens.</summary>" in html
+    assert "<details class=\"agent-activity-agents\" open" not in html
+    assert "Export Agent Activity CSV includes every selected agent-day row." in html
 
 
 def _record(

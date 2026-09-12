@@ -33,7 +33,7 @@ from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.parser import finalize_session_records
 from codex_usage.pricing import PRICING_AS_OF
 from codex_usage.image_pricing import IMAGE_PRICING_REVISION
-from codex_usage.image_reporting import build_image_report
+from codex_usage.image_reporting import ImageReportCoverage, build_image_report
 from codex_usage.project_economics import build_project_economics
 from codex_usage.project_transitions import apply_project_transitions
 from codex_usage.report_breakdown import build_report_breakdown_from_valued
@@ -43,7 +43,7 @@ from codex_usage.reporting import render_html_report
 PRICING_REVISION = (
     f"{PRICING_AS_OF}:{__version__}:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
 )
-REPORT_RENDER_REVISION = 7
+REPORT_RENDER_REVISION = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +156,16 @@ def render_ledger_report(
             hourly_rows=aggregate_valued_records(valued, "hour", timezone),
             breakdown=build_report_breakdown_from_valued(valued),
             project_economics=build_project_economics(valued),
-            image_report=build_image_report(image_operations),
+            image_report=build_image_report(
+                image_operations,
+                coverage=ImageReportCoverage(
+                    complete=status.image_backfill.complete,
+                    artifacts_total=status.image_backfill.artifacts_total,
+                    tasks_total=status.image_backfill.tasks_total,
+                    tasks_completed=status.image_backfill.tasks_completed,
+                    tasks_unavailable=status.image_backfill.tasks_unavailable,
+                ),
+            ),
             sessions_dirs=[],
             files_scanned=int(source_counts["total"] or 0),
             files_archived=int(source_counts["archived"] or 0),
@@ -223,29 +232,28 @@ def export_agent_activity_csv(
 def _status_banner(status: LedgerStatus) -> str:
     if status.coverage.complete and status.image_backfill.complete:
         return ""
+    details: list[str] = []
+    if not status.coverage.complete:
+        percentage = status.coverage.fraction * 100
+        details.append(
+            f"Baseline capture is {percentage:.1f}% complete. Language totals are partial; "
+            f"{status.coverage.pending_files:,} source files and "
+            f"{status.coverage.pending_bytes:,} bytes remain."
+        )
     if not status.image_backfill.complete:
         image = status.image_backfill
-        return (
-            '<div class="notice warning" role="status">'
-            "Historical image coverage is "
-            f"{html.escape(image.status)}: {image.tasks_completed:,} of "
-            f"{image.tasks_total:,} artifact-owning tasks recovered"
-            + (
-                f"; {image.tasks_unavailable:,} unavailable."
-                if image.tasks_unavailable
-                else ". A background capture will continue the bounded backfill."
-            )
-            + "</div>"
+        pending = max(
+            0, image.tasks_total - image.tasks_completed - image.tasks_unavailable
         )
-    percentage = status.coverage.fraction * 100
-    detail = (
-        f"Baseline capture is {percentage:.1f}% complete. Totals shown below are partial; "
-        f"{status.coverage.pending_files:,} source files and "
-        f"{status.coverage.pending_bytes:,} bytes remain."
-    )
+        details.append(
+            "Historical image coverage is incomplete: "
+            f"{image.tasks_completed:,} complete, {pending:,} pending, "
+            f"{image.tasks_unavailable:,} unavailable task owners across "
+            f"{image.artifacts_total:,} artifacts."
+        )
     return (
         '<div class="notice warning" role="status">'
-        f"<strong>Incomplete usage baseline.</strong> {html.escape(detail)}"
+        f"<strong>Incomplete ledger coverage.</strong> {html.escape(' '.join(details))}"
         "</div>"
     )
 

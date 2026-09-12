@@ -41,13 +41,33 @@ class ImageReportProject:
 
 
 @dataclass(frozen=True, slots=True)
+class ImageReportCoverage:
+    """Ledger-derived historical coverage shown alongside image activity."""
+
+    complete: bool = True
+    artifacts_total: int = 0
+    tasks_total: int = 0
+    tasks_completed: int = 0
+    tasks_unavailable: int = 0
+
+    @property
+    def pending_tasks(self) -> int:
+        return max(0, self.tasks_total - self.tasks_completed - self.tasks_unavailable)
+
+
+@dataclass(frozen=True, slots=True)
 class ImageReport:
     summary: ImageActivitySummary
     models: tuple[ImageReportModel, ...]
     projects: tuple[ImageReportProject, ...]
+    coverage: ImageReportCoverage = ImageReportCoverage()
 
 
-def build_image_report(operations: Iterable[ImageOperation]) -> ImageReport:
+def build_image_report(
+    operations: Iterable[ImageOperation],
+    *,
+    coverage: ImageReportCoverage | None = None,
+) -> ImageReport:
     """Value and group selected durable operations without touching source files."""
     valued = tuple(_value(operation) for operation in operations)
     by_model: dict[str, list[ValuedImageOperation]] = defaultdict(list)
@@ -73,7 +93,12 @@ def build_image_report(operations: Iterable[ImageOperation]) -> ImageReport:
             key=lambda item: (-len(item[1]), item[0][1].casefold(), item[0][0]),
         )
     )
-    return ImageReport(summarize_image_operations(valued), models, projects)
+    return ImageReport(
+        summarize_image_operations(valued),
+        models,
+        projects,
+        coverage or ImageReportCoverage(),
+    )
 
 
 def _value(operation: ImageOperation) -> ValuedImageOperation:

@@ -49,7 +49,9 @@ def render_agent_activity_section(activity: AgentActivity | None) -> str:
         '<div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Total</th><th class="num">Input</th><th class="num">Cached Input</th><th class="num">Output</th><th class="num">Reasoning</th><th class="num">Responses</th><th class="num">Root Tasks</th><th class="num">Subagents</th></tr></thead><tbody>'
         f"{daily_rows}</tbody></table></div>"
         "<h3>Agents</h3>"
-        f'<p class="muted section-help">Showing {len(visible_agents):,} of {len(activity.agent_rows):,} agents by total tokens. Export Agent Activity CSV includes every selected agent-day row.</p>'
+        '<details class="agent-activity-agents">'
+        f'<summary>Show {len(visible_agents):,} of {len(activity.agent_rows):,} agents by total tokens.</summary>'
+        '<p class="muted section-help">Export Agent Activity CSV includes every selected agent-day row.</p>'
         '<div class="table-wrap"><table><thead><tr><th>Agent</th><th>Role</th><th>Root Task</th><th>Projects</th><th class="num">Days</th><th class="num">Input</th><th class="num">Cached Input</th><th class="num">Output</th><th class="num">Reasoning</th><th class="num">Total</th><th class="num">Responses</th></tr></thead><tbody>'
-        f"{agent_rows}</tbody></table></div></section>"
+        f"{agent_rows}</tbody></table></div></details></section>"
     )

@@ -119,6 +119,9 @@ describe("native views", () => {
     expect(frame.srcdoc).toContain('id="cost-trend-month"');
     expect(frame.srcdoc).toContain("Compare by");
     expect(frame.srcdoc).toContain("API cost");
+    expect(frame.srcdoc).toContain('<details class="agent-activity-agents">');
+    expect(frame.srcdoc).not.toContain('<details class="agent-activity-agents" open');
+    expect(frame.srcdoc).toContain("<h3>Daily Summary</h3>");
     expect(frame.srcdoc).toContain('id="compare-scale-cost"');
     expect(frame.srcdoc).toContain("--cost-width:");
     const modelMix = frame.srcdoc.slice(frame.srcdoc.indexOf("<h2>Model Mix</h2>"));

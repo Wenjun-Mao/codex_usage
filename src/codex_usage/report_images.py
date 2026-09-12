@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 
 from codex_usage.image_aggregation import ImageActivitySummary, ImageValueCoverage
-from codex_usage.image_reporting import ImageReport
+from codex_usage.image_reporting import ImageReport, ImageReportCoverage
 from codex_usage.report_tables import format_int
 
 
@@ -14,7 +14,7 @@ def render_image_activity_section(report: ImageReport | None) -> str:
         return ""
     summary = report.summary
     if summary.operation_count == 0:
-        body = '<p class="muted">No image-generation activity was found for this selection.</p>'
+        body = _empty_activity_notice(report)
     else:
         body = (
             f'<dl class="image-activity-metrics">{_metric("Operations", format_int(summary.operation_count))}'
@@ -31,6 +31,26 @@ def render_image_activity_section(report: ImageReport | None) -> str:
         '<p class="muted">Ledger-only image operations. Image values are separate from language tokens, costs, and Project Economics; prompts and image contents are never retained.</p>'
         '</div><span class="image-activity-source">Separate accounting</span></div>'
         f"{body}</section>"
+    )
+
+
+def _empty_activity_notice(report: ImageReport) -> str:
+    coverage = report.coverage
+    if coverage.complete:
+        return '<p class="muted">No image-generation activity was found for this selection.</p>'
+    return (
+        '<p class="muted">No recorded image-generation activity was found for this selection. '
+        "Historical image coverage is incomplete, so this selection may omit earlier activity. "
+        f"{_coverage_counts(coverage)}</p>"
+    )
+
+
+def _coverage_counts(coverage: ImageReportCoverage) -> str:
+    return (
+        f"{coverage.tasks_completed:,} complete, "
+        f"{coverage.pending_tasks:,} pending, "
+        f"{coverage.tasks_unavailable:,} unavailable task owners across "
+        f"{coverage.artifacts_total:,} artifacts."
     )
 
 

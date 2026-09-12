@@ -9,7 +9,9 @@ from codex_usage.image_models import (
     ImageOutcome,
     ImageUsage,
 )
-from codex_usage.image_reporting import build_image_report
+from codex_usage.image_reporting import ImageReportCoverage, build_image_report
+from codex_usage.agent_reports import _status_banner
+from codex_usage.ledger_queries import ImageBackfillCoverage, LedgerCoverage, LedgerStatus
 from codex_usage.report_images import render_image_activity_section
 
 
@@ -94,6 +96,47 @@ def test_conflicting_image_evidence_stays_visible_but_unpriced() -> None:
     report = build_image_report((conflicting,))
     assert report.summary.api_usd.unpriced_operation_count == 1
     assert report.summary.credits.unpriced_operation_count == 1
+
+
+def test_incomplete_historical_coverage_qualifies_an_empty_selection() -> None:
+    report = build_image_report(
+        (),
+        coverage=ImageReportCoverage(
+            complete=False,
+            artifacts_total=9,
+            tasks_total=6,
+            tasks_completed=3,
+            tasks_unavailable=1,
+        ),
+    )
+
+    html = render_image_activity_section(report)
+
+    assert "No recorded image-generation activity" in html
+    assert "may omit earlier activity" in html
+    assert "3 complete, 2 pending, 1 unavailable task owners across 9 artifacts" in html
+
+
+def test_incomplete_coverage_banner_keeps_source_and_image_counts_visible() -> None:
+    banner = _status_banner(
+        LedgerStatus(
+            revision=1,
+            last_capture_at="",
+            last_capture_outcome="success",
+            last_capture_error="",
+            coverage=LedgerCoverage(10, 6, 0, 4, 400, 1_000, 600),
+            image_backfill=ImageBackfillCoverage(
+                status="partial",
+                artifacts_total=9,
+                tasks_total=6,
+                tasks_completed=3,
+                tasks_unavailable=1,
+            ),
+        )
+    )
+
+    assert "Baseline capture is 60.0% complete" in banner
+    assert "3 complete, 2 pending, 1 unavailable task owners across 9 artifacts" in banner
 
 
 def _operation(
