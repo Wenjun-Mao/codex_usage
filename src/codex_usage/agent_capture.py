@@ -7,7 +7,7 @@ from pathlib import Path
 from time import monotonic
 
 from codex_usage.agent_paths import ledger_database_path
-from codex_usage.image_backfill import run_image_backfill_slice
+from codex_usage.image_backfill import run_image_backfill
 from codex_usage.ledger_queries import LedgerStatus, load_ledger_status
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.ledger_sync import synchronize_parser_workset
@@ -90,15 +90,14 @@ def capture_once(
             preferred_paths=preferred_paths,
         )
         stats = outcome.stats
-        backfill = (
-            None
-            if request_kind == "manual"
-            else run_image_backfill_slice(codex_home, ledger_path)
-        )
+        # Every capture source (startup, scheduled, and explicit manual) makes
+        # bounded historical-image progress.  The agent coalesces these calls
+        # onto its one heavy-I/O lane before capture_once is entered.
+        backfill = run_image_backfill(codex_home, ledger_path)
         revision, _ = synchronize_parser_workset(
             ledger_path,
             force_normalized_ownership=bool(outcome.rebased_project_task_ids),
-            force_image_events=bool(backfill and backfill.changed),
+            force_image_events=backfill.changed,
         )
         status = load_ledger_status(ledger_path)
         _complete_capture(

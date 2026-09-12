@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import struct
 from pathlib import Path
 
+import pytest
+
 from image_capture_test_support import session_meta, token_count, turn_context
 
+from codex_usage import agent_capture, image_backfill
 from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
-from codex_usage.image_backfill import run_image_backfill_slice
+from codex_usage.image_backfill import (
+    IMAGE_BACKFILL_SLICE_COUNT,
+    ImageBackfillResult,
+    run_image_backfill_slice,
+)
 from codex_usage.image_capture_payloads import kind_from_mapping
 from codex_usage.ledger_schema import open_ledger
 from codex_usage.image_capture_payloads import has_reference_inputs
@@ -102,6 +110,9 @@ def test_scheduled_artifact_first_backfill_preserves_language_ledger(
         ).fetchall()
         connection.execute("delete from image_operations")
         connection.execute("delete from ledger_image_events")
+        connection.execute(
+            "delete from ledger_meta where key = 'image_backfill_state_v1'"
+        )
         connection.commit()
 
     result = capture_once(home, request_kind="scheduled", max_workers=1)
@@ -201,3 +212,138 @@ def test_artifact_first_backfill_never_opens_an_unrelated_rollout(
     result = run_image_backfill_slice(home, ledger)
 
     assert result.status == "complete"
+
+
+def test_unavailable_candidate_falls_through_to_a_valid_owner(tmp_path: Path) -> None:
+    home = tmp_path / ".codex"
+    sessions = home / "sessions"
+    sessions.mkdir(parents=True)
+    unavailable_task = "07b936fd-4c91-4430-b953-677e7abaafe7"
+    valid_task = "f1d4d3db-0e01-4588-8d00-f151f42a9ec3"
+    unavailable_artifact = _write_artifact(home, unavailable_task)
+    _write_artifact(home, valid_task)
+    # The unavailable artifact is newer, so it is selected first and must not
+    # consume the valid owner's parser slice.
+    os.utime(unavailable_artifact, ns=(2_000_000_000, 2_000_000_000))
+    os.utime(
+        home / "generated_images" / valid_task / unavailable_artifact.name,
+        ns=(1_000_000_000, 1_000_000_000),
+    )
+    artifact_name = unavailable_artifact.name
+    path = sessions / f"rollout-{valid_task}.jsonl"
+    rows = [
+        session_meta(valid_task),
+        turn_context(),
+        {
+            "timestamp": "2026-09-12T10:00:02Z",
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "name": "exec",
+                "call_id": "call-valid",
+                "input": "await tools.image_gen__imagegen({prompt: 'private'});",
+            },
+        },
+        {
+            "timestamp": "2026-09-12T10:00:03Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "item_completed",
+                "item": {
+                    "type": "Extension",
+                    "kind": "image_gen.generation",
+                    "id": artifact_name.removesuffix(".png"),
+                    "status": "completed",
+                    "failure": None,
+                },
+            },
+        },
+    ]
+    path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
+    ledger = ledger_database_path(home)
+    with open_ledger(ledger):
+        pass
+
+    result = run_image_backfill_slice(home, ledger)
+
+    assert result.status == "partial"
+    assert result.tasks_unavailable == 1
+    assert result.tasks_completed == 1
+    with sqlite3.connect(ledger) as connection:
+        assert connection.execute(
+            "select tool_call_id from image_operations"
+        ).fetchall() == [("call-valid",)]
+
+
+def test_backfill_scheduler_is_capped_at_four_slices(monkeypatch, tmp_path: Path) -> None:
+    calls = 0
+
+    def pending_slice(_home: Path, _ledger: Path) -> ImageBackfillResult:
+        nonlocal calls
+        calls += 1
+        return ImageBackfillResult(True, "pending", 1, 1, 0, 0, 1)
+
+    monkeypatch.setattr(image_backfill, "run_image_backfill_slice", pending_slice)
+
+    result = image_backfill.run_image_backfill(tmp_path, tmp_path / "ledger.sqlite3")
+
+    assert IMAGE_BACKFILL_SLICE_COUNT == 4
+    assert calls == IMAGE_BACKFILL_SLICE_COUNT
+    assert result.changed is True
+
+
+def test_scheduler_prefers_recent_then_least_recently_served() -> None:
+    older_task = "07b936fd-4c91-4430-b953-677e7abaafe7"
+    newer_task = "f1d4d3db-0e01-4588-8d00-f151f42a9ec3"
+    artifacts = {
+        older_task: image_backfill._ArtifactTask(1, 1),
+        newer_task: image_backfill._ArtifactTask(1, 2),
+    }
+
+    assert (
+        image_backfill._select_next_task({older_task, newer_task}, artifacts, {})
+        == newer_task
+    )
+    assert (
+        image_backfill._select_next_task(
+            {older_task, newer_task}, artifacts, {older_task: 4, newer_task: 9}
+        )
+        == older_task
+    )
+
+
+@pytest.mark.parametrize("request_kind", ("startup", "scheduled", "manual"))
+def test_every_capture_kind_runs_the_bounded_backfill(
+    monkeypatch, tmp_path: Path, request_kind: str
+) -> None:
+    home = tmp_path / ".codex"
+    (home / "sessions").mkdir(parents=True)
+    calls: list[tuple[Path, Path]] = []
+
+    def observed_backfill(codex_home: Path, ledger_path: Path) -> ImageBackfillResult:
+        calls.append((codex_home, ledger_path))
+        return ImageBackfillResult(False, "complete", 0, 0, 0, 0, 0)
+
+    monkeypatch.setattr(agent_capture, "run_image_backfill", observed_backfill)
+
+    result = agent_capture.capture_once(
+        home, request_kind=request_kind, max_workers=1
+    )
+
+    assert result.outcome == "success"
+    assert calls == [(home, ledger_database_path(home))]
+
+
+def _write_artifact(home: Path, task_id: str) -> Path:
+    artifact = home / "generated_images" / task_id / (
+        "exec-f1d4d3db-0e01-4588-8d00-f151f42a9ec3.png"
+    )
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + struct.pack(">I", 13)
+        + b"IHDR"
+        + struct.pack(">II", 1024, 1024)
+        + b"\x08\x06\x00\x00\x00"
+    )
+    return artifact
