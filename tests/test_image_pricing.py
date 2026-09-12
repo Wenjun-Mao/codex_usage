@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from codex_usage.image_models import ImageModelFamily, ImageModelVariant, ImageUsage, NormalizedImageModel
 from codex_usage.image_pricing import (
     IMAGE_PRICING_EFFECTIVE_FROM,
+    ImageOutputEstimator,
     ImagePricingState,
     estimate_output_only_range,
     image_rate_for_model,
@@ -49,7 +50,7 @@ def test_gpt_image_2_5_keeps_api_rate_and_marks_credit_as_equivalent_estimate() 
     )
 
     assert valuation.api_usd == valuation.api_usd.__class__(ImagePricingState.EXACT, 46.25, 46.25)
-    assert valuation.credits.state is ImagePricingState.EXACT
+    assert valuation.credits.state is ImagePricingState.ESTIMATED_RANGE
     assert valuation.credits.credit_equivalent is True
 
 
@@ -90,8 +91,12 @@ def test_effective_date_does_not_price_an_earlier_event() -> None:
 def test_output_only_range_discloses_that_inputs_are_excluded() -> None:
     result = estimate_output_only_range(
         output_count=2,
-        low_output_tokens_per_image=1_000,
-        high_output_tokens_per_image=3_000,
+        estimator=ImageOutputEstimator(
+            ImageModelFamily.GPT_IMAGE_2,
+            frozenset((ImageModelVariant.UNKNOWN,)),
+            1_000,
+            3_000,
+        ),
         model=_model(ImageModelFamily.GPT_IMAGE_2),
         at=IMAGE_PRICING_EFFECTIVE_FROM,
     )
@@ -106,9 +111,29 @@ def test_unknown_or_pre_rate_model_refuses_an_output_range() -> None:
     unknown = NormalizedImageModel(ImageModelFamily.UNKNOWN, ImageModelVariant.UNKNOWN, "gpt-image-2.6", True)
     result = estimate_output_only_range(
         output_count=1,
-        low_output_tokens_per_image=1,
-        high_output_tokens_per_image=2,
+        estimator=ImageOutputEstimator(
+            ImageModelFamily.GPT_IMAGE_2,
+            frozenset((ImageModelVariant.UNKNOWN,)),
+            1,
+            2,
+        ),
         model=unknown,
+    )
+
+    assert result.state is ImagePricingState.UNPRICED
+
+
+def test_gpt_image_2_estimator_cannot_be_reused_for_gpt_image_2_5() -> None:
+    result = estimate_output_only_range(
+        output_count=1,
+        estimator=ImageOutputEstimator(
+            ImageModelFamily.GPT_IMAGE_2,
+            frozenset((ImageModelVariant.UNKNOWN,)),
+            1_000,
+            3_000,
+        ),
+        model=_model(ImageModelFamily.GPT_IMAGE_2_5, ImageModelVariant.SUNBURST),
+        at=IMAGE_PRICING_EFFECTIVE_FROM,
     )
 
     assert result.state is ImagePricingState.UNPRICED

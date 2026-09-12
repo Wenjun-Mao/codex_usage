@@ -3,13 +3,19 @@ from __future__ import annotations
 type SchemaObject = tuple[str, str, str, str]
 
 EXPECTED_SCHEMA_META = (
-    ("parser_version", "6"),
+    ("parser_version", "7"),
     ("project_transition_version", "2"),
     ("project_transitions_dirty", "1"),
-    ("schema_version", "8"),
+    ("schema_version", "9"),
     ("storage_metadata_version", "2"),
 )
 EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
+    (
+        "index",
+        "image_operations_task_idx",
+        "image_operations",
+        "CREATE INDEX image_operations_task_idx on image_operations (task_id, timestamp_us)",
+    ),
     (
         "index",
         "sqlite_autoindex_dirty_transition_tasks_1",
@@ -17,6 +23,7 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
         "",
     ),
     ("index", "sqlite_autoindex_files_1", "files", ""),
+    ("index", "sqlite_autoindex_image_operations_1", "image_operations", ""),
     ("index", "sqlite_autoindex_parser_checkpoints_1", "parser_checkpoints", ""),
     ("index", "sqlite_autoindex_schema_meta_1", "schema_meta", ""),
     ("index", "sqlite_autoindex_session_metadata_1", "session_metadata", ""),
@@ -78,6 +85,22 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
         "CREATE TABLE files ( file_key text primary key, path text not null, "  # noqa: ISC004
         "session_dir text not null, storage_state text not null, size_bytes integer not null, mtime_ns integer not null, "
         "parsed_at text not null, last_seen_at text not null, missing_since text, is_missing integer not null, session_id text, error text )",
+    ),
+    (
+        "table",
+        "image_operations",
+        "image_operations",
+        "CREATE TABLE image_operations ( file_key text not null, "
+        "tool_call_id text not null, timestamp text not null, timestamp_us integer not null, "
+        "task_id text not null, root_task_id text not null, "
+        "usage_role text not null check (usage_role in ('root', 'subagent')), "
+        "turn_id text not null, project_key text not null, project_label text not null, "
+        "kind text not null check (kind in ('generate', 'edit_reference', 'unknown')), "
+        "outcome text not null check (outcome in ('attempted', 'succeeded', 'failed')), "
+        "output_count integer not null check (output_count >= 0), output_width integer, "
+        "output_height integer, output_format text not null, quality text not null, "
+        "evidence_json text not null, usage_json text not null, "
+        "primary key (file_key, tool_call_id) )",
     ),
     (
         "table",

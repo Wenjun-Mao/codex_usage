@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-import hashlib
 import os
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
+from codex_usage.image_capture import (
+    bounded_invocation_from_prefix,
+    bounded_result_for_pending,
+    direct_operation_from_payload,
+    invocation_from_payload,
+    remove_pending,
+    replace_pending,
+    result_for_pending,
+)
+from codex_usage.image_capture_models import CapturedImageOperation, ImageCaptureState
+from codex_usage.image_models import ImageOutcome
 from codex_usage.models import (
     UNKNOWN,
     SessionMetadata,
@@ -24,16 +32,27 @@ from codex_usage.session_parser_models import (
     SessionParseCheckpoint,
     SessionParserState,
 )
+from codex_usage.session_parser_api import (  # noqa: F401
+    parse_session_file,
+    parse_session_files,
+)
+from codex_usage.session_parser_safety import (
+    AppendCheckpointMismatch,  # noqa: F401
+    PartialSessionGenerationReadError as _PartialSessionGenerationReadError,
+    digest_range as _digest_range,
+    validate_append_checkpoint as _validate_append_checkpoint,
+)
+from codex_usage.session_project_lineage import finalize_session_records  # noqa: F401
 from codex_usage.session_parser_events import (
     extract_collaboration_mode as _extract_collaboration_mode,
     extract_effort as _extract_effort,
     extract_model as _extract_model,
     extract_repo_path_candidates as _extract_repo_path_candidates,
+    extract_repo_path_candidates_from_bounded_prefix as _extract_bounded_repo_path_candidates,
     parse_json_line as _parse_json_line,
     parse_session_metadata as _parse_session_metadata,
     parse_timestamp,
 )
-from codex_usage.session_project_lineage import finalize_session_records
 from codex_usage.session_chunk_reader import read_candidate_row
 from codex_usage.session_row_relevance import (
     CHECKPOINT_DIGEST_BYTES,
@@ -42,12 +61,6 @@ from codex_usage.session_row_relevance import (
 from codex_usage.storage_content import (
     StorageContentMetrics,
 )
-
-
-class AppendCheckpointMismatch(ValueError):
-    pass
-
-
 @dataclass(frozen=True, slots=True)
 class _ParsedChunk:
     records: tuple[UsageRecord, ...]
@@ -56,27 +69,7 @@ class _ParsedChunk:
     checkpoint: SessionParseCheckpoint
     bytes_read: int
     content_metrics: StorageContentMetrics
-
-
-class _PartialSessionGenerationReadError(OSError):
-    def __init__(
-        self,
-        candidates: tuple[RawRepoPathCandidate, ...],
-        cause: OSError | UnicodeDecodeError,
-    ) -> None:
-        super().__init__(str(cause))
-        self.candidates = candidates
-        self.cause = cause
-
-
-def parse_session_files(paths: Iterable[Path]) -> list[UsageRecord]:
-    return finalize_session_records([parse_session_file(path) for path in paths])
-
-
-def parse_session_file(path: Path) -> list[UsageRecord]:
-    return list(parse_session_generation(path).records)
-
-
+    image_operations: tuple[CapturedImageOperation, ...]
 def parse_session_generation(
     path: Path,
     *,
@@ -97,6 +90,7 @@ def parse_session_generation(
         current_turn_id="",
         current_effort="",
         current_mode="",
+        image_capture=ImageCaptureState(),
     )
     try:
         chunk = _parse_session_chunk(
@@ -120,6 +114,7 @@ def parse_session_generation(
         checkpoint=chunk.checkpoint,
         bytes_read=chunk.bytes_read,
         content_metrics=chunk.content_metrics,
+        image_operations=chunk.image_operations,
     )
 
 
@@ -151,6 +146,7 @@ def parse_session_append(
         bytes_read=chunk.bytes_read,
         content_metrics=chunk.content_metrics,
         start_offset=checkpoint.byte_offset,
+        image_operations=chunk.image_operations,
     )
 
 
@@ -178,6 +174,8 @@ def _parse_session_chunk(
     current_turn_id = initial_state.current_turn_id
     current_effort = initial_state.current_effort
     current_mode = initial_state.current_mode
+    image_capture = initial_state.image_capture
+    image_operations = []
     bytes_read = 0
     checkpoint_offset = start_offset
     content_metrics = StorageContentMetrics()
@@ -223,6 +221,43 @@ def _parse_session_chunk(
                 if relevance == "irrelevant":
                     checkpoint_offset = line_end
                     continue
+                if relevance == "bounded" and row_bytes > len(raw_line):
+                    event_timestamp = metadata.timestamp
+                    root_task_id = metadata.parent_thread_id or root_session_id or metadata.session_id
+                    invocation = bounded_invocation_from_prefix(
+                        raw_line,
+                        timestamp=event_timestamp,
+                        metadata=metadata,
+                        root_task_id=root_task_id,
+                        turn_id=current_turn_id,
+                    )
+                    if invocation is not None:
+                        image_capture = ImageCaptureState(
+                            replace_pending(image_capture.pending, invocation)
+                        )
+                        image_operations.append(invocation)
+                    else:
+                        candidates.extend(
+                            _extract_bounded_repo_path_candidates(
+                                raw_line,
+                                event_timestamp,
+                                metadata.session_id,
+                            )
+                        )
+                        resolved = bounded_result_for_pending(
+                            raw_line, image_capture.pending
+                        )
+                        if resolved is not None:
+                            image_operations.append(resolved)
+                            image_capture = ImageCaptureState(
+                                remove_pending(
+                                    image_capture.pending, resolved.tool_call_id
+                                )
+                                if resolved.outcome is not ImageOutcome.ATTEMPTED
+                                else replace_pending(image_capture.pending, resolved)
+                            )
+                    checkpoint_offset = line_end
+                    continue
                 try:
                     decoded_line = raw_line.decode("utf-8")
                 except UnicodeDecodeError as exc:
@@ -264,6 +299,44 @@ def _parse_session_chunk(
                     continue
 
                 if event_type == "response_item":
+                    root_task_id = (
+                        metadata.parent_thread_id
+                        or root_session_id
+                        or metadata.session_id
+                    )
+                    invocation = invocation_from_payload(
+                        payload,
+                        timestamp=event_timestamp,
+                        metadata=metadata,
+                        root_task_id=root_task_id,
+                        turn_id=current_turn_id,
+                    )
+                    if invocation is not None:
+                        image_capture = ImageCaptureState(
+                            replace_pending(image_capture.pending, invocation)
+                        )
+                        image_operations.append(invocation)
+                    else:
+                        resolved = result_for_pending(payload, image_capture.pending)
+                        if resolved is not None:
+                            image_operations.append(resolved)
+                            image_capture = ImageCaptureState(
+                                remove_pending(
+                                    image_capture.pending, resolved.tool_call_id
+                                )
+                                if resolved.outcome is not ImageOutcome.ATTEMPTED
+                                else replace_pending(image_capture.pending, resolved)
+                            )
+                        else:
+                            direct = direct_operation_from_payload(
+                                payload,
+                                timestamp=event_timestamp,
+                                metadata=metadata,
+                                root_task_id=root_task_id,
+                                turn_id=current_turn_id,
+                            )
+                            if direct is not None:
+                                image_operations.append(direct)
                     candidates.extend(
                         _extract_repo_path_candidates(
                             payload,
@@ -385,6 +458,7 @@ def _parse_session_chunk(
                 current_turn_id=current_turn_id,
                 current_effort=current_effort,
                 current_mode=current_mode,
+                image_capture=image_capture,
             )
             head_sha256, head_bytes = _digest_range(
                 handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint_offset)
@@ -419,57 +493,5 @@ def _parse_session_chunk(
         checkpoint=checkpoint,
         bytes_read=bytes_read,
         content_metrics=content_metrics,
+        image_operations=tuple(image_operations),
     )
-
-
-def _validate_append_checkpoint(
-    handle: Any,
-    checkpoint: SessionParseCheckpoint,
-    *,
-    source_device: int,
-    source_inode: int,
-    stop_offset: int,
-) -> int:
-    if not source_device or not source_inode:
-        raise AppendCheckpointMismatch("source file identity is unavailable")
-    if (
-        source_device != checkpoint.source_device
-        or source_inode != checkpoint.source_inode
-    ):
-        raise AppendCheckpointMismatch("source file identity changed")
-    if stop_offset < checkpoint.byte_offset:
-        raise AppendCheckpointMismatch("source file was truncated")
-    expected_session_id = (
-        checkpoint.state.root_metadata or checkpoint.state.metadata
-    ).session_id
-    if not checkpoint.session_id or checkpoint.session_id != expected_session_id:
-        raise AppendCheckpointMismatch("checkpoint task identity is inconsistent")
-    head_sha256, head_bytes = _digest_range(
-        handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint.byte_offset)
-    )
-    boundary_start = max(0, checkpoint.byte_offset - CHECKPOINT_DIGEST_BYTES)
-    boundary_sha256, boundary_bytes = _digest_range(
-        handle, boundary_start, checkpoint.byte_offset
-    )
-    if head_sha256 != checkpoint.head_sha256:
-        raise AppendCheckpointMismatch("source file header changed")
-    if boundary_sha256 != checkpoint.boundary_sha256:
-        raise AppendCheckpointMismatch("source file checkpoint boundary changed")
-    return head_bytes + boundary_bytes
-
-
-def _digest_range(handle: Any, start: int, end: int) -> tuple[str, int]:
-    handle.seek(start)
-    remaining = max(0, end - start)
-    digest = hashlib.sha256()
-    total = 0
-    while remaining:
-        chunk = handle.read(min(64 * 1024, remaining))
-        if not chunk:
-            break
-        digest.update(chunk)
-        total += len(chunk)
-        remaining -= len(chunk)
-    if remaining:
-        raise OSError("session file ended before checkpoint digest range")
-    return digest.hexdigest(), total

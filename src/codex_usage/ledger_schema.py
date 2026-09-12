@@ -14,7 +14,7 @@ from codex_usage.agent_private_files import (
 )
 
 
-LEDGER_SCHEMA_VERSION = 1
+LEDGER_SCHEMA_VERSION = 2
 LEDGER_REVISION_KEY = "ledger_revision"
 
 
@@ -57,20 +57,24 @@ def ensure_ledger_schema(
     path: Path | None = None,
 ) -> None:
     configure_ledger_connection(connection)
-    parser_schema._ensure_schema(connection)
     version = _ledger_version(connection)
     if version > LEDGER_SCHEMA_VERSION:
         raise ValueError(
             f"ledger schema {version} is newer than supported schema {LEDGER_SCHEMA_VERSION}"
         )
     if version == LEDGER_SCHEMA_VERSION:
+        parser_schema._ensure_schema(connection)
         return
     if version and path is not None:
         _backup_before_migration(connection, path, version)
+    parser_schema._ensure_schema(connection)
     connection.execute("begin immediate")
     try:
         if version == 0:
             _create_schema_v1(connection)
+            _migrate_v1_to_v2(connection)
+        elif version == 1:
+            _migrate_v1_to_v2(connection)
         connection.execute(
             "insert or replace into ledger_meta (key, value) values (?, ?)",
             ("schema_version", str(LEDGER_SCHEMA_VERSION)),
@@ -286,6 +290,43 @@ def _create_schema_v1(connection: sqlite3.Connection) -> None:
             html text not null
         )
         """,
+    )
+    for statement in statements:
+        connection.execute(statement)
+
+
+def _migrate_v1_to_v2(connection: sqlite3.Connection) -> None:
+    """Add image accounting without rewriting trusted language event rows."""
+    statements = (
+        """
+        create table ledger_image_events (
+            image_event_id integer primary key,
+            generation_id integer not null references ledger_generations(generation_id) on delete cascade,
+            tool_call_id text not null,
+            timestamp text not null,
+            timestamp_us integer not null,
+            task_id text not null references ledger_tasks(task_id),
+            root_task_id text not null,
+            usage_role text not null check (usage_role in ('root', 'subagent')),
+            turn_id text not null,
+            project_id integer not null references ledger_projects(project_id),
+            kind text not null check (kind in ('generate', 'edit_reference', 'unknown')),
+            outcome text not null check (outcome in ('attempted', 'succeeded', 'failed')),
+            output_count integer not null check (output_count >= 0),
+            output_width integer,
+            output_height integer,
+            output_format text not null,
+            quality text not null,
+            model_family text not null,
+            model_variant text not null,
+            model_raw_identity text not null,
+            evidence_json text not null,
+            usage_json text not null,
+            unique (generation_id, tool_call_id)
+        )
+        """,
+        "create index ledger_image_timestamp_idx on ledger_image_events(timestamp_us)",
+        "create index ledger_image_task_idx on ledger_image_events(task_id, timestamp_us)",
     )
     for statement in statements:
         connection.execute(statement)

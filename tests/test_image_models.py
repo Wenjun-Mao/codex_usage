@@ -67,6 +67,21 @@ def test_response_usage_wins_over_tool_and_signed_metadata_and_keeps_conflict() 
     assert resolved.all_evidence == (signed, tool, response)
 
 
+def test_evidence_selection_orders_confidence_within_one_source() -> None:
+    low = ImageModelEvidence(
+        "gpt-image-2", ImageEvidenceSource.TOOL_INVOCATION, ImageEvidenceConfidence.LOW
+    )
+    high = ImageModelEvidence(
+        "gpt-image-2.5-sunburst", ImageEvidenceSource.TOOL_INVOCATION, ImageEvidenceConfidence.HIGH
+    )
+    exact = ImageModelEvidence(
+        "gpt-image-2.5-flare", ImageEvidenceSource.TOOL_INVOCATION, ImageEvidenceConfidence.EXACT
+    )
+
+    assert resolve_image_model_evidence((exact, high, low)).selected == exact
+    assert resolve_image_model_evidence((low, exact, high)).selected == exact
+
+
 def test_family_only_signed_2_5_evidence_is_compatible_with_a_named_variant() -> None:
     signed = ImageModelEvidence(
         "gpt-image",

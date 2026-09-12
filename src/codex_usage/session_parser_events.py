@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +14,11 @@ from codex_usage.session_provenance import (
     is_structured_subagent,
     parent_thread_id_from_source,
 )
+
+_PREFIX_FUNCTION_CALL_WORKDIR = re.compile(
+    rb'"workdir"\s*:\s*"(?P<path>(?:[^"\\]|\\.){1,4096})"'
+)
+_PREFIX_TIMESTAMP = re.compile(rb'"timestamp"\s*:\s*"(?P<value>[^"\\]{1,128})"')
 
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -57,6 +63,42 @@ def extract_repo_path_candidates(
         RawRepoPathCandidate(
             raw_path=raw_path,
             timestamp=timestamp,
+            thread_id=thread_id,
+            source="jsonl:response_item:function_call_workdir",
+        )
+        for raw_path in extract_repo_paths(workdir, preserve_exact_field=True)
+    ]
+
+
+def extract_repo_path_candidates_from_bounded_prefix(
+    prefix: bytes,
+    timestamp: datetime | None,
+    thread_id: str,
+) -> list[RawRepoPathCandidate]:
+    """Keep project attribution when a large non-image tool call is drained."""
+    if b"function_call_output" in prefix or b'"function_call"' not in prefix:
+        return []
+    match = _PREFIX_FUNCTION_CALL_WORKDIR.search(prefix)
+    if match is None:
+        return []
+    try:
+        workdir = json.loads(b'"' + match.group("path") + b'"')
+    except (ValueError, RecursionError):
+        return []
+    if not isinstance(workdir, str):
+        return []
+    prefix_timestamp = _PREFIX_TIMESTAMP.search(prefix)
+    observed_at = (
+        parse_timestamp(prefix_timestamp.group("value").decode("utf-8"))
+        if prefix_timestamp is not None
+        else timestamp
+    )
+    if observed_at is None:
+        return []
+    return [
+        RawRepoPathCandidate(
+            raw_path=raw_path,
+            timestamp=observed_at,
             thread_id=thread_id,
             source="jsonl:response_item:function_call_workdir",
         )

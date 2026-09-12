@@ -9,6 +9,15 @@ from pathlib import Path
 from codex_usage.aggregation import RangeBounds
 from codex_usage.agent_activity import LedgerTask
 from codex_usage.ledger_schema import ledger_revision, open_ledger
+from codex_usage.image_models import (
+    ImageEvidenceConfidence,
+    ImageEvidenceSource,
+    ImageModelEvidence,
+    ImageOperation,
+    ImageOperationKind,
+    ImageOutcome,
+    ImageUsage,
+)
 from codex_usage.models import TokenUsage, UsageRecord, parse_usage_role
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_transitions import ProjectTransition
@@ -202,6 +211,55 @@ def query_ledger_status(connection: sqlite3.Connection) -> LedgerStatus:
     )
 
 
+def load_ledger_image_operations(
+    ledger_path: Path,
+    *,
+    bounds: RangeBounds | None = None,
+    project_keys: list[str] | None = None,
+) -> list[ImageOperation]:
+    with open_ledger(ledger_path, read_only=True) as connection:
+        return query_ledger_image_operations(
+            connection,
+            bounds=bounds,
+            project_keys=project_keys,
+        )
+
+
+def query_ledger_image_operations(
+    connection: sqlite3.Connection,
+    *,
+    bounds: RangeBounds | None = None,
+    project_keys: list[str] | None = None,
+) -> list[ImageOperation]:
+    clauses = ["ledger_generations.status = 'trusted'"]
+    parameters: list[object] = []
+    if bounds is not None and bounds.start_us is not None:
+        clauses.append("ledger_image_events.timestamp_us >= ?")
+        parameters.append(bounds.start_us)
+    if bounds is not None and bounds.end_us is not None:
+        clauses.append("ledger_image_events.timestamp_us < ?")
+        parameters.append(bounds.end_us)
+    rows = connection.execute(
+        f"""
+        select ledger_image_events.*, ledger_projects.project_key,
+               ledger_projects.label as project_label
+        from ledger_image_events
+        join ledger_generations using (generation_id)
+        join ledger_projects using (project_id)
+        where {' and '.join(clauses)}
+        order by ledger_image_events.timestamp_us, ledger_image_events.image_event_id
+        """,
+        parameters,
+    ).fetchall()
+    selected = {key for key in project_keys or [] if key}
+    operations = [_row_to_image_operation(row) for row in rows]
+    return (
+        operations
+        if not selected
+        else [operation for operation in operations if operation.project_key in selected]
+    )
+
+
 def load_projects(ledger_path: Path) -> list[dict[str, object]]:
     with open_ledger(ledger_path, read_only=True) as connection:
         rows = connection.execute(
@@ -245,6 +303,61 @@ def load_tasks(
             parameters,
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def _row_to_image_operation(row: sqlite3.Row) -> ImageOperation:
+    evidence_values = json.loads(str(row["evidence_json"]) or "[]")
+    usage_values = json.loads(str(row["usage_json"]) or "{}")
+    evidence = tuple(
+        ImageModelEvidence(
+            str(item["raw_identity"]),
+            ImageEvidenceSource(str(item["source"])),
+            ImageEvidenceConfidence(str(item["confidence"])),
+            str(item.get("version") or ""),
+        )
+        for item in evidence_values
+        if isinstance(item, dict)
+    )
+    return ImageOperation(
+        source_generation=int(row["generation_id"]),
+        tool_call_id=str(row["tool_call_id"]),
+        timestamp_us=int(row["timestamp_us"]),
+        task_id=str(row["task_id"]),
+        root_task_id=str(row["root_task_id"]),
+        usage_role=str(row["usage_role"]),
+        turn_id=str(row["turn_id"]),
+        project_key=str(row["project_key"]),
+        project_label=str(row["project_label"]),
+        kind=ImageOperationKind(str(row["kind"])),
+        outcome=ImageOutcome(str(row["outcome"])),
+        output_count=int(row["output_count"]),
+        output_width=(
+            None if row["output_width"] is None else int(row["output_width"])
+        ),
+        output_height=(
+            None if row["output_height"] is None else int(row["output_height"])
+        ),
+        output_format=str(row["output_format"]),
+        quality=str(row["quality"]),
+        evidence=evidence,
+        usage=ImageUsage(
+            text_input_tokens=_optional_int(usage_values.get("text_input_tokens")),
+            cached_text_input_tokens=_optional_int(
+                usage_values.get("cached_text_input_tokens")
+            ),
+            text_output_tokens=_optional_int(usage_values.get("text_output_tokens")),
+            image_input_tokens=_optional_int(usage_values.get("image_input_tokens")),
+            cached_image_input_tokens=_optional_int(
+                usage_values.get("cached_image_input_tokens")
+            ),
+            image_output_tokens=_optional_int(usage_values.get("image_output_tokens")),
+            total_tokens=_optional_int(usage_values.get("total_tokens")),
+        ),
+    )
+
+
+def _optional_int(value: object) -> int | None:
+    return int(value) if value is not None else None
 
 
 def _coverage(connection: sqlite3.Connection) -> LedgerCoverage:

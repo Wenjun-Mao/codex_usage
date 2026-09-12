@@ -10,6 +10,7 @@ from functools import cache
 
 from codex_usage.image_models import (
     ImageModelFamily,
+    ImageModelVariant,
     ImageUsage,
     NormalizedImageModel,
 )
@@ -44,6 +45,32 @@ class ImageCreditRate:
     cached_image_input_per_1m: float
     image_output_per_1m: float
     equivalent_estimate: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ImageOutputEstimator:
+    """A documented output bound for one image family/variant contract.
+
+    Estimators carry their applicability rather than accepting naked token
+    bounds, preventing a calculator contract for one family from leaking into
+    another merely because the API rates currently match.
+    """
+
+    family: ImageModelFamily
+    variants: frozenset[ImageModelVariant]
+    low_output_tokens_per_image: int
+    high_output_tokens_per_image: int
+
+    def __post_init__(self) -> None:
+        if (
+            not self.variants
+            or self.low_output_tokens_per_image < 0
+            or self.high_output_tokens_per_image < self.low_output_tokens_per_image
+        ):
+            raise ValueError("invalid image output estimator")
+
+    def supports(self, model: NormalizedImageModel) -> bool:
+        return model.family is self.family and model.variant in self.variants
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,24 +162,35 @@ def value_image_usage(
 def estimate_output_only_range(
     *,
     output_count: int,
-    low_output_tokens_per_image: int,
-    high_output_tokens_per_image: int,
+    estimator: ImageOutputEstimator,
     model: NormalizedImageModel,
     at: datetime | None = None,
 ) -> ImageMoneyRange:
     """Create a documented output-only range without pretending inputs are free.
 
-    Callers must supply a model-specific estimator.  This intentionally has no
+    Callers must supply a model- and variant-specific estimator.  This intentionally has no
     cross-family fallback: GPT Image 2 calculator numbers cannot price GPT Image
     2.5 activity.
     """
-    if output_count < 0 or low_output_tokens_per_image < 0 or high_output_tokens_per_image < low_output_tokens_per_image:
+    if output_count < 0:
         raise ValueError("invalid image output range")
+    if not estimator.supports(model):
+        return _unpriced()
     rate = image_rate_for_model(model, at=at)
     if rate is None:
         return _unpriced()
-    low = output_count * low_output_tokens_per_image / 1_000_000 * rate.api_rate.image_output_per_1m
-    high = output_count * high_output_tokens_per_image / 1_000_000 * rate.api_rate.image_output_per_1m
+    low = (
+        output_count
+        * estimator.low_output_tokens_per_image
+        / 1_000_000
+        * rate.api_rate.image_output_per_1m
+    )
+    high = (
+        output_count
+        * estimator.high_output_tokens_per_image
+        / 1_000_000
+        * rate.api_rate.image_output_per_1m
+    )
     return ImageMoneyRange(
         state=ImagePricingState.ESTIMATED_RANGE,
         low=low,
@@ -185,7 +223,16 @@ def _value_credit_usage(usage: ImageUsage, rate: ImageCreditRate | None) -> Imag
         + usage.cached_image_input_tokens / 1_000_000 * rate.cached_image_input_per_1m
         + usage.image_output_tokens / 1_000_000 * rate.image_output_per_1m
     )
-    return ImageMoneyRange(ImagePricingState.EXACT, amount, amount, credit_equivalent=rate.equivalent_estimate)
+    return ImageMoneyRange(
+        (
+            ImagePricingState.ESTIMATED_RANGE
+            if rate.equivalent_estimate
+            else ImagePricingState.EXACT
+        ),
+        amount,
+        amount,
+        credit_equivalent=rate.equivalent_estimate,
+    )
 
 
 def _unpriced() -> ImageMoneyRange:

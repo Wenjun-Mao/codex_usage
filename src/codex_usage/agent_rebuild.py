@@ -25,6 +25,7 @@ _WORKSET_TABLES = (
     "usage_records",
     "session_metadata",
     "transition_candidates",
+    "image_operations",
     "parser_checkpoints",
 )
 
@@ -231,6 +232,8 @@ def _mark_rebuilt_tasks_dirty(
             "select session_id from rebuild.session_metadata where file_key = ?",
             "select distinct session_id from rebuild.usage_records where file_key = ?",
             "select distinct thread_id from rebuild.transition_candidates where file_key = ?",
+            "select distinct task_id from rebuild.image_operations where file_key = ?",
+            "select distinct root_task_id from rebuild.image_operations where file_key = ?",
         )
         for row in connection.execute(query, (source_key,))
         if row[0]

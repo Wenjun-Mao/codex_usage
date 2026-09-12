@@ -47,8 +47,9 @@ from codex_usage.session_inventory import (
     collect_session_file_inventory,
 )
 
-CACHE_DB_NAME = "usage-cache-v8.sqlite3"
+CACHE_DB_NAME = "usage-cache-v9.sqlite3"
 LEGACY_CACHE_DB_NAMES = (
+    "usage-cache-v8.sqlite3",
     "usage-cache-v7.sqlite3",
     "usage-cache-v6.sqlite3",
     "usage-cache-v5.sqlite3",

@@ -5,6 +5,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from codex_usage.image_capture_models import captured_operation_to_dict
 from codex_usage.models import UsageRecord
 from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_cache_checkpoints import upsert_parser_checkpoint
@@ -32,6 +33,7 @@ def replace_file_generation(
         connection.execute("delete from files where file_key = ?", (alias_key,))
     delete_file_generation(connection, entry.file_key)
     insert_usage_records(connection, entry, generation.records)
+    insert_image_operations(connection, entry.file_key, generation.image_operations)
     insert_session_metadata(connection, session_dirs, entry, generation)
     insert_transition_candidates(
         connection, entry.file_key, generation.candidates
@@ -66,6 +68,7 @@ def append_file_generation(
         appended.candidates,
         start_index=candidate_start,
     )
+    insert_image_operations(connection, entry.file_key, appended.image_operations)
     _update_session_metadata_after_append(
         connection,
         session_dirs,
@@ -95,6 +98,7 @@ def rekey_file_generation(
         "usage_records",
         "session_metadata",
         "transition_candidates",
+        "image_operations",
         "parser_checkpoints",
     ):
         connection.execute(
@@ -151,6 +155,8 @@ def query_generation_task_ids(
     queries = (
         "select distinct session_id as task_id from usage_records where file_key = ?",
         "select distinct thread_id as task_id from transition_candidates where file_key = ?",
+        "select distinct task_id from image_operations where file_key = ?",
+        "select distinct root_task_id as task_id from image_operations where file_key = ?",
         "select session_id as task_id from session_metadata where file_key = ?",
     )
     return {
@@ -168,6 +174,8 @@ def generation_task_ids(generation: ParsedSessionGeneration) -> set[str]:
             generation.metadata.session_id,
             *(record.session_id for record in generation.records),
             *(candidate.thread_id for candidate in generation.candidates),
+            *(operation.task_id for operation in generation.image_operations),
+            *(operation.root_task_id for operation in generation.image_operations),
         )
         if task_id
     }
@@ -181,6 +189,7 @@ def delete_file_generation(connection: sqlite3.Connection, file_key: str) -> Non
     connection.execute(
         "delete from transition_candidates where file_key = ?", (file_key,)
     )
+    connection.execute("delete from image_operations where file_key = ?", (file_key,))
     connection.execute(
         "delete from parser_checkpoints where file_key = ?", (file_key,)
     )
@@ -307,6 +316,66 @@ def insert_transition_candidates(
         )
 
 
+def insert_image_operations(
+    connection: sqlite3.Connection,
+    file_key: str,
+    operations: tuple,
+) -> None:
+    """Persist normalized metadata only; tool payloads never reach SQLite."""
+    for operation in operations:
+        values = captured_operation_to_dict(operation)
+        timestamp = operation.timestamp
+        connection.execute(
+            """
+            insert into image_operations (
+                file_key, tool_call_id, timestamp, timestamp_us, task_id,
+                root_task_id, usage_role, turn_id, project_key, project_label,
+                kind, outcome, output_count, output_width, output_height,
+                output_format, quality, evidence_json, usage_json
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict(file_key, tool_call_id) do update set
+                timestamp = excluded.timestamp,
+                timestamp_us = excluded.timestamp_us,
+                task_id = excluded.task_id,
+                root_task_id = excluded.root_task_id,
+                usage_role = excluded.usage_role,
+                turn_id = excluded.turn_id,
+                project_key = excluded.project_key,
+                project_label = excluded.project_label,
+                kind = excluded.kind,
+                outcome = excluded.outcome,
+                output_count = excluded.output_count,
+                output_width = excluded.output_width,
+                output_height = excluded.output_height,
+                output_format = excluded.output_format,
+                quality = excluded.quality,
+                evidence_json = excluded.evidence_json,
+                usage_json = excluded.usage_json
+            """,
+            (
+                file_key,
+                operation.tool_call_id,
+                timestamp.isoformat(),
+                _timestamp_us(timestamp),
+                operation.task_id,
+                operation.root_task_id,
+                operation.usage_role,
+                operation.turn_id,
+                operation.project_key,
+                operation.project_label,
+                operation.kind.value,
+                operation.outcome.value,
+                operation.output_count,
+                operation.output_width,
+                operation.output_height,
+                operation.output_format,
+                operation.quality,
+                json.dumps(values["evidence"], separators=(",", ":"), sort_keys=True),
+                json.dumps(values["usage"], separators=(",", ":"), sort_keys=True),
+            ),
+        )
+
+
 def upsert_file_fingerprint(
     connection: sqlite3.Connection,
     session_dirs: list[Path],
@@ -402,6 +471,8 @@ def _append_task_ids(appended: ParsedSessionAppend) -> set[str]:
             appended.metadata.session_id,
             *(record.session_id for record in appended.records),
             *(candidate.thread_id for candidate in appended.candidates),
+            *(operation.task_id for operation in appended.image_operations),
+            *(operation.root_task_id for operation in appended.image_operations),
         )
         if task_id
     }

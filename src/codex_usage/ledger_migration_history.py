@@ -53,17 +53,44 @@ _CANDIDATE_COLUMNS = (
     "source",
 )
 
+_IMAGE_COLUMNS = (
+    "tool_call_id",
+    "timestamp",
+    "timestamp_us",
+    "task_id",
+    "root_task_id",
+    "usage_role",
+    "turn_id",
+    "project_key",
+    "project_label",
+    "kind",
+    "outcome",
+    "output_count",
+    "output_width",
+    "output_height",
+    "output_format",
+    "quality",
+    "evidence_json",
+    "usage_json",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class GenerationHistory:
     usage: tuple[tuple[object, ...], ...]
     metadata: tuple[object, ...] | None
     transition_candidates: tuple[tuple[object, ...], ...]
+    image_operations: tuple[tuple[object, ...], ...]
     parsed_offset: int | None
 
     @property
     def empty(self) -> bool:
-        return not self.usage and self.metadata is None and not self.transition_candidates
+        return (
+            not self.usage
+            and self.metadata is None
+            and not self.transition_candidates
+            and not self.image_operations
+        )
 
 
 def load_generation_history(
@@ -89,6 +116,13 @@ def load_generation_history(
         file_key,
         "candidate_index",
     )
+    images = _ordered_rows_if_present(
+        connection,
+        "image_operations",
+        _IMAGE_COLUMNS,
+        file_key,
+        "tool_call_id",
+    )
     checkpoint = connection.execute(
         "select byte_offset from parser_checkpoints where file_key = ?",
         (file_key,),
@@ -101,6 +135,7 @@ def load_generation_history(
             else None
         ),
         transition_candidates=candidates,
+        image_operations=images,
         parsed_offset=int(checkpoint["byte_offset"]) if checkpoint is not None else None,
     )
 
@@ -121,14 +156,16 @@ def compare_generation_history(
         return "prefix"
     if existing.metadata != incoming.metadata:
         return "conflict"
-    if _is_prefix(existing.usage, incoming.usage) and _is_prefix(
-        existing.transition_candidates,
-        incoming.transition_candidates,
+    if (
+        _is_prefix(existing.usage, incoming.usage)
+        and _is_prefix(existing.transition_candidates, incoming.transition_candidates)
+        and _is_prefix(existing.image_operations, incoming.image_operations)
     ):
         return "extends"
-    if _is_prefix(incoming.usage, existing.usage) and _is_prefix(
-        incoming.transition_candidates,
-        existing.transition_candidates,
+    if (
+        _is_prefix(incoming.usage, existing.usage)
+        and _is_prefix(incoming.transition_candidates, existing.transition_candidates)
+        and _is_prefix(incoming.image_operations, existing.image_operations)
     ):
         return "prefix"
     return "conflict"
@@ -139,6 +176,7 @@ def _same_semantics(left: GenerationHistory, right: GenerationHistory) -> bool:
         left.usage == right.usage
         and left.metadata == right.metadata
         and left.transition_candidates == right.transition_candidates
+        and left.image_operations == right.image_operations
     )
 
 
@@ -159,6 +197,21 @@ def _ordered_rows(
         (file_key,),
     )
     return tuple(tuple(row[column] for column in columns) for row in rows)
+
+
+def _ordered_rows_if_present(
+    connection: sqlite3.Connection,
+    table: str,
+    columns: tuple[str, ...],
+    file_key: str,
+    order_column: str,
+) -> tuple[tuple[object, ...], ...]:
+    available = {
+        str(row["name"]) for row in connection.execute(f"pragma table_info({table})")
+    }
+    if not set(columns).issubset(available):
+        return ()
+    return _ordered_rows(connection, table, columns, file_key, order_column)
 
 
 def _is_prefix(

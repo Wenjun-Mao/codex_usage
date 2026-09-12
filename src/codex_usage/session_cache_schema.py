@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-CACHE_SCHEMA_VERSION = 8
-PARSER_CACHE_VERSION = 6
+CACHE_SCHEMA_VERSION = 9
+PARSER_CACHE_VERSION = 7
 PROJECT_TRANSITION_CACHE_VERSION = 2
 STORAGE_METADATA_CACHE_VERSION = 2
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
@@ -19,6 +19,7 @@ _KNOWN_CACHE_TABLES = frozenset(
         "session_metadata",
         "storage_files",
         "parser_checkpoints",
+        "image_operations",
         "storage_content_diagnostics",
         "transition_candidates",
         "dirty_transition_tasks",
@@ -33,6 +34,7 @@ _KNOWN_CACHE_INDEXES = frozenset(
         "storage_files_task_idx",
         "storage_files_project_idx",
         "storage_content_diagnostics_task_idx",
+        "image_operations_task_idx",
     }
 )
 
@@ -186,6 +188,30 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         )
         """,
         """
+        create table image_operations (
+            file_key text not null,
+            tool_call_id text not null,
+            timestamp text not null,
+            timestamp_us integer not null,
+            task_id text not null,
+            root_task_id text not null,
+            usage_role text not null check (usage_role in ('root', 'subagent')),
+            turn_id text not null,
+            project_key text not null,
+            project_label text not null,
+            kind text not null check (kind in ('generate', 'edit_reference', 'unknown')),
+            outcome text not null check (outcome in ('attempted', 'succeeded', 'failed')),
+            output_count integer not null check (output_count >= 0),
+            output_width integer,
+            output_height integer,
+            output_format text not null,
+            quality text not null,
+            evidence_json text not null,
+            usage_json text not null,
+            primary key (file_key, tool_call_id)
+        )
+        """,
+        """
         create table storage_content_diagnostics (
             path text primary key,
             task_id text not null,
@@ -241,6 +267,7 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
         "create index storage_files_task_idx on storage_files (task_id)",
         "create index storage_files_project_idx on storage_files (project_key)",
         "create index storage_content_diagnostics_task_idx on storage_content_diagnostics (task_id)",
+        "create index image_operations_task_idx on image_operations (task_id, timestamp_us)",
     )
     for statement in statements:
         connection.execute(statement)
@@ -270,6 +297,14 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
             """
         ).fetchone()
         connection.execute("select 1 from parser_checkpoints limit 1").fetchone()
+        image_columns = {
+            str(row["name"])
+            for row in connection.execute("pragma table_info(image_operations)")
+        }
+        image_indexes = {
+            str(row["name"])
+            for row in connection.execute("pragma index_list(image_operations)")
+        }
         diagnostic_columns = {
             str(row["name"])
             for row in connection.execute(
@@ -337,15 +372,38 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
         "last_analyzed_at",
         "error",
     }
+    expected_image_columns = {
+        "file_key",
+        "tool_call_id",
+        "timestamp",
+        "timestamp_us",
+        "task_id",
+        "root_task_id",
+        "usage_role",
+        "turn_id",
+        "project_key",
+        "project_label",
+        "kind",
+        "outcome",
+        "output_count",
+        "output_width",
+        "output_height",
+        "output_format",
+        "quality",
+        "evidence_json",
+        "usage_json",
+    }
     return (
         invalid_role is None
         and invalid_storage_role is None
         and storage_columns == expected_storage_columns
         and diagnostic_columns == expected_diagnostic_columns
+        and image_columns == expected_image_columns
         and {"storage_files_task_idx", "storage_files_project_idx"}.issubset(
             storage_indexes
         )
         and "storage_content_diagnostics_task_idx" in diagnostic_indexes
+        and "image_operations_task_idx" in image_indexes
     )
 
 
@@ -378,6 +436,7 @@ def _drop_cache_schema(connection: sqlite3.Connection) -> None:
         "project_transitions",
         "dirty_transition_tasks",
         "transition_candidates",
+        "image_operations",
         "parser_checkpoints",
         "storage_content_diagnostics",
         "storage_files",

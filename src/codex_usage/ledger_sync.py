@@ -7,12 +7,13 @@ from pathlib import Path
 
 from codex_usage.ledger_events import (
     insert_generation_events,
+    insert_generation_image_events,
     rebuild_normalized_events,
 )
 from codex_usage.ledger_schema import increment_ledger_revision, open_ledger
 
 
-_NORMALIZED_OWNERSHIP_VERSION = 2
+_NORMALIZED_OWNERSHIP_VERSION = 3
 _NORMALIZED_OWNERSHIP_VERSION_KEY = "normalized_ownership_version"
 
 
@@ -291,12 +292,17 @@ def _sync_generation(
                 "delete from ledger_usage_events where generation_id = ?",
                 (generation_id,),
             )
+            connection.execute(
+                "delete from ledger_image_events where generation_id = ?",
+                (generation_id,),
+            )
     insert_generation_events(
         connection,
         generation_id,
         source_key,
         start_record_index=start_record_index,
     )
+    insert_generation_image_events(connection, generation_id, source_key)
     if not _event_index_is_complete(
         connection,
         generation_id,

@@ -28,6 +28,7 @@ _GENERATION_TABLES = (
     "session_metadata",
     "parser_checkpoints",
     "transition_candidates",
+    "image_operations",
 )
 
 

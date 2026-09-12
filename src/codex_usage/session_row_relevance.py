@@ -28,14 +28,13 @@ _TOP_LEVEL_TYPE = re.compile(
     re.DOTALL,
 )
 
-type RowRelevance = Literal["relevant", "irrelevant", "unclassified"]
+type RowRelevance = Literal["relevant", "bounded", "irrelevant", "unclassified"]
 
 
 def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
     inspected = prefix[:RELEVANT_PREFIX_BYTES]
     if (
         any(marker in inspected for marker in _USAGE_EVENT_MARKERS_BYTES)
-        or all(marker in inspected for marker in _FUNCTION_CALL_MARKERS_BYTES)
         or b"\\u" in inspected
         or b"\\U" in inspected
         or not inspected.isascii()
@@ -44,6 +43,15 @@ def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
     discriminator = _NORMAL_EVENT_DISCRIMINATOR.search(inspected)
     if discriminator is not None:
         outer_type, payload_type = discriminator.groups()
+        if outer_type == b"response_item" and payload_type in {
+            b"function_call",
+            b"function_call_output",
+        }:
+            # Calls and results can contain data URLs or generated-image base64.
+            # Keep only a prefix while streaming the rest to the newline.
+            return "bounded"
+        if b"image" in payload_type and b"generation" in payload_type:
+            return "bounded"
         return (
             "relevant"
             if (outer_type, payload_type)

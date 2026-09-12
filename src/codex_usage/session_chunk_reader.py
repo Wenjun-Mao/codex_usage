@@ -26,7 +26,7 @@ def read_candidate_row(
     relevance = classify_row_prefix(prefix, complete=complete)
     if complete or handle.tell() >= stop_offset:
         return prefix, complete, len(prefix), relevance
-    if relevance == "irrelevant":
+    if relevance in {"bounded", "irrelevant"}:
         return _drain_irrelevant_row(handle, stop_offset, prefix, relevance)
     return _read_relevant_row(handle, stop_offset, prefix, relevance)
 
@@ -46,7 +46,10 @@ def _drain_irrelevant_row(
             break
         bytes_read += len(chunk)
         if chunk.endswith(b"\n"):
-            return prefix, True, bytes_read, relevance
+            # The source row is complete, but the returned prefix is not.  The
+            # parser must not try to JSON-decode a prefix that deliberately
+            # omitted a large payload.
+            return prefix, False, bytes_read, relevance
     return prefix, False, bytes_read, relevance
 
 

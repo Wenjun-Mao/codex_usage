@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from codex_usage.image_capture_models import CapturedImageOperation
 from codex_usage.models import SessionMetadata, UsageRecord
 from codex_usage.session_parser_models import SessionParseCheckpoint
 from codex_usage.storage_content import StorageContentMetrics
@@ -24,6 +25,7 @@ class ParsedSessionGeneration:
     checkpoint: SessionParseCheckpoint
     bytes_read: int
     content_metrics: StorageContentMetrics = StorageContentMetrics()
+    image_operations: tuple[CapturedImageOperation, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,3 +37,4 @@ class ParsedSessionAppend:
     bytes_read: int
     content_metrics: StorageContentMetrics = StorageContentMetrics()
     start_offset: int = 0
+    image_operations: tuple[CapturedImageOperation, ...] = ()

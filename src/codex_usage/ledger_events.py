@@ -3,10 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from datetime import UTC
 
+from codex_usage.image_capture_models import captured_operation_from_dict
+from codex_usage.image_models import resolve_image_model_evidence
 from codex_usage.models import UsageRecord
-from codex_usage.parser import finalize_session_records
 from codex_usage.session_cache_queries import row_to_usage_record
+from codex_usage.session_project_lineage import finalize_session_records
 
 
 def insert_generation_events(
@@ -35,6 +38,20 @@ def insert_generation_events(
         )
 
 
+def insert_generation_image_events(
+    connection: sqlite3.Connection,
+    generation_id: int,
+    source_key: str,
+) -> None:
+    """Upsert content-free image activity for one trusted source generation."""
+    rows = connection.execute(
+        "select * from image_operations where file_key = ? order by tool_call_id",
+        (source_key,),
+    ).fetchall()
+    for row in rows:
+        _insert_image_event(connection, generation_id, row)
+
+
 def rebuild_normalized_events(connection: sqlite3.Connection) -> None:
     """Rebuild durable ownership from the parser workset in a stable order."""
     source_rows = list(
@@ -55,6 +72,7 @@ def rebuild_normalized_events(connection: sqlite3.Connection) -> None:
     resolved_records = finalize_session_records([raw_records])
 
     connection.execute("delete from ledger_usage_events")
+    connection.execute("delete from ledger_image_events")
     connection.execute("delete from ledger_contexts")
     connection.execute("delete from ledger_tasks")
     connection.execute("delete from ledger_projects")
@@ -72,6 +90,23 @@ def rebuild_normalized_events(connection: sqlite3.Connection) -> None:
             record=record,
             default_title=default_titles.get(str(row["file_key"]), str(row["file_key"])),
         )
+    _rebuild_image_events(connection)
+
+
+def _rebuild_image_events(connection: sqlite3.Connection) -> None:
+    rows = connection.execute(
+        """
+        select image_operations.*, ledger_generations.generation_id
+        from image_operations
+        join ledger_sources on ledger_sources.source_key = image_operations.file_key
+        join ledger_generations
+          on ledger_generations.source_id = ledger_sources.source_id
+         and ledger_generations.status = 'trusted'
+        order by image_operations.file_key, image_operations.tool_call_id
+        """
+    ).fetchall()
+    for row in rows:
+        _insert_image_event(connection, int(row["generation_id"]), row)
 
 
 def _resolved_generation_records(
@@ -176,6 +211,165 @@ def _insert_event(
             usage.output_tokens,
             usage.reasoning_output_tokens,
             usage.total_tokens,
+        ),
+    )
+
+
+def _insert_image_event(
+    connection: sqlite3.Connection,
+    generation_id: int,
+    row: sqlite3.Row,
+) -> None:
+    operation = captured_operation_from_dict(
+        {
+            "tool_call_id": str(row["tool_call_id"]),
+            "timestamp": str(row["timestamp"]),
+            "task_id": str(row["task_id"]),
+            "root_task_id": str(row["root_task_id"]),
+            "usage_role": str(row["usage_role"]),
+            "turn_id": str(row["turn_id"]),
+            "project_key": str(row["project_key"]),
+            "project_label": str(row["project_label"]),
+            "kind": str(row["kind"]),
+            "outcome": str(row["outcome"]),
+            "output_count": int(row["output_count"]),
+            "output_width": row["output_width"],
+            "output_height": row["output_height"],
+            "output_format": str(row["output_format"]),
+            "quality": str(row["quality"]),
+            "evidence": json.loads(str(row["evidence_json"])),
+            "usage": json.loads(str(row["usage_json"])),
+        }
+    )
+    project_id = _image_project_id(connection, operation.project_key, operation.project_label)
+    _upsert_image_task(connection, operation, project_id)
+    resolved = resolve_image_model_evidence(operation.evidence)
+    timestamp_us = int(operation.timestamp.astimezone(UTC).timestamp() * 1_000_000)
+    connection.execute(
+        """
+        insert into ledger_image_events (
+            generation_id, tool_call_id, timestamp, timestamp_us, task_id,
+            root_task_id, usage_role, turn_id, project_id, kind, outcome,
+            output_count, output_width, output_height, output_format, quality,
+            model_family, model_variant, model_raw_identity, evidence_json,
+            usage_json
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        on conflict(generation_id, tool_call_id) do update set
+            timestamp = excluded.timestamp,
+            timestamp_us = excluded.timestamp_us,
+            task_id = excluded.task_id,
+            root_task_id = excluded.root_task_id,
+            usage_role = excluded.usage_role,
+            turn_id = excluded.turn_id,
+            project_id = excluded.project_id,
+            kind = excluded.kind,
+            outcome = excluded.outcome,
+            output_count = excluded.output_count,
+            output_width = excluded.output_width,
+            output_height = excluded.output_height,
+            output_format = excluded.output_format,
+            quality = excluded.quality,
+            model_family = excluded.model_family,
+            model_variant = excluded.model_variant,
+            model_raw_identity = excluded.model_raw_identity,
+            evidence_json = excluded.evidence_json,
+            usage_json = excluded.usage_json
+        """,
+        (
+            generation_id,
+            operation.tool_call_id,
+            operation.timestamp.isoformat(),
+            timestamp_us,
+            operation.task_id,
+            operation.root_task_id,
+            operation.usage_role,
+            operation.turn_id,
+            project_id,
+            operation.kind.value,
+            operation.outcome.value,
+            operation.output_count,
+            operation.output_width,
+            operation.output_height,
+            operation.output_format,
+            operation.quality,
+            resolved.model.family.value,
+            resolved.model.variant.value,
+            resolved.model.raw_identity,
+            json.dumps(
+                [
+                    {
+                        "raw_identity": item.raw_identity,
+                        "source": item.source.value,
+                        "confidence": item.confidence.value,
+                        "version": item.version,
+                    }
+                    for item in operation.evidence
+                ],
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            json.dumps(
+                {
+                    "text_input_tokens": operation.usage.text_input_tokens,
+                    "cached_text_input_tokens": operation.usage.cached_text_input_tokens,
+                    "text_output_tokens": operation.usage.text_output_tokens,
+                    "image_input_tokens": operation.usage.image_input_tokens,
+                    "cached_image_input_tokens": operation.usage.cached_image_input_tokens,
+                    "image_output_tokens": operation.usage.image_output_tokens,
+                    "total_tokens": operation.usage.total_tokens,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        ),
+    )
+
+
+def _image_project_id(
+    connection: sqlite3.Connection,
+    project_key: str,
+    project_label: str,
+) -> int:
+    key = project_key or "unknown"
+    connection.execute(
+        """
+        insert into ledger_projects (project_key, label, aliases_json, repository_url)
+        values (?, ?, '[]', '')
+        on conflict(project_key) do update set label = excluded.label
+        """,
+        (key, project_label or key),
+    )
+    row = connection.execute(
+        "select project_id from ledger_projects where project_key = ?", (key,)
+    ).fetchone()
+    assert row is not None
+    return int(row["project_id"])
+
+
+def _upsert_image_task(
+    connection: sqlite3.Connection,
+    operation,
+    project_id: int,
+) -> None:
+    timestamp = operation.timestamp.isoformat()
+    connection.execute(
+        """
+        insert into ledger_tasks (
+            task_id, parent_task_id, usage_role, title, project_id, cwd,
+            first_seen_at, last_seen_at
+        ) values (?, ?, ?, ?, ?, '', ?, ?)
+        on conflict(task_id) do update set
+            project_id = excluded.project_id,
+            last_seen_at = max(ledger_tasks.last_seen_at, excluded.last_seen_at)
+        """,
+        (
+            operation.task_id,
+            "" if operation.root_task_id == operation.task_id else operation.root_task_id,
+            operation.usage_role,
+            operation.task_id,
+            project_id,
+            timestamp,
+            timestamp,
         ),
     )
 

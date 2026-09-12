@@ -55,6 +55,11 @@ _EVIDENCE_PRECEDENCE = {
     ImageEvidenceSource.SIGNED_C2PA: 2,
     ImageEvidenceSource.ACTIVITY_INFERENCE: 1,
 }
+_CONFIDENCE_PRECEDENCE = {
+    ImageEvidenceConfidence.EXACT: 3,
+    ImageEvidenceConfidence.HIGH: 2,
+    ImageEvidenceConfidence.LOW: 1,
+}
 _API_MODEL = re.compile(
     r"^(?P<family>gpt-image-2(?:\.5)?)(?:-(?P<variant>sunburst|flare))?(?:-\d{4}-\d{2}-\d{2})?$",
     re.IGNORECASE,
@@ -209,7 +214,10 @@ def resolve_image_model_evidence(
 
     selected = max(
         evidence,
-        key=lambda item: (_EVIDENCE_PRECEDENCE[item.source], item.confidence == ImageEvidenceConfidence.EXACT),
+        key=lambda item: (
+            _EVIDENCE_PRECEDENCE[item.source],
+            _CONFIDENCE_PRECEDENCE[item.confidence],
+        ),
     )
     selected_model = selected.normalized
     known_models = [item.normalized for item in evidence if item.normalized.pricing_key is not None]

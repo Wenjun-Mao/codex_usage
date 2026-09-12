@@ -60,14 +60,14 @@ def test_schema_four_is_discarded_instead_of_migrated(tmp_path: Path) -> None:
         assert connection.execute("select count(*) from usage_records").fetchone()[0] == 0
         assert connection.execute(
             "select value from schema_meta where key = 'schema_version'"
-        ).fetchone()[0] == "8"
+        ).fetchone()[0] == "9"
         columns = {
             row[1]: row for row in connection.execute("pragma table_info(usage_records)")
         }
     assert columns["usage_role"][3] == 1
 
 
-def test_schema_six_is_discarded_and_rebuilt_as_eight(tmp_path: Path) -> None:
+def test_schema_six_is_discarded_and_rebuilt_as_nine(tmp_path: Path) -> None:
     db_path = tmp_path / CACHE_DB_NAME
     with sqlite3.connect(db_path) as connection:
         connection.row_factory = sqlite3.Row
@@ -83,7 +83,7 @@ def test_schema_six_is_discarded_and_rebuilt_as_eight(tmp_path: Path) -> None:
     with sqlite3.connect(db_path) as connection:
         assert connection.execute(
             "select value from schema_meta where key = 'schema_version'"
-        ).fetchone() == ("8",)
+        ).fetchone() == ("9",)
 
 
 def test_schema_eight_contains_incremental_and_storage_contract(
@@ -100,10 +100,12 @@ def test_schema_eight_contains_incremental_and_storage_contract(
     assert ("table", "storage_files") in names
     assert ("table", "storage_content_diagnostics") in names
     assert ("table", "transition_candidates") in names
+    assert ("table", "image_operations") in names
     assert ("table", "dirty_transition_tasks") in names
     assert ("index", "usage_records_timestamp_us_idx") in names
     assert ("index", "usage_records_session_timestamp_idx") in names
     assert ("index", "transition_candidates_thread_idx") in names
+    assert ("index", "image_operations_task_idx") in names
     assert ("index", "storage_files_task_idx") in names
     assert ("index", "storage_content_diagnostics_task_idx") in names
 

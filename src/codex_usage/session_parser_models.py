@@ -6,6 +6,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from codex_usage.image_capture_models import (
+    ImageCaptureState,
+    image_capture_state_from_json,
+    image_capture_state_to_json,
+)
 from codex_usage.models import SessionMetadata, TokenUsage
 
 
@@ -22,6 +27,7 @@ class SessionParserState:
     current_turn_id: str
     current_effort: str
     current_mode: str
+    image_capture: ImageCaptureState = ImageCaptureState()
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +65,7 @@ def parser_state_to_json(state: SessionParserState) -> str:
             "current_turn_id": state.current_turn_id,
             "current_effort": state.current_effort,
             "current_mode": state.current_mode,
+            "image_capture": image_capture_state_to_json(state.image_capture),
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -93,6 +100,7 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
         current_turn_id=_text(parsed.get("current_turn_id")),
         current_effort=_text(parsed.get("current_effort")),
         current_mode=_text(parsed.get("current_mode")),
+        image_capture=image_capture_state_from_json(parsed.get("image_capture")),
     )
 
 
