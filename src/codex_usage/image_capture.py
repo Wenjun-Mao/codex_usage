@@ -33,7 +33,6 @@ MAX_IMAGE_METADATA_BYTES = 64 * 1024
 _DIMENSIONS = re.compile(r"^(?P<width>\d{2,5})x(?P<height>\d{2,5})$", re.IGNORECASE)
 _PREFIX_CALL_ID = re.compile(rb'"(?:call_id|tool_call_id|id)"\s*:\s*"([^"\\]{1,256})"')
 _PREFIX_MODEL = re.compile(rb'"model"\s*:\s*"([^"\\]{1,256})"')
-_PREFIX_ERROR = re.compile(rb'"(?:error|status)"\s*:\s*"?(?:error|failed)[^"\\]*"?', re.IGNORECASE)
 
 
 def invocation_from_payload(
@@ -183,7 +182,7 @@ def bounded_result_for_pending(
                 ImageEvidenceConfidence.HIGH,
             ),
         )
-    if _PREFIX_ERROR.search(prefix):
+    if _bounded_failure(prefix):
         return replace(operation, outcome=ImageOutcome.FAILED, evidence=evidence)
     # A partial row cannot prove the number of outputs or complete usage, but a
     # result array is sufficient to settle the invocation without retaining it.
@@ -311,7 +310,7 @@ def _arguments(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _result_mapping(payload: dict[str, Any]) -> dict[str, Any]:
-    for key in ("result", "response"):
+    for key in ("result", "response", "output"):
         if isinstance(payload.get(key), dict):
             return payload[key]
     output = payload.get("output")
@@ -344,7 +343,7 @@ def _dimensions(value: dict[str, Any]) -> tuple[int | None, int | None]:
 
 
 def _output_count(value: dict[str, Any]) -> int | None:
-    direct = _integer(value.get("output_count") or value.get("n"))
+    direct = _integer(_first_present(value, "output_count", "n"))
     if direct is not None:
         return max(0, direct)
     for key in ("data", "images"):
@@ -410,6 +409,32 @@ def _usage_from_mapping(value: dict[str, Any]) -> ImageUsage | None:
 def _failed(value: dict[str, Any]) -> bool:
     status = _text(value.get("status")).casefold()
     return bool(value.get("error")) or status in {"error", "failed", "failure"}
+
+
+def _bounded_failure(prefix: bytes) -> bool:
+    """Recognize a settled error without decoding or retaining a large row."""
+    for value in _bounded_field_values(prefix, "error"):
+        if not value.startswith((b"null", b"false", b'""', b'\\"\\"')):
+            return True
+    return any(
+        value.startswith((b'"error', b'"failed', b'"failure', b'\\"error', b'\\"failed', b'\\"failure'))
+        for value in _bounded_field_values(prefix, "status")
+    )
+
+
+def _bounded_field_values(prefix: bytes, field: str) -> tuple[bytes, ...]:
+    """Return field-value prefixes for plain or JSON-string-escaped rows."""
+    lowered = prefix.lower()
+    key = field.encode("ascii")
+    values: list[bytes] = []
+    for marker in (b'"' + key + b'"', b'\\"' + key + b'\\"'):
+        offset = lowered.find(marker)
+        if offset < 0:
+            continue
+        remainder = lowered[offset + len(marker) :].lstrip()
+        if remainder.startswith(b":"):
+            values.append(remainder[1:].lstrip())
+    return tuple(values)
 
 
 def _append_evidence(

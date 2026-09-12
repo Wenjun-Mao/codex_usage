@@ -9,7 +9,7 @@ from codex_usage.agent_paths import ledger_database_path
 from codex_usage.image_models import ImageOperationKind, ImageOutcome
 from codex_usage.ledger_migration import LegacyCacheCandidate, migrate_legacy_caches
 from codex_usage.ledger_migration_source import legacy_cache_digest
-from codex_usage.ledger_queries import load_ledger_image_operations
+from codex_usage.ledger_queries import load_ledger_image_operations, load_ledger_records
 from codex_usage.ledger_schema import open_ledger
 from codex_usage.parser import parse_session_append, parse_session_generation
 from codex_usage.session_cache import CACHE_DB_NAME, load_cached_session_data
@@ -128,6 +128,59 @@ def test_incomplete_image_result_and_direct_events_preserve_operation_contract(
     ]
 
 
+def test_mapping_result_preserves_an_explicit_zero_output_count(tmp_path: Path) -> None:
+    path = tmp_path / "mapping-result.jsonl"
+    rows = [
+        _session_meta("task-mapping"),
+        _turn_context(),
+        _image_call("call-mapping", "secret"),
+        {
+            "timestamp": "2026-09-12T10:00:03Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call-mapping",
+                "output": {"output_count": 0, "n": 2, "status": "succeeded"},
+            },
+        },
+    ]
+    path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
+
+    parsed = parse_session_generation(path)
+
+    assert [(item.outcome, item.output_count) for item in parsed.image_operations] == [
+        (ImageOutcome.ATTEMPTED, 0),
+        (ImageOutcome.SUCCEEDED, 0),
+    ]
+
+
+def test_large_escaped_error_result_settles_a_pending_image_call(tmp_path: Path) -> None:
+    path = tmp_path / "large-error.jsonl"
+    detail = "a" * 2_000_000
+    rows = [
+        _session_meta("task-large-error"),
+        _turn_context(),
+        _image_call("call-large-error", "secret"),
+        {
+            "timestamp": "2026-09-12T10:00:03Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call-large-error",
+                "output": json.dumps({"error": "generation failed", "detail": detail}),
+            },
+        },
+    ]
+    path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
+
+    parsed = parse_session_generation(path)
+
+    assert [item.outcome for item in parsed.image_operations] == [
+        ImageOutcome.ATTEMPTED,
+        ImageOutcome.FAILED,
+    ]
+
+
 def test_targeted_legacy_backfill_recovers_image_operations(tmp_path: Path) -> None:
     sessions = tmp_path / "legacy" / "sessions" / "2026" / "09" / "12"
     sessions.mkdir(parents=True)
@@ -205,6 +258,40 @@ def test_capture_persists_only_image_metadata_and_updates_retry_in_place(tmp_pat
         ("call-1", "succeeded", 1),
         ("call-2", "failed", 0),
         ("call-3", "succeeded", 3),
+    ]
+
+
+def test_image_capture_keeps_language_ledger_rows_unchanged(tmp_path: Path) -> None:
+    home = tmp_path / ".codex"
+    directory = home / "sessions" / "2026" / "09" / "12"
+    directory.mkdir(parents=True)
+    path = directory / "rollout-task-language.jsonl"
+    rows = [
+        _session_meta("task-language"),
+        _turn_context(),
+        _token_count(125),
+        _image_call("call-language", "secret"),
+        _image_result("call-language", count=1),
+    ]
+    path.write_text("".join(f"{json.dumps(row)}\n" for row in rows), encoding="utf-8")
+
+    assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
+    ledger = ledger_database_path(home)
+
+    assert [record.usage.to_dict() for record in load_ledger_records(ledger)] == [
+        {
+            "input_tokens": 125,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "uncached_input_tokens": 125,
+            "ordinary_input_tokens": 125,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 125,
+        }
+    ]
+    assert [(operation.tool_call_id, operation.usage.image_output_tokens) for operation in load_ledger_image_operations(ledger)] == [
+        ("call-language", 20)
     ]
 
 
@@ -306,5 +393,25 @@ def _image_failure(call_id: str) -> dict[str, object]:
             "type": "function_call_output",
             "call_id": call_id,
             "output": json.dumps({"status": "failed", "error": "generation failed"}),
+        },
+    }
+
+
+def _token_count(total_tokens: int) -> dict[str, object]:
+    return {
+        "timestamp": "2026-09-12T10:00:01Z",
+        "type": "event_msg",
+        "payload": {
+            "type": "token_count",
+            "info": {
+                "total_token_usage": {
+                    "input_tokens": total_tokens,
+                    "cached_input_tokens": 0,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 0,
+                    "reasoning_output_tokens": 0,
+                    "total_tokens": total_tokens,
+                }
+            },
         },
     }
