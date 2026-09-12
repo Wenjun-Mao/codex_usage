@@ -11,6 +11,8 @@ from typing import TextIO
 from codex_usage.aggregation import AggregateRow, UsageSummary
 from codex_usage.agent_activity import AgentActivity
 from codex_usage.report_agent_activity import render_agent_activity_section
+from codex_usage.image_reporting import ImageReport
+from codex_usage.report_images import image_activity_css, render_image_activity_section
 from codex_usage.charts import (
     render_hourly_heatmap_html,
     render_model_mix_chart,
@@ -171,6 +173,7 @@ def render_html_report(
     embedded_usage_only: bool = False,
     agent_activity: AgentActivity | None = None,
     project_economics: ProjectEconomicsReport | None = None,
+    image_report: ImageReport | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     theme = normalize_report_theme(theme)
@@ -212,6 +215,7 @@ def render_html_report(
             pricing_notice_html=pricing_notice_html,
             project_transitions_html=project_transitions_html,
             agent_activity=agent_activity,
+            image_report=image_report,
         ),
     )
     storage_view_html = render_report_view(STORAGE_REPORT_VIEW, task_storage_html)
@@ -241,6 +245,7 @@ def render_html_report(
   <style>
 {report_css()}
 {project_economics_css()}
+{image_activity_css()}
   </style>
 </head>
 <body>
@@ -262,6 +267,7 @@ def _render_usage_view(
     pricing_notice_html: str,
     project_transitions_html: str,
     agent_activity: AgentActivity | None,
+    image_report: ImageReport | None,
 ) -> str:
     temporal_chart = render_temporal_chart(
         view_model, range_name, use_period_trend=use_period_trend
@@ -277,6 +283,7 @@ def _render_usage_view(
         f"{_empty_report_notice(view_model)}"
         f"{project_transitions_html}"
         f"{render_project_economics_section(view_model.project_economics)}"
+        f"{render_image_activity_section(image_report)}"
         '<div class="dashboard-grid">'
         f"{temporal_chart}"
         f"{_chart_section('Hourly Heatmap', render_hourly_heatmap_html(view_model.hourly_cells), render_aggregate_table('Hourly Details', view_model.hourly_rows, section_id='hourly-details'), section_id='hourly-heatmap', scroll_class='heatmap-chart-scroll')}"

@@ -464,7 +464,7 @@ function controlState(): Pick<Parameters<typeof decorateUsageReport>[1], "range"
     range: selectedRange === "custom" ? customRangeLabel() : rangeLabel(selectedRange),
     theme: reportTheme(),
     projectCount: selectedProjects().length,
-    version: String(contextRef.extension.packageJSON.version ?? "2.6.0"),
+    version: String(contextRef.extension.packageJSON.version ?? "2.7.0"),
     lastCaptureAt: latestStatus?.last_capture_at ?? "",
   };
 }

@@ -234,7 +234,11 @@ class CodexUsageAgent:
                     self._clock()
                 ),
                 "dirty_paths": len(self._dirty_paths.snapshot()),
-                "capabilities": ["custom-report-range", "agent-activity"],
+                "capabilities": [
+                    "custom-report-range",
+                    "agent-activity",
+                    "image-reporting",
+                ],
             }
         )
         return status

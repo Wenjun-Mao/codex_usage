@@ -32,7 +32,7 @@ function appState(): AppState {
       last_capture_at: "2026-09-02T12:00:00Z",
       last_capture_outcome: "success",
       last_capture_error: "",
-      capabilities: ["custom-report-range", "agent-activity"],
+      capabilities: ["custom-report-range", "agent-activity", "image-reporting"],
       coverage: {
         complete: true,
         fraction: 1,

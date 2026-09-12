@@ -42,6 +42,8 @@ an unidentified-developer or unknown-publisher warning.
 - Filter Usage by preset or inclusive custom local-calendar range and project,
   switch theme, review verified project transitions, and export complete Agent
   Activity CSV rows through the VS Code save dialog.
+- Review global, model, and expandable project Image Generation activity without
+  mixing it into language token or cost totals.
 - Inspect current Task Storage and explicitly analyze one selected task tree.
 - Import, export, or review selected active tasks through Task Transfer.
 - See last capture, pending work, stale-source warnings, and ledger revision in
@@ -114,6 +116,12 @@ project/task/turn identities define turns; blank turn IDs remain in totals and
 coverage, while unpriced turns are excluded only from cost denominators.
 Detailed Token Accounting is collapsed by default, and **Cache Write
 (reported)** is copied from the ledger rather than inferred or reconstructed.
+
+Image Generation reporting uses only durable image-event metadata. It keeps
+operations, outputs, model evidence, exact values, and unpriced coverage
+separate from language accounting; prompts, paths, bytes, and image contents
+are not retained. Unknown or conflicting model evidence is shown as unpriced
+rather than estimated.
 
 Pricing is bundled and effective-dated. GPT-6 Astra is recognized by its exact
 model ID, including cache-write and long-context API pricing. Credit estimates

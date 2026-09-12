@@ -23,6 +23,7 @@ from codex_usage.agent_activity import agent_activity_csv, build_agent_activity
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.ledger_queries import (
     LedgerStatus,
+    query_ledger_image_operations,
     query_ledger_records,
     query_ledger_status,
     query_ledger_task_graph,
@@ -31,14 +32,18 @@ from codex_usage.ledger_queries import (
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.parser import finalize_session_records
 from codex_usage.pricing import PRICING_AS_OF
+from codex_usage.image_pricing import IMAGE_PRICING_REVISION
+from codex_usage.image_reporting import build_image_report
 from codex_usage.project_economics import build_project_economics
 from codex_usage.project_transitions import apply_project_transitions
 from codex_usage.report_breakdown import build_report_breakdown_from_valued
 from codex_usage.reporting import render_html_report
 
 
-PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}:bedrock-in-region-v1"
-REPORT_RENDER_REVISION = 6
+PRICING_REVISION = (
+    f"{PRICING_AS_OF}:{__version__}:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
+)
+REPORT_RENDER_REVISION = 7
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +123,11 @@ def render_ledger_report(
         records = finalize_session_records(
             [query_ledger_records(connection, bounds=report_range.bounds)]
         )
+        image_operations = query_ledger_image_operations(
+            connection,
+            bounds=report_range.bounds,
+            project_keys=normalized_keys,
+        )
         task_graph = query_ledger_task_graph(connection)
         transitions = (
             query_ledger_transitions(connection) if auto_transitions else []
@@ -148,6 +158,7 @@ def render_ledger_report(
             hourly_rows=aggregate_valued_records(valued, "hour", timezone),
             breakdown=build_report_breakdown_from_valued(valued),
             project_economics=build_project_economics(valued),
+            image_report=build_image_report(image_operations),
             sessions_dirs=[],
             files_scanned=int(source_counts["total"] or 0),
             files_archived=int(source_counts["archived"] or 0),

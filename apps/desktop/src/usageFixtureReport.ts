@@ -73,6 +73,9 @@ body {
 .section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 h2 { margin: 0 0 4px; font-size: 17px; }
 .help { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.image-activity-heading { display: flex; justify-content: space-between; gap: 12px; }
+.image-activity-source { display: inline-block; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; font-weight: 700; line-height: 1.2; padding: 3px 7px; white-space: nowrap; }
+.image-activity-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }.image-activity-metrics > div { padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }.image-activity-metrics dt, .image-activity-metrics small { color: var(--muted); font-size: 10px; }.image-activity-metrics dd { margin: 2px 0 0; font-size: 14px; font-weight: 700; }.image-activity-metrics small { display: block; margin-top: 3px; }
 .project-economics-heading { display: flex; justify-content: space-between; gap: 12px; }
 .project-economics-heading p { max-width: 760px; }
 .economics-source, .sample-badge { display: inline-block; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; font-weight: 700; line-height: 1.2; padding: 3px 7px; white-space: nowrap; }
@@ -192,6 +195,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       <span class="trend-bar" tabindex="0" data-label="Sep 2026" style="--height:31%"><span class="trend-tooltip">Sep 1–30, 2026 · $64.27 · 132.8M tokens</span></span>
     </div></div>
   </div></div>
+</section>
+<section class="section image-activity" data-report-section="image-activity" aria-labelledby="image-activity-heading">
+  <div class="image-activity-heading"><div><h2 id="image-activity-heading">Image Generation</h2><p class="help">Ledger-only image operations. Image values are separate from language tokens, costs, and Project Economics; prompts and image contents are never retained.</p></div><span class="image-activity-source">Separate accounting</span></div>
+  <dl class="image-activity-metrics"><div><dt>Operations</dt><dd>19</dd></div><div><dt>Outputs</dt><dd>31</dd></div><div><dt>Succeeded</dt><dd>17</dd><small>2 failed</small></div><div><dt>API equivalent</dt><dd>exact $0.4350</dd><small>3 unpriced</small></div></dl>
+  <div class="table-wrap"><table><thead><tr><th>Model evidence</th><th class="num">Operations</th><th class="num">Outputs</th><th class="num">API equivalent</th><th class="num">Codex credits</th></tr></thead><tbody><tr><th>GPT Image 2</th><td class="num">12</td><td class="num">22</td><td class="num">exact $0.4350</td><td class="num">exact credits 10.8750</td></tr><tr><th>GPT Image 2.5 Sunburst</th><td class="num">7</td><td class="num">9</td><td class="num">3 unpriced</td><td class="num">3 unpriced</td></tr></tbody></table></div>
 </section>
 <section class="section agent-activity">
   <h2>Agent Activity</h2>

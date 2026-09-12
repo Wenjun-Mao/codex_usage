@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 2.7.0 - 2026-09-12 - Image Generation Accounting
+
+- Added accessible global, model, and expandable project Image Generation
+  reporting from durable ledger events, separate from language tokens, costs,
+  credits, and Project Economics.
+- Valued only complete, non-conflicting upstream image telemetry using the
+  effective-dated image schedule; unresolved or conflicting evidence remains
+  visible as unpriced coverage.
+- Added the additive `image-reporting` collector capability and refreshed the
+  native Marketplace fixture and screenshot around the new content-free view.
+
 ## 2.6.0 - 2026-09-10 - Project Economics And Reported Cache Writes
 
 - Added ledger-only Project Economics with distinct project/task/turn and

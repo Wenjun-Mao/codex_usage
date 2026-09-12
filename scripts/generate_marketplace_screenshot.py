@@ -140,7 +140,7 @@ def capture_marketplace_screenshots(
             _reject_private_fixture_data(page)
             _exercise_theme_modes(page, view="usage")
             _exercise_usage_chart_controls(page)
-            page.frame_locator("#usage-report").locator(".project-economics").evaluate(
+            page.frame_locator("#usage-report").locator(".image-activity").evaluate(
                 "element => element.scrollIntoView({block: 'start'})"
             )
             page.wait_for_timeout(100)
@@ -218,6 +218,13 @@ def _exercise_usage_chart_controls(page: Page) -> None:
     month_control = frame.locator("#cost-trend-month")
     project_economics = frame.locator(".project-economics-project").first
     token_accounting = frame.locator(".token-accounting").first
+    image_activity = frame.locator(".image-activity")
+
+    if not image_activity.is_visible():
+        raise RuntimeError("usage fixture is missing Image Generation reporting")
+    image_activity.get_by_role("heading", name="Image Generation", exact=True).wait_for()
+    if "Separate accounting" not in image_activity.inner_text():
+        raise RuntimeError("image reporting fixture lost its separate-accounting disclosure")
 
     for theme in ("day", "night"):
         page.evaluate(

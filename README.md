@@ -25,6 +25,9 @@ OpenAI API.
   Month** cost view inside the rendered report.
 - **Agent Activity:** inspect daily token and response deltas plus the top 50
   agents in the dashboard, then export every selected agent-day row to CSV.
+- **Image Generation:** inspect global, model, and project image operations
+  separately from language tokens and costs; incomplete or conflicting billing
+  evidence remains explicitly unpriced.
 - **Honest accounting:** Project Breakdown separates root tasks from structured
   subagents and stacks each role by model. Side chats remain disclosed under
   their parent root task when Codex stores no durable discriminator.
@@ -107,6 +110,8 @@ Open **Usage** to review:
   host-saved CSV for the selected range and project filter;
 - ledger-only Project Economics with weighted all-project benchmarks plus
   project and model turn cost, density, coverage, and small-sample context;
+- ledger-only Image Generation operations, outputs, model evidence, and
+  expandable project coverage, with image values never added to language totals;
 - project totals and project transitions;
 - root-task versus structured-subagent usage, split again by model;
 - exact model details, including unknown or currently unpriced usage.
@@ -132,6 +137,9 @@ Date, Agent Activity, export, and project changes query SQLite; chart-only contr
 capturing task files; **Capture Usage** is the separate action that updates the
 ledger. The report shows generation time and whether its rendered-result cache was used.
 Pricing is bundled and effective-dated; the app makes no live pricing request.
+Image pricing is similarly effective-dated and applies only when retained
+upstream usage and model evidence support it; image prompts, paths, bytes, and
+contents are not stored in the ledger.
 The bundled table recognizes GPT-6 Astra, including its cache-write and
 long-context API rates, from the first verified availability date. Credit
 estimates use published standard token rates; Codex Usage does not infer
