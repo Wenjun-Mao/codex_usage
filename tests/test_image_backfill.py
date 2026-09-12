@@ -10,8 +10,10 @@ from image_capture_test_support import session_meta, token_count, turn_context
 from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.image_backfill import run_image_backfill_slice
+from codex_usage.image_capture_payloads import kind_from_mapping
 from codex_usage.ledger_schema import open_ledger
 from codex_usage.image_capture_payloads import has_reference_inputs
+from codex_usage.image_models import ImageOperationKind
 
 
 def test_null_reference_options_remain_fresh_generation() -> None:
@@ -21,6 +23,26 @@ def test_null_reference_options_remain_fresh_generation() -> None:
             "num_last_images_to_include": None,
         }
     )
+
+
+def test_live_sample_shape_reconciles_six_fresh_and_four_reference_edits() -> None:
+    fixture = [
+        {},
+        {},
+        {"referenced_image_paths": None, "num_last_images_to_include": None},
+        {"referenced_image_paths": None, "num_last_images_to_include": None},
+        {"referenced_image_paths": None, "num_last_images_to_include": None},
+        {"referenced_image_paths": None, "num_last_images_to_include": None},
+        {"num_last_images_to_include": 1},
+        {"num_last_images_to_include": 1},
+        {"referenced_image_paths": [True]},
+        {"referenced_image_paths": [True]},
+    ]
+
+    kinds = [kind_from_mapping(arguments) for arguments in fixture]
+
+    assert kinds.count(ImageOperationKind.GENERATE) == 6
+    assert kinds.count(ImageOperationKind.EDIT_REFERENCE) == 4
 
 
 def test_scheduled_artifact_first_backfill_preserves_language_ledger(

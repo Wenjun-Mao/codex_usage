@@ -90,6 +90,14 @@ word “imagegen” as activity. It retains only call identity and non-content
 metadata, and uses the exact generated-artifact basename solely to read a
 bounded PNG header and signed C2PA software-agent assertion.
 
+The bounded 2026-09-12 live acceptance fixture reconciles ten successful calls
+and ten outputs across two projects: six fresh generations and four
+reference/edit operations. Classification depends on effective reference
+inputs, not mere option-key presence. A nonempty reference path collection or
+a positive prior-image count is an edit; explicit `null` reference options are
+a fresh generation. The fixture is observational evidence, not a special-case
+classifier rule.
+
 Upgrades preserve the schema-8 language cache and its parser checkpoints.
 Historical image recovery is a separate, resumable artifact-first backfill:
 validated generated-image directories nominate task IDs, only the exact owning
