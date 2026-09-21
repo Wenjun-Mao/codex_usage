@@ -169,3 +169,35 @@ def test_complete_unterminated_final_row_is_recovered(tmp_path):
     assert len(points) == 1 and consumed == path.stat().st_size
     path.write_text(json.dumps(row())[:-4])
     assert bounded_observations(path, path.stat().st_size)[0] == []
+
+
+def test_registered_unparsed_source_recovers_then_known_identity_is_rechecked(tmp_path):
+    path = tmp_path / "source"
+    write(path, [row()])
+    with open_ledger(tmp_path / "ledger") as connection:
+        register(connection, path)
+        connection.execute("update ledger_sources set source_device='0', source_inode='0'")
+        assert recover_allowance(connection) == path.stat().st_size
+        assert connection.execute("select status from quota_recovery").fetchone()[0] == "complete"
+        register(connection, path)
+        assert recover_allowance(connection) == path.stat().st_size
+        assert connection.execute("select count(*) from quota_observations").fetchone()[0] == 1
+        assert recover_allowance(connection) == 0
+
+
+def test_inode_replacement_with_same_size_and_mtime_is_recovered(tmp_path):
+    import os
+    path = tmp_path / "source"
+    write(path, [row(used=31)])
+    with open_ledger(tmp_path / "ledger") as connection:
+        register(connection, path)
+        recover_allowance(connection)
+        old = path.stat()
+        replacement = tmp_path / "replacement"
+        write(replacement, [row(used=32)])
+        os.utime(replacement, ns=(old.st_atime_ns, old.st_mtime_ns))
+        replacement.replace(path)
+        assert path.stat().st_ino != old.st_ino
+        register(connection, path)
+        assert recover_allowance(connection) == path.stat().st_size
+        assert connection.execute("select count(*) from quota_observations").fetchone()[0] == 2

@@ -13,8 +13,8 @@ from codex_usage.allowance_windows import segment_windows
 def allowance_status(connection):
     read = connection.execute("select * from quota_reads order by read_id desc limit 1").fetchone()
     recovered = connection.execute("""select count(*) total,
-        sum(r.status = 'complete' and r.size_bytes = s.size_bytes and r.mtime_ns = s.mtime_ns) complete,
-        sum(r.status = 'unavailable' and r.size_bytes = s.size_bytes and r.mtime_ns = s.mtime_ns) unavailable
+        sum(r.status = 'complete' and r.size_bytes = s.size_bytes and r.mtime_ns = s.mtime_ns and r.source_device = s.source_device and r.source_inode = s.source_inode) complete,
+        sum(r.status = 'unavailable' and r.size_bytes = s.size_bytes and r.mtime_ns = s.mtime_ns and r.source_device = s.source_device and r.source_inode = s.source_inode) unavailable
         from ledger_sources s left join quota_recovery r using(source_key)""").fetchone()
     observed_read = connection.execute("""
         select r.* from quota_reads r where exists (

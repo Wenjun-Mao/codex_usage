@@ -15,9 +15,12 @@ def bounded_observations(path: Path, size: int, *, expected=None):
     consumed = 0
     with path.open("rb") as stream:
         before = os.fstat(stream.fileno())
-        if before.st_size != size or (expected is not None and expected != (
-            str(before.st_dev), str(before.st_ino), before.st_mtime_ns
-        )):
+        changed = expected is not None and (
+            before.st_mtime_ns != expected[2]
+            or (expected[0] not in {"", "0"} and str(before.st_dev) != expected[0])
+            or (expected[1] not in {"", "0"} and str(before.st_ino) != expected[1])
+        )
+        if before.st_size != size or changed:
             raise OSError("source_changed")
         ranges = [(0, size)] if size <= 2 * END_BYTES else [(0, END_BYTES), (size - END_BYTES, END_BYTES)]
         for offset, length in ranges:
@@ -50,6 +53,7 @@ def recover_allowance(connection, *, budget=RECOVERY_BUDGET):
     rows = connection.execute("""
         select s.* from ledger_sources s left join quota_recovery r using(source_key)
         where r.source_key is null or r.size_bytes != s.size_bytes or r.mtime_ns != s.mtime_ns
+           or r.source_device != s.source_device or r.source_inode != s.source_inode
         order by s.mtime_ns desc, s.source_key
     """).fetchall()
     for row in rows:
@@ -66,7 +70,8 @@ def recover_allowance(connection, *, budget=RECOVERY_BUDGET):
             status = "unavailable"
         consumed += read_bytes
         store_observations(connection, points, source_key=row["source_key"], provenance="recovered")
-        connection.execute("insert or replace into quota_recovery values (?,?,?,?,?,?)", (
+        connection.execute("insert or replace into quota_recovery values (?,?,?,?,?,?,?,?)", (
             row["source_key"], row["size_bytes"], row["mtime_ns"], status, read_bytes, len(points),
+            row["source_device"], row["source_inode"],
         ))
     return consumed

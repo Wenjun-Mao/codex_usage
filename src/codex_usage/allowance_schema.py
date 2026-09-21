@@ -22,7 +22,8 @@ def create_allowance_schema(connection: sqlite3.Connection) -> None:
         """create table quota_recovery (
             source_key text primary key, size_bytes integer not null,
             mtime_ns integer not null, status text not null,
-            bytes_read integer not null, observations integer not null)""",
+            bytes_read integer not null, observations integer not null,
+            source_device text not null, source_inode text not null)""",
     ):
         connection.execute(sql)
 

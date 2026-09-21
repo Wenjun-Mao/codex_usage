@@ -31,7 +31,9 @@ allowlisted rate_limits metadata. Registered historical sources recover newest
 first using complete files up to 128 KiB or at most 64 KiB from each endpoint.
 Partial boundary lines are discarded. Each capture spends at most 8 MiB in the
 existing coalesced heavy-I/O lane. Source fingerprints persist resume progress;
-changed sources are reconsidered. Repeated recovered states use compressed
+changed sources are reconsidered. Device/inode transitions also invalidate
+recovery state. Unknown pre-parser identities are not treated as mismatches;
+size/mtime and the open-file identity guards still protect endpoint reads. Repeated recovered states use compressed
 unique timestamps and retain source provenance, allowing future analysis without
 another source scan. Endpoint recovery is always disclosed as partial history.
 
