@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 2.8.0 - 2026-09-21
+
+- Add account-wide Plan Allowance capture, bounded historical quota recovery,
+  and confidence-gated observed API-equivalent allowance estimates.
+- Read plan/rate-limit/usage metadata without starting a model turn; isolate
+  probe failures and preserve content-free capture diagnostics.
+- Preserve existing ledger and parser data through backup-protected migrations;
+  report interactions remain ledger-only.
+- Show active buckets, qualified completed-window trends, and nested reset-window
+  and capture details in Day/Night layouts.
+
 ## 2.7.1 - 2026-09-12 - Fair Image Recovery
 
 - Made historical image recovery serve the newest unserved artifact owners

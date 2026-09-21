@@ -41,6 +41,7 @@ export interface AgentStatus {
   last_capture_error: string;
   capabilities?: string[];
   coverage: Coverage;
+  plan_allowance?: PlanAllowanceStatus;
   image_backfill?: {
     status: string;
     complete: boolean;
@@ -171,4 +172,25 @@ export interface UpdateInfo {
   version: string;
   date: string | null;
   body: string | null;
+}
+
+export interface PlanAllowanceStatus {
+  plan: string;
+  active_buckets: Array<{
+    limit_id: string;
+    slot: string;
+    plan: string;
+    used_percent: number;
+    duration_minutes: number | null;
+    resets_at: number | null;
+    reset_credits: number | null;
+    timestamp: string;
+  }>;
+  last_probe_at: string;
+  last_observed_at: string;
+  probe_age_seconds: number | null;
+  probe_status: "fresh" | "stale" | "partial" | "unavailable";
+  diagnostics: string;
+  lifetime_tokens: number | null;
+  recovery: { total: number; complete: number; unavailable: number; pending: number };
 }

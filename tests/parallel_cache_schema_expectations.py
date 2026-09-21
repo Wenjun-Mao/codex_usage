@@ -3,10 +3,10 @@ from __future__ import annotations
 type SchemaObject = tuple[str, str, str, str]
 
 EXPECTED_SCHEMA_META = (
-    ("parser_version", "7"),
+    ("parser_version", "8"),
     ("project_transition_version", "2"),
     ("project_transitions_dirty", "1"),
-    ("schema_version", "9"),
+    ("schema_version", "10"),
     ("storage_metadata_version", "2"),
 )
 EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
@@ -25,6 +25,7 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
     ("index", "sqlite_autoindex_files_1", "files", ""),
     ("index", "sqlite_autoindex_image_operations_1", "image_operations", ""),
     ("index", "sqlite_autoindex_parser_checkpoints_1", "parser_checkpoints", ""),
+    ("index", "sqlite_autoindex_quota_cache_1", "quota_cache", ""),
     ("index", "sqlite_autoindex_schema_meta_1", "schema_meta", ""),
     ("index", "sqlite_autoindex_session_metadata_1", "session_metadata", ""),
     (
@@ -119,6 +120,7 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
         "source_label text not null, target_key text not null, target_label text not null, effective_from text not null, "
         "confidence integer not null, evidence_json text not null, thread_ids_json text not null )",
     ),
+    ("table", "quota_cache", "quota_cache", "CREATE TABLE quota_cache ( file_key text not null, observation_key text not null, observation_json text not null, primary key (file_key, observation_key))"),
     (
         "table",
         "schema_meta",

@@ -1,18 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import socket
 import subprocess
-import time
-from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Iterator
-from urllib.error import URLError
-from urllib.request import urlopen
 
 from playwright.sync_api import Page, sync_playwright
 
+from codex_usage.marketplace_preview import preview_server
 from codex_usage.marketplace_screenshot_validation import validate_screenshot
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -75,7 +70,7 @@ def _render_capture_and_validate(
     storage_path: Path,
 ) -> None:
     _build_frontend()
-    with _preview_server() as url:
+    with preview_server(DESKTOP_ROOT) as url:
         capture_marketplace_screenshots(url, usage_paths, storage_path)
     for (_theme, size), path in usage_paths.items():
         validate_screenshot(path, NARROW_VIEWPORT if size == "narrow" else VIEWPORT)
@@ -83,63 +78,13 @@ def _render_capture_and_validate(
 
 
 def _build_frontend() -> None:
+    from allowance_fixture import write_fixture
+    write_fixture(REPOSITORY_ROOT)
     subprocess.run(
         ["npm", "run", "build"],
         cwd=DESKTOP_ROOT,
         check=True,
     )
-
-
-@contextmanager
-def _preview_server() -> Iterator[str]:
-    port = _unused_loopback_port()
-    url = f"http://127.0.0.1:{port}"
-    process = subprocess.Popen(
-        [
-            "npm",
-            "exec",
-            "vite",
-            "preview",
-            "--",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--strictPort",
-        ],
-        cwd=DESKTOP_ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
-    )
-    try:
-        deadline = time.monotonic() + 20
-        while time.monotonic() < deadline:
-            if process.poll() is not None:
-                raise RuntimeError(
-                    "native frontend preview exited before becoming ready"
-                )
-            try:
-                with urlopen(url, timeout=0.5) as response:  # noqa: S310
-                    if response.status == 200:
-                        break
-            except (URLError, OSError):
-                time.sleep(0.1)
-        else:
-            raise RuntimeError("native frontend preview did not become ready")
-        yield url
-    finally:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-
-
-def _unused_loopback_port() -> int:
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        return int(listener.getsockname()[1])
 
 
 def capture_marketplace_screenshots(
@@ -166,8 +111,8 @@ def capture_marketplace_screenshots(
             _reject_private_fixture_data(page)
             _exercise_theme_modes(page, view="usage")
             _exercise_usage_chart_controls(page)
-            page.frame_locator("#usage-report").locator(".image-activity").evaluate(
-                "element => element.scrollIntoView({block: 'start'})"
+            page.frame_locator("#usage-report").locator(".plan-allowance").evaluate(
+                "element => { element.ownerDocument.scrollingElement.scrollTop = element.offsetTop; }"
             )
             page.wait_for_timeout(100)
             for theme in ("day", "night"):
@@ -183,8 +128,8 @@ def capture_marketplace_screenshots(
                     _set_viewport(page, viewport)
                     _validate_layout(page, view="usage", viewport=viewport)
                     page.frame_locator("#usage-report").locator(
-                        ".image-activity"
-                    ).evaluate("element => element.scrollIntoView({block: 'start'})")
+                        ".plan-allowance"
+                    ).evaluate("element => { element.ownerDocument.scrollingElement.scrollTop = element.offsetTop; }")
                     page.wait_for_timeout(100)
                     page.screenshot(
                         path=str(usage_paths[(theme, size)]),

@@ -19,6 +19,7 @@ from codex_usage.aggregation import (
     summarize_valued_records,
     value_records,
 )
+from codex_usage.allowance_queries import build_allowance_report
 from codex_usage.agent_activity import agent_activity_csv, build_agent_activity
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.ledger_queries import (
@@ -43,7 +44,7 @@ from codex_usage.reporting import render_html_report
 PRICING_REVISION = (
     f"{PRICING_AS_OF}:{__version__}:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
 )
-REPORT_RENDER_REVISION = 8
+REPORT_RENDER_REVISION = 9
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +110,7 @@ def render_ledger_report(
             theme,
             str(timezone),
             auto_transitions,
+            status.plan_allowance.get("probe_status", "unavailable"),
         )
         cached = _load_cached_report(connection, cache_key)
         if cached is not None:
@@ -120,6 +122,7 @@ def render_ledger_report(
                 status=status,
             )
 
+        allowance_report = build_allowance_report(connection, coverage_complete=status.coverage.complete)
         records = finalize_session_records(
             [query_ledger_records(connection, bounds=report_range.bounds)]
         )
@@ -156,6 +159,7 @@ def render_ledger_report(
             hourly_rows=aggregate_valued_records(valued, "hour", timezone),
             breakdown=build_report_breakdown_from_valued(valued),
             project_economics=build_project_economics(valued),
+            allowance_report=allowance_report,
             image_report=build_image_report(
                 image_operations,
                 coverage=ImageReportCoverage(
@@ -265,12 +269,14 @@ def _report_cache_key(
     theme: str,
     timezone: str,
     auto_transitions: bool,
+    probe_freshness: str = "unavailable",
 ) -> str:
     payload = json.dumps(
         {
             "ledger_revision": revision,
             "pricing_revision": PRICING_REVISION,
             "report_render_revision": REPORT_RENDER_REVISION,
+            "probe_freshness": probe_freshness,
             "range": range_identity,
             "project_keys": project_keys,
             "theme": theme,

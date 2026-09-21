@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from codex_usage.allowance_queries import allowance_status
 from codex_usage.aggregation import RangeBounds
 from codex_usage.agent_activity import LedgerTask
 from codex_usage.ledger_schema import ledger_revision, open_ledger
@@ -97,6 +98,7 @@ class LedgerStatus:
     last_capture_error: str
     coverage: LedgerCoverage
     image_backfill: ImageBackfillCoverage = ImageBackfillCoverage()
+    plan_allowance: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -106,6 +108,7 @@ class LedgerStatus:
             "last_capture_error": self.last_capture_error,
             "coverage": self.coverage.to_dict(),
             "image_backfill": self.image_backfill.to_dict(),
+            "plan_allowance": self.plan_allowance,
         }
 
 
@@ -239,6 +242,7 @@ def query_ledger_status(connection: sqlite3.Connection) -> LedgerStatus:
         last_capture_error=str(capture["error"] or "") if capture else "",
         coverage=coverage,
         image_backfill=_image_backfill_coverage(connection),
+        plan_allowance=allowance_status(connection),
     )
 
 

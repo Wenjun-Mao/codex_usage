@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 
+from codex_usage.allowance_capture import capture_quota_read, recover_captured_allowance
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.image_backfill import run_image_backfill
 from codex_usage.ledger_queries import LedgerStatus, load_ledger_status
@@ -78,6 +79,7 @@ def capture_once(
     run_id = _begin_capture(ledger_path, request_kind)
     stats = CacheStats()
     try:
+        capture_quota_read(codex_home, ledger_path, run_id)
         outcome = refresh_cached_session_data(
             session_dirs_for_home(codex_home),
             cache_database_path=ledger_path,
@@ -99,6 +101,7 @@ def capture_once(
             force_normalized_ownership=bool(outcome.rebased_project_task_ids),
             force_image_events=backfill.changed,
         )
+        revision = recover_captured_allowance(ledger_path)
         status = load_ledger_status(ledger_path)
         _complete_capture(
             ledger_path,

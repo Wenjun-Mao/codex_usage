@@ -219,7 +219,9 @@ jobs:
           cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - name: Verify native Marketplace screenshots
-        run: uv run python scripts/generate_marketplace_screenshot.py --check
+        run: |
+          uv run python scripts/generate_marketplace_screenshot.py --check
+          uv run python scripts/check_allowance_ui.py
 
       - name: Build unsigned native preview
         working-directory: apps/desktop

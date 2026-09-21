@@ -22,6 +22,8 @@ from codex_usage.charts import (
     render_project_breakdown_chart,
 )
 from codex_usage.pricing import PRICING_AS_OF, PRICING_METHOD
+from codex_usage.report_transitions import _project_transitions_section
+from codex_usage.report_allowance import allowance_css, render_allowance_section
 from codex_usage.project_economics import ProjectEconomicsReport
 from codex_usage.report_breakdown import ReportBreakdown
 from codex_usage.report_storage import (
@@ -177,6 +179,7 @@ def render_html_report(
     agent_activity: AgentActivity | None = None,
     project_economics: ProjectEconomicsReport | None = None,
     image_report: ImageReport | None = None,
+    allowance_report: dict | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     theme = normalize_report_theme(theme)
@@ -219,6 +222,7 @@ def render_html_report(
             project_transitions_html=project_transitions_html,
             agent_activity=agent_activity,
             image_report=image_report,
+            allowance_report=allowance_report,
         ),
     )
     storage_view_html = render_report_view(STORAGE_REPORT_VIEW, task_storage_html)
@@ -248,6 +252,7 @@ def render_html_report(
   <style>
 {report_css()}
 {project_economics_css()}
+{allowance_css()}
 {agent_activity_css()}
 {image_activity_css()}
   </style>
@@ -272,6 +277,7 @@ def _render_usage_view(
     project_transitions_html: str,
     agent_activity: AgentActivity | None,
     image_report: ImageReport | None,
+    allowance_report: dict | None = None,
 ) -> str:
     temporal_chart = render_temporal_chart(
         view_model, range_name, use_period_trend=use_period_trend
@@ -286,6 +292,7 @@ def _render_usage_view(
         f"{pricing_notice_html}"
         f"{_empty_report_notice(view_model)}"
         f"{project_transitions_html}"
+        f"{render_allowance_section(allowance_report)}"
         f"{render_project_economics_section(view_model.project_economics)}"
         f"{render_image_activity_section(image_report)}"
         '<div class="dashboard-grid">'
@@ -413,34 +420,6 @@ def _empty_report_notice(view_model: ReportViewModel) -> str:
     if view_model.has_usage:
         return ""
     return '<p class="notice">No Codex usage was found for this report range.</p>'
-
-
-def _project_transitions_section(
-    project_transitions: list[dict[str, object]] | None,
-) -> str:
-    if not project_transitions:
-        return ""
-
-    rows = []
-    for transition in project_transitions:
-        rows.append(
-            "<tr>"
-            f"<td>{html.escape(str(transition.get('source_label', '')))}</td>"
-            f"<td>{html.escape(str(transition.get('target_label', '')))}</td>"
-            f"<td>{html.escape(str(transition.get('effective_from', '')))}</td>"
-            f'<td class="num">{html.escape(str(transition.get("confidence", "")))}</td>'
-            "</tr>"
-        )
-
-    return (
-        '<section class="section">'
-        "<h2>Project Transitions</h2>"
-        '<p class="muted">Usage is split at verified local repository switch points.</p>'
-        '<div class="table-wrap"><table>'
-        '<thead><tr><th>From</th><th>To</th><th>Effective From</th><th class="num">Confidence</th></tr></thead>'
-        "<tbody>" + "".join(rows) + "</tbody></table></div>"
-        "</section>"
-    )
 
 
 def _chart_section(

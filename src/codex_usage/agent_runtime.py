@@ -238,6 +238,7 @@ class CodexUsageAgent:
                     "custom-report-range",
                     "agent-activity",
                     "image-generation-accounting",
+                    "plan-allowance",
                 ],
             }
         )

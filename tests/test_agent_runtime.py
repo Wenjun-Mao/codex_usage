@@ -34,6 +34,7 @@ def test_manual_only_agent_performs_one_startup_capture(tmp_path: Path) -> None:
         assert status["next_capture_seconds"] is None
         assert status["last_capture_outcome"] == "success"
         assert "image-generation-accounting" in status["capabilities"]
+        assert "plan-allowance" in status["capabilities"]
     finally:
         agent.stop()
 

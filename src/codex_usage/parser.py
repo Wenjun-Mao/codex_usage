@@ -76,6 +76,7 @@ def parse_session_generation(
         bytes_read=chunk.bytes_read,
         content_metrics=chunk.content_metrics,
         image_operations=chunk.image_operations,
+        quota_observations=chunk.quota_observations,
     )
 
 
@@ -108,4 +109,5 @@ def parse_session_append(
         content_metrics=chunk.content_metrics,
         start_offset=checkpoint.byte_offset,
         image_operations=chunk.image_operations,
+        quota_observations=chunk.quota_observations,
     )

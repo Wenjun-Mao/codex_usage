@@ -138,6 +138,8 @@ def test_image_ledger_migration_creates_a_pre_migration_backup(tmp_path: Path) -
         pass
     with sqlite3.connect(ledger) as connection:
         connection.execute("drop table ledger_image_events")
+        for table in ("quota_provenance", "quota_observations", "quota_recovery", "quota_reads"):
+            connection.execute(f"drop table {table}")
         connection.execute(
             "update ledger_meta set value = '1' where key = 'schema_version'"
         )
@@ -155,7 +157,7 @@ def test_image_ledger_migration_creates_a_pre_migration_backup(tmp_path: Path) -
         )
 
     backups = list(tmp_path.glob("usage-ledger.sqlite3.schema-1-backup-*"))
-    assert version == "2"
+    assert version == "3"
     assert len(backups) == 1
     with sqlite3.connect(backups[0]) as connection:
         assert (

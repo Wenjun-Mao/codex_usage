@@ -1,8 +1,11 @@
+import { allowanceHtml, allowanceCss } from "./allowanceFixture";
+
 export const usageReportHtml = `<!doctype html>
 <html lang="en" data-codex-theme="night">
 <head>
 <meta charset="utf-8">
 <style>
+${allowanceCss}
 :root {
   color-scheme: light;
   --bg: #f5f7f9;
@@ -164,6 +167,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   <div><span>Cache hit share</span><strong>97.8%</strong><small>881.7M cached input</small></div>
   <div><span>API-excluded tokens</span><strong>0</strong><small>All models have rates</small></div>
 </section>
+${allowanceHtml}
 <section class="section project-economics" data-report-section="project-economics" aria-labelledby="project-economics-heading">
   <div class="project-economics-heading"><div><h2 id="project-economics-heading">Project Economics</h2><p class="help">Turn measures use selected ledger responses with a non-empty turn ID. The benchmark is weighted across those responses, not averaged from projects.</p></div><span class="economics-source">Ledger only</span></div>
   <section class="economics-benchmark" aria-label="Weighted all-project benchmark"><div class="economics-benchmark-heading"><strong>Weighted all-project benchmark</strong><span>4,981 measured turns</span></div><dl class="economics-metrics"><div><dt>Average cost / turn</dt><dd>$0.09</dd><span>4,981 of 4,981 turns priceable</span></div><div><dt>Median cost / turn</dt><dd>$0.07</dd><span>Priceable turns only</span></div><div><dt>Tokens / turn</dt><dd>181.5K</dd><span>6,418 responses across 4,981 turns</span></div><div><dt>Turn coverage</dt><dd>94% responses</dd><span>6,012 of 6,418 responses · 97% of tokens</span></div></dl></section>

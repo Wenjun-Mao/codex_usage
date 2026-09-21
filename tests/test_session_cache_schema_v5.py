@@ -64,7 +64,7 @@ def test_schema_four_is_discarded_instead_of_migrated(tmp_path: Path) -> None:
             connection.execute(
                 "select value from schema_meta where key = 'schema_version'"
             ).fetchone()[0]
-            == "9"
+            == "10"
         )
         columns = {
             row[1]: row
@@ -89,7 +89,7 @@ def test_schema_six_is_discarded_and_rebuilt_as_nine(tmp_path: Path) -> None:
     with sqlite3.connect(db_path) as connection:
         assert connection.execute(
             "select value from schema_meta where key = 'schema_version'"
-        ).fetchone() == ("9",)
+        ).fetchone() == ("10",)
 
 
 def test_exact_schema_eight_is_upgraded_without_discarding_language_rows(
@@ -101,6 +101,7 @@ def test_exact_schema_eight_is_upgraded_without_discarding_language_rows(
         cache_schema._ensure_schema(connection)
         connection.execute("drop index image_operations_task_idx")
         connection.execute("drop table image_operations")
+        connection.execute("drop table quota_cache")
         connection.execute(
             "update schema_meta set value = '8' where key = 'schema_version'"
         )
@@ -125,7 +126,7 @@ def test_exact_schema_eight_is_upgraded_without_discarding_language_rows(
             connection.execute(
                 "select value from schema_meta where key = 'schema_version'"
             ).fetchone()[0]
-            == "9"
+            == "10"
         )
         assert (
             connection.execute(

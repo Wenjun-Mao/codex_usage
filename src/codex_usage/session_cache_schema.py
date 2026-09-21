@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
+from codex_usage.session_cache_image_schema import _create_image_operations_schema
 from dataclasses import dataclass
 
-CACHE_SCHEMA_VERSION = 9
-PARSER_CACHE_VERSION = 7
+CACHE_SCHEMA_VERSION = 10
+PARSER_CACHE_VERSION = 8
 PROJECT_TRANSITION_CACHE_VERSION = 2
 STORAGE_METADATA_CACHE_VERSION = 2
 _REPARSE_REQUIRED_ERROR = "cache schema rebuild requires reparse"
@@ -20,6 +21,7 @@ _KNOWN_CACHE_TABLES = frozenset(
         "storage_files",
         "parser_checkpoints",
         "image_operations",
+        "quota_cache",
         "storage_content_diagnostics",
         "transition_candidates",
         "dirty_transition_tasks",
@@ -50,12 +52,17 @@ def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
     if _schema_matches(connection):
         return CacheSchemaState()
 
+    from codex_usage.allowance_schema import backup_parser_cache
+    backup_parser_cache(connection, _prior_schema_version(connection))
     connection.execute("begin immediate")
     try:
         prior_tables = _existing_cache_tables(connection)
         prior_version = _prior_schema_version(connection)
-        if _can_migrate_v8_to_v9(connection):
-            _create_image_operations_schema(connection)
+        if _can_migrate_v8_to_v9(connection) or _schema_matches(connection, predecessor=True):
+            if _prior_schema_version(connection) == "8":
+                _create_image_operations_schema(connection)
+            from codex_usage.allowance_schema import create_quota_cache
+            create_quota_cache(connection)
             connection.executemany(
                 "insert or replace into schema_meta (key, value) values (?, ?)",
                 (
@@ -258,38 +265,8 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
     for statement in statements:
         connection.execute(statement)
     _create_image_operations_schema(connection)
-
-
-def _create_image_operations_schema(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
-        create table image_operations (
-            file_key text not null,
-            tool_call_id text not null,
-            timestamp text not null,
-            timestamp_us integer not null,
-            task_id text not null,
-            root_task_id text not null,
-            usage_role text not null check (usage_role in ('root', 'subagent')),
-            turn_id text not null,
-            project_key text not null,
-            project_label text not null,
-            kind text not null check (kind in ('generate', 'edit_reference', 'unknown')),
-            outcome text not null check (outcome in ('attempted', 'succeeded', 'failed')),
-            output_count integer not null check (output_count >= 0),
-            output_width integer,
-            output_height integer,
-            output_format text not null,
-            quality text not null,
-            evidence_json text not null,
-            usage_json text not null,
-            primary key (file_key, tool_call_id)
-        )
-        """
-    )
-    connection.execute(
-        "create index image_operations_task_idx on image_operations (task_id, timestamp_us)"
-    )
+    from codex_usage.allowance_schema import create_quota_cache
+    create_quota_cache(connection)
 
 
 def _can_migrate_v8_to_v9(connection: sqlite3.Connection) -> bool:
@@ -324,15 +301,15 @@ def _can_migrate_v8_to_v9(connection: sqlite3.Connection) -> bool:
     )
 
 
-def _schema_matches(connection: sqlite3.Connection) -> bool:
+def _schema_matches(connection: sqlite3.Connection, *, predecessor=False) -> bool:
     try:
         rows = connection.execute("select key, value from schema_meta").fetchall()
     except sqlite3.Error:
         return False
     metadata = {str(row["key"]): str(row["value"]) for row in rows}
     expected_versions = {
-        "schema_version": str(CACHE_SCHEMA_VERSION),
-        "parser_version": str(PARSER_CACHE_VERSION),
+        "schema_version": "9" if predecessor else str(CACHE_SCHEMA_VERSION),
+        "parser_version": "7" if predecessor else str(PARSER_CACHE_VERSION),
         "project_transition_version": str(PROJECT_TRANSITION_CACHE_VERSION),
     }
     # Storage metadata has its own bounded refresh contract; it must not reset
@@ -348,6 +325,8 @@ def _schema_matches(connection: sqlite3.Connection) -> bool:
             """
         ).fetchone()
         connection.execute("select 1 from parser_checkpoints limit 1").fetchone()
+        if not predecessor:
+            connection.execute("select 1 from quota_cache limit 1").fetchone()
         image_columns = {
             str(row["name"])
             for row in connection.execute("pragma table_info(image_operations)")
@@ -484,6 +463,7 @@ def _drop_cache_schema(connection: sqlite3.Connection) -> None:
     for index in sorted(_KNOWN_CACHE_INDEXES):
         connection.execute(f"drop index if exists {index}")
     for table in (
+        "quota_cache",
         "project_transitions",
         "dirty_transition_tasks",
         "transition_candidates",

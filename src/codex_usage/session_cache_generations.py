@@ -5,6 +5,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from codex_usage.allowance_store import cache_observations
 from codex_usage.image_capture_models import captured_operation_to_dict
 from codex_usage.models import UsageRecord
 from codex_usage.project_identity import resolve_project_identity
@@ -34,6 +35,7 @@ def replace_file_generation(
     delete_file_generation(connection, entry.file_key)
     insert_usage_records(connection, entry, generation.records)
     insert_image_operations(connection, entry.file_key, generation.image_operations)
+    cache_observations(connection, entry.file_key, generation.quota_observations)
     insert_session_metadata(connection, session_dirs, entry, generation)
     insert_transition_candidates(
         connection, entry.file_key, generation.candidates
@@ -69,6 +71,7 @@ def append_file_generation(
         start_index=candidate_start,
     )
     insert_image_operations(connection, entry.file_key, appended.image_operations)
+    cache_observations(connection, entry.file_key, appended.quota_observations)
     _update_session_metadata_after_append(
         connection,
         session_dirs,
@@ -99,6 +102,7 @@ def rekey_file_generation(
         "session_metadata",
         "transition_candidates",
         "image_operations",
+        "quota_cache",
         "parser_checkpoints",
     ):
         connection.execute(
@@ -189,6 +193,7 @@ def delete_file_generation(connection: sqlite3.Connection, file_key: str) -> Non
     connection.execute(
         "delete from transition_candidates where file_key = ?", (file_key,)
     )
+    connection.execute("delete from quota_cache where file_key = ?", (file_key,))
     connection.execute("delete from image_operations where file_key = ?", (file_key,))
     connection.execute(
         "delete from parser_checkpoints where file_key = ?", (file_key,)

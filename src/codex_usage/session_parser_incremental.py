@@ -49,6 +49,7 @@ from codex_usage.session_row_relevance import (
     CHECKPOINT_DIGEST_BYTES,
     SESSION_READ_BUFFER_BYTES,
 )
+from codex_usage.allowance_models import QuotaObservation, quota_observations
 from codex_usage.storage_content import (
     StorageContentMetrics,
 )
@@ -70,6 +71,7 @@ class _ParsedChunk:
     bytes_read: int
     content_metrics: StorageContentMetrics
     image_operations: tuple[CapturedImageOperation, ...]
+    quota_observations: tuple[QuotaObservation, ...]
 
 
 def _parse_session_chunk(
@@ -98,6 +100,7 @@ def _parse_session_chunk(
     current_mode = initial_state.current_mode
     image_capture = initial_state.image_capture
     image_operations = []
+    quota_points = []
     bytes_read = 0
     checkpoint_offset = start_offset
     content_metrics = StorageContentMetrics()
@@ -324,6 +327,9 @@ def _parse_session_chunk(
                     checkpoint_offset = line_end
                     continue
 
+                quota_points.extend(quota_observations(
+                    payload.get("rate_limits"), event_timestamp.isoformat() if event_timestamp else ""
+                ))
                 info = payload.get("info")
                 if not isinstance(info, dict):
                     checkpoint_offset = line_end
@@ -458,4 +464,5 @@ def _parse_session_chunk(
         bytes_read=bytes_read,
         content_metrics=content_metrics,
         image_operations=tuple(image_operations),
+        quota_observations=tuple(quota_points),
     )
