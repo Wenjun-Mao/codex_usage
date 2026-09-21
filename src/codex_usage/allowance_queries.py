@@ -4,7 +4,6 @@ import zlib
 from bisect import bisect_right
 from dataclasses import replace
 from datetime import UTC, datetime
-from statistics import median
 
 from codex_usage.allowance_estimation import estimate_window
 from codex_usage.allowance_models import QuotaObservation
@@ -15,7 +14,7 @@ def allowance_status(connection):
     read = connection.execute("select * from quota_reads order by read_id desc limit 1").fetchone()
     recovered = connection.execute("""select count(*) total,
         sum(r.status = 'complete' and r.size_bytes = s.size_bytes and r.mtime_ns = s.mtime_ns) complete,
-        sum(r.status = 'unavailable') unavailable
+        sum(r.status = 'unavailable' and r.size_bytes = s.size_bytes and r.mtime_ns = s.mtime_ns) unavailable
         from ledger_sources s left join quota_recovery r using(source_key)""").fetchone()
     observed_read = connection.execute("""
         select r.* from quota_reads r where exists (
@@ -63,7 +62,7 @@ def build_allowance_report(connection, *, coverage_complete=True):
             points.append(selected)
             provenance.setdefault(selected, set()).add("Recovered" if row["timestamps_blob"] else "Captured")
     if not points:
-        return {"status": status, "windows": [], "qualified": [], "rolling_median": None}
+        return {"status": status, "windows": [], "qualified": []}
     valued = sorted(value_records(query_ledger_records(connection)), key=lambda v: v.record.timestamp)
     times, costs, unpriced = [], [0.0], [0]
     for item in valued:
@@ -89,5 +88,4 @@ def build_allowance_report(connection, *, coverage_complete=True):
         })
     windows.sort(key=lambda w: w["end"])
     qualified = [w for w in windows if w["completed"] and w["estimate"]["confidence"] in {"High", "Medium"}]
-    return {"status": status, "windows": windows, "qualified": qualified,
-            "rolling_median": median(w["estimate"]["value"] for w in qualified[-4:]) if len(qualified) >= 4 else None}
+    return {"status": status, "windows": windows, "qualified": qualified}

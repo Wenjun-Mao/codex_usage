@@ -160,3 +160,12 @@ def test_future_parser_collects_quota_without_token_info_and_in_file_interior(tm
     assert "PRIVATE" not in str(generation.quota_observations)
     recovered, _ = bounded_observations(path, path.stat().st_size)
     assert recovered == []
+
+
+def test_complete_unterminated_final_row_is_recovered(tmp_path):
+    path = tmp_path / "source"
+    path.write_text(json.dumps(row()))
+    points, consumed = bounded_observations(path, path.stat().st_size)
+    assert len(points) == 1 and consumed == path.stat().st_size
+    path.write_text(json.dumps(row())[:-4])
+    assert bounded_observations(path, path.stat().st_size)[0] == []

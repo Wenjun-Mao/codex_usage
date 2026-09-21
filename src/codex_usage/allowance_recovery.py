@@ -28,7 +28,7 @@ def bounded_observations(path: Path, size: int, *, expected=None):
             # the budget and no attempt to interpret a suffix as a full event.
             if offset:
                 data = data.partition(b"\n")[2]
-            if offset + length < size or not data.endswith(b"\n"):
+            if offset + length < size:
                 data = data.rpartition(b"\n")[0]
             for line in data.splitlines():
                 if b'"rate_limits"' not in line:
