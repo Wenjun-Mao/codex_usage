@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.8.1 - 2026-09-22
+
+- Recognize GPT-6 Sol and Luna in Model Mix and Project Breakdown, with stable
+  colors and effective-dated API-equivalent pricing from September 22.
+- Show unpriced coverage for earlier API usage and unpublished Codex credit rates.
+
 ## 2.8.0 - 2026-09-21
 
 - Add account-wide Plan Allowance capture, bounded historical quota recovery,

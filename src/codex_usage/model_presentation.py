@@ -19,6 +19,8 @@ _STABLE_COLOR_SLOTS = {
     "gpt-5.6-sol": 1,
     "gpt-5.6-terra": 2,
     "gpt-5.6-luna": 3,
+    "gpt-6-sol": 4,
+    "gpt-6-luna": 5,
 }
 
 

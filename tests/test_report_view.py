@@ -17,17 +17,21 @@ def test_report_view_model_prepares_role_and_model_presentation_points() -> None
         _record("demo", "demo", "subagent", "gpt-5.6-terra", total=100),
         _record("other", "other", "root", "gpt-5.6-luna", total=10),
         _record("other", "other", "root", "gpt-6-astra", total=5),
+        _record("other", "other", "root", "gpt-6-sol", total=4),
+        _record("other", "other", "root", "gpt-6-luna", total=3),
     ]
 
     view_model = _view_model(records)
 
     assert [item.label for item in view_model.model_legend] == [
         "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
     ]
-    assert [item.color_slot for item in view_model.model_legend] == [0, 1, 2, 3]
+    assert [item.color_slot for item in view_model.model_legend] == [0, 4, 5, 1, 2, 3]
 
     project = view_model.project_points[0]
     assert project.label == "demo"

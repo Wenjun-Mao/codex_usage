@@ -131,9 +131,13 @@ total), serves new recent artifact owners first, and then rotates the least
 recently served owners fairly. Missing or ambiguous owners remain visibly
 unavailable without blocking a valid owner from using the bounded slice.
 
-Pricing is bundled and effective-dated. GPT-6 Astra is recognized by its exact
-model ID, including cache-write and long-context API pricing. Credit estimates
-use published standard token rates and intentionally omit plan-specific or
+Pricing is bundled and effective-dated. GPT-6 Astra, Sol, and Luna are recognized
+by exact model IDs, with cache-write and long-context API pricing. Sol and Luna
+API rates begin September 22, 2026; earlier activity remains unpriced in USD.
+Their Codex credit rates are not published, so credit coverage stays visibly
+unpriced. See the [API pricing table](https://developers.openai.com/api/docs/pricing)
+and [Codex rate card](https://help.openai.com/en/articles/11481834-chatgpt-rate-card-business-enterpriseedu-credit-based-pricing).
+Other credit estimates use published standard token rates and intentionally omit plan-specific or
 Fast-mode multipliers because task records do not identify them reliably.
 
 The collector normally checks every configured interval. Unchanged cycles may

@@ -85,7 +85,7 @@ class ReportViewModel:
     @property
     def no_price_data_tokens(self) -> int:
         return sum(
-            row.usage.total_tokens
+            min(row.cost.unpriced_tokens, row.credits.unpriced_tokens)
             for row in self.model_rows
             if row.cost.unpriced_tokens > 0 and row.credits.unpriced_tokens > 0
         )

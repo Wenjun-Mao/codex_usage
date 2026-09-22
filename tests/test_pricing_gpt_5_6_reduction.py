@@ -461,4 +461,4 @@ def test_terra_and_luna_reduced_long_context_costs(
 
 
 def test_pricing_table_date_covers_latest_verified_rates() -> None:
-    assert pricing.PRICING_AS_OF == "2026-09-04"
+    assert pricing.PRICING_AS_OF == "2026-09-22"

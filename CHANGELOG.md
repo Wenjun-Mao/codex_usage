@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.8.1 - 2026-09-22
+
+- Recognize exact GPT-6 Sol and Luna model IDs in reports and price their API-equivalent
+  usage from launch, including cache writes and long-context requests.
+- Keep earlier API usage and currently unpublished Codex credit rates visibly
+  unpriced; assign stable, distinct model colors in both report charts.
+
 ## 2.8.0 - 2026-09-21
 
 - Add account-wide Plan Allowance capture, bounded historical quota recovery,
