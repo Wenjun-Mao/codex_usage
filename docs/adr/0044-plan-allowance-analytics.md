@@ -55,21 +55,33 @@ five distinct observation times and bins are required. Confidence gates:
 - Medium: completed; at least 20 percentage points and 5 bins; fully priced;
   R² >= 0.95; pairwise slope P90/P10 <= 1.35.
 - Low/provisional: at least 10 percentage points and a valid positive fit,
-  with weaker evidence or an ongoing window; details only.
+  with weaker evidence or an ongoing window; never a qualified completed estimate.
 - Otherwise: insufficient data with no monetary estimate. Unpriced intervals
   never produce a monetary estimate. Incomplete ledger coverage cannot qualify.
 
-Only completed High/Medium windows drive headline and trend. Separate bucket,
-plan, and duration series never share a rolling median. A four-window rolling
-median appears only after four qualified completed windows in that series.
-Current windows have dashed styling and provisional detail values. Lifetime
-account usage is coverage context only, never a fit input.
+The summary shows the latest window's valid priced fit in the largest type.
+An ongoing window is labeled **Current · provisional**, with its observed date
+range, series identity, and evidence. If the latest window lacks a valid fit,
+the headline says insufficient data instead of falling back to an older value.
+A separate, smaller **Latest
+completed · qualified** figure uses the latest completed High/Medium window;
+its date, confidence, and series identity are explicit. The two figures may
+come from different series and are never conflated. Only completed High/Medium
+windows drive the qualified trend. Separate bucket, plan, and duration series
+never share a rolling median. A four-window rolling median appears only after
+four qualified completed windows in that series. Current windows have dashed
+detail styling. Lifetime account usage is coverage context only, never a fit
+input. Provisional estimates are workload-specific observations, not cash or
+contractual entitlements.
 
 The additive API-v1 capability is `plan-allowance`. Status includes plan, active
 buckets/reset timing, probe timestamp/freshness/diagnostics, and recovery counts.
 The shared script-free report places Plan Allowance after KPIs/notices and before
 Project Economics. It remains account-wide under project/date filters and exposes
 nested reset-window and capture disclosures in Day/Night and narrow layouts.
+Probe timestamps, recovery counts, fit diagnostics, qualified trends, and
+capture observations stay in collapsed disclosures. Capture tables show at
+most the latest 100 points per window and disclose the full count.
 Report interactions read only the ledger and never probe or open JSONLs.
 
 ## Rejected Alternatives

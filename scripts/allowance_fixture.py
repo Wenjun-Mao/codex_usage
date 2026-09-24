@@ -25,7 +25,8 @@ def allowance_fixture():
                        "probe_status": "fresh", "last_probe_at": active["timestamp"],
                        "lifetime_tokens": 900000000,
                        "recovery": {"total": 80, "complete": 72, "pending": 8, "unavailable": 0}},
-            "windows": windows, "qualified": windows[:4], "rolling_median": 1230}
+            "windows": windows, "qualified": windows[:4], "headline": windows[-1],
+            "latest_completed": windows[3]}
 
 
 def write_fixture(root: Path):

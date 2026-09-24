@@ -23,6 +23,8 @@ def main():
                 if state == "insufficient":
                     report["qualified"] = []
                     report["windows"] = []
+                    report["headline"] = None
+                    report["latest_completed"] = None
                 for theme in ("day", "night"):
                     for width in (1440, 760, 360):
                         page.set_viewport_size({"width": width, "height": 900})
@@ -30,6 +32,12 @@ def main():
                                          f'<body>{render_allowance_section(report)}</body></html>')
                         assert page.locator("script").count() == 0
                         assert page.get_by_role("heading", name="Plan Allowance", exact=True).is_visible()
+                        headline = "Latest window" if state == "insufficient" else "Current · provisional"
+                        assert page.get_by_role("heading", name=headline, exact=True).is_visible()
+                        assert page.get_by_role("heading", name="Latest completed · qualified").is_visible()
+                        assert not page.get_by_text("Last checked:").is_visible()
+                        if state == "insufficient":
+                            assert page.get_by_text("Insufficient data").count() == 2
                         summary = page.locator("summary", has_text="Reset windows and capture details")
                         summary.focus()
                         summary.press("Enter")

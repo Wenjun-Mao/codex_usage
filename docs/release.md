@@ -85,8 +85,10 @@ sizes (1440 x 900 and 760 x 900). Confirm:
   use distinct stable colors, preserve role-level API-equivalent cost, and
   switch coherently between token-scaled and cost-scaled bars;
 - Plan Allowance stays account-wide under project/date filters, exposes active
-  buckets and freshness/recovery diagnostics, and restricts headline/trend to
-  qualified completed windows; nested window/capture details work by keyboard;
+  buckets, shows the latest valid window estimate as a clearly labeled
+  provisional headline when ongoing, and keeps the latest completed qualified
+  estimate separate; freshness/recovery diagnostics and bounded capture details
+  work in keyboard-operable disclosures;
 - Project Economics shows the weighted all-project benchmark and expandable
   project/model details, and both it and Token Accounting disclosures are
   keyboard-operable at wide and narrow sizes;
