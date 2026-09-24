@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.8.2 - 2026-09-23
+
+- Focus Plan Allowance on the latest valid ongoing-window estimate and keep
+  earlier qualified estimates in collapsed details.
+
 ## 2.8.1 - 2026-09-22
 
 - Recognize exact GPT-6 Sol and Luna model IDs in reports and price their API-equivalent
