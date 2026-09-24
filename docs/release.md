@@ -1,6 +1,6 @@
-# 2.8.3 Distribution Checklist
+# 2.8.4 Distribution Checklist
 
-Version 2.8.3 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.8.4 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
@@ -85,10 +85,11 @@ sizes (1440 x 900 and 760 x 900). Confirm:
   use distinct stable colors, preserve role-level API-equivalent cost, and
   switch coherently between token-scaled and cost-scaled bars;
 - Plan Allowance stays account-wide under project/date filters, exposes active
-  buckets, shows the latest valid window estimate as a clearly labeled
-  provisional headline when ongoing, and keeps earlier qualified estimates
-  within collapsed details; freshness/recovery diagnostics and bounded capture details
-  work in keyboard-operable disclosures;
+  buckets, shows a valid current estimate or an explicitly dated same-series
+  Previous window fallback, and exposes newest-first allowance history with
+  current/completed status, confidence, span, and bins in collapsed diagnostics;
+  freshness/recovery diagnostics and bounded capture details work in
+  keyboard-operable disclosures;
 - Project Economics shows the weighted all-project benchmark and expandable
   project/model details, and both it and Token Accounting disclosures are
   keyboard-operable at wide and narrow sizes;
@@ -147,16 +148,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.3`, both
-changelogs have a dated `2.8.3` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.4`, both
+changelogs have a dated `2.8.4` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.8.3`. Create and push that
+The only valid release tag for this version is `v2.8.4`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.8.3
-git push origin v2.8.3
+git tag v2.8.4
+git push origin v2.8.4
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -170,8 +171,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.8.3-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.8.3-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.8.4-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.8.4-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

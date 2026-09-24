@@ -10,6 +10,7 @@ from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.agent_reports import render_ledger_report
 from codex_usage.agent_rebuild import rebuild_stale_source_slice
+from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.ledger_queries import load_ledger_records, load_ledger_status
 
 
@@ -24,6 +25,28 @@ def test_report_cache_key_changes_with_renderer_revision(monkeypatch) -> None:
     )
 
     assert reports_module._report_cache_key(*arguments) != first
+
+
+def test_allowance_history_markup_invalidates_revision_ten_cache(tmp_path, monkeypatch) -> None:
+    ledger_path = tmp_path / "ledger.sqlite3"
+    with open_ledger(ledger_path) as connection:
+        revision = ledger_revision(connection)
+        arguments = (revision, "all", [], "day", "UTC", True)
+        with monkeypatch.context() as patch:
+            patch.setattr(reports_module, "REPORT_RENDER_REVISION", 10)
+            old_key = reports_module._report_cache_key(*arguments)
+        connection.execute(
+            """insert into rendered_reports
+               (cache_key, ledger_revision, pricing_revision, created_at, html)
+               values (?, ?, ?, ?, ?)""",
+            (old_key, revision, "old", "2026-09-24T00:00:00+00:00", "old allowance sparkline"),
+        )
+
+        current_key = reports_module._report_cache_key(*arguments)
+
+        assert reports_module.REPORT_RENDER_REVISION != 10
+        assert current_key != old_key
+        assert reports_module._load_cached_report(connection, current_key) is None
 
 
 def test_capture_populates_durable_ledger_and_reports_without_jsonl_reads(

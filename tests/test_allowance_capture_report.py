@@ -7,10 +7,18 @@ import pytest
 from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.agent_reports import render_ledger_report
+from codex_usage.allowance_estimation import AllowanceEstimate
+from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_probe import QuotaRead
-from codex_usage.allowance_queries import allowance_highlights, build_allowance_report
+from codex_usage.allowance_queries import (
+    allowance_highlights,
+    allowance_history,
+    build_allowance_report,
+)
+from codex_usage.allowance_store import store_observations
 from codex_usage.ledger_schema import open_ledger
 from codex_usage.report_allowance import render_allowance_section
+from codex_usage.allowance_windows import AllowanceWindow
 from test_allowance_protocol import bucket
 from codex_usage.allowance_models import quota_observations
 
@@ -89,12 +97,15 @@ def _window(start, end, confidence, value, *, completed, closure=None, limit_id=
 
 def _report(windows):
     qualified, headline = allowance_highlights(windows)
+    latest = windows[-1] if windows else None
     return {"status": {"plan": "pro", "active_buckets": [
                            {"limit_id": "codex", "plan": "pro", "duration_minutes": 10080,
                             "used_percent": 97, "resets_at": None}], "probe_status": "fresh",
                        "last_probe_at": "2026-09-24", "lifetime_tokens": None,
                        "recovery": {"complete": 0, "pending": 0, "unavailable": 0}},
-            "windows": windows, "qualified": qualified, "headline": headline}
+            "windows": windows, "qualified": qualified, "headline": headline,
+            "headline_previous": headline is not None and headline is not latest,
+            "history": allowance_history(windows)}
 
 
 def test_current_estimate_is_primary_and_older_qualified_value_is_collapsed():
@@ -105,17 +116,18 @@ def test_current_estimate_is_primary_and_older_qualified_value_is_collapsed():
     assert report["headline"] is current
     markup = render_allowance_section(report)
     assert "Current · provisional" in markup and "$1,375.00" in markup
-    summary = markup.split('<details><summary>Probe, coverage, and trend diagnostics')[0]
+    summary = markup.split('<details><summary>Probe, coverage, and allowance history')[0]
     assert "Observed 2026-09-19–2026-09-24" in summary
     assert "codex · pro · 7 days" not in summary
     assert "Low/provisional confidence" not in summary
     assert "Latest completed · qualified" not in markup
-    assert "$1,069.59" not in markup.split('<details><summary>Probe, coverage, and trend diagnostics')[0]
+    assert "$1,069.59" not in markup.split('<details><summary>Probe, coverage, and allowance history')[0]
     assert "$1,069.59" in markup.split('<details><summary>Reset windows and capture details</summary>')[1]
     assert "Earlier qualified estimates (latest 1 of 1" in markup
-    assert markup.index("Probe, coverage, and trend diagnostics") < markup.index("Last checked")
-    assert markup.index("Probe, coverage, and trend diagnostics") < markup.index("Latest window fit: 25 percentage points")
+    assert markup.index("Probe, coverage, and allowance history") < markup.index("Last checked")
+    assert markup.index("Probe, coverage, and allowance history") < markup.index("Latest window fit: 25 percentage points")
     assert markup.index("Latest window fit:") > markup.index("</div></div>")
+    assert "<svg" not in markup and "Qualified completed-window trend" not in markup
     assert "<script" not in markup
 
 
@@ -130,14 +142,163 @@ def test_absent_and_provisional_only_states():
     assert "The latest window has no valid priced estimate" in render_allowance_section(_report([incomplete]))
 
 
-def test_latest_invalid_window_does_not_resurrect_older_valid_estimate():
-    old = _window("2026-09-01", "2026-09-05", "Low/provisional", 1200, completed=False)
-    latest = _window("2026-09-19", "2026-09-24", "insufficient", None, completed=False)
+def test_just_reset_nine_point_window_uses_dated_same_series_previous_estimate():
+    old = _window("2026-08-24", "2026-08-31", "Medium", 1200, completed=True)
+    latest = _window("2026-09-01", "2026-09-01", "insufficient", None, completed=False)
+    latest["estimate"].update(span=9, bins=5)
     report = _report([old, latest])
-    assert report["headline"] is None
+    assert report["headline"] is old
+    assert report["headline_previous"]
     markup = render_allowance_section(report)
+    summary = markup.split('<details><summary>Probe, coverage, and allowance history')[0]
+    assert "Previous window" in summary
+    assert "Observed 2026-08-24–2026-08-31" in summary
+    assert "codex · pro · 7 days" in summary
+    assert "$1,200.00" in summary
+    assert "Current · provisional" not in summary
+    assert "Previous window fit: 25 percentage points" in markup
+
+
+@pytest.mark.parametrize(
+    "changed_series",
+    [
+        {"limit_id": "extra-model"},
+        {"duration": 300},
+        {"plan": "plus"},
+    ],
+)
+def test_no_valid_prior_from_another_series(changed_series):
+    previous = _window("2026-08-24", "2026-08-31", "High", 1200, completed=True)
+    if "duration" in changed_series:
+        previous["duration_minutes"] = changed_series["duration"]
+    else:
+        previous.update({key: value for key, value in changed_series.items() if key != "duration"})
+    latest = _window("2026-09-01", "2026-09-01", "insufficient", None, completed=False)
+    assert allowance_highlights([previous, latest])[1] is None
+    markup = render_allowance_section(_report([previous, latest]))
     assert "The latest window has no valid priced estimate" in markup
-    assert markup.index("Insufficient data") < markup.index("$1,200.00")
+    assert "Previous window</h3>" not in markup
+
+
+def test_ten_point_current_window_takes_over_from_previous_fallback():
+    previous = _window("2026-08-24", "2026-08-31", "Medium", 1200, completed=True)
+    current = _window("2026-09-01", "2026-09-02", "Low/provisional", 1400, completed=False)
+    current["estimate"].update(span=10, bins=5)
+    report = _report([previous, current])
+    assert report["headline"] is current
+    assert not report["headline_previous"]
+    markup = render_allowance_section(report)
+    summary = markup.split('<details><summary>Probe, coverage, and allowance history')[0]
+    assert "Current · provisional" in summary
+    assert "Observed 2026-09-01–2026-09-02" in summary
+    assert "$1,400.00" in summary
+    assert "Previous window" not in summary
+
+
+def test_unpriced_latest_window_falls_back_without_entering_priced_history():
+    previous = _window("2026-08-24", "2026-08-31", "Medium", 1200, completed=True)
+    latest = _window("2026-09-01", "2026-09-02", "Low/provisional", None, completed=False)
+    latest["fully_priced"] = False
+    report = _report([previous, latest])
+    assert report["headline"] is previous
+    assert report["history"] == [previous]
+    assert "$1,200.00" in render_allowance_section(report).split(
+        '<details><summary>Probe, coverage, and allowance history'
+    )[0]
+    assert "$1,200.00" in render_allowance_section(report).split(
+        '<details><summary>Probe, coverage, and allowance history'
+    )[1]
+    assert "$0.00" not in render_allowance_section(report)
+
+
+def test_built_report_marks_same_series_fallback_as_previous(tmp_path, monkeypatch):
+    base = datetime(2026, 8, 1, tzinfo=UTC)
+    prior_points = [
+        QuotaObservation((base + timedelta(hours=i)).isoformat(), "codex", "primary", "pro",
+                         used, 10080, None)
+        for i, used in enumerate((0, 15, 30, 45, 60))
+    ]
+    current_points = [
+        QuotaObservation((base + timedelta(hours=5 + i)).isoformat(), "codex", "primary", "pro",
+                         used, 10080, None)
+        for i, used in enumerate((1, 3, 5, 8, 10))
+    ]
+    prior = AllowanceWindow(prior_points, "scheduled-compatible")
+    current = AllowanceWindow(current_points, "ongoing")
+    monkeypatch.setattr(
+        "codex_usage.allowance_queries.segment_windows",
+        lambda _points: [prior, current],
+    )
+    monkeypatch.setattr(
+        "codex_usage.allowance_queries.estimate_window",
+        lambda window, *_args, **_kwargs: (
+            AllowanceEstimate("Medium", 1200, span=60, bins=13)
+            if window.completed
+            else AllowanceEstimate("insufficient", span=9, bins=5)
+        ),
+    )
+
+    with open_ledger(tmp_path / "ledger") as connection:
+        store_observations(
+            connection,
+            prior_points + current_points,
+            source_key="fixture",
+            provenance="parsed",
+        )
+        report = build_allowance_report(connection)
+
+    assert report["headline"] is report["windows"][0]
+    assert report["headline_previous"]
+    assert report["history"] == [report["windows"][0]]
+
+
+def test_allowance_history_is_newest_first_and_includes_valid_provisional_windows():
+    completed = _window("2026-08-01", "2026-08-07", "High", 1200, completed=True)
+    current = _window("2026-09-01", "2026-09-02", "Low/provisional", 1400, completed=False)
+    other = _window("2026-08-10", "2026-08-11", "Low/provisional", 500, completed=True,
+                    limit_id="extra-model", duration=300)
+    unpriced = _window("2026-08-15", "2026-08-16", "Low/provisional", None, completed=True)
+    unpriced["fully_priced"] = False
+    report = _report([completed, other, unpriced, current])
+    assert report["history"] == [current, other, completed]
+    markup = render_allowance_section(report)
+    history = markup.split('<ol class="allowance-history"')[1].split("</ol>")[0]
+    assert history.index("2026-09-01") < history.index("2026-08-10") < history.index("2026-08-01")
+    assert "Low/provisional confidence" in history
+    assert "Current" in history and "Completed" in history
+    assert "extra-model · pro · 5 hours" in history
+    assert "2026-08-15" not in history
+    assert '<details' not in history
+
+
+def test_allowance_history_is_bounded_and_discloses_omitted_count():
+    windows = [
+        _window(f"2026-08-{index:02d}", f"2026-08-{index:02d}", "Low/provisional", 1000 + index,
+                completed=False)
+        for index in range(1, 15)
+    ]
+    markup = render_allowance_section(_report(windows))
+    assert "Newest 12 of 14 valid priced windows" in markup
+    history = markup.split('<ol class="allowance-history"')[1].split("</ol>")[0]
+    assert "2026-08-14" in history and "2026-08-03" in history
+    assert "2026-08-02" not in history
+
+
+def test_allowance_history_escapes_series_labels():
+    malicious = _window("2026-08-24", "2026-08-31", "High", 1200, completed=True,
+                        limit_id='<script>alert("series")</script>')
+    markup = render_allowance_section(_report([malicious]))
+    assert "<script" not in markup
+    assert "&lt;script&gt;alert(&quot;series&quot;)&lt;/script&gt;" in markup
+
+
+def test_ended_identity_window_is_not_labeled_current():
+    ended = _window("2026-08-24", "2026-08-31", "Low/provisional", 1200,
+                    completed=False, closure="identity-change")
+    markup = render_allowance_section(_report([ended]))
+    history = markup.split('<ol class="allowance-history"')[1].split("</ol>")[0]
+    assert "Ended after plan change" in history
+    assert "Current · Low/provisional confidence" not in history
 
 
 def test_multiple_series_keep_qualified_history_in_collapsed_details():
@@ -148,7 +309,7 @@ def test_multiple_series_keep_qualified_history_in_collapsed_details():
     report = _report([same, other, current])
     markup = render_allowance_section(report)
     assert report["qualified"] == [same, other]
-    assert "$1,069.00" not in markup.split('<details><summary>Probe, coverage, and trend diagnostics')[0]
+    assert "$1,069.00" not in markup.split('<details><summary>Probe, coverage, and allowance history')[0]
     assert "$500.00" in markup.split('<details><summary>Reset windows and capture details</summary>')[1]
     assert "extra-model · pro · 5 hours" in markup
 
@@ -183,7 +344,7 @@ def test_summary_retains_series_for_multiple_active_buckets_and_historic_headlin
          "used_percent": 8, "resets_at": None}
     )
     summary = render_allowance_section(multiple).split(
-        '<details><summary>Probe, coverage, and trend diagnostics'
+        '<details><summary>Probe, coverage, and allowance history'
     )[0]
     assert "codex · pro · 7 days" in summary
 
@@ -191,7 +352,7 @@ def test_summary_retains_series_for_multiple_active_buckets_and_historic_headlin
                          limit_id="extra-model", duration=300)
     history_report = _report([historical])
     summary = render_allowance_section(history_report).split(
-        '<details><summary>Probe, coverage, and trend diagnostics'
+        '<details><summary>Probe, coverage, and allowance history'
     )[0]
     assert "extra-model · pro · 5 hours" in summary
     assert "High confidence" in summary

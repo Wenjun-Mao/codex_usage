@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for 2.8.0 on 2026-09-21.
+Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24.
 
 ## Context
 
@@ -61,22 +61,22 @@ five distinct observation times and bins are required. Confidence gates:
 
 The summary shows the latest window's valid priced fit in the largest type.
 An ongoing window is labeled **Current · provisional**, with its observed date
-range. Series identity appears in the summary when multiple buckets are active
-or the headline cannot be matched to one active bucket; the active bucket row
-already identifies an unambiguous current series. The summary omits repeated
-provisional confidence wording and retains High/Medium confidence on qualified
-headlines. Fit evidence stays in collapsed diagnostics. If the latest window
-lacks a valid fit, the headline says insufficient data instead of falling back
-to an older value. The summary contains a single economic figure. Earlier High/Medium windows,
-with series identity, dates, and confidence, appear as a bounded recent list
-inside the collapsed reset-window disclosure. All reset windows remain
-available below that list, and qualified trends remain in diagnostics. Only completed High/Medium
-windows drive the qualified trend. Separate bucket, plan, and duration series
-never share a rolling median. A four-window rolling median appears only after
-four qualified completed windows in that series. Current windows have dashed
-detail styling. Lifetime account usage is coverage context only, never a fit
-input. Provisional estimates are workload-specific observations, not cash or
-contractual entitlements.
+range. Series identity appears when multiple buckets are active or the headline
+cannot be matched to one active bucket; the active bucket row already identifies
+an unambiguous current series. The summary omits repeated provisional confidence
+wording and retains High/Medium confidence on qualified current headlines. Fit
+evidence stays in collapsed diagnostics. If the latest reset window lacks a
+valid priced estimate, use the most recent earlier valid priced estimate only
+when limit ID, plan, and duration all match. Label it **Previous window**, show
+its observation dates and series identity, and retain its confidence. Never
+present that value as current or borrow it from another series. If no such
+estimate exists, show insufficient data. When the latest window becomes valid,
+it takes over the headline. The summary contains one economic figure. Earlier
+High/Medium windows with series identity, dates, and confidence remain in the
+collapsed reset-window disclosure. Current windows have dashed detail styling.
+Lifetime account usage is coverage context only, never a fit input. Provisional
+estimates are workload-specific observations, not cash or contractual
+entitlements.
 
 The additive API-v1 capability is `plan-allowance`. Status includes plan, active
 buckets/reset timing, probe timestamp/freshness/diagnostics, and recovery counts.
@@ -86,16 +86,20 @@ for its range through the shared HTML renderer, so native and VS Code reports
 use the same formatting. The report cache already keys by timezone; changes to
 the allowance markup also advance the report-render revision to invalidate old
 cached HTML.
-The shared script-free report places Plan Allowance after KPIs/notices and before
-Project Economics. It remains account-wide under project/date filters and exposes
-nested reset-window and capture disclosures in Day/Night and narrow layouts.
-Probe timestamps, recovery counts, fit diagnostics, qualified trends, and
-capture observations stay in collapsed disclosures. Capture tables show at
-most the latest 100 points per window and disclose the full count.
-Trend lists show at most the latest 12 qualified windows per series and
-disclose the full count; individual reset windows remain available below.
-The economic summary is unframed and uses a subtle divider.
-Report interactions read only the ledger and never probe or open JSONLs.
+The shared script-free report places Plan Allowance after KPIs/notices and
+before Project Economics. It remains account-wide under project/date filters
+and exposes reset-window and capture details in Day/Night and narrow layouts.
+Probe timestamps, recovery counts, fit diagnostics, and allowance history stay
+in one collapsed diagnostics disclosure. History includes valid priced fits
+from ongoing, completed, and plan-change-ended windows, including provisional
+fits, sorted newest first across series. Each row identifies its series,
+observation dates, current/completed/ended status, confidence, percentage span,
+bins, and local ledger coverage. It shows at most the latest 12 valid priced
+windows and gives the full count; individual reset windows remain available
+below. Capture tables
+show at most the latest 100 points per window and disclose the full count. The
+economic summary is unframed and uses a subtle divider. Report interactions
+read only the ledger and never probe or open JSONLs.
 
 ## Rejected Alternatives
 

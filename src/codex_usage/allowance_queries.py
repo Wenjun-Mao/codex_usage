@@ -11,14 +11,43 @@ from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_windows import segment_windows
 
 
+_VALID_ESTIMATE_CONFIDENCE = {"High", "Medium", "Low/provisional"}
+
+
+def _has_valid_priced_estimate(window):
+    estimate = window["estimate"]
+    value = estimate.get("value")
+    return (
+        window.get("fully_priced", True)
+        and estimate.get("confidence") in _VALID_ESTIMATE_CONFIDENCE
+        and isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value > 0
+    )
+
+
+def _series_key(window):
+    return (window["limit_id"], window.get("plan") or "", window["duration_minutes"])
+
+
+def allowance_history(windows):
+    """Return valid priced estimates newest first, across all distinct series."""
+    return [window for window in reversed(windows) if _has_valid_priced_estimate(window)]
+
+
 def allowance_highlights(windows):
-    """Select the latest window without substituting older qualified history."""
+    """Select the latest valid fit, or the newest earlier fit in its exact series."""
     qualified = [w for w in windows if w["completed"] and w["estimate"]["confidence"] in {"High", "Medium"}]
     latest = windows[-1] if windows else None
-    estimate = latest["estimate"] if latest else None
-    headline = (latest if estimate and estimate["confidence"] in {"High", "Medium", "Low/provisional"}
-                and isinstance(estimate["value"], (int, float))
-                and math.isfinite(estimate["value"]) and estimate["value"] > 0 else None)
+    if latest is None or _has_valid_priced_estimate(latest):
+        return qualified, latest
+    series = _series_key(latest)
+    headline = next(
+        (window for window in reversed(windows[:-1])
+         if _series_key(window) == series and _has_valid_priced_estimate(window)),
+        None,
+    )
     return qualified, headline
 
 
@@ -74,7 +103,8 @@ def build_allowance_report(connection, *, coverage_complete=True):
             points.append(selected)
             provenance.setdefault(selected, set()).add("Recovered" if row["timestamps_blob"] else "Captured")
     if not points:
-        return {"status": status, "windows": [], "qualified": [], "headline": None}
+        return {"status": status, "windows": [], "qualified": [], "headline": None,
+                "headline_previous": False, "history": []}
     valued = sorted(value_records(query_ledger_records(connection)), key=lambda v: v.record.timestamp)
     times, costs, unpriced = [], [0.0], [0]
     for item in valued:
@@ -100,4 +130,12 @@ def build_allowance_report(connection, *, coverage_complete=True):
         })
     windows.sort(key=lambda w: w["end"])
     qualified, headline = allowance_highlights(windows)
-    return {"status": status, "windows": windows, "qualified": qualified, "headline": headline}
+    latest = windows[-1] if windows else None
+    return {
+        "status": status,
+        "windows": windows,
+        "qualified": qualified,
+        "headline": headline,
+        "headline_previous": headline is not None and headline is not latest,
+        "history": allowance_history(windows),
+    }

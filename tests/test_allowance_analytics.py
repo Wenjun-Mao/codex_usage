@@ -65,6 +65,26 @@ def test_confidence_gates_and_independent_slope_oracle(completed, span, bins, pr
         assert estimate.value is None
 
 
+def test_ten_percentage_points_is_the_existing_sufficiency_boundary():
+    nine_point_samples = [0, 2, 5, 7, 9]
+    ten_point_samples = [0, 2, 5, 8, 10]
+    nine_point = estimate_window(
+        AllowanceWindow([point(i, used) for i, used in enumerate(nine_point_samples)], "ongoing"),
+        [used * 12 for used in nine_point_samples],
+        fully_priced=True,
+    )
+    ten_point = estimate_window(
+        AllowanceWindow([point(i, used) for i, used in enumerate(ten_point_samples)], "ongoing"),
+        [used * 12 for used in ten_point_samples],
+        fully_priced=True,
+    )
+
+    assert nine_point.span == 9 and nine_point.value is None
+    assert ten_point.span == 10
+    assert ten_point.confidence == "Low/provisional"
+    assert ten_point.value == pytest.approx(1200)
+
+
 def test_bins_remove_repetition_weight_and_ambiguous_boundary_blocks_high():
     points = [point(i, i * 5) for i in range(13)]
     costs = [10 * p.used_percent for p in points]

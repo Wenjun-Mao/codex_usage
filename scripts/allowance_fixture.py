@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from codex_usage.allowance_estimation import estimate_window
 from codex_usage.allowance_models import QuotaObservation
+from codex_usage.allowance_queries import allowance_highlights, allowance_history
 from codex_usage.allowance_windows import AllowanceWindow
 from codex_usage.report_allowance import allowance_css, render_allowance_section
 
@@ -20,13 +21,16 @@ def allowance_fixture():
         windows.append({"limit_id": "codex", "plan": "pro", "duration_minutes": 10080,
                         "start": points[0].timestamp, "end": points[-1].timestamp,
                         "completed": window.completed, "closure": window.closure, "corrections": 0,
-                        "estimate": estimate.to_dict(), "points": [dict(p.to_dict(), provenance="Recovered") for p in points]})
+                        "estimate": estimate.to_dict(), "fully_priced": True, "coverage_complete": True,
+                        "points": [dict(p.to_dict(), provenance="Recovered") for p in points]})
     active = windows[-1]["points"][-1]
+    qualified, headline = allowance_highlights(windows)
     return {"status": {"plan": "pro", "active_buckets": [active, dict(active, limit_id="extra-model", used_percent=8, duration_minutes=300)],
                        "probe_status": "fresh", "last_probe_at": active["timestamp"],
                        "lifetime_tokens": 900000000,
                        "recovery": {"total": 80, "complete": 72, "pending": 8, "unavailable": 0}},
-            "windows": windows, "qualified": windows[:4], "headline": windows[-1]}
+            "windows": windows, "qualified": qualified, "headline": headline,
+            "headline_previous": False, "history": allowance_history(windows)}
 
 
 def write_fixture(root: Path):

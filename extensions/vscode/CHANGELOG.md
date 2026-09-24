@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.8.4 - 2026-09-24
+
+- Keep the 10-point allowance-fit threshold and show a dated previous estimate
+  only when the newest window lacks a valid priced fit in the same series.
+- Replace the two-point allowance sparkline with a compact, newest-first history
+  of valid priced windows, including provisional and current observations.
+
 ## 2.8.3 - 2026-09-24
 
 - Compact Plan Allowance bucket rows, format resets in the report timezone, and

@@ -1,7 +1,9 @@
 """Script-free account allowance report shared by both application shells."""
 from datetime import UTC, datetime, tzinfo
 from html import escape
-from statistics import median
+
+
+ALLOWANCE_HISTORY_LIMIT = 12
 
 
 def duration_label(minutes):
@@ -12,17 +14,6 @@ def duration_label(minutes):
     if minutes % 60 == 0:
         return f"{minutes // 60} hours"
     return f"{minutes} min"
-
-
-def trend_svg(windows):
-    values = [w["estimate"]["value"] for w in windows[-12:]]
-    if len(values) < 2:
-        return ""
-    low, high = min(values), max(values)
-    points = " ".join(f"{10 + 280 * i / (len(values)-1):.1f},{60 - 45 * (v-low) / (high-low or 1):.1f}" for i, v in enumerate(values))
-    return ('<svg class="allowance-trend" viewBox="0 0 300 75" role="img" aria-label="Qualified completed-window trend">'
-            f'<title>Qualified full-allowance estimates: {escape(", ".join(money(v) for v in values))}</title>'
-            f'<polyline points="{points}" fill="none" stroke="currentColor" stroke-width="2"/></svg>')
 
 
 def text(value):
@@ -44,8 +35,10 @@ def evidence_line(window, label):
             f'{money(estimate["cost_span"])} local priced usage.</p>')
 
 
-def economic_summary(window, *, latest, show_series):
-    if window is None:
+def economic_summary(window, *, latest, show_series, is_previous=False):
+    if is_previous:
+        label = "Previous window"
+    elif window is None:
         label = "Latest window"
     elif window["closure"] == "ongoing":
         label = "Current · provisional"
@@ -61,15 +54,48 @@ def economic_summary(window, *, latest, show_series):
                 '<p class="allowance-value">Insufficient data</p>'
                 f'{context}<p class="muted">The latest window has no valid priced estimate.</p></div>')
     estimate = window["estimate"]
-    series = f'<p>{series_label(window)}</p>' if show_series else ""
+    series = f'<p>{series_label(window)}</p>' if show_series or is_previous else ""
     confidence = (f' · {text(estimate["confidence"])} confidence'
-                  if estimate["confidence"] in {"High", "Medium"} else "")
+                  if is_previous or estimate["confidence"] in {"High", "Medium"} else "")
     return (
         f'<div class="allowance-economic"><h3>{label}</h3>'
         f'<p class="allowance-value">{money(estimate["value"])}</p>'
         f'{series}'
         f'<p>Observed {text(window["start"][:10])}–{text(window["end"][:10])}{confidence}</p></div>'
     )
+
+
+def _history_html(history):
+    if not history:
+        return '<h3>Allowance history</h3><p>No valid priced window estimate yet.</p>'
+
+    shown = history[:ALLOWANCE_HISTORY_LIMIT]
+    items = []
+    for window in shown:
+        estimate = window["estimate"]
+        if window["closure"] == "ongoing":
+            window_status, status_class = "Current", "current"
+        elif window["completed"]:
+            window_status, status_class = "Completed", "completed"
+        else:
+            window_status, status_class = "Ended after plan change", "ended"
+        ledger_coverage = "complete ledger" if window.get("coverage_complete", True) else "partial ledger"
+        items.append(
+            f'<li class="allowance-history-item allowance-history-{status_class}">'
+            f'<div class="allowance-history-heading"><span class="allowance-history-series">{series_label(window)}</span>'
+            f'<strong class="allowance-history-value">{money(estimate["value"])}</strong></div>'
+            f'<p class="allowance-history-meta">Observed {text(window["start"][:10])}–{text(window["end"][:10])} · '
+            f'{window_status} · {text(estimate["confidence"])} confidence · '
+            f'{estimate["span"]:g} percentage points · {estimate["bins"]} bins · 100% priced · {ledger_coverage}</p>'
+            '</li>'
+        )
+    count = len(history)
+    context = (f'<p class="muted allowance-history-count">Newest {len(shown)} of {count} valid priced windows; '
+               'all reset windows are listed below.</p>' if count > len(shown) else
+               f'<p class="muted allowance-history-count">{count} valid priced window'
+               f'{"s" if count != 1 else ""}; newest first.</p>')
+    return ('<h3>Allowance history</h3>' + context
+            + f'<ol class="allowance-history" aria-label="Allowance estimate history">{"".join(items)}</ol>')
 
 
 def _series_key(item):
@@ -130,19 +156,6 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
             f'aria-label="{identity} percentage used"></meter></div>'
         )
     qualified = report["qualified"]
-    trends = []
-    groups = {}
-    for window in qualified:
-        groups.setdefault((window["limit_id"], window["plan"], window["duration_minutes"]), []).append(window)
-    for (limit_id, plan, duration), windows in groups.items():
-        rolling = (f'<p>Four-window rolling median: {money(median(w["estimate"]["value"] for w in windows[-4:]))}</p>'
-                   if len(windows) >= 4 else "")
-        items = ''.join(f'<li>{text(w["end"][:10])}: {money(w["estimate"]["value"])} · {text(w["estimate"]["confidence"])}</li>' for w in windows[-12:])
-        trends.append(f'<div><h4>{text(limit_id)} · {text(plan or "Unknown plan")} · {text(duration_label(duration))}</h4>'
-                      f'{trend_svg(windows)}{rolling}'
-                      f'<details><summary>Qualified completed-window trend</summary>'
-                      f'<p>Recent {min(12, len(windows))} of {len(windows)} qualified windows; all reset windows below.</p>'
-                      f'<ol>{items}</ol></details></div>')
     details = []
     for window in reversed(report["windows"]):
         estimate = window["estimate"]
@@ -173,8 +186,11 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
     recovery = status["recovery"]
     latest = report["windows"][-1] if report["windows"] else None
     headline = report.get("headline")
+    headline_previous = report.get("headline_previous", headline is not None and headline is not latest)
     show_headline_series = _headline_needs_series(report, headline or latest)
-    highlighted_evidence = evidence_line(headline, "Latest window fit") if headline else ""
+    evidence_label = "Previous window fit" if headline_previous else "Latest window fit"
+    highlighted_evidence = evidence_line(headline, evidence_label) if headline else ""
+    history = report.get("history", [])
     older_qualified = [window for window in qualified if window is not headline]
     shown_qualified = older_qualified[-3:]
     qualified_items = "".join(
@@ -191,10 +207,10 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
         '<p class="muted">Account-wide · unaffected by project and date filters.</p>'
         f'<div class="allowance-buckets">{"".join(buckets) or "<p>Quota information is unavailable.</p>"}</div>'
         '<h3>Observed API-equivalent value per 100% allowance</h3>'
-        f'<div class="allowance-economics">{economic_summary(headline, latest=latest, show_series=show_headline_series)}</div>'
+        f'<div class="allowance-economics">{economic_summary(headline, latest=latest, show_series=show_headline_series, is_previous=headline_previous)}</div>'
         '<p class="muted">Workload-specific local estimate, not cash or a contractual allowance. '
         'Other devices and missing history may change it.</p>'
-        '<details><summary>Probe, coverage, and trend diagnostics</summary>'
+        '<details><summary>Probe, coverage, and allowance history</summary>'
         f'{highlighted_evidence}'
         f'<p>Plan: {text(status["plan"] or "Unavailable")} · Probe: {text(status["probe_status"])} · '
         f'Last checked: {text(status["last_probe_at"] or "Not captured")} · '
@@ -203,7 +219,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
         f'<p>Bounded recovered history: {recovery["complete"]} sources checked, '
         f'{recovery["pending"]} pending, {recovery["unavailable"]} unavailable. Endpoint sampling is partial.</p>'
         f'<p>Account lifetime tokens (coverage diagnostic only): {text(status["lifetime_tokens"] if status["lifetime_tokens"] is not None else "Unavailable")}</p>'
-        f'{"".join(trends) or "<p>No qualified completed-window trend.</p>"}</details>'
+        f'{_history_html(history)}</details>'
         '<details><summary>Reset windows and capture details</summary>'
         f'{qualified_context}'
         f'{"".join(details) or "<p>No observations captured yet.</p>"}</details></section>'
@@ -225,7 +241,13 @@ def allowance_css():
 .allowance-economic p { margin: 6px 0; }
 .allowance-economic .allowance-value { font-size: 2.5rem; }
 .allowance-bucket meter { display: block; width: 100%; margin-top: 5px; }
-.allowance-trend { display: block; width: min(100%, 360px); height: 72px; color: var(--accent, var(--astra)); }
+.allowance-history { list-style: none; margin: 8px 0 0; padding: 0; }
+.allowance-history-item { min-width: 0; padding: 9px 0; border-top: 1px solid var(--border, var(--line)); }
+.allowance-history-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; min-width: 0; }
+.allowance-history-series { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.allowance-history-value { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.allowance-history-meta { margin: 4px 0 0; color: var(--muted, #64717b); overflow-wrap: anywhere; }
+.allowance-history-count { margin: 6px 0 0; }
 .allowance-value { font-size: 1.35rem; font-weight: 700; }
 .allowance-window { margin: 12px 0; padding: 10px; border: 1px solid var(--border, var(--line)); }
 .allowance-provisional { border-style: dashed; }

@@ -234,11 +234,14 @@ and redacted Codex Usage output. Never attach raw task JSONLs publicly.
 ## Plan Allowance
 
 The account-wide Plan Allowance section shows active quota buckets and reset
-metadata, plus the **Observed API-equivalent value of full allowance** when
-completed reset windows pass pricing, coverage, fit, and sensitivity gates.
-Project and date filters do not change this section. Current and weaker fits
-appear only in expanded details; a four-window rolling median requires four
-qualified completed windows in the same bucket/plan/duration series.
+metadata, plus the **Observed API-equivalent value of full allowance** when a
+window has a valid priced fit. Fits need at least 10 percentage points; stronger
+confidence also requires completed windows and the documented coverage and
+sensitivity gates. If the newest window is not yet priceable, the headline can
+show a dated **Previous window** estimate from the same limit, plan, and duration
+series. It never borrows across series. Collapsed diagnostics list recent valid
+priced windows, including current and provisional fits. Project and date filters
+do not change this account-wide section.
 
 Captures use official Codex App Server metadata reads without a model turn.
 Unavailable probes do not fail ordinary capture. Historical recovery checks
