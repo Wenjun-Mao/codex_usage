@@ -1,4 +1,5 @@
 """Script-free account allowance report shared by both application shells."""
+from datetime import UTC, datetime, tzinfo
 from html import escape
 from statistics import median
 
@@ -43,7 +44,7 @@ def evidence_line(window, label):
             f'{money(estimate["cost_span"])} local priced usage.</p>')
 
 
-def economic_summary(window, *, latest):
+def economic_summary(window, *, latest, show_series):
     if window is None:
         label = "Latest window"
     elif window["closure"] == "ongoing":
@@ -53,22 +54,56 @@ def economic_summary(window, *, latest):
     else:
         label = "Latest window · provisional"
     if window is None:
-        context = (f'<p>{series_label(latest)} · Observed {text(latest["start"][:10])}–'
+        series = f'{series_label(latest)} · ' if latest and show_series else ""
+        context = (f'<p>{series}Observed {text(latest["start"][:10])}–'
                    f'{text(latest["end"][:10])}</p>' if latest else "")
         return (f'<div class="allowance-economic"><h3>{label}</h3>'
                 '<p class="allowance-value">Insufficient data</p>'
                 f'{context}<p class="muted">The latest window has no valid priced estimate.</p></div>')
     estimate = window["estimate"]
+    series = f'<p>{series_label(window)}</p>' if show_series else ""
+    confidence = (f' · {text(estimate["confidence"])} confidence'
+                  if estimate["confidence"] in {"High", "Medium"} else "")
     return (
         f'<div class="allowance-economic"><h3>{label}</h3>'
         f'<p class="allowance-value">{money(estimate["value"])}</p>'
-        f'<p>{series_label(window)}</p>'
-        f'<p>Observed {text(window["start"][:10])}–{text(window["end"][:10])} · '
-        f'{text(estimate["confidence"])} confidence</p></div>'
+        f'{series}'
+        f'<p>Observed {text(window["start"][:10])}–{text(window["end"][:10])}{confidence}</p></div>'
     )
 
 
-def render_allowance_section(report):
+def _series_key(item):
+    return (item["limit_id"], item.get("plan") or "", item["duration_minutes"])
+
+
+def _headline_needs_series(report, window):
+    if window is None:
+        return False
+    active = report["status"]["active_buckets"]
+    active_series = {
+        (bucket["limit_id"], bucket.get("plan") or "", bucket["duration_minutes"])
+        for bucket in active
+    }
+    return len(active_series) > 1 or _series_key(window) not in active_series
+
+
+def _local_reset(timestamp, timezone):
+    value = datetime.fromtimestamp(timestamp, timezone)
+    offset = value.utcoffset()
+    if offset is None:
+        offset_label = "UTC offset unavailable"
+    else:
+        offset_minutes = int(offset.total_seconds() // 60)
+        sign = "+" if offset_minutes >= 0 else "−"
+        absolute_minutes = abs(offset_minutes)
+        offset_label = f"UTC{sign}{absolute_minutes // 60:02d}:{absolute_minutes % 60:02d}"
+    abbreviation = value.tzname()
+    zone_label = f" {abbreviation}" if abbreviation else ""
+    display = f"{value:%Y-%m-%d %H:%M}{zone_label} ({offset_label})"
+    return value.isoformat(timespec="minutes"), display
+
+
+def render_allowance_section(report, *, timezone: tzinfo = UTC):
     if report is None:
         return ""
     status = report["status"]
@@ -76,14 +111,23 @@ def render_allowance_section(report):
     for bucket in status["active_buckets"]:
         reset = bucket["resets_at"]
         if reset is not None:
-            from datetime import UTC, datetime
-            reset = datetime.fromtimestamp(reset, UTC).strftime("%Y-%m-%d %H:%M UTC")
+            reset_iso, reset_display = _local_reset(reset, timezone)
+            reset_markup = (f'<time datetime="{text(reset_iso)}">'
+                            f'{text(reset_display)}</time>')
+        else:
+            reset_markup = "Unavailable"
+        identity = (f'{text(bucket["limit_id"])} · '
+                    f'{text(duration_label(bucket["duration_minutes"]))}')
         buckets.append(
             '<div class="allowance-bucket">'
-            f'<strong>{text(bucket["limit_id"])} · {text(duration_label(bucket["duration_minutes"]))}</strong>'
-            f'<p>{bucket["used_percent"]:g}% used · {100-bucket["used_percent"]:g}% remaining</p>'
-            f'<meter min="0" max="100" value="{bucket["used_percent"]}" aria-label="Percentage used"></meter>'
-            f'<p class="muted">Reset: {text(reset or "Unavailable")}</p></div>'
+            '<div class="allowance-bucket-summary">'
+            f'<strong>{identity}</strong>'
+            f'<span class="allowance-bucket-usage">{bucket["used_percent"]:g}% used · '
+            f'{100-bucket["used_percent"]:g}% remaining</span>'
+            f'<span class="muted allowance-bucket-reset">Reset: {reset_markup}</span>'
+            '</div>'
+            f'<meter min="0" max="100" value="{bucket["used_percent"]}" '
+            f'aria-label="{identity} percentage used"></meter></div>'
         )
     qualified = report["qualified"]
     trends = []
@@ -129,6 +173,7 @@ def render_allowance_section(report):
     recovery = status["recovery"]
     latest = report["windows"][-1] if report["windows"] else None
     headline = report.get("headline")
+    show_headline_series = _headline_needs_series(report, headline or latest)
     highlighted_evidence = evidence_line(headline, "Latest window fit") if headline else ""
     older_qualified = [window for window in qualified if window is not headline]
     shown_qualified = older_qualified[-3:]
@@ -146,7 +191,7 @@ def render_allowance_section(report):
         '<p class="muted">Account-wide · unaffected by project and date filters.</p>'
         f'<div class="allowance-buckets">{"".join(buckets) or "<p>Quota information is unavailable.</p>"}</div>'
         '<h3>Observed API-equivalent value per 100% allowance</h3>'
-        f'<div class="allowance-economics">{economic_summary(headline, latest=latest)}</div>'
+        f'<div class="allowance-economics">{economic_summary(headline, latest=latest, show_series=show_headline_series)}</div>'
         '<p class="muted">Workload-specific local estimate, not cash or a contractual allowance. '
         'Other devices and missing history may change it.</p>'
         '<details><summary>Probe, coverage, and trend diagnostics</summary>'
@@ -168,13 +213,18 @@ def render_allowance_section(report):
 def allowance_css():
     return """
 .plan-allowance { margin: 18px 0; padding: 20px; border: 1px solid var(--border, var(--line)); border-radius: 12px; overflow-wrap: anywhere; }
-.allowance-buckets { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(220px,100%),1fr)); gap: 16px; }
+.allowance-buckets { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(320px,100%),1fr)); gap: 10px 18px; }
+.allowance-bucket { min-width: 0; }
+.allowance-bucket-summary { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; row-gap: 3px; }
+.allowance-bucket-summary > * { min-width: 0; margin: 0; }
+.allowance-bucket-usage { font-weight: 600; }
+.allowance-bucket-reset { overflow-wrap: anywhere; }
 .allowance-economics { border-top: 1px solid var(--border, var(--line)); border-bottom: 1px solid var(--border, var(--line)); padding: 14px 0; }
 .allowance-economic { min-width: 0; }
 .allowance-economic h3 { margin-top: 0; }
 .allowance-economic p { margin: 6px 0; }
 .allowance-economic .allowance-value { font-size: 2.5rem; }
-.allowance-bucket meter { width: 100%; }
+.allowance-bucket meter { display: block; width: 100%; margin-top: 5px; }
 .allowance-trend { display: block; width: min(100%, 360px); height: 72px; color: var(--accent, var(--astra)); }
 .allowance-value { font-size: 1.35rem; font-weight: 700; }
 .allowance-window { margin: 12px 0; padding: 10px; border: 1px solid var(--border, var(--line)); }

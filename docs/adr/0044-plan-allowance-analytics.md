@@ -61,9 +61,13 @@ five distinct observation times and bins are required. Confidence gates:
 
 The summary shows the latest window's valid priced fit in the largest type.
 An ongoing window is labeled **Current · provisional**, with its observed date
-range and series identity. Fit evidence stays in collapsed diagnostics. If the latest window lacks a valid fit,
-the headline says insufficient data instead of falling back to an older value.
-The summary contains a single economic figure. Earlier High/Medium windows,
+range. Series identity appears in the summary when multiple buckets are active
+or the headline cannot be matched to one active bucket; the active bucket row
+already identifies an unambiguous current series. The summary omits repeated
+provisional confidence wording and retains High/Medium confidence on qualified
+headlines. Fit evidence stays in collapsed diagnostics. If the latest window
+lacks a valid fit, the headline says insufficient data instead of falling back
+to an older value. The summary contains a single economic figure. Earlier High/Medium windows,
 with series identity, dates, and confidence, appear as a bounded recent list
 inside the collapsed reset-window disclosure. All reset windows remain
 available below that list, and qualified trends remain in diagnostics. Only completed High/Medium
@@ -76,6 +80,12 @@ contractual entitlements.
 
 The additive API-v1 capability is `plan-allowance`. Status includes plan, active
 buckets/reset timing, probe timestamp/freshness/diagnostics, and recovery counts.
+Active reset times use the report's configured timezone and show both its
+abbreviation and UTC offset. The report passes the timezone already resolved
+for its range through the shared HTML renderer, so native and VS Code reports
+use the same formatting. The report cache already keys by timezone; changes to
+the allowance markup also advance the report-render revision to invalidate old
+cached HTML.
 The shared script-free report places Plan Allowance after KPIs/notices and before
 Project Economics. It remains account-wide under project/date filters and exposes
 nested reset-window and capture disclosures in Day/Night and narrow layouts.

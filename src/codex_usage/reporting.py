@@ -4,7 +4,7 @@ import csv
 import html
 import json
 import sys
-from datetime import datetime
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import TextIO
 
@@ -223,6 +223,7 @@ def render_html_report(
             agent_activity=agent_activity,
             image_report=image_report,
             allowance_report=allowance_report,
+            allowance_timezone=generated_at.tzinfo or UTC,
         ),
     )
     storage_view_html = render_report_view(STORAGE_REPORT_VIEW, task_storage_html)
@@ -278,6 +279,7 @@ def _render_usage_view(
     agent_activity: AgentActivity | None,
     image_report: ImageReport | None,
     allowance_report: dict | None = None,
+    allowance_timezone: tzinfo = UTC,
 ) -> str:
     temporal_chart = render_temporal_chart(
         view_model, range_name, use_period_trend=use_period_trend
@@ -292,7 +294,7 @@ def _render_usage_view(
         f"{pricing_notice_html}"
         f"{_empty_report_notice(view_model)}"
         f"{project_transitions_html}"
-        f"{render_allowance_section(allowance_report)}"
+        f"{render_allowance_section(allowance_report, timezone=allowance_timezone)}"
         f"{render_project_economics_section(view_model.project_economics)}"
         f"{render_image_activity_section(image_report)}"
         '<div class="dashboard-grid">'

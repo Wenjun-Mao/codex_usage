@@ -86,8 +86,8 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
   if (!inTauri) {
     return {
       available: false,
-      current_version: "2.8.2",
-      version: "2.8.2",
+      current_version: "2.8.3",
+      version: "2.8.3",
       date: null,
       body: null,
     };

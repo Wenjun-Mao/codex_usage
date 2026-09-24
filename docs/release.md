@@ -1,6 +1,6 @@
-# 2.8.2 Distribution Checklist
+# 2.8.3 Distribution Checklist
 
-Version 2.8.2 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.8.3 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
@@ -147,16 +147,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.2`, both
-changelogs have a dated `2.8.2` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.3`, both
+changelogs have a dated `2.8.3` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.8.2`. Create and push that
+The only valid release tag for this version is `v2.8.3`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.8.2
-git push origin v2.8.2
+git tag v2.8.3
+git push origin v2.8.3
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -170,8 +170,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.8.2-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.8.2-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.8.3-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.8.3-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

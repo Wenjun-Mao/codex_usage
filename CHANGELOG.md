@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.8.3 - 2026-09-24
+
+- Compact Plan Allowance bucket rows, format resets in the report timezone, and
+  trim repeated headline context while preserving ambiguous series identity.
+
 ## 2.8.2 - 2026-09-23
 
 - Focus Plan Allowance on the latest valid ongoing-window estimate and keep
