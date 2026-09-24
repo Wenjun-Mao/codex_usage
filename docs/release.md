@@ -86,8 +86,8 @@ sizes (1440 x 900 and 760 x 900). Confirm:
   switch coherently between token-scaled and cost-scaled bars;
 - Plan Allowance stays account-wide under project/date filters, exposes active
   buckets, shows the latest valid window estimate as a clearly labeled
-  provisional headline when ongoing, and keeps the latest completed qualified
-  estimate separate; freshness/recovery diagnostics and bounded capture details
+  provisional headline when ongoing, and keeps earlier qualified estimates
+  within collapsed details; freshness/recovery diagnostics and bounded capture details
   work in keyboard-operable disclosures;
 - Project Economics shows the weighted all-project benchmark and expandable
   project/model details, and both it and Token Accounting disclosures are

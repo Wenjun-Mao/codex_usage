@@ -61,12 +61,12 @@ five distinct observation times and bins are required. Confidence gates:
 
 The summary shows the latest window's valid priced fit in the largest type.
 An ongoing window is labeled **Current · provisional**, with its observed date
-range, series identity, and evidence. If the latest window lacks a valid fit,
+range and series identity. Fit evidence stays in collapsed diagnostics. If the latest window lacks a valid fit,
 the headline says insufficient data instead of falling back to an older value.
-A separate, smaller **Latest
-completed · qualified** figure uses the latest completed High/Medium window;
-its date, confidence, and series identity are explicit. The two figures may
-come from different series and are never conflated. Only completed High/Medium
+The summary contains a single economic figure. Earlier High/Medium windows,
+with series identity, dates, and confidence, appear as a bounded recent list
+inside the collapsed reset-window disclosure. All reset windows remain
+available below that list, and qualified trends remain in diagnostics. Only completed High/Medium
 windows drive the qualified trend. Separate bucket, plan, and duration series
 never share a rolling median. A four-window rolling median appears only after
 four qualified completed windows in that series. Current windows have dashed
@@ -82,6 +82,9 @@ nested reset-window and capture disclosures in Day/Night and narrow layouts.
 Probe timestamps, recovery counts, fit diagnostics, qualified trends, and
 capture observations stay in collapsed disclosures. Capture tables show at
 most the latest 100 points per window and disclose the full count.
+Trend lists show at most the latest 12 qualified windows per series and
+disclose the full count; individual reset windows remain available below.
+The economic summary is unframed and uses a subtle divider.
 Report interactions read only the ledger and never probe or open JSONLs.
 
 ## Rejected Alternatives

@@ -72,12 +72,12 @@ def test_empty_report_is_explicitly_unavailable(tmp_path):
         report = build_allowance_report(connection)
     markup = render_allowance_section(report)
     assert "Quota information is unavailable" in markup
-    assert markup.count("Insufficient data") == 2
+    assert markup.count("Insufficient data") == 1
     assert "Account-wide" in markup
 
 
-def _window(start, end, confidence, value, *, completed, closure=None, limit_id="codex"):
-    return {"limit_id": limit_id, "plan": "pro", "duration_minutes": 10080,
+def _window(start, end, confidence, value, *, completed, closure=None, limit_id="codex", duration=10080):
+    return {"limit_id": limit_id, "plan": "pro", "duration_minutes": duration,
             "start": start, "end": end, "completed": completed,
             "closure": closure or ("scheduled-compatible" if completed else "ongoing"),
             "corrections": 0, "fully_priced": True, "coverage_complete": True,
@@ -87,39 +87,40 @@ def _window(start, end, confidence, value, *, completed, closure=None, limit_id=
 
 
 def _report(windows):
-    qualified, headline, latest_completed = allowance_highlights(windows)
+    qualified, headline = allowance_highlights(windows)
     return {"status": {"plan": "pro", "active_buckets": [], "probe_status": "fresh",
                        "last_probe_at": "2026-09-24", "lifetime_tokens": None,
                        "recovery": {"complete": 0, "pending": 0, "unavailable": 0}},
-            "windows": windows, "qualified": qualified, "headline": headline,
-            "latest_completed": latest_completed}
+            "windows": windows, "qualified": qualified, "headline": headline}
 
 
-def test_current_and_completed_estimates_are_distinct_and_dated():
+def test_current_estimate_is_primary_and_older_qualified_value_is_collapsed():
     completed = _window("2026-08-24", "2026-08-31", "Medium", 1069.59, completed=True)
     current = _window("2026-09-19", "2026-09-24", "Low/provisional", 1375, completed=False)
     report = _report([completed, current])
     assert report["qualified"] == [completed]
     assert report["headline"] is current
-    assert report["latest_completed"] is completed
     markup = render_allowance_section(report)
     assert "Current · provisional" in markup and "$1,375.00" in markup
     assert "Observed 2026-09-19–2026-09-24 · Low/provisional confidence" in markup
-    assert "Latest completed · qualified" in markup and "$1,069.59" in markup
-    assert "Observed 2026-08-24–2026-08-31 · Medium confidence" in markup
-    assert markup.index("$1,375.00") < markup.index("$1,069.59")
+    assert "Latest completed · qualified" not in markup
+    assert "$1,069.59" not in markup.split('<details><summary>Probe, coverage, and trend diagnostics')[0]
+    assert "$1,069.59" in markup.split('<details><summary>Reset windows and capture details</summary>')[1]
+    assert "Earlier qualified estimates (latest 1 of 1" in markup
     assert markup.index("Probe, coverage, and trend diagnostics") < markup.index("Last checked")
+    assert markup.index("Probe, coverage, and trend diagnostics") < markup.index("Latest window fit: 25 percentage points")
+    assert markup.index("Latest window fit:") > markup.index("</div></div>")
     assert "<script" not in markup
 
 
 def test_absent_and_provisional_only_states():
     incomplete = _window("2026-09-19", "2026-09-24", "insufficient", None, completed=False)
-    assert allowance_highlights([incomplete]) == ([], None, None)
+    assert allowance_highlights([incomplete]) == ([], None)
     provisional = _window("2026-09-19", "2026-09-24", "Low/provisional", 1375, completed=False)
     report = _report([provisional])
     markup = render_allowance_section(report)
     assert report["qualified"] == [] and report["headline"] is provisional
-    assert "$1,375.00" in markup and "No completed High/Medium window" in markup
+    assert "$1,375.00" in markup and "No earlier qualified completed estimate" in markup
     assert "The latest window has no valid priced estimate" in render_allowance_section(_report([incomplete]))
 
 
@@ -131,6 +132,41 @@ def test_latest_invalid_window_does_not_resurrect_older_valid_estimate():
     markup = render_allowance_section(report)
     assert "The latest window has no valid priced estimate" in markup
     assert markup.index("Insufficient data") < markup.index("$1,200.00")
+
+
+def test_multiple_series_keep_qualified_history_in_collapsed_details():
+    same = _window("2026-08-24", "2026-08-31", "Medium", 1069, completed=True)
+    other = _window("2026-09-01", "2026-09-10", "High", 500, completed=True,
+                    limit_id="extra-model", duration=300)
+    current = _window("2026-09-19", "2026-09-24", "Low/provisional", 1375, completed=False)
+    report = _report([same, other, current])
+    markup = render_allowance_section(report)
+    assert report["qualified"] == [same, other]
+    assert "$1,069.00" not in markup.split('<details><summary>Probe, coverage, and trend diagnostics')[0]
+    assert "$500.00" in markup.split('<details><summary>Reset windows and capture details</summary>')[1]
+    assert "extra-model · pro · 5 hours" in markup
+
+
+def test_unrelated_qualified_history_stays_in_details():
+    other = _window("2026-09-01", "2026-09-10", "High", 500, completed=True,
+                    limit_id="extra-model", duration=300)
+    current = _window("2026-09-19", "2026-09-24", "Low/provisional", 1375, completed=False)
+    report = _report([other, current])
+    markup = render_allowance_section(report)
+    assert "Earlier qualified estimates (latest 1 of 1" in markup
+    assert "$500.00" in markup.split('<details><summary>Reset windows and capture details</summary>')[1]
+
+
+def test_latest_qualified_headline_excludes_itself_from_older_context():
+    previous = _window("2026-08-24", "2026-08-31", "Medium", 1069, completed=True)
+    latest = _window("2026-09-19", "2026-09-24", "High", 1375, completed=True)
+    report = _report([previous, latest])
+    assert report["headline"] is latest
+    markup = render_allowance_section(report)
+    assert "Latest window · qualified" in markup
+    assert "$1,069.00" in markup.split('<details><summary>Reset windows and capture details</summary>')[1]
+    assert "Earlier qualified estimates (latest 1 of 1" in markup
+    assert "No earlier qualified completed estimate" in render_allowance_section(_report([latest]))
 
 
 def test_rendered_capture_table_is_bounded_and_escaped():

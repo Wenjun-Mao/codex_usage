@@ -12,14 +12,14 @@ from codex_usage.allowance_windows import segment_windows
 
 
 def allowance_highlights(windows):
-    """Select the latest window and completed comparator without relaxing confidence gates."""
+    """Select the latest window without substituting older qualified history."""
     qualified = [w for w in windows if w["completed"] and w["estimate"]["confidence"] in {"High", "Medium"}]
     latest = windows[-1] if windows else None
     estimate = latest["estimate"] if latest else None
     headline = (latest if estimate and estimate["confidence"] in {"High", "Medium", "Low/provisional"}
                 and isinstance(estimate["value"], (int, float))
                 and math.isfinite(estimate["value"]) and estimate["value"] > 0 else None)
-    return qualified, headline, qualified[-1] if qualified else None
+    return qualified, headline
 
 
 def allowance_status(connection):
@@ -74,7 +74,7 @@ def build_allowance_report(connection, *, coverage_complete=True):
             points.append(selected)
             provenance.setdefault(selected, set()).add("Recovered" if row["timestamps_blob"] else "Captured")
     if not points:
-        return {"status": status, "windows": [], "qualified": [], "headline": None, "latest_completed": None}
+        return {"status": status, "windows": [], "qualified": [], "headline": None}
     valued = sorted(value_records(query_ledger_records(connection)), key=lambda v: v.record.timestamp)
     times, costs, unpriced = [], [0.0], [0]
     for item in valued:
@@ -99,6 +99,5 @@ def build_allowance_report(connection, *, coverage_complete=True):
             "points": [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in window.points],
         })
     windows.sort(key=lambda w: w["end"])
-    qualified, headline, latest_completed = allowance_highlights(windows)
-    return {"status": status, "windows": windows, "qualified": qualified,
-            "headline": headline, "latest_completed": latest_completed}
+    qualified, headline = allowance_highlights(windows)
+    return {"status": status, "windows": windows, "qualified": qualified, "headline": headline}

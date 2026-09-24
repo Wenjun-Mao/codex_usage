@@ -32,10 +32,19 @@ def money(value):
     return f"${value:,.2f}" if value is not None else "Insufficient data"
 
 
-def economic_card(window, *, headline):
-    if not headline:
-        label = "Latest completed · qualified"
-    elif window is None:
+def series_label(window):
+    return (f'{text(window["limit_id"])} · {text(window["plan"] or "Unknown plan")} · '
+            f'{text(duration_label(window["duration_minutes"]))}')
+
+
+def evidence_line(window, label):
+    estimate = window["estimate"]
+    return (f'<p>{label}: {estimate["span"]:g} percentage points, {estimate["bins"]} bins, '
+            f'{money(estimate["cost_span"])} local priced usage.</p>')
+
+
+def economic_summary(window, *, latest):
+    if window is None:
         label = "Latest window"
     elif window["closure"] == "ongoing":
         label = "Current · provisional"
@@ -43,22 +52,19 @@ def economic_card(window, *, headline):
         label = "Latest window · qualified"
     else:
         label = "Latest window · provisional"
-    card_class = "allowance-economic allowance-headline" if headline else "allowance-economic"
     if window is None:
-        reason = ("The latest window has no valid priced estimate."
-                  if headline else "No completed High/Medium window is available.")
-        return (f'<div class="{card_class}"><h3>{label}</h3>'
-                f'<p class="allowance-value">Insufficient data</p><p class="muted">{reason}</p></div>')
+        context = (f'<p>{series_label(latest)} · Observed {text(latest["start"][:10])}–'
+                   f'{text(latest["end"][:10])}</p>' if latest else "")
+        return (f'<div class="allowance-economic"><h3>{label}</h3>'
+                '<p class="allowance-value">Insufficient data</p>'
+                f'{context}<p class="muted">The latest window has no valid priced estimate.</p></div>')
     estimate = window["estimate"]
     return (
-        f'<div class="{card_class}"><h3>{label}</h3>'
+        f'<div class="allowance-economic"><h3>{label}</h3>'
         f'<p class="allowance-value">{money(estimate["value"])}</p>'
-        f'<p>{text(window["limit_id"])} · {text(window["plan"] or "Unknown plan")} · '
-        f'{text(duration_label(window["duration_minutes"]))}</p>'
+        f'<p>{series_label(window)}</p>'
         f'<p>Observed {text(window["start"][:10])}–{text(window["end"][:10])} · '
-        f'{text(estimate["confidence"])} confidence</p>'
-        f'<p class="muted">Evidence: {estimate["span"]:g} percentage points, '
-        f'{estimate["bins"]} bins, {money(estimate["cost_span"])} local priced usage.</p></div>'
+        f'{text(estimate["confidence"])} confidence</p></div>'
     )
 
 
@@ -90,7 +96,9 @@ def render_allowance_section(report):
         items = ''.join(f'<li>{text(w["end"][:10])}: {money(w["estimate"]["value"])} · {text(w["estimate"]["confidence"])}</li>' for w in windows[-12:])
         trends.append(f'<div><h4>{text(limit_id)} · {text(plan or "Unknown plan")} · {text(duration_label(duration))}</h4>'
                       f'{trend_svg(windows)}{rolling}'
-                      f'<details><summary>Qualified completed-window trend</summary><ol>{items}</ol></details></div>')
+                      f'<details><summary>Qualified completed-window trend</summary>'
+                      f'<p>Recent {min(12, len(windows))} of {len(windows)} qualified windows; all reset windows below.</p>'
+                      f'<ol>{items}</ol></details></div>')
     details = []
     for window in reversed(report["windows"]):
         estimate = window["estimate"]
@@ -119,17 +127,30 @@ def render_allowance_section(report):
             f'</tr></thead><tbody>{captures}</tbody></table></div></details></details>'
         )
     recovery = status["recovery"]
+    latest = report["windows"][-1] if report["windows"] else None
+    headline = report.get("headline")
+    highlighted_evidence = evidence_line(headline, "Latest window fit") if headline else ""
+    older_qualified = [window for window in qualified if window is not headline]
+    shown_qualified = older_qualified[-3:]
+    qualified_items = "".join(
+        f'<li>{series_label(window)} · Observed {text(window["start"][:10])}–'
+        f'{text(window["end"][:10])} · {money(window["estimate"]["value"])} · '
+        f'{text(window["estimate"]["confidence"])}</li>' for window in reversed(shown_qualified)
+    )
+    qualified_context = (f'<p>Earlier qualified estimates (latest {len(shown_qualified)} of '
+                         f'{len(older_qualified)}; all reset windows below):</p><ul>{qualified_items}</ul>'
+                         if older_qualified else '<p>No earlier qualified completed estimate.</p>')
     return (
         '<section class="card plan-allowance" id="plan-allowance" aria-labelledby="plan-allowance-title">'
         '<h2 id="plan-allowance-title">Plan Allowance</h2>'
         '<p class="muted">Account-wide · unaffected by project and date filters.</p>'
         f'<div class="allowance-buckets">{"".join(buckets) or "<p>Quota information is unavailable.</p>"}</div>'
         '<h3>Observed API-equivalent value per 100% allowance</h3>'
-        f'<div class="allowance-economics">{economic_card(report.get("headline"), headline=True)}'
-        f'{economic_card(report.get("latest_completed"), headline=False)}</div>'
-        '<p class="muted">A workload-specific estimate from local priced language usage, not cash value or a contractual allowance. '
-        'Other devices, missing history, model mix, and pricing can affect coverage.</p>'
+        f'<div class="allowance-economics">{economic_summary(headline, latest=latest)}</div>'
+        '<p class="muted">Workload-specific local estimate, not cash or a contractual allowance. '
+        'Other devices and missing history may change it.</p>'
         '<details><summary>Probe, coverage, and trend diagnostics</summary>'
+        f'{highlighted_evidence}'
         f'<p>Plan: {text(status["plan"] or "Unavailable")} · Probe: {text(status["probe_status"])} · '
         f'Last checked: {text(status["last_probe_at"] or "Not captured")} · '
         f'Last observed: {text(status.get("last_observed_at") or "Not captured")}</p>'
@@ -139,6 +160,7 @@ def render_allowance_section(report):
         f'<p>Account lifetime tokens (coverage diagnostic only): {text(status["lifetime_tokens"] if status["lifetime_tokens"] is not None else "Unavailable")}</p>'
         f'{"".join(trends) or "<p>No qualified completed-window trend.</p>"}</details>'
         '<details><summary>Reset windows and capture details</summary>'
+        f'{qualified_context}'
         f'{"".join(details) or "<p>No observations captured yet.</p>"}</details></section>'
     )
 
@@ -147,11 +169,11 @@ def allowance_css():
     return """
 .plan-allowance { margin: 18px 0; padding: 20px; border: 1px solid var(--border, var(--line)); border-radius: 12px; overflow-wrap: anywhere; }
 .allowance-buckets { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(220px,100%),1fr)); gap: 16px; }
-.allowance-economics { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(280px,100%),1fr)); gap: 12px; }
-.allowance-economic { padding: 14px; border: 1px solid var(--border, var(--line)); border-radius: 8px; }
+.allowance-economics { border-top: 1px solid var(--border, var(--line)); border-bottom: 1px solid var(--border, var(--line)); padding: 14px 0; }
+.allowance-economic { min-width: 0; }
 .allowance-economic h3 { margin-top: 0; }
 .allowance-economic p { margin: 6px 0; }
-.allowance-headline .allowance-value { font-size: clamp(2rem, 3vw, 2.7rem); }
+.allowance-economic .allowance-value { font-size: 2.5rem; }
 .allowance-bucket meter { width: 100%; }
 .allowance-trend { display: block; width: min(100%, 360px); height: 72px; color: var(--accent, var(--astra)); }
 .allowance-value { font-size: 1.35rem; font-weight: 700; }
