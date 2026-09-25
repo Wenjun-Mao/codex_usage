@@ -304,9 +304,9 @@ def _render_usage_view(
         f"{render_agent_activity_section(agent_activity)}"
         '<section class="usage-comparison" aria-label="Usage chart comparison">'
         '<input class="comparison-scale-input" type="radio" name="usage-chart-scale" '
-        'id="compare-scale-tokens" value="tokens" checked>'
+        'id="compare-scale-tokens" value="tokens">'
         '<input class="comparison-scale-input" type="radio" name="usage-chart-scale" '
-        'id="compare-scale-cost" value="cost">'
+        'id="compare-scale-cost" value="cost" checked>'
         '<div class="comparison-scale-toolbar">'
         '<span class="comparison-scale-label">Compare by</span>'
         '<span class="comparison-scale-options" role="group" aria-label="Compare chart bars by">'

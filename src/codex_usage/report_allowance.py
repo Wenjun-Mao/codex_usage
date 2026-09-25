@@ -135,6 +135,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
     status = report["status"]
     buckets = []
     for bucket in status["active_buckets"]:
+        remaining_percent = 100 - bucket["used_percent"]
         reset = bucket["resets_at"]
         if reset is not None:
             reset_iso, reset_display = _local_reset(reset, timezone)
@@ -149,12 +150,12 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
             '<div class="allowance-bucket-summary">'
             f'<strong>{identity}</strong>'
             f'<span class="allowance-bucket-usage">{bucket["used_percent"]:g}% used · '
-            f'{100-bucket["used_percent"]:g}% remaining</span>'
+            f'{remaining_percent:g}% remaining</span>'
             f'<span class="muted allowance-bucket-reset">Reset: {reset_markup}</span>'
             '</div>'
-            f'<meter min="0" max="100" value="{bucket["used_percent"]}" '
-            f'aria-label="{identity} percentage used" '
-            f'aria-valuetext="{bucket["used_percent"]:g}% used"></meter></div>'
+            f'<meter min="0" max="100" value="{remaining_percent:g}" '
+            f'aria-label="{identity} percentage remaining" '
+            f'aria-valuetext="{remaining_percent:g}% remaining"></meter></div>'
         )
     qualified = report["qualified"]
     details = []

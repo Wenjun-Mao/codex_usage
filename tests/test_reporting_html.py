@@ -89,8 +89,8 @@ def test_dashboard_report_contains_fast_tooltip_charts_without_external_assets(
     assert (
         '<section class="usage-comparison" aria-label="Usage chart comparison">' in html
     )
-    assert 'id="compare-scale-tokens" value="tokens" checked' in html
-    assert 'id="compare-scale-cost" value="cost"' in html
+    assert 'id="compare-scale-tokens" value="tokens">' in html
+    assert 'id="compare-scale-cost" value="cost" checked' in html
     assert "chart-tooltip-main" in html
     assert '<span class="chart-tooltip-main">Apr 27\u2013May 3, 2026</span>' in html
     assert '<span class="chart-tooltip-detail">$1.7500 | 1,100 tokens</span>' in html
@@ -479,5 +479,5 @@ def test_dashboard_report_has_empty_states(tmp_path: Path) -> None:
     assert "No Codex usage was found for this report range." in html
     assert "Projects: All Projects" in html
     assert "Project Transitions" not in html
-    assert "No daily usage found for this range." in html
-    assert html.count("<svg") == 4
+    assert "No daily usage found for this range." not in html
+    assert "Daily Details" not in html

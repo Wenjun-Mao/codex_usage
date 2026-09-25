@@ -8,6 +8,9 @@ from codex_usage.report_view import ReportViewModel
 def render_temporal_chart(
     view_model: ReportViewModel, range_name: str, *, use_period_trend: bool = False
 ) -> str:
+    if range_name in {"today", "yesterday"}:
+        return ""
+
     details = render_aggregate_table(
         "Daily Details", view_model.daily_rows, section_id="daily-details"
     )

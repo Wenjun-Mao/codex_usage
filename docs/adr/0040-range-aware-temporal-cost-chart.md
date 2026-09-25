@@ -23,8 +23,10 @@ calendar months from those already-local day keys, including the first and last
 partial periods. The report pre-renders both series and exposes one native radio
 group, **Week | Month**, defaulting to Week. CSS switches the visible series, so
 the desktop sandbox and VS Code webview need no script, ledger query, JSONL read,
-or report regeneration. Every shorter range remains on the existing daily chart.
-The Daily Details table always receives the original rows.
+or report regeneration. Every shorter range except the `today` and `yesterday`
+presets remains on the existing daily chart. Those two presets omit the one-day
+Daily Cost Trend and Daily Details; custom one-date ranges retain both. The Daily
+Details table otherwise always receives the original rows.
 
 The all-history section is titled **Cost Trend**. The renderer supplies readable
 minimum widths and bounded desktop, medium, and narrow tick subsets, always

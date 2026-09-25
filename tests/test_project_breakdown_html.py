@@ -59,8 +59,8 @@ def test_project_breakdown_renders_nested_roles_models_and_shared_legend(
     assert 'class="model-segment model-color-slot-1"' in html
     assert 'class="model-segment model-color-slot-2"' in html
     assert 'class="project-role-metric-cost">$' in html
-    assert 'id="compare-scale-tokens" value="tokens" checked' in html
-    assert 'id="compare-scale-cost" value="cost"' in html
+    assert 'id="compare-scale-tokens" value="tokens">' in html
+    assert 'id="compare-scale-cost" value="cost" checked' in html
     assert '<label for="compare-scale-tokens">Tokens</label>' in html
     assert '<label for="compare-scale-cost">API cost</label>' in html
     assert 'aria-label="Compare chart bars by"' in html
@@ -183,8 +183,8 @@ def test_shared_comparison_scale_controls_project_breakdown_and_model_mix(
         html,
     )
 
-    assert 'id="compare-scale-tokens"' in control
-    assert 'id="compare-scale-cost"' in control
+    assert 'id="compare-scale-tokens" value="tokens">' in control
+    assert 'id="compare-scale-cost" value="cost" checked' in control
     assert [float(tokens) for tokens, _ in widths] == [100.0, 100.0]
     assert min(float(cost) for _, cost in widths) < max(
         float(cost) for _, cost in widths

@@ -1,7 +1,7 @@
 from codex_usage.report_allowance import allowance_css, render_allowance_section
 
 
-def test_active_bucket_meter_preserves_used_semantics_and_theme_styling():
+def test_active_bucket_meter_represents_remaining_allowance_and_keeps_theme_styling():
     report = {
         "status": {
             "plan": "pro",
@@ -27,9 +27,9 @@ def test_active_bucket_meter_preserves_used_semantics_and_theme_styling():
     markup = render_allowance_section(report)
     css = allowance_css()
 
-    assert 'value="17"' in markup
-    assert 'aria-label="codex · 7 days percentage used"' in markup
-    assert 'aria-valuetext="17% used"' in markup
+    assert 'value="83"' in markup
+    assert 'aria-label="codex · 7 days percentage remaining"' in markup
+    assert 'aria-valuetext="83% remaining"' in markup
     assert "17% used · 83% remaining" in markup
     assert 'role="progressbar"' not in markup and 'role="meter"' not in markup
     assert "appearance: none" in css

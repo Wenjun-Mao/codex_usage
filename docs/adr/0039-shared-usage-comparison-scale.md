@@ -18,6 +18,9 @@ token and API-cost width variables during report rendering. CSS applies the
 selected measure to both charts; changing it performs no ledger query, source
 file read, or report regeneration.
 
+The shared **Compare by** control defaults to API cost. Tokens remains selectable
+and updates both charts together.
+
 Unpriced models retain their token width and receive an explicit zero API-cost
 width. Exact tables and tooltip disclosures remain available in either mode.
 

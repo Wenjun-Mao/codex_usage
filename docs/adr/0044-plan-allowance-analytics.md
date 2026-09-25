@@ -89,6 +89,9 @@ cached HTML.
 The shared script-free report places Plan Allowance after KPIs/notices and
 before Project Economics. It remains account-wide under project/date filters
 and exposes reset-window and capture details in Day/Night and narrow layouts.
+Each active bucket's native meter depicts the remaining allowance. Its adjacent
+copy continues to show both used and remaining percentages, while the accessible
+label and value text describe the remaining percentage.
 Probe timestamps, recovery counts, fit diagnostics, and allowance history stay
 in one collapsed diagnostics disclosure. History includes valid priced fits
 from ongoing, completed, and plan-change-ended windows, including provisional
