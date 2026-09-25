@@ -19,7 +19,7 @@ from codex_usage.aggregation import (
     summarize_valued_records,
     value_records,
 )
-from codex_usage.allowance_queries import build_allowance_report
+from codex_usage.allowance_index import indexed_allowance_report
 from codex_usage.agent_activity import agent_activity_csv, build_agent_activity
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.ledger_queries import (
@@ -44,7 +44,7 @@ from codex_usage.reporting import render_html_report
 PRICING_REVISION = (
     f"{PRICING_AS_OF}:{__version__}:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
 )
-REPORT_RENDER_REVISION = 12
+REPORT_RENDER_REVISION = 13
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +122,11 @@ def render_ledger_report(
                 status=status,
             )
 
-        allowance_report = build_allowance_report(connection, coverage_complete=status.coverage.complete)
+        allowance_report = indexed_allowance_report(
+            connection, ledger_path, revision=status.revision,
+            pricing_revision=PRICING_REVISION,
+            coverage_complete=status.coverage.complete,
+        )
         records = finalize_session_records(
             [query_ledger_records(connection, bounds=report_range.bounds)]
         )

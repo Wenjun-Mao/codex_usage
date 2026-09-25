@@ -157,7 +157,7 @@ def test_image_ledger_migration_creates_a_pre_migration_backup(tmp_path: Path) -
         )
 
     backups = list(tmp_path.glob("usage-ledger.sqlite3.schema-1-backup-*"))
-    assert version == "3"
+    assert version == "4"
     assert len(backups) == 1
     with sqlite3.connect(backups[0]) as connection:
         assert (

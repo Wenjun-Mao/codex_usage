@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24.
+Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24 and
+indexed report calculation on 2026-09-25.
 
 ## Context
 
@@ -102,7 +103,35 @@ windows and gives the full count; individual reset windows remain available
 below. Capture tables
 show at most the latest 100 points per window and disclose the full count. The
 economic summary is unframed and uses a subtle divider. Report interactions
-read only the ledger and never probe or open JSONLs.
+derive data only from the ledger and never probe or open JSONLs.
+
+## Indexed report calculation (2026-09-25)
+
+Ledger schema 4 adds disposable event costs and an account-wide allowance
+report cache. The full ledger estimator remains the oracle. On an uncached
+view, only trusted events without a cost for the current pricing and index
+revision are priced. The indexed path then accumulates those costs in the
+same timestamp and source order as the full calculation and runs the same
+window segmentation, regression, highlight, and history code. The resulting
+report is keyed by ledger revision, pricing/index revision, and coverage state;
+live probe status is read for each view. Date, project, timezone, and theme
+filters do not change this account-wide result. Rendered HTML retains its
+separate view-specific cache.
+
+Append capture retains existing event IDs, so only new rows need pricing.
+Replacement and normalized rebuild delete prior events, cascading deletion
+of their costs. Superseded generations are excluded from accumulation.
+Recovery, corrections, reset observations, and coverage changes advance the
+ledger revision and rebuild the window result from indexed costs. A pricing
+revision invalidates all event costs and the window result atomically. The
+index revision must advance when the cost-index contract changes. A read-only
+view of a pre-migration ledger or a snapshot overtaken by capture uses the
+full estimator. Tied quota observations now retain stored order during
+deduplication; set iteration had made reset segmentation vary by process.
+
+The index is derived from normalized ledger rows. Report views never read
+source JSONL files or invoke capture, though an uncached view may write the
+derived SQLite caches. This keeps the ledger-only reporting contract.
 
 ## Rejected Alternatives
 

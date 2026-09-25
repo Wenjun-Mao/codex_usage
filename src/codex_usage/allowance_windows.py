@@ -43,7 +43,10 @@ def boundary(previous, current):
 
 def segment_windows(points):
     grouped = {}
-    for point in sorted(set(points), key=lambda p: (p.timestamp, p.slot)):
+    # Keep the first stored observation when transport supplies conflicting
+    # samples at the same timestamp and slot. A set's iteration order changes
+    # across processes and can otherwise move a reset boundary between views.
+    for point in sorted(dict.fromkeys(points), key=lambda p: (p.timestamp, p.slot)):
         # Slot is transport layout, not identity. Duration and plan changes
         # break the fit, even when the producer reuses a limit ID.
         grouped.setdefault(point.limit_id, []).append(point)

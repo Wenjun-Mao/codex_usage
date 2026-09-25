@@ -14,7 +14,7 @@ from codex_usage.agent_private_files import (
 )
 
 
-LEDGER_SCHEMA_VERSION = 3
+LEDGER_SCHEMA_VERSION = 4
 LEDGER_REVISION_KEY = "ledger_revision"
 
 
@@ -76,7 +76,9 @@ def ensure_ledger_schema(
         elif version == 1:
             _migrate_v1_to_v2(connection)
         from codex_usage.allowance_schema import create_allowance_schema
-        create_allowance_schema(connection)
+        if version < 3:
+            create_allowance_schema(connection)
+        _create_allowance_cost_schema(connection)
         connection.execute(
             "insert or replace into ledger_meta (key, value) values (?, ?)",
             ("schema_version", str(LEDGER_SCHEMA_VERSION)),
@@ -105,6 +107,23 @@ def increment_ledger_revision(connection: sqlite3.Connection) -> int:
         (LEDGER_REVISION_KEY, str(revision)),
     )
     return revision
+
+
+def _create_allowance_cost_schema(connection: sqlite3.Connection) -> None:
+    """Derived, disposable pricing index; source events remain authoritative."""
+    connection.execute("""create table if not exists allowance_event_costs (
+        event_id integer primary key references ledger_usage_events(event_id) on delete cascade,
+        pricing_revision text not null,
+        total_usd real not null,
+        unpriced_tokens integer not null
+    )""")
+    connection.execute("""create table if not exists allowance_report_cache (
+        ledger_revision integer not null,
+        pricing_revision text not null,
+        coverage_complete integer not null,
+        report_json text not null,
+        primary key (ledger_revision, pricing_revision, coverage_complete)
+    )""")
 
 
 def _ledger_version(connection: sqlite3.Connection) -> int:

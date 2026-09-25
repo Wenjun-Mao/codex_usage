@@ -91,6 +91,17 @@ def build_allowance_report(connection, *, coverage_complete=True):
     from codex_usage.aggregation import value_records
     from codex_usage.ledger_queries import query_ledger_records
 
+    if connection.execute("select 1 from quota_observations limit 1").fetchone() is None:
+        return _build_from_costs(connection, (), coverage_complete=coverage_complete)
+    valued = sorted(value_records(query_ledger_records(connection)), key=lambda v: v.record.timestamp)
+    return _build_from_costs(connection, (
+        (item.record.timestamp.timestamp(), item.summary.cost.total_usd,
+         item.summary.cost.unpriced_tokens) for item in valued
+    ), coverage_complete=coverage_complete)
+
+
+def _build_from_costs(connection, priced_events, *, coverage_complete=True):
+    """Keep the full estimator and indexed estimator on the same window path."""
     status = allowance_status(connection)
     rows = connection.execute("select * from quota_observations order by timestamp").fetchall()
     points = []
@@ -105,12 +116,11 @@ def build_allowance_report(connection, *, coverage_complete=True):
     if not points:
         return {"status": status, "windows": [], "qualified": [], "headline": None,
                 "headline_previous": False, "history": []}
-    valued = sorted(value_records(query_ledger_records(connection)), key=lambda v: v.record.timestamp)
     times, costs, unpriced = [], [0.0], [0]
-    for item in valued:
-        times.append(item.record.timestamp.timestamp())
-        costs.append(costs[-1] + item.summary.cost.total_usd)
-        unpriced.append(unpriced[-1] + item.summary.cost.unpriced_tokens)
+    for timestamp, cost, unpriced_tokens in priced_events:
+        times.append(timestamp)
+        costs.append(costs[-1] + cost)
+        unpriced.append(unpriced[-1] + unpriced_tokens)
     windows = []
     for window in segment_windows(points):
         indices = [bisect_right(times, datetime.fromisoformat(p.timestamp).timestamp()) for p in window.points]
