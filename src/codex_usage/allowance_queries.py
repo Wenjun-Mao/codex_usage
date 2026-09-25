@@ -103,7 +103,9 @@ def build_allowance_report(connection, *, coverage_complete=True):
 def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     """Keep the full estimator and indexed estimator on the same window path."""
     status = allowance_status(connection)
-    rows = connection.execute("select * from quota_observations order by timestamp").fetchall()
+    rows = connection.execute(
+        "select * from quota_observations order by timestamp, rowid"
+    ).fetchall()
     points = []
     provenance = {}
     for row in rows:

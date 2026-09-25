@@ -126,8 +126,16 @@ ledger revision and rebuild the window result from indexed costs. A pricing
 revision invalidates all event costs and the window result atomically. The
 index revision must advance when the cost-index contract changes. A read-only
 view of a pre-migration ledger or a snapshot overtaken by capture uses the
-full estimator. Tied quota observations now retain stored order during
-deduplication; set iteration had made reset segmentation vary by process.
+full estimator. Tied quota observations now use timestamp then SQLite insertion
+rowid during loading, and retain that order during deduplication; set iteration
+had made reset segmentation vary by process. This can change historical window
+boundaries and estimates where the ledger contains contradictory observations
+at one timestamp and slot. The prior result had no stable value to preserve:
+on a September 25 disposable ledger snapshot, v2.8.8 produced 184 or 185
+windows under different Python hash seeds. The current headline estimate was
+identical in those runs and with insertion ordering; older window details
+differed. The explicit insertion rule makes subsequent cached results
+reproducible without discarding any observation from storage.
 
 The index is derived from normalized ledger rows. Report views never read
 source JSONL files or invoke capture, though an uncached view may write the

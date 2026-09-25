@@ -7,6 +7,7 @@ import codex_usage.allowance_index as allowance_index
 from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.agent_rebuild import rebuild_stale_source_slice
+from codex_usage.agent_reports import render_ledger_report
 from codex_usage.allowance_index import indexed_allowance_report
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_probe import QuotaRead
@@ -139,3 +140,65 @@ def test_read_only_pre_migration_report_uses_full_estimator(tmp_path):
                                         pricing_revision="p1", coverage_complete=True) == build_allowance_report(connection)
     with open_ledger(ledger) as connection:
         assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == '4'
+
+
+def test_conflicting_same_timestamp_quota_samples_keep_first_inserted(tmp_path):
+    ledger = tmp_path / "ledger.sqlite3"
+    with open_ledger(ledger) as connection:
+        store_observations(connection, [_point(0, 20)],
+                           source_key="first", provenance="live")
+        store_observations(connection, [_point(0, 70)],
+                           source_key="second", provenance="live")
+        store_observations(connection, [_point(1, 80)],
+                           source_key="later", provenance="live")
+        increment_ledger_revision(connection)
+        connection.commit()
+    report = _compare(ledger)
+    assert len(report["windows"]) == 1
+    assert [point["used_percent"] for point in report["windows"][0]["points"]] == [20, 80]
+    with open_ledger(ledger, read_only=True) as connection:
+        assert [row[0] for row in connection.execute(
+            "select used_percent from quota_observations order by timestamp, rowid"
+        )] == [20, 70, 80]
+
+
+def test_uncached_views_reuse_account_wide_allowance_result(tmp_path, monkeypatch):
+    home = tmp_path / ".codex"
+    directory = home / "sessions" / "2026" / "09" / "02"
+    directory.mkdir(parents=True)
+    _session(directory / "rollout-task-1.jsonl", [100])
+    monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance",
+                        lambda *_: QuotaRead("2026-09-02T10:00:00+00:00", diagnostics="test"))
+    assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
+    ledger = ledger_database_path(home)
+    with open_ledger(ledger) as connection:
+        store_observations(connection, [_point(0, 10), _point(2, 20)],
+                           source_key="fixture", provenance="live")
+        increment_ledger_revision(connection)
+        connection.commit()
+
+    calls = {"price": 0, "events": 0, "windows": 0}
+
+    def count(name, original):
+        def counted(*args, **kwargs):
+            calls[name] += 1
+            return original(*args, **kwargs)
+        return counted
+
+    monkeypatch.setattr(allowance_index, "_price_missing_events",
+                        count("price", allowance_index._price_missing_events))
+    monkeypatch.setattr(allowance_index, "estimate_cost",
+                        count("events", allowance_index.estimate_cost))
+    monkeypatch.setattr(allowance_index, "_build_from_costs",
+                        count("windows", allowance_index._build_from_costs))
+    for range_name, projects, theme in (
+        ("all", [], "day"), ("today", ["other"], "night"),
+        ("month", [], "day"),
+    ):
+        report = render_ledger_report(home, range_name=range_name,
+                                      project_keys=projects, theme=theme,
+                                      timezone_name="UTC")
+        assert not report.cache_hit
+    assert calls == {"price": 1, "events": 1, "windows": 1}
+    with open_ledger(ledger, read_only=True) as connection:
+        assert connection.execute("select count(*) from allowance_report_cache").fetchone()[0] == 1
