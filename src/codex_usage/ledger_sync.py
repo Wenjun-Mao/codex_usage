@@ -12,6 +12,7 @@ from codex_usage.ledger_events import (
     rebuild_normalized_events,
 )
 from codex_usage.ledger_schema import increment_ledger_revision, open_ledger
+from codex_usage.session_row_relevance import CHECKPOINT_DIGEST_BYTES
 
 
 _NORMALIZED_OWNERSHIP_VERSION = 3
@@ -201,7 +202,7 @@ def _sync_generation(
     *,
     force_event_rebuild: bool,
 ) -> bool:
-    generation_key = _generation_key(row)
+    identity_key = _generation_key(row)
     trusted = connection.execute(
         """
         select * from ledger_generations
@@ -212,7 +213,22 @@ def _sync_generation(
     record_count = int(row["record_count"])
     captured_size = int(row["byte_offset"])
     requires_replace = (
-        trusted is None or str(trusted["generation_key"]) != generation_key
+        trusted is None
+        or _generation_identity_key(str(trusted["generation_key"])) != identity_key
+        or captured_size < int(trusted["captured_size"])
+        or record_count < int(trusted["record_count"])
+        or (
+            captured_size == int(trusted["captured_size"])
+            and str(trusted["boundary_sha256"]) != str(row["boundary_sha256"])
+        )
+        or (
+            str(trusted["head_sha256"]) != str(row["head_sha256"])
+            and (
+                int(trusted["captured_size"]) >= CHECKPOINT_DIGEST_BYTES
+                or captured_size <= int(trusted["captured_size"])
+            )
+        )
+        or force_event_rebuild
     )
     changed = (
         force_event_rebuild
@@ -247,6 +263,10 @@ def _sync_generation(
                 (source_id,),
             ).fetchone()[0]
         )
+        # The same OS identity may recur after a mount/device transition or
+        # inode reuse. The ordinal denotes this durable occurrence, while the
+        # prefix remains the identity used to recognize subsequent appends.
+        generation_key = f"{identity_key}:{generation_number}"
         cursor = connection.execute(
             """
             insert into ledger_generations (
@@ -415,6 +435,11 @@ def _generation_key(row: sqlite3.Row) -> str:
             )
         )
     return hashlib.sha256(material.encode()).hexdigest()
+
+
+def _generation_identity_key(generation_key: str) -> str:
+    # Generations created before occurrence keys used the bare identity digest.
+    return generation_key.partition(":")[0]
 
 
 def _current_revision(connection: sqlite3.Connection) -> int:

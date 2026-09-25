@@ -1,8 +1,13 @@
-# 2.8.5 Distribution Checklist
+# 2.8.6 Distribution Checklist
 
-Version 2.8.5 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.8.6 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
+
+For the device-identity capture failure fixed in 2.8.6, install the matching
+updated VSIX and use **Capture Usage**. The existing ledger is retained; do not
+reset local data to recover capture. The first repaired sync may add a trusted
+generation for the rebuilt parser workset.
 
 The same workflow builds unsigned native DMG and NSIS previews with SHA-256
 integrity metadata. Native previews are retained as GitHub Actions artifacts for
@@ -151,16 +156,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.5`, both
-changelogs have a dated `2.8.5` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.6`, both
+changelogs have a dated `2.8.6` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.8.5`. Create and push that
+The only valid release tag for this version is `v2.8.6`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.8.5
-git push origin v2.8.5
+git tag v2.8.6
+git push origin v2.8.6
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -174,8 +179,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.8.5-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.8.5-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.8.6-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.8.6-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```
