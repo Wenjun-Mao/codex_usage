@@ -26,6 +26,8 @@ def is_reusable(
             or (
                 cached["checkpoint_offset"] is not None
                 and int(cached["checkpoint_offset"]) == entry.size_bytes
+                and int(cached["checkpoint_device"]) == entry.source_device
+                and int(cached["checkpoint_inode"]) == entry.source_inode
             )
         )
     )

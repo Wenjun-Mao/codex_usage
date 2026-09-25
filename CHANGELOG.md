@@ -2,10 +2,17 @@
 
 ## Unreleased
 
+## 2.8.7 - 2026-09-25
+
+- Verify the saved source head and processed boundary before continuing a
+  trusted ledger generation, so device changes and reversions keep verified
+  history while real replacements create distinct generations.
+
 ## 2.8.6 - 2026-09-25
 
-- Restore capture after a source device identity changes and later returns,
-  while retaining trusted ledger history and bounded append behavior.
+- Avoid a duplicate generation-key collision when a source device identity
+  returns. This release did not yet make content guards decisive for continuity;
+  2.8.7 corrects that contract.
 
 ## 2.8.5 - 2026-09-24
 

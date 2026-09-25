@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib
+import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +12,7 @@ from codex_usage.ledger_events import (
     rebuild_normalized_events,
 )
 from codex_usage.ledger_schema import increment_ledger_revision, open_ledger
+from codex_usage.session_parser_safety import digest_range
 from codex_usage.session_row_relevance import CHECKPOINT_DIGEST_BYTES
 
 
@@ -81,16 +82,17 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
         if bool(row["is_missing"]) and row["byte_offset"] is None:
             continue
         observed_keys.add(source_key)
-        source_id, source_changed, was_stale = _upsert_source(connection, row)
+        source_id, source_changed, inode_changed = _upsert_source(connection, row)
         changed |= source_changed
-        if row["byte_offset"] is None or bool(row["error"]):
+        if row["byte_offset"] is None or bool(row["error"]) or bool(row["is_missing"]):
             continue
         changed |= _sync_generation(
             connection,
             source_id,
             source_key,
             row,
-            force_event_rebuild=was_stale,
+            source_changed=source_changed,
+            inode_changed=inode_changed,
         )
 
     for row in connection.execute(
@@ -156,7 +158,7 @@ def _upsert_source(
             (key, *values),
         )
         return int(cursor.lastrowid), True, False
-    was_stale = bool(current["is_stale"])
+    inode_changed = str(current["source_inode"]) != str(row["source_inode"] or "0")
     changed = any(
         current[name] != value
         for name, value in zip(
@@ -191,7 +193,7 @@ def _upsert_source(
         """,
         (*values, key),
     )
-    return int(current["source_id"]), changed, was_stale
+    return int(current["source_id"]), changed, inode_changed
 
 
 def _sync_generation(
@@ -200,9 +202,9 @@ def _sync_generation(
     source_key: str,
     row: sqlite3.Row,
     *,
-    force_event_rebuild: bool,
+    source_changed: bool,
+    inode_changed: bool,
 ) -> bool:
-    identity_key = _generation_key(row)
     trusted = connection.execute(
         """
         select * from ledger_generations
@@ -212,38 +214,25 @@ def _sync_generation(
     ).fetchone()
     record_count = int(row["record_count"])
     captured_size = int(row["byte_offset"])
+    needs_sync = (
+        trusted is None
+        or source_changed
+        or int(trusted["captured_size"]) != captured_size
+        or int(trusted["captured_mtime_ns"]) != int(row["mtime_ns"])
+        or int(trusted["record_count"]) != record_count
+        or str(trusted["head_sha256"]) != str(row["head_sha256"])
+        or str(trusted["boundary_sha256"]) != str(row["boundary_sha256"])
+    )
+    if not needs_sync:
+        return False
+    prior_guards_match = _verify_source_guards(row, trusted)
     requires_replace = (
         trusted is None
-        or _generation_identity_key(str(trusted["generation_key"])) != identity_key
+        or inode_changed
+        or not prior_guards_match
         or captured_size < int(trusted["captured_size"])
         or record_count < int(trusted["record_count"])
-        or (
-            captured_size == int(trusted["captured_size"])
-            and str(trusted["boundary_sha256"]) != str(row["boundary_sha256"])
-        )
-        or (
-            str(trusted["head_sha256"]) != str(row["head_sha256"])
-            and (
-                int(trusted["captured_size"]) >= CHECKPOINT_DIGEST_BYTES
-                or captured_size <= int(trusted["captured_size"])
-            )
-        )
-        or force_event_rebuild
     )
-    changed = (
-        force_event_rebuild
-        or requires_replace
-        or bool(
-            trusted is not None
-            and (
-                int(trusted["captured_size"]) != captured_size
-                or int(trusted["captured_mtime_ns"]) != int(row["mtime_ns"])
-                or int(trusted["record_count"]) != record_count
-            )
-        )
-    )
-    if not changed:
-        return False
     now = datetime.now(UTC).isoformat()
     start_record_index = 0
     if requires_replace:
@@ -263,10 +252,9 @@ def _sync_generation(
                 (source_id,),
             ).fetchone()[0]
         )
-        # The same OS identity may recur after a mount/device transition or
-        # inode reuse. The ordinal denotes this durable occurrence, while the
-        # prefix remains the identity used to recognize subsequent appends.
-        generation_key = f"{identity_key}:{generation_number}"
+        # The monotonic occurrence is the durable identity. OS file numbers
+        # are only change signals and never participate in this unique key.
+        generation_key = f"occurrence:{generation_number}"
         cursor = connection.execute(
             """
             insert into ledger_generations (
@@ -293,8 +281,7 @@ def _sync_generation(
         generation_id = int(trusted["generation_id"])
         previous_record_count = int(trusted["record_count"])
         can_append = (
-            not force_event_rebuild
-            and record_count >= previous_record_count
+            record_count >= previous_record_count
             and _event_index_is_complete(
                 connection,
                 generation_id,
@@ -418,28 +405,50 @@ def _sync_transitions(connection: sqlite3.Connection) -> bool:
     return True
 
 
-def _generation_key(row: sqlite3.Row) -> str:
-    source_device = str(row["source_device"] or "0")
-    source_inode = str(row["source_inode"] or "0")
-    if source_device != "0" and source_inode != "0":
-        material = "\0".join(("file-identity", source_device, source_inode))
-    else:
-        # Guard digests change during ordinary growth while a file is smaller
-        # than the digest window. They identify fallback generations only when
-        # the OS cannot provide the stable identity required by append parsing.
-        material = "\0".join(
-            (
-                "digest-fallback",
-                str(row["file_key"]),
-                str(row["head_sha256"] or ""),
+def _verify_source_guards(
+    row: sqlite3.Row,
+    trusted: sqlite3.Row | None,
+) -> bool:
+    """Validate the parser snapshot and its prior trusted boundary in bounded I/O."""
+    path = Path(str(row["path"]))
+    captured_size = int(row["byte_offset"])
+    try:
+        with path.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
+            if opened.st_size < captured_size:
+                raise RuntimeError("source shrank during ledger guard validation")
+            checkpoint_inode = int(row["source_inode"] or "0")
+            if checkpoint_inode and opened.st_ino != checkpoint_inode:
+                raise RuntimeError("source changed after its parser checkpoint")
+
+            def guards_match(size: int, head: str, boundary: str) -> bool:
+                if size > opened.st_size:
+                    return False
+                actual_head, _ = digest_range(
+                    handle, 0, min(CHECKPOINT_DIGEST_BYTES, size)
+                )
+                actual_boundary, _ = digest_range(
+                    handle, max(0, size - CHECKPOINT_DIGEST_BYTES), size
+                )
+                return actual_head == head and actual_boundary == boundary
+
+            if not guards_match(
+                captured_size,
+                str(row["head_sha256"]),
+                str(row["boundary_sha256"]),
+            ):
+                raise RuntimeError("source changed after its parser checkpoint")
+            prior_matches = trusted is None or guards_match(
+                int(trusted["captured_size"]),
+                str(trusted["head_sha256"]),
+                str(trusted["boundary_sha256"]),
             )
-        )
-    return hashlib.sha256(material.encode()).hexdigest()
-
-
-def _generation_identity_key(generation_key: str) -> str:
-    # Generations created before occurrence keys used the bare identity digest.
-    return generation_key.partition(":")[0]
+            current = path.stat()
+            if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
+                raise RuntimeError("source changed during ledger guard validation")
+            return prior_matches
+    except OSError as error:
+        raise RuntimeError("source unavailable during ledger guard validation") from error
 
 
 def _current_revision(connection: sqlite3.Connection) -> int:

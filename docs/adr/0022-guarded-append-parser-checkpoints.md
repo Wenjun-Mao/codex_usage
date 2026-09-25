@@ -6,7 +6,9 @@ Accepted. Durable-ledger ownership is defined by
 [ADR 0033](0033-persistent-collector-and-durable-ledger.md); the guarded append
 contract remains in force. [ADR 0032](0032-cross-process-cache-refresh-recovery.md) extends the
 atomic checkpoint contract with cross-process refresh ownership and a
-transaction-time stale-checkpoint assertion.
+transaction-time stale-checkpoint assertion. [ADR 0045](0045-guard-verified-ledger-generations.md)
+allows a device-only transition when the saved content guards verify continuity;
+an inode change still triggers reconstruction.
 
 ## Context
 

@@ -21,7 +21,9 @@ def load_cached_rows(
             """
             select files.file_key, files.path, files.size_bytes, files.mtime_ns,
                    files.parsed_at, files.is_missing, files.session_id, files.error,
-                   parser_checkpoints.byte_offset as checkpoint_offset
+                   parser_checkpoints.byte_offset as checkpoint_offset,
+                   parser_checkpoints.source_device as checkpoint_device,
+                   parser_checkpoints.source_inode as checkpoint_inode
             from files
             left join parser_checkpoints
               on parser_checkpoints.file_key = files.file_key
@@ -58,9 +60,12 @@ def eligible_append_checkpoint(
     if checkpoint is None:
         return None
     if (
-        entry.size_bytes <= checkpoint.byte_offset
-        or entry.source_device != checkpoint.source_device
+        entry.size_bytes < checkpoint.byte_offset
         or entry.source_inode != checkpoint.source_inode
+        or (
+            entry.size_bytes == checkpoint.byte_offset
+            and entry.source_device == checkpoint.source_device
+        )
         or str(cached["session_id"] or "") != checkpoint.session_id
     ):
         return None

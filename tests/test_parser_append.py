@@ -237,7 +237,7 @@ def test_guarded_append_rejects_replacement_and_boundary_modification(
     replacement = tmp_path / "replacement.jsonl"
     replacement.write_bytes(path.read_bytes())
     os.replace(replacement, path)
-    with pytest.raises(AppendCheckpointMismatch, match="identity changed"):
+    with pytest.raises(AppendCheckpointMismatch, match="inode changed"):
         parse_session_append(
             path,
             generation.checkpoint,

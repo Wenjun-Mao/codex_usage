@@ -35,8 +35,8 @@ def validate_append_checkpoint(
 ) -> int:
     if not source_device or not source_inode:
         raise AppendCheckpointMismatch("source file identity is unavailable")
-    if source_device != checkpoint.source_device or source_inode != checkpoint.source_inode:
-        raise AppendCheckpointMismatch("source file identity changed")
+    if source_inode != checkpoint.source_inode:
+        raise AppendCheckpointMismatch("source file inode changed")
     if stop_offset < checkpoint.byte_offset:
         raise AppendCheckpointMismatch("source file was truncated")
     expected_session_id = (

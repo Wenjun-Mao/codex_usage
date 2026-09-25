@@ -57,3 +57,4 @@ The project-turn economics and reported cache-write telemetry contract is record
 The independent image-generation accounting and bounded historical-recovery contract is recorded in [ADR 0043](0043-image-generation-accounting.md).
 
 - [0044: Observed Plan Allowance Analytics](0044-plan-allowance-analytics.md)
+- [0045: Guard-Verified Ledger Generations](0045-guard-verified-ledger-generations.md)
