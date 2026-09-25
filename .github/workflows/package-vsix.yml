@@ -207,7 +207,7 @@ jobs:
         run: npm ci
 
       - name: Install screenshot browser
-        run: uv run playwright install chromium
+        run: uv run playwright install chromium firefox webkit
 
       - name: Test native frontend and Rust host
         working-directory: apps/desktop

@@ -153,7 +153,8 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
             f'<span class="muted allowance-bucket-reset">Reset: {reset_markup}</span>'
             '</div>'
             f'<meter min="0" max="100" value="{bucket["used_percent"]}" '
-            f'aria-label="{identity} percentage used"></meter></div>'
+            f'aria-label="{identity} percentage used" '
+            f'aria-valuetext="{bucket["used_percent"]:g}% used"></meter></div>'
         )
     qualified = report["qualified"]
     details = []
@@ -240,7 +241,12 @@ def allowance_css():
 .allowance-economic h3 { margin-top: 0; }
 .allowance-economic p { margin: 6px 0; }
 .allowance-economic .allowance-value { font-size: 2.5rem; }
-.allowance-bucket meter { display: block; width: 100%; margin-top: 5px; }
+.allowance-bucket meter { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 14px; margin-top: 5px; padding: 0; color: var(--accent, var(--astra, #087ea4)); background: var(--surface-soft, var(--soft, #edf1f4)); border: 1px solid var(--border, var(--line, #d5dce1)); border-radius: 999px; overflow: hidden; }
+.allowance-bucket meter::-webkit-meter-bar { background: var(--surface-soft, var(--soft, #edf1f4)); border: 0; border-radius: inherit; }
+.allowance-bucket meter::-webkit-meter-optimum-value,
+.allowance-bucket meter::-webkit-meter-suboptimum-value,
+.allowance-bucket meter::-webkit-meter-even-less-good-value { background: var(--accent, var(--astra, #087ea4)); border-radius: inherit; }
+.allowance-bucket meter::-moz-meter-bar { background: var(--accent, var(--astra, #087ea4)); border-radius: inherit; }
 .allowance-history { list-style: none; margin: 8px 0 0; padding: 0; }
 .allowance-history-item { min-width: 0; padding: 9px 0; border-top: 1px solid var(--border, var(--line)); }
 .allowance-history-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; min-width: 0; }
@@ -252,5 +258,6 @@ def allowance_css():
 .allowance-window { margin: 12px 0; padding: 10px; border: 1px solid var(--border, var(--line)); }
 .allowance-provisional { border-style: dashed; }
 .plan-allowance summary { cursor: pointer; }
+.plan-allowance summary:focus-visible { outline: 2px solid var(--accent, var(--astra, #087ea4)); outline-offset: 2px; border-radius: 2px; }
 .plan-allowance .table-scroll { overflow-x: auto; }
 """

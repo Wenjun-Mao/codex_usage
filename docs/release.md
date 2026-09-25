@@ -1,6 +1,6 @@
-# 2.8.4 Distribution Checklist
+# 2.8.5 Distribution Checklist
 
-Version 2.8.4 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.8.5 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
@@ -114,17 +114,20 @@ sizes (1440 x 900 and 760 x 900). Confirm:
 Regenerate and review:
 
 ```bash
-uv run playwright install chromium
+uv run playwright install chromium firefox webkit
 uv run python scripts/generate_marketplace_screenshot.py
 uv run python scripts/generate_marketplace_screenshot.py --check
 uv run python scripts/check_allowance_ui.py
 ```
 
-Visually review the canonical Usage images in Day and Night at both wide and
-narrow widths, plus the Task Storage image, before committing them. The
-automated gate catches geometry and overflow regressions, but it does not
-replace a human check for hierarchy, readability, and representative product
-copy.
+The allowance UI gate runs the native `<meter>` renderer in Chromium, WebKit,
+and Firefox. It checks native meter semantics and explicit used/remaining text,
+accent fill direction at 0%, 17%, 83%, and 100%, theme contrast, keyboard focus,
+and narrow viewport overflow. Visually review the canonical Usage images in Day
+and Night at both wide and narrow widths, plus the Task Storage image, before
+committing them. The automated gate catches geometry and overflow regressions,
+but it does not replace a human check for hierarchy, readability, and
+representative product copy.
 
 ## Non-Publishing Native Gate
 
@@ -148,16 +151,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.4`, both
-changelogs have a dated `2.8.4` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.5`, both
+changelogs have a dated `2.8.5` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.8.4`. Create and push that
+The only valid release tag for this version is `v2.8.5`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.8.4
-git push origin v2.8.4
+git tag v2.8.5
+git push origin v2.8.5
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -171,8 +174,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.8.4-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.8.4-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.8.5-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.8.5-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

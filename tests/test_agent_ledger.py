@@ -27,13 +27,13 @@ def test_report_cache_key_changes_with_renderer_revision(monkeypatch) -> None:
     assert reports_module._report_cache_key(*arguments) != first
 
 
-def test_allowance_history_markup_invalidates_revision_ten_cache(tmp_path, monkeypatch) -> None:
+def test_allowance_history_markup_invalidates_revision_eleven_cache(tmp_path, monkeypatch) -> None:
     ledger_path = tmp_path / "ledger.sqlite3"
     with open_ledger(ledger_path) as connection:
         revision = ledger_revision(connection)
         arguments = (revision, "all", [], "day", "UTC", True)
         with monkeypatch.context() as patch:
-            patch.setattr(reports_module, "REPORT_RENDER_REVISION", 10)
+            patch.setattr(reports_module, "REPORT_RENDER_REVISION", 11)
             old_key = reports_module._report_cache_key(*arguments)
         connection.execute(
             """insert into rendered_reports
@@ -44,7 +44,7 @@ def test_allowance_history_markup_invalidates_revision_ten_cache(tmp_path, monke
 
         current_key = reports_module._report_cache_key(*arguments)
 
-        assert reports_module.REPORT_RENDER_REVISION != 10
+        assert reports_module.REPORT_RENDER_REVISION != 11
         assert current_key != old_key
         assert reports_module._load_cached_report(connection, current_key) is None
 

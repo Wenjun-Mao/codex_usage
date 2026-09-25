@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.8.5 - 2026-09-24
+
+- Render Plan Allowance usage as an accent-colored native meter across Chromium,
+  WebKit, and Firefox, with explicit used/remaining values and keyboard focus.
+
 ## 2.8.4 - 2026-09-24
 
 - Keep the 10-point allowance-fit threshold and show a dated previous estimate

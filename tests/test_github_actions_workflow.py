@@ -159,7 +159,7 @@ def test_preview_artifacts_include_hash_based_integrity_metadata(tmp_path: Path)
         )
 
 
-def test_release_metadata_is_consistently_2_8_4() -> None:
+def test_release_metadata_is_consistently_2_8_5() -> None:
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     uv_lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
     extension = json.loads(EXTENSION_PACKAGE.read_text(encoding="utf-8"))
@@ -192,7 +192,7 @@ def test_release_metadata_is_consistently_2_8_4() -> None:
         cargo["package"]["version"],
         rust_package["version"],
     }
-    assert versions == {"2.8.4"}
+    assert versions == {"2.8.5"}
     assert "scripts" not in pyproject["project"]
     assert "preview" not in extension
 
@@ -227,6 +227,12 @@ def test_release_targets_only_supported_native_platforms() -> None:
     assert "linux-x64" not in workflow
     assert "x86_64-apple-darwin" not in workflow
     assert "aarch64-pc-windows" not in workflow
+
+
+def test_release_visual_gate_installs_all_meter_styling_engines() -> None:
+    workflow = read_workflow()
+
+    assert "uv run playwright install chromium firefox webkit" in workflow
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
