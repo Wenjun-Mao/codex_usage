@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.8.8 - 2026-09-25
+
+- Show remaining allowance in the native Plan Allowance meter with matching
+  accessible semantics while keeping both used and remaining values visible.
+- Default the shared Project Breakdown and Model Mix comparison to API cost;
+  keep Tokens selectable across both charts.
+- Hide Daily Cost Trend and Daily Details for Today and Yesterday presets only;
+  custom ranges and the Hourly Heatmap remain available.
+
 ## 2.8.7 - 2026-09-25
 
 - Verify the saved source head and processed boundary before continuing a

@@ -129,10 +129,12 @@ def _check_report_content(page, report, state, theme, history_colors):
     assert page.get_by_role("meter").count() == len(report["status"]["active_buckets"])
     for bucket in report["status"]["active_buckets"]:
         identity = f'{bucket["limit_id"]} · {duration_label(bucket["duration_minutes"])}'
-        meter = page.get_by_role("meter", name=f"{identity} percentage used")
+        meter = page.get_by_role("meter", name=f"{identity} percentage remaining")
         assert meter.count() == 1
         used = bucket["used_percent"]
-        assert meter.get_attribute("aria-valuetext") == f"{used:g}% used"
+        remaining = 100 - used
+        assert meter.get_attribute("value") == f"{remaining:g}"
+        assert meter.get_attribute("aria-valuetext") == f"{remaining:g}% remaining"
         assert page.locator(".allowance-bucket-usage").filter(
             has_text=f"{used:g}% used · {100 - used:g}% remaining"
         ).count() == 1
@@ -223,18 +225,21 @@ def _contrast_ratio(first, second):
 def _check_meter_visuals(page, browser_name):
     for theme in THEMES:
         for used in VALUES:
+            remaining = 100 - used
             report = deepcopy(allowance_fixture())
             report["status"]["active_buckets"] = [
                 dict(report["status"]["active_buckets"][0], used_percent=used)
             ]
             page.set_viewport_size({"width": 360, "height": 240})
             page.set_content(_document(report, theme))
-            meter = page.get_by_role("meter", name="codex · 7 days percentage used")
+            meter = page.get_by_role(
+                "meter", name="codex · 7 days percentage remaining"
+            )
             assert meter.count() == 1
             assert meter.get_attribute("min") == "0"
             assert meter.get_attribute("max") == "100"
-            assert meter.get_attribute("value") == str(used)
-            assert meter.get_attribute("aria-valuetext") == f"{used}% used"
+            assert meter.get_attribute("value") == str(remaining)
+            assert meter.get_attribute("aria-valuetext") == f"{remaining}% remaining"
             assert page.locator(".allowance-bucket-usage").inner_text() == (
                 f"{used}% used · {100 - used}% remaining"
             )
@@ -262,9 +267,9 @@ def _check_meter_visuals(page, browser_name):
             image = Image.open(BytesIO(meter.screenshot())).convert("RGB")
             center_row = [image.getpixel((x, image.height // 2)) for x in range(image.width)]
             colored_fraction = sum(pixel == accent_rgb for pixel in center_row) / image.width
-            assert abs(colored_fraction - used / 100) <= 0.04, (
+            assert abs(colored_fraction - remaining / 100) <= 0.04, (
                 f"{browser_name}/{theme} meter at {used}% has {colored_fraction:.3f} "
-                "accent fill across its center row"
+                "accent fill across its center row; expected remaining allowance"
             )
 
 

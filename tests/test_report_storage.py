@@ -124,7 +124,8 @@ def test_task_storage_empty_state_does_not_replace_usage_empty_state(tmp_path: P
 
     assert "No task storage was found for the selected projects." in html
     assert "No Codex usage was found for this report range." not in html
-    assert "No daily usage found for this range." in html
+    assert "No daily usage found for this range." not in html
+    assert "Daily Details" not in html
 
 
 def _render(

@@ -222,8 +222,8 @@ ${allowanceHtml}
   </tbody></table></div></details>
 </section>
 <section class="section usage-comparison">
-  <input class="scale-input" type="radio" name="usage-chart-scale" id="compare-scale-tokens" value="tokens" checked>
-  <input class="scale-input" type="radio" name="usage-chart-scale" id="compare-scale-cost" value="cost">
+  <input class="scale-input" type="radio" name="usage-chart-scale" id="compare-scale-tokens" value="tokens">
+  <input class="scale-input" type="radio" name="usage-chart-scale" id="compare-scale-cost" value="cost" checked>
   <div class="scale-toolbar"><span>Compare by</span><span class="scale-options" role="group" aria-label="Compare chart bars by"><label for="compare-scale-tokens">Tokens</label><label for="compare-scale-cost">API cost</label></span></div>
   <div class="comparison-charts">
 <section class="section">

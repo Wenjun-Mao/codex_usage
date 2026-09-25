@@ -1,16 +1,21 @@
-# 2.8.7 Distribution Checklist
+# 2.8.8 Distribution Checklist
 
-Version 2.8.7 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.8.8 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
-For the device-identity capture failure corrected in 2.8.7, install the
-matching updated VSIX, reload VS Code so its bundled collector restarts, then
-use **Capture Usage**. If an optional native background collector owns the
-active home, update that preview and re-register its background agent before
-capturing. Preserve the existing ledger; **Reset Local Data** is not a recovery
-step. A verified source continuation appends to its trusted generation, while
-a changed processed boundary promotes a distinct generation.
+The Usage report shows remaining allowance in the Plan Allowance meter, defaults
+the shared **Compare by** control to API cost, and omits the one-point daily
+trend and details for Today and Yesterday presets. Custom ranges retain daily
+details.
+
+The 2.8.8 packages also include the device-identity capture correction from
+2.8.7. Preserve the existing ledger, install the matching updated VSIX, reload
+VS Code so its bundled collector restarts, then use **Capture Usage**. If an
+optional native background collector owns the active home, update that preview
+and re-register its background agent before capturing. **Reset Local Data** is
+not a recovery step. A verified source continuation appends to its trusted
+generation, while a changed processed boundary promotes a distinct generation.
 
 The same workflow builds unsigned native DMG and NSIS previews with SHA-256
 integrity metadata. Native previews are retained as GitHub Actions artifacts for
@@ -90,8 +95,8 @@ sizes (1440 x 900 and 760 x 900). Confirm:
 - Usage clearly shows last/next capture, pending work, incomplete baseline, and
   stale-source states;
 - Project Breakdown and Model Mix share one accessible **Compare by** control,
-  use distinct stable colors, preserve role-level API-equivalent cost, and
-  switch coherently between token-scaled and cost-scaled bars;
+  default to API cost, use distinct stable colors, preserve role-level
+  API-equivalent cost, and switch coherently to token-scaled bars;
 - Plan Allowance stays account-wide under project/date filters, exposes active
   buckets, shows a valid current estimate or an explicitly dated same-series
   Previous window fallback, and exposes newest-first allowance history with
@@ -129,8 +134,8 @@ uv run python scripts/check_allowance_ui.py
 ```
 
 The allowance UI gate runs the native `<meter>` renderer in Chromium, WebKit,
-and Firefox. It checks native meter semantics and explicit used/remaining text,
-accent fill direction at 0%, 17%, 83%, and 100%, theme contrast, keyboard focus,
+and Firefox. It checks native meter semantics, used/remaining text, remaining
+allowance fill at 0%, 17%, 83%, and 100% used, theme contrast, keyboard focus,
 and narrow viewport overflow. Visually review the canonical Usage images in Day
 and Night at both wide and narrow widths, plus the Task Storage image, before
 committing them. The automated gate catches geometry and overflow regressions,
@@ -159,16 +164,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.7`, both
-changelogs have a dated `2.8.7` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.8`, both
+changelogs have a dated `2.8.8` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.8.7`. Create and push that
+The only valid release tag for this version is `v2.8.8`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.8.7
-git push origin v2.8.7
+git tag v2.8.8
+git push origin v2.8.8
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -182,8 +187,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.8.7-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.8.7-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.8.8-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.8.8-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

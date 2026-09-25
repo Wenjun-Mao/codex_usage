@@ -282,33 +282,33 @@ def _exercise_usage_chart_controls(page: Page) -> None:
                         f"viewport={viewport}"
                     )
 
-            if not token_control.is_checked():
-                raise RuntimeError("usage fixture did not start from the token scale")
-            token_box = role_fill.bounding_box()
-            model_token_box = model_fill.bounding_box()
-            if token_box is None:
+            if not cost_control.is_checked():
+                raise RuntimeError("usage fixture did not default to API cost")
+            cost_box = role_fill.bounding_box()
+            model_cost_box = model_fill.bounding_box()
+            if cost_box is None:
                 raise RuntimeError(
                     "usage fixture is missing the project role scale probe"
                 )
-            if model_token_box is None:
+            if model_cost_box is None:
                 raise RuntimeError("usage fixture is missing the Model Mix scale probe")
 
-            token_control.focus()
-            token_control.press("ArrowRight")
-            if not cost_control.is_checked():
-                raise RuntimeError("usage fixture keyboard did not select API cost")
-            cost_box = role_fill.bounding_box()
-            if cost_box is None or abs(token_box["width"] - cost_box["width"]) < 4:
+            cost_control.focus()
+            cost_control.press("ArrowLeft")
+            if not token_control.is_checked():
+                raise RuntimeError("usage fixture keyboard did not select Tokens")
+            token_box = role_fill.bounding_box()
+            if token_box is None or abs(cost_box["width"] - token_box["width"]) < 4:
                 raise RuntimeError(
-                    "usage fixture API cost scale did not change bar geometry"
+                    "usage fixture Tokens scale did not change project bar geometry"
                 )
-            model_cost_box = model_fill.bounding_box()
+            model_token_box = model_fill.bounding_box()
             if (
-                model_cost_box is None
-                or abs(model_token_box["width"] - model_cost_box["width"]) < 4
+                model_token_box is None
+                or abs(model_cost_box["width"] - model_token_box["width"]) < 4
             ):
                 raise RuntimeError(
-                    "usage fixture API cost scale did not change Model Mix geometry"
+                    "usage fixture Tokens scale did not change Model Mix geometry"
                 )
 
             tracks = frame.locator(".mix-track")
@@ -328,10 +328,10 @@ def _exercise_usage_chart_controls(page: Page) -> None:
                     "usage fixture Model Mix tracks do not share equal bounds"
                 )
 
-            cost_control.focus()
-            cost_control.press("ArrowLeft")
-            if not token_control.is_checked():
-                raise RuntimeError("usage fixture keyboard did not restore Tokens")
+            token_control.focus()
+            token_control.press("ArrowRight")
+            if not cost_control.is_checked():
+                raise RuntimeError("usage fixture keyboard did not restore API cost")
 
     _set_viewport(page, VIEWPORT)
 
