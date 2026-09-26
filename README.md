@@ -58,8 +58,9 @@ one active Codex home at a time.
 If an older native preview registered a Codex Usage background service, the
 extension can attach to its healthy collector. To retire that registration,
 run **Codex Usage: Retire Legacy Background Service** and review the explicit
-handoff prompt. Accepting unregisters only the known Codex Usage service, waits
-for its writer to exit, and starts the bundled collector against the same home.
+handoff prompt. Accepting unregisters only the known Codex Usage service and
+waits for its writer to exit; if VS Code already owns the collector, it keeps
+running. Handoff verifies the same home, ledger, and a successful capture.
 Refusing leaves the service in place. Do this before uninstalling the old native
 preview, and preserve the shared `.codex-usage` directory when uninstalling.
 If handoff fails, follow the reported recovery action and retry after resolving

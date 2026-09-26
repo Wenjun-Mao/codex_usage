@@ -13,6 +13,12 @@ from pathlib import Path
 MACOS_SERVICE_LABEL = "com.wenjunmao.codex-usage-agent"
 WINDOWS_TASK_NAME = "Codex Usage Agent"
 TASK_NAMESPACE = "http://schemas.microsoft.com/windows/2004/02/mit/task"
+LEGACY_AGENT_BINARIES = frozenset({
+    "codex-usage-agent",
+    "codex-usage-agent.exe",
+    "codex-usage-agent-aarch64-apple-darwin",
+    "codex-usage-agent-x86_64-pc-windows-msvc.exe",
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,13 +80,7 @@ def _uninstall_launch_agent() -> ServiceStatus:
             check=False,
         )
         if result.returncode != 0:
-            loaded = subprocess.run(
-                ["launchctl", "print", f"gui/{os.getuid()}/{MACOS_SERVICE_LABEL}"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if loaded.returncode == 0:
+            if _launch_agent_is_loaded():
                 raise RuntimeError(result.stderr.strip() or "launchctl bootout failed")
         path.unlink(missing_ok=True)
     return ServiceStatus(True, False, str(path))
@@ -111,11 +111,32 @@ def _uninstall_scheduled_task() -> ServiceStatus:
 
 def _recognized_agent_command(command: str, arguments: str) -> bool:
     executable = ntpath.basename(command.strip().strip('"')).casefold()
-    legacy_binary = bool(re.fullmatch(r"codex-usage-agent(?:-[a-z0-9-]+)?(?:\.exe)?", executable))
-    python_module = executable.startswith("python") and "codex_usage.agent_main" in arguments
-    return (legacy_binary or python_module) and bool(
-        re.search(r"(?:^|\s)--background(?:\s|$)", arguments)
+    args = arguments.split()
+    if executable in LEGACY_AGENT_BINARIES:
+        return args == ["--background"]
+    python_executable = re.fullmatch(r"python(?:w)?(?:3(?:\.\d+)?)?(?:\.exe)?", executable)
+    return bool(python_executable) and args == [
+        "-m", "codex_usage.agent_main", "--background",
+    ]
+
+
+def _launch_agent_is_loaded() -> bool:
+    domain = f"gui/{os.getuid()}"
+    result = subprocess.run(
+        ["launchctl", "print", domain], capture_output=True, text=True, check=False,
     )
+    output = result.stdout
+    services = re.search(r"(?ms)^\tservices = \{\n(.*?)^\t\}$", output)
+    if (result.returncode != 0 or not output.startswith(f"{domain} = {{")
+        or not output.rstrip().endswith("}") or services is None):
+        raise RuntimeError("Could not verify that the legacy LaunchAgent is unloaded; its registration was kept")
+    for line in services.group(1).splitlines():
+        columns = line.split()
+        if len(columns) != 3:
+            raise RuntimeError("Could not parse the LaunchAgent registry; its registration was kept")
+        if columns[2] == MACOS_SERVICE_LABEL:
+            return True
+    return False
 
 
 def _recognized_launch_agent(path: Path) -> bool:

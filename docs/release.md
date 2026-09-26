@@ -14,10 +14,14 @@ or a source checkout on the user's machine.
   quota snapshots during downtime may be impossible to reconstruct.
 - A legacy registered Codex Usage LaunchAgent or Windows Scheduled Task remains
   untouched until the user runs **Codex Usage: Retire Legacy Background Service**
-  and confirms. Handoff removes only the known service, waits for its writer to
-  exit, and starts the bundled collector on the same home and ledger. A refusal
-  leaves the service in place. A failure must be visible and recoverable without
-  **Reset Local Data**.
+  and confirms. Handoff removes only the known service, waits for any old
+  background writer to exit, and starts or keeps the bundled collector on the
+  same home and ledger. A refusal leaves the service in place. A failure must
+  be visible and recoverable without **Reset Local Data**. An inactive legacy
+  registration can be retired while VS Code keeps its
+  already owned collector. An unrecognized command or ambiguous macOS launchd
+  state leaves the registration in place. Handoff verifies the selected home,
+  ledger revision, and first capture outcome before reporting success.
 - Both platform VSIX jobs must pass before publication. No DMG, NSIS, Tauri,
   Cargo, signing, or native-preview artifact is part of this release.
 
@@ -90,8 +94,10 @@ and selected home. Verify refusal leaves registration and writer unchanged;
 confirmation removes only the known registration, waits for the prior writer,
 and yields one VS Code-owned writer. Capture again and verify the same ledger
 advances without duplicate events. Test a missing legacy executable, failed
-unregistration, and recovery instructions. Never unregister a live service or
-modify a live ledger for release testing.
+unregistration, an inactive service with an already owned VS Code collector,
+foreign transient ownership, lookalike service commands, ambiguous launchd
+status, a mismatched home, failed capture, and recovery instructions. Never
+unregister a live service or modify a live ledger for release testing.
 
 Also verify scheduled capture while the webview is closed, clean shutdown when
 the last extension host exits, and resumed capture against the same ledger on

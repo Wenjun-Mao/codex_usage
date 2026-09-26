@@ -5,6 +5,16 @@ import { AgentClient, AgentUnavailableError, samePath } from "./agentClient";
 const STARTUP_ATTEMPTS = 80;
 const STARTUP_RETRY_MS = 125;
 
+interface LedgerIdentity {
+  codex_home: string;
+  ledger_revision: number;
+}
+
+interface CaptureOutcome {
+  outcome: string;
+  error?: string;
+}
+
 export interface AgentSupervisorOptions {
   settingsFile: string;
   getCodexHome: () => Promise<string>;
@@ -48,7 +58,7 @@ export class AgentSupervisor {
     const codexHome = await this.codexHome();
     try {
       const client = await this.discover(codexHome);
-      if (this.managedHome === codexHome) this.managedClient = client;
+      if (this.managedClient?.isSameAgent(client)) this.managedClient = client;
       return client;
     } catch (error) {
       if (!(error instanceof AgentUnavailableError)) throw error;
@@ -95,6 +105,12 @@ export class AgentSupervisor {
 
   async handoffLegacyService(): Promise<{ ledgerRevision: number; codexHome: string }> {
     const home = await this.codexHome();
+    if (this.starting) {
+      if (!samePath(this.startingHome ?? "", home)) {
+        throw new Error("The collector is still starting for another CODEX_HOME.");
+      }
+      await this.starting;
+    }
     const registration = await this.legacyServiceStatus();
     if (!registration.installed || !registration.recognized) {
       throw new Error("No recognized Codex Usage background service is registered. Nothing was changed.");
@@ -105,27 +121,43 @@ export class AgentSupervisor {
     } catch (error) {
       if (!(error instanceof AgentUnavailableError)) throw error;
     }
-    if (previous && previous.processOwner !== "background") {
+    const alreadyOwned = previous !== undefined && this.isManagedClient(home, previous);
+    if (previous && previous.processOwner !== "background" && !alreadyOwned) {
       throw new Error("The active collector belongs to another client. Close that client before handoff.");
     }
-    const revision = previous ? (await previous.get<{ ledger_revision: number }>("/v1/status")).ledger_revision : 0;
+    const revision = previous ? (await this.ledgerIdentity(previous, home)).ledger_revision : 0;
     await this.runControl(["--uninstall-service"]);
     const afterRemoval = await this.legacyServiceStatus();
     if (afterRemoval.installed) {
       throw new Error("The service is still registered. Check the Codex Usage output and retry handoff.");
     }
-    if (previous) await this.waitForAgentExit(home, previous);
-    const client = await this.startTransientAgent(home);
-    if (!client.isTransientOwnedBy(this.parentPid, client.processId)) {
+    if (previous && !alreadyOwned) await this.waitForAgentExit(home, previous);
+    const client = alreadyOwned ? await this.discover(home) : await this.startTransientAgent(home);
+    if ((alreadyOwned && !previous?.isSameAgent(client)) || !this.isManagedClient(home, client)) {
       throw new Error("A different collector acquired the ledger. Close it, then retry handoff.");
     }
-    const beforeCapture = await client.get<{ ledger_revision: number }>("/v1/status");
+    const beforeCapture = await this.ledgerIdentity(client, home);
     if (beforeCapture.ledger_revision < revision) {
       throw new Error("Ledger revision decreased during handoff. Stop and inspect the selected CODEX_HOME.");
     }
-    await client.post("/v1/capture");
-    const afterCapture = await client.get<{ ledger_revision: number }>("/v1/status");
+    const capture = await client.post<CaptureOutcome>("/v1/capture");
+    if (capture.outcome !== "success") {
+      throw new Error(`The first VS Code capture failed: ${capture.error || capture.outcome || "unknown outcome"}.`);
+    }
+    const afterCapture = await this.ledgerIdentity(client, home);
+    if (afterCapture.ledger_revision < beforeCapture.ledger_revision) {
+      throw new Error("Ledger revision decreased after capture. Stop and inspect the selected CODEX_HOME.");
+    }
     return { ledgerRevision: afterCapture.ledger_revision, codexHome: home };
+  }
+
+  private async ledgerIdentity(client: AgentClient, home: string): Promise<LedgerIdentity> {
+    const status = await client.get<LedgerIdentity>("/v1/status");
+    if (typeof status?.codex_home !== "string" || !samePath(status.codex_home, home)
+      || !Number.isSafeInteger(status.ledger_revision) || status.ledger_revision < 0) {
+      throw new Error("The collector status does not match the selected CODEX_HOME and ledger.");
+    }
+    return status;
   }
 
   async stopManagedAgent(): Promise<boolean> {
