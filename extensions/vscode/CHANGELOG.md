@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.8.10 - 2026-09-25
+
+- Expand Model Details in the shared dashboard with a keyboard-operable token
+  and price breakdown for each model, and remove its redundant Share bar.
+- Estimate GPT-6 Sol and Luna Standard Codex credits at published rates from
+  2026-09-22; keep earlier and unknown activity visibly unpriced.
+- Treat reported cache writes as part of ordinary input for Codex credits,
+  without an additional cache-write surcharge.
+
 ## 2.8.9 - 2026-09-25
 
 - Speed up repeated Plan Allowance report views by reusing indexed, account-wide cost calculations from the local ledger.

@@ -1,15 +1,22 @@
-# 2.8.9 Distribution Checklist
+# 2.8.10 Distribution Checklist
 
-Version 2.8.9 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.8.10 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
-The Usage report shows remaining allowance in the Plan Allowance meter, defaults
-the shared **Compare by** control to API cost, and omits the one-point daily
-trend and details for Today and Yesterday presets. Custom ranges retain daily
-details.
+The Usage report now opens a compact, keyboard-operable Model Details breakdown
+for each exact model. It shows total, input, cached input, regular input,
+reported cache-write, and output tokens with event-valued API-equivalent cost
+and estimated Standard Codex credits. Model Details omits the redundant Share
+bar; other detail tables retain it. GPT-6 Sol and Luna Standard credit rates
+start on the published 2026-09-22 launch date. Earlier and unknown activity
+remain visibly unpriced, and the ledger cannot identify Fast-tier use.
 
-The 2.8.9 packages include the ledger-derived Plan Allowance index in
+The report also retains the Plan Allowance meter, API-cost default for the
+shared **Compare by** control, and omission of the one-point daily trend and
+details for Today and Yesterday presets. Custom ranges retain daily details.
+
+The 2.8.10 packages include the ledger-derived Plan Allowance index in
 schema 4. Existing ledgers receive a pre-migration backup. The packages also
 retain the device-identity capture correction from 2.8.7. Preserve the
 existing ledger, install the matching updated VSIX, reload VS Code so its
@@ -126,6 +133,9 @@ sizes (1440 x 900 and 760 x 900). Confirm:
   disclosure is closed by default, and CSV export remains complete;
 - Token Accounting is collapsed by default and every cache-write label says
   **Cache Write (reported)**;
+- Model Details has no Share bar, exposes an accessible disclosure per exact
+  model, keeps unknown rates visible, and shows additive category valuations
+  at wide and narrow widths in both themes;
 - every Model Mix row uses an equal-length neutral track in both comparison modes;
 - report content and tooltips are not clipped;
 - Task Storage exposes Analyze and cancellation without unrelated operations;
@@ -175,16 +185,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.9`, both
-changelogs have a dated `2.8.9` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.10`, both
+changelogs have a dated `2.8.10` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.8.9`. Create and push that
+The only valid release tag for this version is `v2.8.10`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.8.9
-git push origin v2.8.9
+git tag v2.8.10
+git push origin v2.8.10
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -198,8 +208,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.8.9-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.8.9-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.8.10-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.8.10-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

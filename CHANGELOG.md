@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.8.10 - 2026-09-25
+
+- Show per-model total, input, cached input, regular input, reported cache-write,
+  and output token counts alongside event-valued API-equivalent cost and
+  estimated Standard Codex credits in an accessible Model Details disclosure.
+- Remove the redundant Share bar from Model Details while retaining it in
+  other detail tables.
+- Price GPT-6 Sol and Luna Standard Codex credits from their published
+  2026-09-22 launch date; earlier activity remains visibly unpriced.
+
 ## 2.8.9 - 2026-09-25
 
 - Index trusted usage-event costs once per ledger revision so repeated Plan Allowance report views reuse the account-wide result.
