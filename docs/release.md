@@ -88,6 +88,13 @@ contain personal paths, task content, or a local corpus.
 
 ## Legacy Handoff Acceptance
 
+The platform workflow runs `scripts/accept_disposable_handoff.js` on fresh
+macOS and Windows runners after each collector package is built. It uses a
+synthetic Codex home and an inactive OS registration to verify that the real
+supervisor keeps its owned collector, removes the known registration, and
+captures into the same ledger. This gate fails if the runner cannot inspect
+the OS service registry; it must not silently skip the handoff.
+
 Use a disposable `CODEX_HOME` and disposable known-service registration on
 macOS and Windows. Record before/after ledger revision, event count, settings,
 and selected home. Verify refusal leaves registration and writer unchanged;
