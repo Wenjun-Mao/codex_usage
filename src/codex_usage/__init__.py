@@ -1,3 +1,3 @@
 """Private capture and ledger core for the Codex Usage native app."""
 
-__version__ = "2.8.8"
+__version__ = "2.8.9"

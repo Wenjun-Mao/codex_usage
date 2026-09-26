@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.8.9 - 2026-09-25
+
+- Index trusted usage-event costs once per ledger revision so repeated Plan Allowance report views reuse the account-wide result.
+- Upgrade existing ledgers to schema 4 with a pre-migration backup; source usage events remain authoritative.
+
 ## 2.8.8 - 2026-09-25
 
 - Show remaining allowance in the native Plan Allowance meter while preserving

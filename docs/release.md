@@ -1,6 +1,6 @@
-# 2.8.8 Distribution Checklist
+# 2.8.9 Distribution Checklist
 
-Version 2.8.8 publishes standalone macOS Apple Silicon and Windows x64 VSIX
+Version 2.8.9 publishes standalone macOS Apple Silicon and Windows x64 VSIX
 packages to the VS Code Marketplace. Each VSIX bundles its matching collector
 and does not require the native application.
 
@@ -9,9 +9,11 @@ the shared **Compare by** control to API cost, and omits the one-point daily
 trend and details for Today and Yesterday presets. Custom ranges retain daily
 details.
 
-The 2.8.8 packages also include the device-identity capture correction from
-2.8.7. Preserve the existing ledger, install the matching updated VSIX, reload
-VS Code so its bundled collector restarts, then use **Capture Usage**. If an
+The 2.8.9 packages include the ledger-derived Plan Allowance index in
+schema 4. Existing ledgers receive a pre-migration backup. The packages also
+retain the device-identity capture correction from 2.8.7. Preserve the
+existing ledger, install the matching updated VSIX, reload VS Code so its
+bundled collector restarts, then use **Capture Usage**. If an
 optional native background collector owns the active home, update that preview
 and re-register its background agent before capturing. **Reset Local Data** is
 not a recovery step. A verified source continuation appends to its trusted
@@ -80,6 +82,15 @@ unscheduled files and bytes still pending. A separate 100-file live subset
 completed its baseline in 0.15 seconds; the immediately repeated unchanged
 capture completed in 0.01 seconds with 100 files reused and zero source bytes
 read. Timings are machine-specific evidence, not CI thresholds.
+
+## Migration and Performance Scope
+
+Before publication, verify schema-3 to schema-4 migration against a disposable
+SQLite ledger copy. Confirm the pre-migration backup, retained source-event
+counts, new cost-index tables, and packaged collector access. Report views
+should read ledger data without opening source JSONLs. The Plan Allowance
+performance benchmark covered repeated report views; it excluded the first
+migration and VS Code webview rendering.
 
 ## Visual Gate
 
@@ -164,16 +175,16 @@ as a runtime dependency.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.8`, both
-changelogs have a dated `2.8.8` entry, and the candidate commit is contained in
+Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.9`, both
+changelogs have a dated `2.8.9` entry, and the candidate commit is contained in
 `origin/main`.
 
-The only valid release tag for this version is `v2.8.8`. Create and push that
+The only valid release tag for this version is `v2.8.9`. Create and push that
 exact tag after the non-publishing gate succeeds:
 
 ```bash
-git tag v2.8.8
-git push origin v2.8.8
+git tag v2.8.9
+git push origin v2.8.9
 ```
 
 The tag reruns every platform gate and publishes these immutable Marketplace
@@ -187,8 +198,8 @@ codex-usage-companion-win32-x64.vsix
 The native jobs also produce these run-scoped artifacts:
 
 ```text
-Codex-Usage-2.8.8-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.8.8-windows-x64-unsigned-preview-setup.exe
+Codex-Usage-2.8.9-macos-arm64-unsigned-preview.dmg
+Codex-Usage-2.8.9-windows-x64-unsigned-preview-setup.exe
 preview-integrity.json
 SHA256SUMS.txt
 ```

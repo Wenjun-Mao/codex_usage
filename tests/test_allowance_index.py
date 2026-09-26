@@ -1,6 +1,7 @@
 """The full ledger estimator is the oracle for the disposable cost index."""
 import json
 import os
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import codex_usage.allowance_index as allowance_index
@@ -140,6 +141,52 @@ def test_read_only_pre_migration_report_uses_full_estimator(tmp_path):
                                         pricing_revision="p1", coverage_complete=True) == build_allowance_report(connection)
     with open_ledger(ledger) as connection:
         assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == '4'
+
+
+def test_schema_3_migration_preserves_events_and_backs_up_prior_ledger(tmp_path):
+    home = tmp_path / ".codex"
+    directory = home / "sessions" / "2026" / "09" / "02"
+    directory.mkdir(parents=True)
+    _session(directory / "rollout-task-1.jsonl", [100])
+    assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
+    ledger = ledger_database_path(home)
+    with sqlite3.connect(ledger) as connection:
+        expected_events = connection.execute(
+            "select count(*) from ledger_usage_events"
+        ).fetchone()[0]
+        expected_sources = connection.execute(
+            "select count(*) from ledger_sources"
+        ).fetchone()[0]
+        connection.execute("drop table allowance_report_cache")
+        connection.execute("drop table allowance_event_costs")
+        connection.execute(
+            "update ledger_meta set value = '3' where key = 'schema_version'"
+        )
+    with open_ledger(ledger) as connection:
+        assert connection.execute(
+            "select value from ledger_meta where key = 'schema_version'"
+        ).fetchone()[0] == "4"
+        assert connection.execute(
+            "select count(*) from ledger_usage_events"
+        ).fetchone()[0] == expected_events
+        assert connection.execute(
+            "select count(*) from ledger_sources"
+        ).fetchone()[0] == expected_sources
+        assert connection.execute(
+            "select name from sqlite_master where name = 'allowance_event_costs'"
+        ).fetchone() is not None
+        assert connection.execute(
+            "select name from sqlite_master where name = 'allowance_report_cache'"
+        ).fetchone() is not None
+    backups = list(ledger.parent.glob(f"{ledger.name}.schema-3-backup-*"))
+    assert len(backups) == 1
+    with sqlite3.connect(backups[0]) as connection:
+        assert connection.execute(
+            "select value from ledger_meta where key = 'schema_version'"
+        ).fetchone()[0] == "3"
+        assert connection.execute(
+            "select count(*) from ledger_usage_events"
+        ).fetchone()[0] == expected_events
 
 
 def test_conflicting_same_timestamp_quota_samples_keep_first_inserted(tmp_path):

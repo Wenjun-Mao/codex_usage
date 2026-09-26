@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.8.9 - 2026-09-25
+
+- Speed up repeated Plan Allowance report views by reusing indexed, account-wide cost calculations from the local ledger.
+- Upgrade existing ledgers to schema 4 with a pre-migration backup while retaining source events.
+
 ## 2.8.8 - 2026-09-25
 
 - Show remaining allowance in the native Plan Allowance meter with matching
