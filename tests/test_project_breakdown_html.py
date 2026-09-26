@@ -230,7 +230,7 @@ def test_project_details_and_exact_model_details_keep_complete_disclosures(
     assert OTHER_MODEL_KEY not in html
     assert ">Other</span>" in html
     for index in range(8):
-        assert f">model-{index}</td>" in html
+        assert f'<th scope="row">model-{index}</th>' in html
     assert "model-color-slot-7" in html
 
 
@@ -379,9 +379,10 @@ def test_model_details_keeps_all_exact_models_beyond_two_hundred_rows(
     model_details = html.split(
         '<section class="report-table-section" data-report-section="model-details">', 1
     )[1].split("</section>", 1)[0]
-    assert model_details.count("<tr>") == 202
-    assert ">model-000</td>" in model_details
-    assert ">model-200</td>" in model_details
+    assert model_details.count('class="model-summary-row"') == 201
+    assert model_details.count('class="model-breakdown-row"') == 201
+    assert '<th scope="row">model-000</th>' in model_details
+    assert '<th scope="row">model-200</th>' in model_details
 
 
 def _render_report(tmp_path: Path, records: list[UsageRecord]) -> str:

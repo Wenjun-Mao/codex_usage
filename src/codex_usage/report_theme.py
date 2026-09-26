@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from codex_usage.report_breakdown_theme import report_breakdown_css
 from codex_usage.report_metric_theme import report_metric_strip_css
+from codex_usage.report_model_theme import report_model_css
 from codex_usage.report_temporal_theme import report_temporal_css
 from codex_usage.report_views import report_views_css
 
@@ -39,7 +40,6 @@ def report_css() -> str:
       --day-border: #d5dce1;
       --day-border-soft: #e5eaed;
       --day-shadow-soft: 0 1px 2px rgba(23, 32, 39, 0.08);
-
       --night-bg: #101316;
       --night-bg-strong: #15191d;
       --night-surface: #15191d;
@@ -492,6 +492,7 @@ def report_css() -> str:
     }
 """
         + report_metric_strip_css()
+        + report_model_css()
         + report_views_css()
         + report_breakdown_css()
         + report_temporal_css()

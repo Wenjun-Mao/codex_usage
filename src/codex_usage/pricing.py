@@ -9,6 +9,7 @@ from codex_usage.bedrock_pricing import (
     BEDROCK_API_RATE_ROWS,
 )
 from codex_usage.models import TokenUsage
+from codex_usage.pricing_breakdowns import CostBreakdown, CreditBreakdown
 
 
 PRICING_AS_OF = "2026-09-22"
@@ -42,7 +43,11 @@ class ModelRate:
 
     @property
     def resolved_cache_write_input_per_1m(self) -> float:
-        return self.input_per_1m if self.cache_write_input_per_1m is None else self.cache_write_input_per_1m
+        return (
+            self.input_per_1m
+            if self.cache_write_input_per_1m is None
+            else self.cache_write_input_per_1m
+        )
 
 
 @dataclass(frozen=True)
@@ -58,7 +63,8 @@ class RequestLevelLongContextPricing:
     def apply(self, rate: ModelRate) -> ModelRate:
         return ModelRate(
             input_per_1m=rate.input_per_1m * self.input_rate_multiplier,
-            cached_input_per_1m=rate.cached_input_per_1m * self.cached_input_rate_multiplier,
+            cached_input_per_1m=rate.cached_input_per_1m
+            * self.cached_input_rate_multiplier,
             output_per_1m=rate.output_per_1m * self.output_rate_multiplier,
             cache_write_input_per_1m=(
                 None
@@ -73,7 +79,10 @@ class RequestPricingContract:
     long_context_pricing: RequestLevelLongContextPricing | None = None
 
     def rate_for_usage(self, base_rate: ModelRate, usage: TokenUsage) -> ModelRate:
-        if self.long_context_pricing is not None and self.long_context_pricing.applies_to(usage):
+        if (
+            self.long_context_pricing is not None
+            and self.long_context_pricing.applies_to(usage)
+        ):
             return self.long_context_pricing.apply(base_rate)
         return base_rate
 
@@ -105,68 +114,6 @@ class EffectiveModelRate:
 class _EffectiveRateTimeline:
     effective_from: tuple[datetime, ...]
     entries: tuple[EffectiveModelRate, ...]
-
-
-@dataclass(frozen=True)
-class CostBreakdown:
-    ordinary_input_usd: float = 0.0
-    cached_input_usd: float = 0.0
-    cache_write_input_usd: float = 0.0
-    output_usd: float = 0.0
-    total_usd: float = 0.0
-    unpriced_tokens: int = 0
-
-    @property
-    def uncached_input_usd(self) -> float:
-        return self.ordinary_input_usd + self.cache_write_input_usd
-
-    def add(self, other: "CostBreakdown") -> "CostBreakdown":
-        return CostBreakdown(
-            ordinary_input_usd=self.ordinary_input_usd + other.ordinary_input_usd,
-            cached_input_usd=self.cached_input_usd + other.cached_input_usd,
-            cache_write_input_usd=self.cache_write_input_usd + other.cache_write_input_usd,
-            output_usd=self.output_usd + other.output_usd,
-            total_usd=self.total_usd + other.total_usd,
-            unpriced_tokens=self.unpriced_tokens + other.unpriced_tokens,
-        )
-
-    def to_dict(self) -> dict[str, float | int]:
-        return {
-            "uncached_input_usd": round(self.uncached_input_usd, 6),
-            "ordinary_input_usd": round(self.ordinary_input_usd, 6),
-            "cached_input_usd": round(self.cached_input_usd, 6),
-            "cache_write_input_usd": round(self.cache_write_input_usd, 6),
-            "output_usd": round(self.output_usd, 6),
-            "total_usd": round(self.total_usd, 6),
-            "unpriced_tokens": self.unpriced_tokens,
-        }
-
-
-@dataclass(frozen=True)
-class CreditBreakdown:
-    uncached_input_credits: float = 0.0
-    cached_input_credits: float = 0.0
-    output_credits: float = 0.0
-    total_credits: float = 0.0
-    unpriced_tokens: int = 0
-
-    def add(self, other: "CreditBreakdown") -> "CreditBreakdown":
-        return CreditBreakdown(
-            uncached_input_credits=self.uncached_input_credits + other.uncached_input_credits,
-            cached_input_credits=self.cached_input_credits + other.cached_input_credits,
-            output_credits=self.output_credits + other.output_credits,
-            total_credits=self.total_credits + other.total_credits,
-            unpriced_tokens=self.unpriced_tokens + other.unpriced_tokens,
-        )
-
-    def to_dict(self) -> dict[str, float | int]:
-        return {
-            "uncached_input_credits": round(self.uncached_input_credits, 6),
-            "cached_input_credits": round(self.cached_input_credits, 6),
-            "output_credits": round(self.output_credits, 6),
-            "total_credits": round(self.total_credits, 6),
-            "unpriced_tokens": self.unpriced_tokens,
-        }
 
 
 def _effective_rate(
@@ -290,14 +237,41 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = tuple(
         aliases=("gpt-5.6",),
         request_pricing_contract=LARGE_CONTEXT_API_PRICING,
     ),
-    _effective_rate("gpt-5.5", input_per_1m=5.00, cached_input_per_1m=0.50, output_per_1m=30.00),
-    _effective_rate("gpt-5.4-mini", input_per_1m=0.75, cached_input_per_1m=0.075, output_per_1m=4.50),
-    _effective_rate("gpt-5.4", input_per_1m=2.50, cached_input_per_1m=0.25, output_per_1m=15.00),
-    _effective_rate("gpt-5.3-codex", input_per_1m=1.75, cached_input_per_1m=0.175, output_per_1m=14.00),
-    _effective_rate("gpt-5.3", input_per_1m=1.75, cached_input_per_1m=0.175, output_per_1m=14.00),
+    _effective_rate(
+        "gpt-5.5", input_per_1m=5.00, cached_input_per_1m=0.50, output_per_1m=30.00
+    ),
+    _effective_rate(
+        "gpt-5.4-mini", input_per_1m=0.75, cached_input_per_1m=0.075, output_per_1m=4.50
+    ),
+    _effective_rate(
+        "gpt-5.4", input_per_1m=2.50, cached_input_per_1m=0.25, output_per_1m=15.00
+    ),
+    _effective_rate(
+        "gpt-5.3-codex",
+        input_per_1m=1.75,
+        cached_input_per_1m=0.175,
+        output_per_1m=14.00,
+    ),
+    _effective_rate(
+        "gpt-5.3", input_per_1m=1.75, cached_input_per_1m=0.175, output_per_1m=14.00
+    ),
 )
 
 CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate(
+        "gpt-6-sol",
+        input_per_1m=50.0,
+        cached_input_per_1m=5.0,
+        output_per_1m=250.0,
+        effective_from=GPT_6_SOL_LUNA_API_EFFECTIVE_FROM,
+    ),
+    _effective_rate(
+        "gpt-6-luna",
+        input_per_1m=2.5,
+        cached_input_per_1m=0.25,
+        output_per_1m=12.5,
+        effective_from=GPT_6_SOL_LUNA_API_EFFECTIVE_FROM,
+    ),
     _effective_rate(
         "gpt-6-astra",
         input_per_1m=250.0,
@@ -349,11 +323,27 @@ CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
         output_per_1m=30.0,
         effective_from=GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM,
     ),
-    _effective_rate("gpt-5.5", input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0),
-    _effective_rate("gpt-5.4-mini", input_per_1m=18.75, cached_input_per_1m=1.875, output_per_1m=113.0),
-    _effective_rate("gpt-5.4", input_per_1m=62.5, cached_input_per_1m=6.25, output_per_1m=375.0),
-    _effective_rate("gpt-5.3-codex", input_per_1m=43.75, cached_input_per_1m=4.375, output_per_1m=350.0),
-    _effective_rate("gpt-5.2", input_per_1m=43.75, cached_input_per_1m=4.375, output_per_1m=350.0),
+    _effective_rate(
+        "gpt-5.5", input_per_1m=125.0, cached_input_per_1m=12.5, output_per_1m=750.0
+    ),
+    _effective_rate(
+        "gpt-5.4-mini",
+        input_per_1m=18.75,
+        cached_input_per_1m=1.875,
+        output_per_1m=113.0,
+    ),
+    _effective_rate(
+        "gpt-5.4", input_per_1m=62.5, cached_input_per_1m=6.25, output_per_1m=375.0
+    ),
+    _effective_rate(
+        "gpt-5.3-codex",
+        input_per_1m=43.75,
+        cached_input_per_1m=4.375,
+        output_per_1m=350.0,
+    ),
+    _effective_rate(
+        "gpt-5.2", input_per_1m=43.75, cached_input_per_1m=4.375, output_per_1m=350.0
+    ),
 )
 
 
@@ -408,14 +398,15 @@ def _compiled_schedule(
         ordered = tuple(
             sorted(
                 entries,
-                key=lambda entry: _normalize_effective_at(entry.effective_from)
-                or BASELINE_EFFECTIVE_FROM,
+                key=lambda entry: (
+                    _normalize_effective_at(entry.effective_from)
+                    or BASELINE_EFFECTIVE_FROM
+                ),
             )
         )
         compiled[key] = _EffectiveRateTimeline(
             effective_from=tuple(
-                _normalize_effective_at(entry.effective_from)
-                or BASELINE_EFFECTIVE_FROM
+                _normalize_effective_at(entry.effective_from) or BASELINE_EFFECTIVE_FROM
                 for entry in ordered
             ),
             entries=ordered,
@@ -423,7 +414,9 @@ def _compiled_schedule(
     return compiled
 
 
-def estimate_cost(usage: TokenUsage, model: str, at: datetime | None = None) -> CostBreakdown | None:
+def estimate_cost(
+    usage: TokenUsage, model: str, at: datetime | None = None
+) -> CostBreakdown | None:
     entry = _schedule_entry_for_model(API_PRICING_USD_SCHEDULE, model, at)
     if entry is None:
         return None
@@ -432,7 +425,9 @@ def estimate_cost(usage: TokenUsage, model: str, at: datetime | None = None) -> 
     ordinary_input_usd = usage.ordinary_input_tokens / 1_000_000 * rate.input_per_1m
     cached_input_usd = usage.cached_input_tokens / 1_000_000 * rate.cached_input_per_1m
     cache_write_input_usd = (
-        usage.cache_write_input_tokens / 1_000_000 * rate.resolved_cache_write_input_per_1m
+        usage.cache_write_input_tokens
+        / 1_000_000
+        * rate.resolved_cache_write_input_per_1m
     )
     output_usd = usage.output_tokens / 1_000_000 * rate.output_per_1m
     return CostBreakdown(
@@ -440,20 +435,33 @@ def estimate_cost(usage: TokenUsage, model: str, at: datetime | None = None) -> 
         cached_input_usd=cached_input_usd,
         cache_write_input_usd=cache_write_input_usd,
         output_usd=output_usd,
-        total_usd=ordinary_input_usd + cached_input_usd + cache_write_input_usd + output_usd,
+        total_usd=ordinary_input_usd
+        + cached_input_usd
+        + cache_write_input_usd
+        + output_usd,
     )
 
 
-def estimate_codex_credits(usage: TokenUsage, model: str, at: datetime | None = None) -> CreditBreakdown | None:
+def estimate_codex_credits(
+    usage: TokenUsage, model: str, at: datetime | None = None
+) -> CreditBreakdown | None:
     rate = credit_rate_for_model(model, at=at)
     if rate is None:
         return None
 
-    uncached_input_credits = usage.uncached_input_tokens / 1_000_000 * rate.input_per_1m
-    cached_input_credits = usage.cached_input_tokens / 1_000_000 * rate.cached_input_per_1m
+    ordinary_input_credits = usage.ordinary_input_tokens / 1_000_000 * rate.input_per_1m
+    cache_write_input_credits = (
+        usage.cache_write_input_tokens / 1_000_000 * rate.input_per_1m
+    )
+    uncached_input_credits = ordinary_input_credits + cache_write_input_credits
+    cached_input_credits = (
+        usage.cached_input_tokens / 1_000_000 * rate.cached_input_per_1m
+    )
     output_credits = usage.output_tokens / 1_000_000 * rate.output_per_1m
     return CreditBreakdown(
         uncached_input_credits=uncached_input_credits,
+        ordinary_input_credits=ordinary_input_credits,
+        cache_write_input_credits=cache_write_input_credits,
         cached_input_credits=cached_input_credits,
         output_credits=output_credits,
         total_credits=uncached_input_credits + cached_input_credits + output_credits,

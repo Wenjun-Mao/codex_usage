@@ -34,6 +34,7 @@ from codex_usage.report_tables import (
     format_credits,
     format_int,
     render_aggregate_table,
+    render_model_details_table,
     render_project_economics_section,
     render_project_details_table,
     render_token_accounting_details,
@@ -288,7 +289,8 @@ def _render_usage_view(
         '<div class="usage-view-context">'
         f'<div class="muted summary-line">Usage range: {html.escape(range_label)} | '
         f"Pricing table as of {PRICING_AS_OF}</div>"
-        '<div class="muted summary-line">Pricing uses rates effective at each usage event.</div>'
+        '<div class="muted summary-line">Pricing uses rates effective at each usage event. '
+        'Codex credits are Standard-rate estimates; the ledger cannot identify Fast usage.</div>'
         "</div>"
         f"{_render_kpis(view_model)}"
         f"{pricing_notice_html}"
@@ -315,7 +317,7 @@ def _render_usage_view(
         "</span></div>"
         '<div class="comparison-charts">'
         f"{_chart_section('Project Breakdown', render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table('Project Details', view_model.project_detail_points, section_id='project-details'), section_id='project-breakdown', scroll_class='tooltip-chart-scroll', help_text='Root task token usage includes side chats stored in the parent task.')}"
-        f"{_chart_section('Model Mix', render_model_mix_chart(view_model.model_points), render_aggregate_table('Model Details', view_model.model_rows, section_id='model-details'), section_id='model-mix', scroll_class='tooltip-chart-scroll')}"
+        f"{_chart_section('Model Mix', render_model_mix_chart(view_model.model_points), render_model_details_table(view_model.model_rows), section_id='model-mix', scroll_class='tooltip-chart-scroll')}"
         "</div></section>"
     )
 

@@ -140,8 +140,14 @@ def filter_records_by_range(
     return [
         record
         for record in records
-        if (bounds.start_us is None or datetime_to_utc_microseconds(record.timestamp) >= bounds.start_us)
-        and (bounds.end_us is None or datetime_to_utc_microseconds(record.timestamp) < bounds.end_us)
+        if (
+            bounds.start_us is None
+            or datetime_to_utc_microseconds(record.timestamp) >= bounds.start_us
+        )
+        and (
+            bounds.end_us is None
+            or datetime_to_utc_microseconds(record.timestamp) < bounds.end_us
+        )
     ]
 
 
@@ -181,7 +187,9 @@ def resolve_report_range(
         if end > now_local.date():
             raise ValueError("custom report ranges cannot include future dates")
         start_at = datetime.combine(start, datetime.min.time(), tzinfo=timezone)
-        end_at = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=timezone)
+        end_at = datetime.combine(
+            end + timedelta(days=1), datetime.min.time(), tzinfo=timezone
+        )
         bounds = RangeBounds(
             start_us=datetime_to_utc_microseconds(start_at),
             end_us=datetime_to_utc_microseconds(end_at),
@@ -293,14 +301,23 @@ def datetime_to_utc_microseconds(timestamp: datetime) -> int:
     return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
 
 
-def filter_records_by_project_keys(records: list[UsageRecord], project_keys: Sequence[str] | None) -> list[UsageRecord]:
+def filter_records_by_project_keys(
+    records: list[UsageRecord], project_keys: Sequence[str] | None
+) -> list[UsageRecord]:
     selected = {key.strip() for key in project_keys or [] if key.strip()}
     if not selected:
         return records
-    return [record for record in records if record.project_key in selected or any(alias in selected for alias in record.project_aliases)]
+    return [
+        record
+        for record in records
+        if record.project_key in selected
+        or any(alias in selected for alias in record.project_aliases)
+    ]
 
 
-def aggregate_records(records: list[UsageRecord], group_by: str, timezone: tzinfo) -> list[AggregateRow]:
+def aggregate_records(
+    records: list[UsageRecord], group_by: str, timezone: tzinfo
+) -> list[AggregateRow]:
     return aggregate_valued_records(value_records(records), group_by, timezone)
 
 
@@ -373,7 +390,9 @@ def _empty_summary() -> UsageSummary:
     )
 
 
-def _bucket_key(record: UsageRecord, group_by: str, timezone: tzinfo) -> tuple[str, str]:
+def _bucket_key(
+    record: UsageRecord, group_by: str, timezone: tzinfo
+) -> tuple[str, str]:
     local_timestamp = record.timestamp.astimezone(timezone)
     if group_by == "day":
         key = local_timestamp.strftime("%Y-%m-%d")
@@ -392,11 +411,25 @@ def _record_cost(record: UsageRecord) -> CostBreakdown:
     cost = estimate_cost(record.usage, record.model, at=record.timestamp)
     if cost is not None:
         return cost
-    return CostBreakdown(unpriced_tokens=record.usage.total_tokens)
+    usage = record.usage
+    return CostBreakdown(
+        unpriced_tokens=usage.total_tokens,
+        unpriced_ordinary_input_tokens=usage.ordinary_input_tokens,
+        unpriced_cached_input_tokens=usage.cached_input_tokens,
+        unpriced_cache_write_input_tokens=usage.cache_write_input_tokens,
+        unpriced_output_tokens=usage.output_tokens,
+    )
 
 
 def _record_credits(record: UsageRecord) -> CreditBreakdown:
     credits = estimate_codex_credits(record.usage, record.model, at=record.timestamp)
     if credits is not None:
         return credits
-    return CreditBreakdown(unpriced_tokens=record.usage.total_tokens)
+    usage = record.usage
+    return CreditBreakdown(
+        unpriced_tokens=usage.total_tokens,
+        unpriced_ordinary_input_tokens=usage.ordinary_input_tokens,
+        unpriced_cached_input_tokens=usage.cached_input_tokens,
+        unpriced_cache_write_input_tokens=usage.cache_write_input_tokens,
+        unpriced_output_tokens=usage.output_tokens,
+    )

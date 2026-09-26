@@ -58,3 +58,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 
 - [0044: Observed Plan Allowance Analytics](0044-plan-allowance-analytics.md)
 - [0045: Guard-Verified Ledger Generations](0045-guard-verified-ledger-generations.md)
+- [0046: Model Category Valuations And Standard Credit Estimates](0046-model-category-valuations-and-standard-credits.md)

@@ -32,6 +32,128 @@ def render_aggregate_table(
     )
 
 
+def render_model_details_table(rows: list[AggregateRow]) -> str:
+    """Keep the model comparison compact while exposing additive event valuations."""
+    title = "Model Details"
+    section_id = "model-details"
+    if not rows:
+        return _empty_table_section(title, section_id)
+    table_rows = "".join(_model_rows_html(row) for row in rows)
+    return (
+        _section_open(section_id) + '<h3 id="model-details-heading">Model Details</h3>'
+        '<p class="muted model-details-help">Open a model for token categories and '
+        "estimated prices. Input includes cached input, regular input, and "
+        "reported cache writes; Total includes Input and Output. Category prices "
+        "sum event valuations at their effective rates. Credit estimates use "
+        "Standard rates; Fast usage cannot be identified in this ledger.</p>"
+        '<div class="table-wrap"><table class="model-details-table" '
+        'aria-labelledby="model-details-heading"><thead><tr>'
+        '<th scope="col">Model</th><th scope="col" class="num">Tokens</th>'
+        '<th scope="col" class="num">API Cost</th>'
+        '<th scope="col" class="num">Est. Credits</th>'
+        '<th scope="col" class="num">API Excl.</th>'
+        '<th scope="col" class="num">No Credit Rate</th>'
+        f"</tr></thead><tbody>{table_rows}</tbody></table></div></section>"
+    )
+
+
+def _model_rows_html(row: AggregateRow) -> str:
+    usage, cost, credits = row.usage, row.cost, row.credits
+    label = html.escape(row.label)
+    categories = (
+        (
+            "Total",
+            usage.total_tokens,
+            cost.total_usd,
+            credits.total_credits,
+            cost.unpriced_tokens,
+            credits.unpriced_tokens,
+        ),
+        (
+            "Input subtotal",
+            usage.input_tokens,
+            cost.input_usd,
+            credits.input_credits,
+            cost.unpriced_input_tokens,
+            credits.unpriced_input_tokens,
+        ),
+        (
+            "Cached input",
+            usage.cached_input_tokens,
+            cost.cached_input_usd,
+            credits.cached_input_credits,
+            cost.unpriced_cached_input_tokens,
+            credits.unpriced_cached_input_tokens,
+        ),
+        (
+            "Regular input",
+            usage.ordinary_input_tokens,
+            cost.ordinary_input_usd,
+            credits.ordinary_input_credits,
+            cost.unpriced_ordinary_input_tokens,
+            credits.unpriced_ordinary_input_tokens,
+        ),
+        (
+            "Cache write (reported)",
+            usage.cache_write_input_tokens,
+            cost.cache_write_input_usd,
+            credits.cache_write_input_credits,
+            cost.unpriced_cache_write_input_tokens,
+            credits.unpriced_cache_write_input_tokens,
+        ),
+        (
+            "Output",
+            usage.output_tokens,
+            cost.output_usd,
+            credits.output_credits,
+            cost.unpriced_output_tokens,
+            credits.unpriced_output_tokens,
+        ),
+    )
+    detail_rows = "".join(
+        "<tr>"
+        f'<th scope="row">{html.escape(category)}</th>'
+        f'<td class="num">{format_int(tokens)}</td>'
+        f'<td class="num">{_partial_amount(amount, missing, tokens, "$")}</td>'
+        f'<td class="num">{_partial_amount(credit_amount, credit_missing, tokens, "")}</td>'
+        "</tr>"
+        for category, tokens, amount, credit_amount, missing, credit_missing in categories
+    )
+    return (
+        '<tr class="model-summary-row">'
+        f'<th scope="row">{label}</th>'
+        f'<td class="num">{format_int(usage.total_tokens)}</td>'
+        f'<td class="num">{_partial_amount(cost.total_usd, cost.unpriced_tokens, usage.total_tokens, "$")}</td>'
+        f'<td class="num">{_partial_amount(credits.total_credits, credits.unpriced_tokens, usage.total_tokens, "")}</td>'
+        f'<td class="num">{format_int(cost.unpriced_tokens)}</td>'
+        f'<td class="num">{format_int(credits.unpriced_tokens)}</td></tr>'
+        '<tr class="model-breakdown-row"><td colspan="6">'
+        '<details class="model-breakdown"><summary>'
+        f"Token and price breakdown for {label}</summary>"
+        '<div class="table-wrap"><table aria-label="Token and price categories for '
+        f'{html.escape(row.label, quote=True)}"><thead><tr>'
+        '<th scope="col">Category</th><th scope="col" class="num">Tokens</th>'
+        '<th scope="col" class="num">API Cost</th>'
+        '<th scope="col" class="num">Est. Credits</th>'
+        f"</tr></thead><tbody>{detail_rows}</tbody></table></div>"
+        '<p class="muted">Cached, regular, and reported cache-write input add to Input. '
+        "Input and Output add to Total. Cache-write credits are the ordinary input "
+        "contribution, not a separate surcharge. “Partial” excludes tokens without "
+        "a published rate; “—” means no rate is available.</p>"
+        "</details></td></tr>"
+    )
+
+
+def _partial_amount(amount: float, missing: int, tokens: int, prefix: str) -> str:
+    if tokens > 0 and missing >= tokens:
+        return '<span aria-label="No published rate">—</span>'
+    value = f"{amount:,.6f}" if amount or not missing else "0.000000"
+    if amount and amount < 0.0000005:
+        value = "&lt;0.000001"
+    suffix = ' <span class="model-partial">partial</span>' if missing else ""
+    return f"{prefix}{value}{suffix}"
+
+
 def render_project_details_table(
     title: str,
     points: tuple[ProjectBreakdownPoint, ...],
@@ -231,7 +353,7 @@ def _render_economics_benchmark(benchmark: ProjectEconomics) -> str:
         '<section class="project-economics-benchmark" aria-label="Weighted all-project benchmark">'
         '<div class="project-economics-benchmark-heading">'
         "<strong>Weighted all-project benchmark</strong>"
-        f'<span>{format_int(metrics.turn_count)} measured turns</span>'
+        f"<span>{format_int(metrics.turn_count)} measured turns</span>"
         "</div>"
         '<dl class="project-economics-metrics">'
         f"{_economics_metric('Average cost / turn', _currency_or_unavailable(metrics.average_cost_per_turn), _priced_turn_detail(metrics))}"
@@ -245,7 +367,11 @@ def _render_economics_benchmark(benchmark: ProjectEconomics) -> str:
 
 def _render_project_economics_project(project: ProjectEconomics) -> str:
     metrics = project.metrics
-    sample_warning = ('<span class="project-economics-small-sample">Small sample</span>' if project.is_small_sample else "")
+    sample_warning = (
+        '<span class="project-economics-small-sample">Small sample</span>'
+        if project.is_small_sample
+        else ""
+    )
     model_rows = "".join(_render_economics_model(model) for model in project.models)
     return (
         '<details class="project-economics-project"><summary>'
@@ -259,7 +385,7 @@ def _render_project_economics_project(project: ProjectEconomics) -> str:
         f"{_economics_metric('Responses / turn', _number_or_unavailable(metrics.responses_per_turn), _turn_response_detail(metrics))}"
         f"{_economics_metric('Tokens / turn', _number_or_unavailable(metrics.tokens_per_turn), _coverage_detail(project.coverage))}"
         f"{_economics_metric('Turn coverage', _coverage_value(project.coverage), _coverage_detail(project.coverage))}"
-        "</dl><div class=\"table-wrap\"><table class=\"project-economics-models\"><thead><tr>"
+        '</dl><div class="table-wrap"><table class="project-economics-models"><thead><tr>'
         '<th scope="col">Model</th><th scope="col" class="num">Tokens</th><th scope="col" class="num">Token share</th><th scope="col" class="num">Cost share</th><th scope="col" class="num">Turns</th><th scope="col" class="num">Average cost / turn</th>'
         f"</tr></thead><tbody>{model_rows}</tbody></table></div></div></details>"
     )
