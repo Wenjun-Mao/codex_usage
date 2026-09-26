@@ -132,9 +132,13 @@ def _launch_agent_is_loaded() -> bool:
         raise RuntimeError("Could not verify that the legacy LaunchAgent is unloaded; its registration was kept")
     for line in services.group(1).splitlines():
         columns = line.split()
-        if len(columns) != 3:
+        if (not 3 <= len(columns) <= 5
+            or re.fullmatch(r"(?:-|\d+|0x[0-9a-fA-F]+)", columns[0]) is None
+            or any(re.fullmatch(r"(?:-|\d+|0x[0-9a-fA-F]+|[A-Z]|\([a-z]{2}\))", field) is None
+                   for field in columns[1:-1])
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]*", columns[-1]) is None):
             raise RuntimeError("Could not parse the LaunchAgent registry; its registration was kept")
-        if columns[2] == MACOS_SERVICE_LABEL:
+        if columns[-1] == MACOS_SERVICE_LABEL:
             return True
     return False
 

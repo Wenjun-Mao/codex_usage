@@ -108,7 +108,16 @@ def test_macos_retirement_of_inactive_registration_requires_a_valid_registry(
         calls.append(args)
         return SimpleNamespace(
             returncode=1 if "bootout" in args else 0,
-            stdout="gui/501 = {\n\tservices = {\n\t\t123\t0\tunrelated.agent\n\t}\n}\n" if "print" in args else "",
+            stdout=(
+                "gui/501 = {\n\tservices = {\n"
+                "\t\t123\t0\tunrelated.agent\n"
+                "\t\t0 M D com.apple.inactive\n"
+                "\t\t0x11258b M A com.apple.active\n"
+                "\t\t0x11258b 0 M A com.apple.five-fields\n"
+                "\t\t0 (pe) com.apple.parent-event\n"
+                "\t\t0 (jt) com.apple.job-trigger\n"
+                "\t}\n}\n"
+            ) if "print" in args else "",
             stderr="not loaded",
         )
 
@@ -120,10 +129,45 @@ def test_macos_retirement_of_inactive_registration_requires_a_valid_registry(
     ]
 
 
+@pytest.mark.parametrize("loaded_row", [
+    "123\t0\tcom.wenjunmao.codex-usage-agent",
+    "0 M D com.wenjunmao.codex-usage-agent",
+    "0x11258b 0 M A com.wenjunmao.codex-usage-agent",
+])
+def test_macos_retirement_keeps_loaded_registration_with_mixed_row_shapes(
+    monkeypatch, tmp_path: Path, loaded_row: str,
+) -> None:
+    path = tmp_path / "com.wenjunmao.codex-usage-agent.plist"
+    path.write_bytes(plistlib.dumps({
+        "Label": agent_service.MACOS_SERVICE_LABEL,
+        "ProgramArguments": ["/missing/codex-usage-agent", "--background"],
+    }))
+    monkeypatch.setattr(agent_service, "_launch_agent_path", lambda: path)
+    monkeypatch.setattr(agent_service.os, "getuid", lambda: 501, raising=False)
+
+    def run(args, **_kwargs):
+        return SimpleNamespace(
+            returncode=1 if "bootout" in args else 0,
+            stdout=(
+                "gui/501 = {\n\tservices = {\n"
+                "\t\t0 M D com.apple.inactive\n"
+                f"\t\t{loaded_row}\n\t}}\n}}\n"
+            ) if "print" in args else "",
+            stderr="bootout failed",
+        )
+
+    monkeypatch.setattr(agent_service.subprocess, "run", run)
+    with pytest.raises(RuntimeError, match="bootout failed"):
+        agent_service._uninstall_launch_agent()
+    assert path.exists()
+
+
 @pytest.mark.parametrize("registry_output,registry_code", [
     ("", 0),
     ("malformed registry\n", 0),
     ("gui/501 = {\n\tservices = {\n\t}\n}\n", 1),
+    ("gui/501 = {\n\tservices = {\n\t\t0 M ??? unknown.agent\n\t}\n}\n", 0),
+    ("gui/501 = {\n\tservices = {\n\t\t0 M D X Y unknown.agent\n\t}\n}\n", 0),
 ])
 def test_macos_retirement_keeps_registration_when_absence_is_ambiguous(
     monkeypatch, tmp_path: Path, registry_output: str, registry_code: int,
