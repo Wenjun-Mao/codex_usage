@@ -17,7 +17,6 @@ from codex_usage.agent_runtime import (
 )
 from codex_usage.agent_service import (
     background_agent_status,
-    install_background_agent,
     uninstall_background_agent,
 )
 from codex_usage.agent_settings import load_agent_settings, save_agent_settings
@@ -26,7 +25,7 @@ from codex_usage.agent_settings import load_agent_settings, save_agent_settings
 def build_agent_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-usage-agent",
-        description="Private Codex Usage native-app capture agent.",
+        description="Private Codex Usage companion collector.",
     )
     parser.add_argument("--background", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--port", type=int, default=0, help=argparse.SUPPRESS)
@@ -34,15 +33,9 @@ def build_agent_parser() -> argparse.ArgumentParser:
     parser.add_argument("--settings-file", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--capture-once", action="store_true", help=argparse.SUPPRESS)
     controls = parser.add_mutually_exclusive_group()
-    controls.add_argument("--install-service", action="store_true", help=argparse.SUPPRESS)
     controls.add_argument("--uninstall-service", action="store_true", help=argparse.SUPPRESS)
     controls.add_argument("--service-status", action="store_true", help=argparse.SUPPRESS)
     controls.add_argument("--set-codex-home", type=Path, help=argparse.SUPPRESS)
-    controls.add_argument(
-        "--set-background-capture",
-        choices=("true", "false"),
-        help=argparse.SUPPRESS,
-    )
     controls.add_argument("--reset-local-data", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--remove-settings", action="store_true", help=argparse.SUPPRESS)
     return parser
@@ -53,8 +46,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.parent_pid is not None and args.parent_pid <= 0:
         parser.error("--parent-pid must be greater than zero")
-    if args.install_service:
-        return _print_control_result(install_background_agent().to_dict())
     if args.uninstall_service:
         return _print_control_result(uninstall_background_agent().to_dict())
     if args.service_status:
@@ -66,13 +57,6 @@ def main(argv: list[str] | None = None) -> int:
             replace(settings, codex_home=str(home)), args.settings_file
         )
         return _print_control_result({"codex_home": str(home)})
-    if args.set_background_capture is not None:
-        settings = load_agent_settings(args.settings_file)
-        enabled = args.set_background_capture == "true"
-        save_agent_settings(
-            replace(settings, background_capture=enabled), args.settings_file
-        )
-        return _print_control_result({"background_capture": enabled})
     if args.reset_local_data:
         settings = load_agent_settings(args.settings_file)
         return _print_control_result(

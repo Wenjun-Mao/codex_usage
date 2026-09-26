@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 2.9.0 - 2026-09-25
+
+- Retire the separate macOS and Windows native preview. Ship only the two
+  platform VS Code Companion packages, each with its matching Python collector.
+- Preserve the shared ledger and task workflows, and add an explicit legacy
+  background-service handoff that does not reset user data.
+- Keep scheduled capture active while VS Code is open; document quota snapshots
+  that may be missed after VS Code closes.
+- Move visual release evidence to the extension webview and remove Tauri,
+  DMG, and NSIS from the release gate.
+
 ## 2.8.10 - 2026-09-25
 
 - Show per-model total, input, cached input, regular input, reported cache-write,

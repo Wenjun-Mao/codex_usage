@@ -8,12 +8,10 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "scripts" / "generate_marketplace_screenshot.py"
-FIXTURE_PATH = ROOT / "apps" / "desktop" / "src" / "fixtures.ts"
-USAGE_REPORT_FIXTURE_PATH = ROOT / "apps" / "desktop" / "src" / "usageFixtureReport.ts"
 
 
-def _load_screenshot_module():
-    assert SCRIPT_PATH.is_file(), "marketplace screenshot generator is missing"
+def _load_module():
+    sys.path.insert(0, str(ROOT / "scripts"))
     spec = importlib.util.spec_from_file_location("marketplace_screenshot", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -22,83 +20,57 @@ def _load_screenshot_module():
     return module
 
 
-def test_generator_targets_built_native_frontend_and_two_views() -> None:
-    module = _load_screenshot_module()
+def test_generator_uses_extension_renderer_and_public_synthetic_data() -> None:
+    module = _load_module()
     source = SCRIPT_PATH.read_text(encoding="utf-8")
+    renderer = (ROOT / "scripts/render_extension_marketplace.js").read_text(encoding="utf-8")
 
-    assert module.DESKTOP_ROOT == ROOT / "apps" / "desktop"
-    assert module.USAGE_SCREENSHOT_PATH.name == "native-usage-synthetic.png"
+    assert module.EXTENSION_ROOT == ROOT / "extensions/vscode"
+    assert module.USAGE_SCREENSHOT_PATH.name == "extension-usage-synthetic.png"
+    assert module.STORAGE_SCREENSHOT_PATH.name == "extension-storage-synthetic.png"
     assert set(module.USAGE_SCREENSHOT_PATHS) == {
-        ("day", "wide"),
-        ("night", "wide"),
-        ("day", "narrow"),
-        ("night", "narrow"),
+        ("day", "wide"), ("day", "narrow"),
+        ("night", "wide"), ("night", "narrow"),
     }
-    assert module.STORAGE_SCREENSHOT_PATH.name == "native-storage-synthetic.png"
-    assert module.VIEWPORT == {"width": 1440, "height": 900}
-    assert module.NARROW_VIEWPORT["width"] == 760
-    assert '"npm", "run", "build"' in source
-    assert 'name="Token Usage"' in source
-    assert 'name="Task Storage"' in source
-    assert "frame_locator" in source
-    assert 'token_control.press("ArrowRight")' in source
-    assert 'cost_control.press("ArrowLeft")' in source
-    assert "_exercise_disclosure" in source
-    assert '"Project Economics details"' in source
-    assert '"Token Accounting"' in source
-    assert 'for theme in ("day", "night")' in source
-    assert "for viewport in (VIEWPORT, NARROW_VIEWPORT)" in source
+    assert "render_html_report" in source
+    assert "decorateUsageReport" in renderer
+    assert "renderStorageReport" in renderer
+    assert "apps/desktop" not in source + renderer
+    records = module.synthetic_records()
+    assert len(records) == 96
+    assert {record.usage_role for record in records} == {"root", "subagent"}
+    assert len({record.project_key for record in records}) == 3
+    assert all(not record.file_path.is_absolute() for record in records)
+    assert all("/Users/" not in str(record) for record in records)
 
 
-def test_native_fixture_is_deterministic_and_synthetic() -> None:
-    fixture = FIXTURE_PATH.read_text(encoding="utf-8")
-    report_fixture = USAGE_REPORT_FIXTURE_PATH.read_text(encoding="utf-8")
-
-    assert 'FIXTURE_NOW = new Date("2026-09-02T16:00:00.000Z")' in fixture
-    assert "new Date(Date.now()" not in fixture
-    assert "Ship native persistent collector" in fixture
-    assert "Task Transfer verification" in fixture
-    assert "Project Economics" in report_fixture
-    assert "Weighted all-project benchmark" in report_fixture
-    assert "Cache Write (reported)" in report_fixture
-    assert '<details class="project-economics-project">' in report_fixture
-    assert '<details class="token-accounting">' in report_fixture
-    assert "/Users/wjmao" not in fixture
-    assert "C:\\Users\\wjmao" not in fixture
-
-
-def test_check_mode_never_replaces_tracked_images(monkeypatch) -> None:
-    module = _load_screenshot_module()
+def test_check_mode_keeps_tracked_images(monkeypatch) -> None:
+    module = _load_module()
     originals = {
-        **{
-            path: path.read_bytes()
-            for path in module.USAGE_SCREENSHOT_PATHS.values()
-            if path.is_file()
-        },
-        module.STORAGE_SCREENSHOT_PATH: module.STORAGE_SCREENSHOT_PATH.read_bytes(),
+        path: path.read_bytes()
+        for path in (*module.USAGE_SCREENSHOT_PATHS.values(), module.STORAGE_SCREENSHOT_PATH)
     }
-    captured: list[tuple[dict[tuple[str, str], Path], Path]] = []
+    main_image = module.USAGE_SCREENSHOT_PATH.read_bytes()
+    captured = []
 
-    def render(usage_paths: dict[tuple[str, str], Path], storage_path: Path) -> None:
+    def render(usage_paths, storage_path):
         captured.append((usage_paths, storage_path))
-        for path in usage_paths.values():
-            path.write_bytes(b"temporary usage")
-        storage_path.write_bytes(b"temporary storage")
+        for path in (*usage_paths.values(), storage_path):
+            path.write_bytes(b"temporary")
 
     monkeypatch.setattr(module, "_render_capture_and_validate", render)
-
     assert module.main(["--check"]) == 0
     assert len(captured) == 1
     assert all(path not in originals for path in captured[0][0].values())
     assert captured[0][1] not in originals
     assert all(path.read_bytes() == contents for path, contents in originals.items())
+    assert module.USAGE_SCREENSHOT_PATH.read_bytes() == main_image
 
 
 def test_screenshot_validator_rejects_wrong_dimensions(tmp_path: Path) -> None:
-    module = _load_screenshot_module()
+    module = _load_module()
     path = tmp_path / "small.png"
     Image.new("RGB", (20, 20), color=(10, 20, 30)).save(path)
-
     try:
         module.validate_screenshot(path)
     except RuntimeError as error:

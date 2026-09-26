@@ -12,7 +12,7 @@ if (
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $targetTriple = "x86_64-pc-windows-msvc"
 $binaryName = "codex-usage-agent-$targetTriple"
-$distDir = Join-Path $repoRoot "apps\desktop\src-tauri\binaries"
+$distDir = Join-Path $repoRoot "build\packaged-agent\$targetTriple"
 $workDir = Join-Path $repoRoot "build\pyinstaller-agent-$targetTriple"
 $entryPoint = Join-Path $repoRoot "src\codex_usage\agent_main.py"
 $binaryPath = Join-Path $distDir "$binaryName.exe"

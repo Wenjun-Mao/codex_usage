@@ -4,7 +4,6 @@ import * as path from "path";
 import { AgentClient, resolveCodexHome, settingsFilePath } from "./agentClient";
 import { AgentSupervisor } from "./agentSupervisor";
 import { resolveBundledAgent } from "./bundledAgent";
-import { findNativeApp, INSTALL_URL, openNativeApp } from "./nativeApp";
 import { decorateUsageReport, renderError, renderLoading, renderStorageReport, WEBVIEW_COMMANDS } from "./reportHtml";
 import { captureIntervalChoices, captureScheduleMessage, collectorSetupChoices, projectTransitionChoices, validateCaptureInterval } from "./setupPresentation";
 import { StorageClient } from "./storageClient";
@@ -66,7 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.chooseTransferFolder", () => taskTransferClient.chooseFolder()),
     vscode.commands.registerCommand("codexUsage.analyzeTaskStorage", (treeId?: unknown) => storage.analyze(treeId)),
     vscode.commands.registerCommand("codexUsage.configure", configureCollector),
-    vscode.commands.registerCommand("codexUsage.openNativeApp", () => launchNativeApp(true)),
+    vscode.commands.registerCommand("codexUsage.handoffLegacyService", handoffLegacyService),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("codexUsage") && panel) void refreshVisibleDashboard();
     }),
@@ -75,9 +74,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusTimer = setInterval(() => void refreshStatus(false), STATUS_REFRESH_INTERVAL_MS);
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   if (statusTimer) clearInterval(statusTimer);
   panel = undefined;
+  await agentSupervisor?.stopManagedAgent();
 }
 
 async function openDashboard(): Promise<void> {
@@ -314,6 +314,10 @@ async function configureCollector(): Promise<void> {
     await chooseCodexHome();
     return;
   }
+  if (selected.action === "handoff") {
+    await handoffLegacyService();
+    return;
+  }
   const client = await acquireAgentClient(false);
   if (!client) {
     void vscode.window.showErrorMessage("Choose a valid CODEX_HOME folder before configuring the collector.");
@@ -356,7 +360,7 @@ async function chooseCodexHome(): Promise<void> {
     );
     await refreshStatus(false);
     void vscode.window.showInformationMessage(
-      "Codex Usage is ready. Scheduled capture runs only while VS Code is open unless the optional native app has installed background capture.",
+      "Codex Usage is ready. Scheduled capture runs while VS Code is open; quota snapshots missed while it is closed may not be recoverable.",
     );
   } catch (error) {
     void vscode.window.showErrorMessage(`Could not use that CODEX_HOME: ${errorMessage(error)}`);
@@ -422,18 +426,35 @@ async function migrateLegacyUsage(client: AgentClient): Promise<void> {
   );
 }
 
-async function launchNativeApp(interactive: boolean): Promise<void> {
-  const appPath = await findNativeApp();
-  if (appPath) {
-    openNativeApp(appPath);
-  } else if (interactive) {
-    const selected = await vscode.window.showInformationMessage(
-      "The optional Codex Usage native preview is not installed.",
-      "View Preview Builds",
-    );
-    if (selected === "View Preview Builds") {
-      await vscode.env.openExternal(vscode.Uri.parse(INSTALL_URL));
+async function handoffLegacyService(): Promise<void> {
+  try {
+    const status = await agentSupervisor.legacyServiceStatus();
+    if (!status.installed) {
+      void vscode.window.showInformationMessage("No legacy Codex Usage background service is registered.");
+      return;
     }
+    if (!status.recognized) {
+      throw new Error("The service registration does not match Codex Usage. It was left untouched.");
+    }
+    const choice = await vscode.window.showWarningMessage(
+      "Retire the legacy Codex Usage background service? Scheduled capture will run while VS Code is open and stop when it closes. Quota snapshots missed while closed may not be recoverable. Your ledger and task files will be kept.",
+      { modal: true },
+      "Retire Service and Continue",
+    );
+    if (choice !== "Retire Service and Continue") return;
+    const result = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Handing capture to VS Code" },
+      () => agentSupervisor.handoffLegacyService(),
+    );
+    await refreshStatus(false);
+    void vscode.window.showInformationMessage(
+      `VS Code now owns capture for ${result.codexHome}. Ledger revision ${result.ledgerRevision} is available. You can uninstall the old native preview without deleting shared Codex Usage data.`,
+    );
+  } catch (error) {
+    output.appendLine(`Legacy service handoff failed: ${errorMessage(error)}`);
+    void vscode.window.showErrorMessage(
+      `Codex Usage handoff needs attention: ${errorMessage(error)} Your ledger was not reset. See Codex Usage output for details.`,
+    );
   }
 }
 
@@ -444,14 +465,14 @@ async function refreshStatus(
   const client = await acquireAgentClient(interactive);
   if (!client) {
     statusItem.text = "$(tools) Codex Usage: Setup Required";
-    statusItem.tooltip = "Run Codex Usage: Set Up Collector. Scheduled capture runs only while VS Code is open unless the optional native app has installed background capture.";
+    statusItem.tooltip = "Run Codex Usage: Set Up Collector. Scheduled capture runs while VS Code is open.";
     return;
   }
   try {
     const status = await client.get<AgentStatus>("/v1/status");
     latestStatus = status;
     statusItem.text = status.capture_running ? "$(sync~spin) Codex Usage: Capturing" : `$(pulse) Codex Usage: ${relativeCapture(status.last_capture_at)}`;
-    statusItem.tooltip = `${status.coverage.pending_files.toLocaleString()} files pending · ${status.coverage.stale_sources.toLocaleString()} stale sources · Ledger revision ${status.ledger_revision}\nScheduled capture runs only while VS Code is open unless the optional native app has installed background capture.`;
+    statusItem.tooltip = `${status.coverage.pending_files.toLocaleString()} files pending · ${status.coverage.stale_sources.toLocaleString()} stale sources · Ledger revision ${status.ledger_revision}\nScheduled capture runs while VS Code is open. Missed quota snapshots may not be recoverable.`;
     if (
       panel
       && panel.visible

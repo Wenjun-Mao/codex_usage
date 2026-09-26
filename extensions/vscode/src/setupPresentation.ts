@@ -6,7 +6,7 @@ export interface CaptureIntervalChoice {
   description: string;
 }
 
-export type CollectorSetupAction = "home" | "interval" | "transitions" | "transferFolder" | "migration" | "capture";
+export type CollectorSetupAction = "home" | "interval" | "transitions" | "transferFolder" | "migration" | "capture" | "handoff";
 
 export interface CollectorSetupChoice {
   label: string;
@@ -32,8 +32,14 @@ export function collectorSetupChoices(codexHome: string): CollectorSetupChoice[]
     {
       label: "$(arrow-left-right) Configure project transitions",
       description: "Choose whether capture infers verified repository switches.",
-      detail: "This setting is shared with the native app.",
+      detail: "Applied to usage captured by this companion.",
       action: "transitions",
+    },
+    {
+      label: "$(arrow-swap) Retire legacy background service",
+      description: "Explicit handoff to VS Code capture.",
+      detail: "Keeps the ledger and task files; capture outside VS Code will stop.",
+      action: "handoff",
     },
     {
       label: "$(folder) Choose Task Transfer folder",

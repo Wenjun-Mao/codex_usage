@@ -15,6 +15,13 @@ export interface AgentSupervisorOptions {
   sleep?: (milliseconds: number) => Promise<void>;
 }
 
+export interface LegacyServiceStatus {
+  supported: boolean;
+  installed: boolean;
+  recognized: boolean;
+  detail: string;
+}
+
 /**
  * Owns only the transient collector it starts. The collector itself owns the
  * cross-process lock, so a stale descriptor can never make VS Code create a
@@ -75,6 +82,50 @@ export class AgentSupervisor {
 
   async currentCodexHome(): Promise<string> {
     return this.codexHome();
+  }
+
+  async legacyServiceStatus(): Promise<LegacyServiceStatus> {
+    const status = await this.runControlJson<LegacyServiceStatus>(["--service-status"]);
+    if (typeof status?.installed !== "boolean" || typeof status.recognized !== "boolean"
+      || typeof status.supported !== "boolean" || typeof status.detail !== "string") {
+      throw new Error("The bundled collector returned an invalid service status.");
+    }
+    return status;
+  }
+
+  async handoffLegacyService(): Promise<{ ledgerRevision: number; codexHome: string }> {
+    const home = await this.codexHome();
+    const registration = await this.legacyServiceStatus();
+    if (!registration.installed || !registration.recognized) {
+      throw new Error("No recognized Codex Usage background service is registered. Nothing was changed.");
+    }
+    let previous: AgentClient | undefined;
+    try {
+      previous = await this.discover(home);
+    } catch (error) {
+      if (!(error instanceof AgentUnavailableError)) throw error;
+    }
+    if (previous && previous.processOwner !== "background") {
+      throw new Error("The active collector belongs to another client. Close that client before handoff.");
+    }
+    const revision = previous ? (await previous.get<{ ledger_revision: number }>("/v1/status")).ledger_revision : 0;
+    await this.runControl(["--uninstall-service"]);
+    const afterRemoval = await this.legacyServiceStatus();
+    if (afterRemoval.installed) {
+      throw new Error("The service is still registered. Check the Codex Usage output and retry handoff.");
+    }
+    if (previous) await this.waitForAgentExit(home, previous);
+    const client = await this.startTransientAgent(home);
+    if (!client.isTransientOwnedBy(this.parentPid, client.processId)) {
+      throw new Error("A different collector acquired the ledger. Close it, then retry handoff.");
+    }
+    const beforeCapture = await client.get<{ ledger_revision: number }>("/v1/status");
+    if (beforeCapture.ledger_revision < revision) {
+      throw new Error("Ledger revision decreased during handoff. Stop and inspect the selected CODEX_HOME.");
+    }
+    await client.post("/v1/capture");
+    const afterCapture = await client.get<{ ledger_revision: number }>("/v1/status");
+    return { ledgerRevision: afterCapture.ledger_revision, codexHome: home };
   }
 
   async stopManagedAgent(): Promise<boolean> {
@@ -153,17 +204,43 @@ export class AgentSupervisor {
       && client.isTransientOwnedBy(this.parentPid, this.managedClient.processId);
   }
 
-  private async runControl(control: readonly string[]): Promise<void> {
+  private async runControl(control: readonly string[]): Promise<string> {
     const executable = await this.options.resolveExecutable();
     const child = this.spawn(executable, ["--settings-file", this.options.settingsFile, ...control], {
       detached: false,
       stdio: "pipe",
       windowsHide: true,
     });
-    const stderr = await waitForExit(child);
-    if (stderr.code !== 0) {
-      throw new Error(stderr.text || `The bundled collector exited with code ${stderr.code ?? "unknown"}.`);
+    const result = await waitForExit(child);
+    if (result.code !== 0) {
+      throw new Error(result.stderr || `The bundled collector exited with code ${result.code ?? "unknown"}.`);
     }
+    return result.stdout;
+  }
+
+  private async runControlJson<T>(control: readonly string[]): Promise<T> {
+    const output = await this.runControl(control);
+    try {
+      return JSON.parse(output) as T;
+    } catch {
+      throw new Error("The bundled collector returned an invalid service status.");
+    }
+  }
+
+  private async waitForAgentExit(codexHome: string, previous: AgentClient): Promise<void> {
+    for (let attempt = 0; attempt < STARTUP_ATTEMPTS; attempt += 1) {
+      try {
+        const current = await this.discover(codexHome);
+        if (!previous.isSameAgent(current)) {
+          throw new Error("Another collector acquired the ledger during handoff. Close it and retry.");
+        }
+      } catch (error) {
+        if (error instanceof AgentUnavailableError) return;
+        throw error;
+      }
+      await this.sleep(STARTUP_RETRY_MS);
+    }
+    throw new Error("The legacy collector is still running. Quit the native app or stop its process, then reopen the dashboard to start VS Code capture.");
   }
 
   private async waitForClient(
@@ -205,13 +282,17 @@ export class AgentSupervisor {
   }
 }
 
-function waitForExit(child: ChildProcess): Promise<{ code: number | null; text: string }> {
+function waitForExit(child: ChildProcess): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    let output = "";
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout = `${stdout}${chunk.toString("utf8")}`.slice(-8_192);
+    });
     child.stderr?.on("data", (chunk: Buffer) => {
-      output = `${output}${chunk.toString("utf8")}`.slice(-8_192);
+      stderr = `${stderr}${chunk.toString("utf8")}`.slice(-8_192);
     });
     child.once("error", reject);
-    child.once("close", (code) => resolve({ code, text: output.trim() }));
+    child.once("close", (code) => resolve({ code, stdout: stdout.trim(), stderr: stderr.trim() }));
   });
 }

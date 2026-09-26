@@ -10,7 +10,7 @@ On activation, the extension authenticates an existing collector for the chosen
 the only ledger writer, so stale descriptors and multiple VS Code windows do
 not create duplicate writers.
 
-![Codex Usage native dashboard](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/native-usage-synthetic.png)
+![Codex Usage Companion dashboard](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/extension-usage-synthetic.png)
 
 ## Install
 
@@ -27,11 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in the 2.x release line. The optional native app is an
-unsigned, self-contained native app preview with its own background collector
-and full native UI, but it is not required for Companion commands. Its CI
-artifacts include SHA-256 integrity metadata; the operating system may display
-an unidentified-developer or unknown-publisher warning.
+Linux are not supported in 2.9.0.
 
 ## What You Can Do
 
@@ -51,10 +47,6 @@ an unidentified-developer or unknown-publisher warning.
 - See last capture, pending work, stale-source warnings, and ledger revision in
   the status bar.
 
-The native app remains the home for background capture outside VS Code,
-installer, and update workflows. It is optional and is not required for any
-Companion command.
-
 ## Quick Start
 
 1. Install the platform-specific Companion VSIX.
@@ -66,9 +58,8 @@ Companion command.
 
 The Companion's collector is parent-bound: automatic capture stops when VS Code
 closes. It continues while VS Code is open, even if the dashboard panel is
-closed. Automatic capture outside VS Code requires the optional native app to
-have installed its separate background collector. The default interval is 15
-minutes.
+closed. Quota snapshots missed while VS Code is closed cannot always be
+reconstructed later. The default interval is 15 minutes.
 
 ## Commands
 
@@ -91,7 +82,7 @@ minutes.
 | `Codex Usage: Review Transfer Status` | Compare selected local and transferred tasks. |
 | `Codex Usage: Analyze Task Storage` | Analyze one selected task tree. |
 | `Codex Usage: Set Up Collector` | Choose CODEX_HOME, interval or Manual only, and migrate legacy usage data. |
-| `Codex Usage: Open Native App` | Open an installed native preview, or its build page when absent. |
+| `Codex Usage: Retire Legacy Background Service` | Explicitly hand off a previously registered Codex Usage service to the bundled collector while preserving the ledger. |
 
 ## Usage And Capture
 
@@ -157,7 +148,7 @@ root task tree and separates root files from structured descendants. It does not
 follow the Usage date range. It shares the selected project filter and explicit
 Auto, Day, or Night theme with Usage.
 
-![Codex Usage Task Storage](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/native-storage-synthetic.png)
+![Codex Usage Task Storage](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/extension-storage-synthetic.png)
 
 Choose **Analyze** on a tree to scan only that tree for repeated compacted
 history, inline-media evidence, descendant concentration, and active-root risk.
@@ -216,19 +207,19 @@ configuration.
 - `codexUsage.theme`: `auto`, `day`, or `night`.
 
 Project selections are Companion UI state. Use **Set Up Collector** for
-`CODEX_HOME`, capture interval, Manual only, and legacy-cache migration. The
-optional native app separately owns its own background registration and update
-settings.
+`CODEX_HOME`, capture interval, Manual only, and legacy-cache migration. A previously registered native background service can be retired
+through the explicit Command Palette handoff. Keep the shared `.codex-usage`
+directory when uninstalling the old app; **Reset Local Data** is not a handoff
+step.
 
 ## Privacy
 
 The companion connects only to the authenticated collector on `127.0.0.1`.
 Its webview never receives the bearer token. It has no telemetry and does not
-upload task content. Optional GitHub update checks are owned by the native app.
-See the full [privacy policy](https://github.com/Wenjun-Mao/codex_usage/blob/main/PRIVACY.md).
+upload task content. See the full [privacy policy](https://github.com/Wenjun-Mao/codex_usage/blob/main/PRIVACY.md).
 
 For support, open a [GitHub issue](https://github.com/Wenjun-Mao/codex_usage/issues)
-and include the app and companion versions, operating system, collector status,
+and include the extension version, operating system, collector status,
 and redacted Codex Usage output. Never attach raw task JSONLs publicly.
 
 ## Plan Allowance

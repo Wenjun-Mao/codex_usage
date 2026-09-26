@@ -13,7 +13,6 @@ ADR_INDEX = ROOT / "docs/adr/README.md"
 CURRENT_TASK_TRANSFER_FIXTURES = (
     ROOT / "src/codex_usage/agent_transfer.py",
     ROOT / "src/codex_usage/sync/planner.py",
-    ROOT / "apps/desktop/src/transferView.ts",
     ROOT / "extensions/vscode/src/taskTransferClient.ts",
     ROOT / "tests/test_agent_transfer.py",
 )
@@ -98,10 +97,10 @@ def test_companion_readme_is_an_installed_product_guide() -> None:
 
     assert "extensions" in install and "command palette" in install
     assert "no source checkout" in install
-    assert "self-contained native app" in platforms
+    assert "separate platform vsix packages" in platforms
     assert "macos 13" in platforms and "windows 10" in platforms
     assert "linux" in platforms and "not supported" in platforms
-    assert "native app remains the home" in prose
+    assert "retire legacy background service" in prose
     assert "## Development" not in text
     for contributor_detail in (
         "npm install",
@@ -177,34 +176,31 @@ def test_current_task_transfer_sources_use_task_language() -> None:
             assert phrase not in text, (path, phrase)
 
 
-def test_release_docs_require_standalone_vsix_and_unsigned_native_gate() -> None:
+def test_release_docs_require_platform_vsix_and_handoff_gate() -> None:
     prose = normalized_prose(
         (ROOT / "docs/release.md").read_text(encoding="utf-8")
     )
 
     for phrase in (
-        "no apple developer, azure artifact signing, or tauri updater-signing dependency",
-        "non-publishing native gate",
-        "before publication",
-        "macos arm64 pyinstaller",
-        "windows x64 pyinstaller",
-        "standalone macos apple silicon and windows x64 vsix packages",
-        "unsigned native dmg and nsis previews",
-        "clean-install acceptance",
+        "non-publishing platform gate",
+        "both platform vsix jobs must pass before publication",
+        "legacy handoff acceptance",
+        "disposable `codex_home`",
+        "exactly one matching",
+        "clean vsix install",
     ):
         assert phrase in prose, phrase
 
 
-def test_current_product_docs_distinguish_marketplace_from_native_preview() -> None:
+def test_current_product_docs_describe_extension_lifecycle_and_handoff() -> None:
     for path in CURRENT_DOCS:
         prose = normalized_prose(path.read_text(encoding="utf-8"))
-        assert "standalone" in prose, path
-        assert "native app" in prose and "preview" in prose, path
-        assert "not required" in prose, path
+        assert "legacy" in prose and "handoff" in prose, path
+        assert "while vs code is open" in prose, path
 
     repository = normalized_prose(CURRENT_DOCS[0].read_text(encoding="utf-8"))
     assert "marketplace extension updates through vs code" in repository
-    assert "unsigned native previews do not have a supported automatic update channel" in repository
+    assert "quota snapshots missed" in repository
 
 
 def test_adr_0014_keeps_manual_transfer_guardrails() -> None:

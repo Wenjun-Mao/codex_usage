@@ -16,5 +16,9 @@ test("each platform VSIX contains exactly its matching bundled collector", () =>
     () => verifyPackageFiles([...sharedFiles, macAgent, windowsAgent], "darwin-arm64"),
     /unsupported runtime files/,
   );
+  assert.throws(
+    () => verifyPackageFiles([...sharedFiles, macAgent, "apps/desktop/src-tauri/config.json"], "darwin-arm64"),
+    /unsupported runtime files/,
+  );
   assert.throws(() => expectedAgentPath("linux-x64"), /Unsupported VSIX target/);
 });

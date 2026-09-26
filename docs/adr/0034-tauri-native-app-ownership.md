@@ -2,6 +2,8 @@
 
 ## Status
 
+Superseded for active distribution and lifecycle by ADR 0047 in 2.9.0.
+
 Partially superseded by ADR 0036 for version 2.0.0 on 2026-09-04
 
 ## Context

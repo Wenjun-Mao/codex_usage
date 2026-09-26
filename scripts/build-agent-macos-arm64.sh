@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 target_triple="aarch64-apple-darwin"
 binary_name="codex-usage-agent-$target_triple"
-dist_dir="$repo_root/apps/desktop/src-tauri/binaries"
+dist_dir="$repo_root/build/packaged-agent/$target_triple"
 work_dir="$repo_root/build/pyinstaller-agent-$target_triple"
 entry_point="$repo_root/src/codex_usage/agent_main.py"
 binary_path="$dist_dir/$binary_name"

@@ -11,8 +11,9 @@ model/API calls.
 - Existing schema-8 Codex Usage caches selected during first-run migration.
 - A user-selected Task Transfer folder during explicit Import, Export, or Review
   Status operations.
-- App settings such as active Codex home, capture interval, background consent,
-  theme, transition detection, update preference, and transfer folder.
+- Companion settings such as active Codex home, capture interval, theme,
+  transition detection, and transfer folder. Legacy native settings may remain
+  in the shared settings file for compatibility.
 
 Task content can include prompts, responses, paths, repository URLs, tool data,
 branch names, timestamps, model names, and usage counts. Do not publish raw task
@@ -26,8 +27,8 @@ files or diagnostic logs without reviewing them.
 - A separate disposable Task Storage diagnostics database.
 - The owner-local authenticated collector descriptor, lock, logs, rebuild
   staging, migration audit, and settings.
-- A per-user macOS LaunchAgent or Windows Scheduled Task only after explicit
-  background-capture consent.
+- No new OS background service. A legacy Codex Usage LaunchAgent or Windows
+  Scheduled Task is removed only after explicit handoff confirmation.
 - Selected task files and transfer metadata only in a user-chosen Task Transfer
   folder during explicit operations.
 - A temporary sibling backup of Codex Desktop project state during guarded Task
@@ -45,17 +46,14 @@ restore, or delete Codex tasks.
 The collector listens on a random `127.0.0.1` port and publishes a per-start
 bearer token in an owner-local descriptor. It rejects browser origins,
 non-loopback host headers, unauthenticated requests, protocol mismatches, and
-oversized requests. The Tauri Rust host and VS Code extension host proxy calls;
+oversized requests. The VS Code extension host proxies calls;
 webviews never receive the token. Reports and clients never write SQLite
 directly.
 
 ## Network Activity
 
-The native preview retains a user-controlled GitHub update-check setting, but
-The 2.x release line does not publish an automatic native update channel. The
-VS Code extension can open the distribution-workflow page when the user
-explicitly asks to find a missing native preview. Marketplace extension updates
-are handled by VS Code.
+Marketplace extension updates are handled by VS Code. The extension makes no
+automatic update-check request of its own.
 
 Codex Usage does not upload task files, usage rows, project metadata, reports,
 or diagnostics. Pricing tables are checked into the application and are not

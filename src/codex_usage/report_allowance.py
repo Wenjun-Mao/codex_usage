@@ -1,4 +1,4 @@
-"""Script-free account allowance report shared by both application shells."""
+"""Script-free account allowance report rendered by the VS Code companion."""
 from datetime import UTC, datetime, tzinfo
 from html import escape
 
@@ -212,6 +212,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
         f'<div class="allowance-economics">{economic_summary(headline, latest=latest, show_series=show_headline_series, is_previous=headline_previous)}</div>'
         '<p class="muted">Workload-specific local estimate, not cash or a contractual allowance. '
         'Other devices and missing history may change it.</p>'
+        '<p class="muted">VS Code capture stops when VS Code closes. Quota snapshots missed during that time may not be reconstructable.</p>'
         '<details><summary>Probe, coverage, and allowance history</summary>'
         f'{highlighted_evidence}'
         f'<p>Plan: {text(status["plan"] or "Unavailable")} · Probe: {text(status["probe_status"])} · '

@@ -9,7 +9,6 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.showUsageView",
   "codexUsage.showStorageView",
   "codexUsage.openTaskTransfer",
-  "codexUsage.openNativeApp",
   "codexUsage.analyzeTaskStorage",
   "codexUsage.refreshDashboard",
 ] as const;
@@ -61,7 +60,7 @@ function companionControls(state: ControlState): string {
   const rangeControl = state.view === "usage" ? `<a href="command:codexUsage.selectRange">Range: ${escapeHtml(state.range)}</a>` : "";
   const exportControl = state.view === "usage" ? '<a href="command:codexUsage.exportAgentActivityCsv">Export Agent Activity CSV</a>' : "";
   const loadSource = state.view === "storage" ? "storage inventory" : state.cacheHit ? "render cache" : "ledger";
-  return `<nav class="companion-actions" aria-label="Codex Usage controls"><span class="view-switch" aria-label="Report view"><a href="command:codexUsage.showUsageView"${state.view === "usage" ? ' aria-current="page"' : ""}>Usage</a><a href="command:codexUsage.showStorageView"${state.view === "storage" ? ' aria-current="page"' : ""}>Storage</a></span><span class="context-actions">${rangeControl}${exportControl}<a href="command:codexUsage.selectProjects">${projectLabel}</a><a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(titleCase(state.theme))}</a></span><span class="global-actions"><a class="primary" title="Read changed Codex task files into the usage ledger" href="command:codexUsage.captureNow">Capture Usage</a><a href="command:codexUsage.openTaskTransfer">Task Transfer</a><a href="command:codexUsage.openNativeApp">Open App</a></span><span class="metadata"><span>Last captured ${escapeHtml(formatCaptureDate(state.lastCaptureAt))}</span><span>Loaded in ${state.loadedSeconds.toFixed(2)}s · ${loadSource} · v${escapeHtml(state.version)}</span></span></nav>`;
+  return `<nav class="companion-actions" aria-label="Codex Usage controls"><span class="view-switch" aria-label="Report view"><a href="command:codexUsage.showUsageView"${state.view === "usage" ? ' aria-current="page"' : ""}>Usage</a><a href="command:codexUsage.showStorageView"${state.view === "storage" ? ' aria-current="page"' : ""}>Storage</a></span><span class="context-actions">${rangeControl}${exportControl}<a href="command:codexUsage.selectProjects">${projectLabel}</a><a href="command:codexUsage.selectTheme">Theme: ${escapeHtml(titleCase(state.theme))}</a></span><span class="global-actions"><a class="primary" title="Read changed Codex task files into the usage ledger" href="command:codexUsage.captureNow">Capture Usage</a><a href="command:codexUsage.openTaskTransfer">Task Transfer</a></span><span class="metadata"><span>Last captured ${escapeHtml(formatCaptureDate(state.lastCaptureAt))}</span><span>Loaded in ${state.loadedSeconds.toFixed(2)}s · ${loadSource} · v${escapeHtml(state.version)}</span></span></nav>`;
 }
 
 function reportViewHeader(state: ControlState): string {
