@@ -9,7 +9,8 @@ import pytest
 
 from codex_usage.agent_capture import CaptureResult
 from codex_usage.agent_jobs import JobPriority
-from codex_usage.agent_paths import ledger_database_path
+from codex_usage.agent_paths import agent_descriptor_path, ledger_database_path
+from codex_usage.agent_protocol import read_agent_descriptor
 from codex_usage.agent_runtime import CodexUsageAgent
 from codex_usage.ledger_queries import load_ledger_status
 from codex_usage.ledger_schema import open_ledger
@@ -47,12 +48,15 @@ def test_transient_agent_descriptor_records_its_parent_ownership(
         settings_file=_settings_file(tmp_path, home, interval=None),
         process_owner="transient",
         parent_pid=4321,
+        launch_id="a" * 48,
     )
     try:
         descriptor = agent.start()
 
         assert descriptor.process_owner == "transient"
         assert descriptor.parent_pid == 4321
+        assert descriptor.launch_id == "a" * 48
+        assert read_agent_descriptor(agent_descriptor_path(home)).launch_id == "a" * 48
     finally:
         agent.stop()
 

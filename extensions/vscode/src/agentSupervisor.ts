@@ -1,4 +1,5 @@
 import { spawn as spawnChild, type ChildProcess, type SpawnOptions } from "child_process";
+import { randomBytes } from "crypto";
 import * as path from "path";
 import { AgentClient, AgentUnavailableError, samePath } from "./agentClient";
 
@@ -23,6 +24,7 @@ export interface AgentSupervisorOptions {
   discover?: (codexHome: string) => Promise<AgentClient>;
   spawn?: (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
   sleep?: (milliseconds: number) => Promise<void>;
+  createLaunchId?: () => string;
 }
 
 export interface LegacyServiceStatus {
@@ -42,8 +44,10 @@ export class AgentSupervisor {
   private readonly spawn: (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
   private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly parentPid: number;
+  private readonly createLaunchId: () => string;
   private managedHome: string | undefined;
   private managedClient: AgentClient | undefined;
+  private managedLaunchId: string | undefined;
   private starting: Promise<AgentClient> | undefined;
   private startingHome: string | undefined;
 
@@ -52,6 +56,7 @@ export class AgentSupervisor {
     this.spawn = options.spawn ?? ((command, args, spawnOptions) => spawnChild(command, args, spawnOptions));
     this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.parentPid = options.parentPid ?? process.pid;
+    this.createLaunchId = options.createLaunchId ?? (() => randomBytes(24).toString("hex"));
   }
 
   async acquire(): Promise<AgentClient> {
@@ -165,10 +170,12 @@ export class AgentSupervisor {
     const home = this.managedHome;
     this.managedClient = undefined;
     this.managedHome = undefined;
+    const launchId = this.managedLaunchId;
+    this.managedLaunchId = undefined;
     if (!client || !home) return false;
     try {
       const current = await this.discover(home);
-      if (!client.isSameAgent(current) || !current.isTransientOwnedBy(this.parentPid, client.processId)) {
+      if (!client.isSameAgent(current) || !current.isTransientOwnedBy(this.parentPid, launchId)) {
         return false;
       }
       try {
@@ -189,10 +196,12 @@ export class AgentSupervisor {
     // process can claim the writer lock.
     await this.runControl(["--set-codex-home", codexHome]);
     const executable = await this.options.resolveExecutable();
+    const launchId = this.createLaunchId();
     let launchError: Error | undefined;
     const child = this.spawn(executable, [
       "--settings-file", this.options.settingsFile,
       "--parent-pid", String(this.parentPid),
+      "--launch-id", launchId,
     ], {
       detached: false,
       stdio: "ignore",
@@ -203,9 +212,10 @@ export class AgentSupervisor {
     });
     child.unref();
     const client = await this.waitForClient(codexHome, () => launchError);
-    if (client.isTransientOwnedBy(this.parentPid, child.pid)) {
+    if (client.isTransientOwnedBy(this.parentPid, launchId)) {
       this.managedHome = codexHome;
       this.managedClient = client;
+      this.managedLaunchId = launchId;
     }
     return client;
   }
@@ -233,7 +243,7 @@ export class AgentSupervisor {
       && this.managedClient !== undefined
       && samePath(this.managedHome, codexHome)
       && this.managedClient.isSameAgent(client)
-      && client.isTransientOwnedBy(this.parentPid, this.managedClient.processId);
+      && client.isTransientOwnedBy(this.parentPid, this.managedLaunchId);
   }
 
   private async runControl(control: readonly string[]): Promise<string> {

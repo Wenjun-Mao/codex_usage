@@ -8,6 +8,8 @@
   collector and the old service registration is inactive.
 - Reject lookalike registrations, keep ambiguous macOS registrations for safe
   recovery, and confirm the selected home and successful capture.
+- Keep ownership of the packaged collector when its running PID differs from
+  the launcher PID.
 
 ## 2.9.0 - 2026-09-25
 

@@ -5,6 +5,7 @@ const test = require("node:test");
 
 const { AgentUnavailableError } = require("../out/agentClient");
 const { AgentSupervisor } = require("../out/agentSupervisor");
+const TEST_LAUNCH_ID = "a".repeat(48);
 
 function childForControl(stdout = "") {
   const child = new EventEmitter();
@@ -26,7 +27,7 @@ function childForAgent(pid = 9876) {
   return child;
 }
 
-function collector({ identity, pid, parentPid, owner = "transient", post = async () => ({ stopping: true }) }) {
+function collector({ identity, pid, parentPid, launchId = TEST_LAUNCH_ID, owner = "transient", post = async () => ({ stopping: true }) }) {
   return {
     identity,
     processId: pid,
@@ -35,8 +36,8 @@ function collector({ identity, pid, parentPid, owner = "transient", post = async
     isSameAgent(other) {
       return this.identity === other.identity;
     },
-    isTransientOwnedBy(expectedParentPid, expectedPid) {
-      return owner === "transient" && parentPid === expectedParentPid && pid === expectedPid;
+    isTransientOwnedBy(expectedParentPid, expectedLaunchId) {
+      return owner === "transient" && parentPid === expectedParentPid && launchId === expectedLaunchId;
     },
   };
 }
@@ -50,6 +51,7 @@ test("a stale descriptor starts one parent-bound collector and waits for its aut
     getCodexHome: async () => "/tmp/codex-home",
     resolveExecutable: async () => "/tmp/codex-usage-agent",
     parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
     discover: async () => {
       discoveryAttempts += 1;
       if (discoveryAttempts < 3) throw new AgentUnavailableError("stale descriptor");
@@ -57,7 +59,7 @@ test("a stale descriptor starts one parent-bound collector and waits for its aut
     },
     spawn: (_command, args) => {
       calls.push([...args]);
-      return args.includes("--set-codex-home") ? childForControl() : childForAgent(9876);
+      return args.includes("--set-codex-home") ? childForControl() : childForAgent(9875);
     },
     sleep: async () => {},
   });
@@ -66,7 +68,9 @@ test("a stale descriptor starts one parent-bound collector and waits for its aut
   assert.equal(calls.filter((args) => args.includes("--parent-pid")).length, 1);
   assert.deepEqual(calls.at(-1), [
     "--settings-file", "/tmp/codex-usage-agent-settings.json", "--parent-pid", "4321",
+    "--launch-id", TEST_LAUNCH_ID,
   ]);
+  assert.equal(supervisor.managedClient, client);
   await supervisor.acquire();
   assert.equal(calls.filter((args) => args.includes("--parent-pid")).length, 1);
 });
@@ -102,6 +106,7 @@ test("legacy handoff waits for the old writer and verifies the same ledger befor
     getCodexHome: async () => "/tmp/codex-home",
     resolveExecutable: async () => "/tmp/agent",
     parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
     discover: async () => {
       discovery += 1;
       if (!removed) return old;
@@ -124,7 +129,7 @@ test("legacy handoff waits for the old writer and verifies the same ledger befor
   assert.equal(result.codexHome, path.resolve("/tmp/codex-home"));
   assert.equal(captured, true);
   assert.ok(commands.includes("--uninstall-service"));
-  assert.ok(commands.includes("4321"));
+  assert.ok(commands.includes(TEST_LAUNCH_ID));
 });
 
 test("inactive legacy registration retires while the already owned collector keeps running", async () => {
@@ -145,6 +150,7 @@ test("inactive legacy registration retires while the already owned collector kee
     getCodexHome: async () => home,
     resolveExecutable: async () => "/tmp/agent",
     parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
     discover: async () => {
       discovery += 1;
       if (discovery === 1) throw new AgentUnavailableError("not running yet");
@@ -165,7 +171,7 @@ test("inactive legacy registration retires while the already owned collector kee
   const result = await supervisor.handoffLegacyService();
   assert.equal(result.ledgerRevision, 16);
   assert.equal(captured, true);
-  assert.equal(commands.filter((operation) => operation === "4321").length, 1);
+  assert.equal(commands.filter((operation) => operation === TEST_LAUNCH_ID).length, 1);
   assert.equal(commands.filter((operation) => operation === "--uninstall-service").length, 1);
 });
 
@@ -217,6 +223,7 @@ test("handoff reports a failed capture instead of claiming success", async () =>
     getCodexHome: async () => home,
     resolveExecutable: async () => "/tmp/agent",
     parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
     discover: async () => {
       discovery += 1;
       if (discovery === 1) throw new AgentUnavailableError("not running yet");
@@ -310,6 +317,7 @@ test("a replacement collector at the same home is never treated as the spawned t
     getCodexHome: async () => "/tmp/codex-home",
     resolveExecutable: async () => "/tmp/codex-usage-agent",
     parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
     discover: async () => {
       discoveryAttempts += 1;
       if (discoveryAttempts === 1) throw new AgentUnavailableError("stale descriptor");

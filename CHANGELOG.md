@@ -9,6 +9,8 @@
 - Restrict retirement to known legacy commands, preserve the macOS registration
   when launchd state is ambiguous, and verify the selected home and first
   capture before reporting success.
+- Identify the VS Code-owned collector by its launch ID so a packaged
+  PyInstaller child process remains eligible for safe handoff.
 
 ## 2.9.0 - 2026-09-25
 

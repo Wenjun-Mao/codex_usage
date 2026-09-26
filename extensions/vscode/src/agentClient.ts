@@ -15,6 +15,7 @@ interface AgentDescriptor {
   codex_home: string;
   process_owner?: "background" | "transient";
   parent_pid?: number;
+  launch_id?: string | null;
 }
 
 interface AgentSettingsFile {
@@ -69,11 +70,11 @@ export class AgentClient {
       && samePath(this.descriptor.codex_home, other.descriptor.codex_home);
   }
 
-  isTransientOwnedBy(parentPid: number, processId: number | undefined): boolean {
-    return processId !== undefined
+  isTransientOwnedBy(parentPid: number, launchId: string | undefined): boolean {
+    return launchId !== undefined
       && this.descriptor.process_owner === "transient"
       && this.descriptor.parent_pid === parentPid
-      && this.descriptor.pid === processId;
+      && this.descriptor.launch_id === launchId;
   }
 
   private async requestReadWithRetry<T>(requestPath: string): Promise<T> {
@@ -196,6 +197,7 @@ function parseDescriptor(value: unknown): AgentDescriptor {
   }
   const processOwner = value.process_owner;
   const parentPid = value.parent_pid;
+  const launchId = value.launch_id;
   if (processOwner !== undefined && processOwner !== "background" && processOwner !== "transient") {
     throw new Error("descriptor has invalid process ownership details");
   }
@@ -208,6 +210,10 @@ function parseDescriptor(value: unknown): AgentDescriptor {
   if (processOwner !== "transient" && parentPid !== undefined) {
     throw new Error("only transient descriptors may have a parent process");
   }
+  if (launchId !== undefined && launchId !== null
+    && (processOwner !== "transient" || typeof launchId !== "string" || !/^[0-9a-f]{48}$/u.test(launchId))) {
+    throw new Error("descriptor has invalid launch ownership details");
+  }
   return {
     pid: value.pid,
     api_version: value.api_version,
@@ -216,6 +222,7 @@ function parseDescriptor(value: unknown): AgentDescriptor {
     codex_home: value.codex_home,
     ...(processOwner === undefined ? {} : { process_owner: processOwner }),
     ...(parentPid === undefined ? {} : { parent_pid: parentPid }),
+    ...(launchId === undefined ? {} : { launch_id: launchId }),
   };
 }
 
