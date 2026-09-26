@@ -92,8 +92,14 @@ async function main() {
     resolveExecutable: async () => executable,
   });
   let service;
+  let owned;
+  let failure;
   try {
-    const owned = await supervisor.acquire();
+    owned = await supervisor.acquire();
+    console.log(JSON.stringify({ phase: "acquired", platform: process.platform,
+      parent_pid: process.pid, collector_pid: owned.processId,
+      collector_owner: owned.processOwner,
+      supervisor_managed_pid: supervisor.managedClient?.processId ?? null }));
     const initialCapture = await owned.post("/v1/capture");
     assert.equal(initialCapture.outcome, "success");
     const before = await owned.get("/v1/status");
@@ -124,10 +130,19 @@ async function main() {
     console.log(JSON.stringify({ platform: process.platform, home, agent_pid: after.agent_pid,
       before_revision: before.ledger_revision, after_revision: after.ledger_revision,
       captured_sources: after.coverage.captured_sources, registration_removed: true }));
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
-    if (service?.present()) service.cleanup();
-    await supervisor.stopManagedAgent();
-    fs.rmSync(root, { recursive: true, force: true });
+    try {
+      if (service?.present()) service.cleanup();
+      const stopped = await supervisor.stopManagedAgent();
+      if (!stopped && owned) await owned.post("/v1/shutdown");
+      fs.rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    } catch (cleanupError) {
+      if (!failure) throw cleanupError;
+      console.error(`Cleanup also failed: ${cleanupError}`);
+    }
   }
 }
 
