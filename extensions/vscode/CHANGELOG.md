@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.9.1 - 2026-09-25
+
+- Complete explicit legacy-service handoff when VS Code already owns the
+  collector and the old service registration is inactive.
+- Reject lookalike registrations, keep ambiguous macOS registrations for safe
+  recovery, and confirm the selected home and successful capture.
+
 ## 2.9.0 - 2026-09-25
 
 - Retire the separate native preview and its Open App command while retaining

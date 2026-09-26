@@ -44,7 +44,7 @@ from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
 packages each include the matching local collector; the native app, Python,
 `uv`, and this repository are not required.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.9.0 release.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.9.1 release.
 
 ## First Run And Legacy Service Handoff
 

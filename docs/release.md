@@ -1,6 +1,6 @@
-# 2.9.0 VSIX Release Checklist
+# 2.9.1 VSIX Release Checklist
 
-Codex Usage 2.9.0 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.9.1 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
@@ -106,7 +106,15 @@ continuous coverage.
 
 ## Non-Publishing Platform Gate
 
-Push the candidate commit to `main`, then dispatch:
+Push the candidate branch and dispatch the workflow from that branch before
+review. For the 2.9.1 patch candidate:
+
+```bash
+gh workflow run package-vsix.yml --ref codex/2.9.0-extension-only -f publish=false
+```
+
+After an approved candidate is merged, dispatch again from `main` before
+tagging:
 
 ```bash
 gh workflow run package-vsix.yml --ref main -f publish=false
@@ -119,13 +127,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.9.0`, both
+Confirm Python and extension metadata and lockfiles all say `2.9.1`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.9.0`:
+Only after the non-publishing platform gate succeeds, create and push `v2.9.1`:
 
 ```bash
-git tag v2.9.0
-git push origin v2.9.0
+git tag v2.9.1
+git push origin v2.9.1
 ```
 
 The tag reruns all platform gates and publishes
