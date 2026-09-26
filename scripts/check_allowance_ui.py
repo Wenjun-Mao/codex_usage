@@ -1,4 +1,4 @@
-"""Exercise allowance rendering and native meters across browser engines."""
+"""Exercise production report allowance and meter rendering across browsers."""
 from copy import deepcopy
 from io import BytesIO
 import re
@@ -27,29 +27,14 @@ THEMES = {
         "--vscode-editor-foreground:#f4f7fa;--vscode-descriptionForeground:#b8c0cc;"
         "--vscode-panel-border:#51606f;--vscode-textLink-foreground:#d28dff;",
     ),
-    "desktop-day": ("day", "", ""),
-    "desktop-night": ("night", "", ""),
 }
 BROWSERS = ("chromium", "webkit", "firefox")
 VALUES = (0, 17, 83, 100)
-DESKTOP_THEME_CSS = """
-:root { color-scheme: light; --bg: #f5f7f9; --surface: #ffffff; --soft: #edf1f4;
-  --text: #172027; --muted: #64717b; --line: #d5dce1; --astra: #087f8c; }
-html[data-codex-theme="night"] { color-scheme: dark; --bg: #101316; --surface: #15191d;
-  --soft: #1e242a; --text: #edf2f5; --muted: #9ba7b1; --line: #303840; --astra: #45c5d6; }
-* { box-sizing: border-box; }
-body { margin: 0; padding: 12px; background: var(--bg); color: var(--text); font: 14px system-ui; }
-.muted { color: var(--muted); }
-.card { background: var(--surface); }
-"""
-
-
 def _document(report, theme_name):
     html_theme, body_class, body_style = THEMES[theme_name]
-    theme_css = DESKTOP_THEME_CSS if theme_name.startswith("desktop-") else report_css()
     return (
         f'<!doctype html><html data-codex-theme="{html_theme}"><style>'
-        f'{theme_css}{allowance_css()}</style>'
+        f'{report_css()}{allowance_css()}</style>'
         f'<body class="{body_class}" style="{body_style}">'
         f'{render_allowance_section(report, timezone=ZoneInfo("America/Toronto"))}'
         "</body></html>"
@@ -286,7 +271,7 @@ def main():
                 browser.close()
     print(
         f"Allowance UI: {total} state/theme/viewport cases and "
-        f"{len(BROWSERS) * len(THEMES) * len(VALUES)} native meter visual cases "
+        f"{len(BROWSERS) * len(THEMES) * len(VALUES)} meter visual cases "
         f"passed across {', '.join(BROWSERS)}"
     )
 

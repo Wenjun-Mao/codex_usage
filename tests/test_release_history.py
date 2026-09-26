@@ -10,6 +10,7 @@ CHANGELOGS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 SUPPORT_DOCS = (ROOT / "SUPPORT.md", ROOT / "extensions/vscode/SUPPORT.md")
 
 ROOT_RELEASE_DATES = {
+    "2.9.0": "2026-09-25",
     "2.8.10": "2026-09-25",
     "2.8.9": "2026-09-25",
     "2.8.8": "2026-09-25",
@@ -95,6 +96,7 @@ ROOT_RELEASE_DATES = {
     "0.1.0": "2026-05-19",
 }
 EXTENSION_RELEASE_VERSIONS = (
+    "2.9.0",
     "2.8.10",
     "2.8.9",
     "2.8.8",
@@ -414,6 +416,6 @@ def test_current_support_docs_use_stable_task_transfer_language() -> None:
     for support_document in SUPPORT_DOCS:
         support = normalized_prose(support_document.read_text(encoding="utf-8"))
         assert "marketplace preview" not in support
-        assert "native" in support and "preview" in support
+        assert "legacy" in support and "background service" in support
         assert "task transfer" in support
         assert "sync issues" not in support

@@ -1,443 +1,225 @@
+"""Capture deterministic, synthetic VS Code Companion Marketplace images."""
 from __future__ import annotations
 
 import argparse
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from playwright.sync_api import Page, sync_playwright
 
-from codex_usage.marketplace_preview import preview_server
+from codex_usage.aggregation import aggregate_records, summarize_records
 from codex_usage.marketplace_screenshot_validation import validate_screenshot
+from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.report_breakdown import build_report_breakdown
+from codex_usage.reporting import render_html_report
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DESKTOP_ROOT = REPOSITORY_ROOT / "apps" / "desktop"
-USAGE_SCREENSHOT_PATH = (
-    REPOSITORY_ROOT / "docs" / "marketplace" / "native-usage-synthetic.png"
-)
+from allowance_fixture import allowance_fixture
+
+ROOT = Path(__file__).resolve().parents[1]
+EXTENSION_ROOT = ROOT / "extensions" / "vscode"
+MARKETPLACE_ROOT = ROOT / "docs" / "marketplace"
+USAGE_SCREENSHOT_PATH = MARKETPLACE_ROOT / "extension-usage-synthetic.png"
 USAGE_SCREENSHOT_PATHS = {
-    ("day", "wide"): REPOSITORY_ROOT
-    / "docs"
-    / "marketplace"
-    / "native-usage-day-wide-synthetic.png",
-    ("night", "wide"): USAGE_SCREENSHOT_PATH,
-    ("day", "narrow"): REPOSITORY_ROOT
-    / "docs"
-    / "marketplace"
-    / "native-usage-day-narrow-synthetic.png",
-    ("night", "narrow"): REPOSITORY_ROOT
-    / "docs"
-    / "marketplace"
-    / "native-usage-night-narrow-synthetic.png",
+    (theme, size): MARKETPLACE_ROOT / f"extension-usage-{theme}-{size}-synthetic.png"
+    for theme in ("day", "night")
+    for size in ("wide", "narrow")
 }
-STORAGE_SCREENSHOT_PATH = (
-    REPOSITORY_ROOT / "docs" / "marketplace" / "native-storage-synthetic.png"
-)
+STORAGE_SCREENSHOT_PATH = MARKETPLACE_ROOT / "extension-storage-synthetic.png"
 VIEWPORT = {"width": 1440, "height": 900}
 NARROW_VIEWPORT = {"width": 760, "height": 900}
-PRIVATE_MARKERS = ("/Users/wjmao", "C:\\Users\\wjmao", "OneDrive-Personal")
+PRIVATE_MARKERS = ("/Users/", "C:\\Users\\", "OneDrive-Personal", "session.jsonl")
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Capture deterministic Marketplace images from the native app."
+def synthetic_records() -> list[UsageRecord]:
+    """Fixed public sample names and values; never read a Codex home or ledger."""
+    models = ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5")
+    projects = (("studio_atlas", "Studio Atlas"), ("northstar", "Northstar"), ("meridian", "Meridian"))
+    origin = datetime(2026, 8, 17, 9, tzinfo=UTC)
+    records = []
+    for day in range(16):
+        for project_index, (project_key, project_label) in enumerate(projects):
+            for role_index, role in enumerate(("root", "subagent")):
+                amount = (8_000 + (day * 1211 + project_index * 3547 + role_index * 1793) % 14_000) * (2 if role == "root" else 1)
+                records.append(UsageRecord(
+                    timestamp=origin + timedelta(days=day, hours=project_index * 2 + role_index),
+                    usage=TokenUsage(
+                        input_tokens=amount * 3 // 5,
+                        cached_input_tokens=amount // 5,
+                        cache_write_input_tokens=amount // 10,
+                        output_tokens=amount // 5,
+                        total_tokens=amount,
+                    ),
+                    session_id=f"sample-{day:02d}-{project_index}-{role_index}",
+                    file_path=Path("sample-task.jsonl"),
+                    usage_role=role,
+                    model=models[(day + project_index + role_index) % len(models)],
+                    project_key=project_key,
+                    project_label=project_label,
+                ))
+    return records
+
+
+def render_fixture(directory: Path) -> dict[tuple[str, str], Path]:
+    records = synthetic_records()
+    raw_usage = directory / "raw-usage.html"
+    render_html_report(
+        output_path=raw_usage,
+        generated_at=datetime(2026, 9, 2, 16, tzinfo=UTC),
+        range_name="all",
+        total=summarize_records(records),
+        daily_rows=aggregate_records(records, "day", UTC),
+        hourly_rows=aggregate_records(records, "hour", UTC),
+        breakdown=build_report_breakdown(records),
+        sessions_dirs=[Path("sample-sessions")],
+        files_scanned=len(records),
+        theme="night",
+        embedded_usage_only=True,
+        allowance_report=allowance_fixture(),
     )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Capture and validate temporary images without changing tracked files.",
+    subprocess.run(["npm", "run", "build"], cwd=EXTENSION_ROOT, check=True)
+    subprocess.run(
+        ["node", str(ROOT / "scripts" / "render_extension_marketplace.js"), str(raw_usage), str(directory)],
+        check=True,
     )
-    args = parser.parse_args(argv)
-
-    if args.check:
-        with TemporaryDirectory() as temporary_directory:
-            temporary = Path(temporary_directory)
-            _render_capture_and_validate(
-                {
-                    key: temporary / path.name
-                    for key, path in USAGE_SCREENSHOT_PATHS.items()
-                },
-                temporary / "native-storage.png",
-            )
-        return 0
-
-    _render_capture_and_validate(USAGE_SCREENSHOT_PATHS, STORAGE_SCREENSHOT_PATH)
-    return 0
+    return {(theme, view): directory / f"{view}-{theme}.html" for theme in ("day", "night") for view in ("usage", "storage")}
 
 
-def _render_capture_and_validate(
+def capture_marketplace_screenshots(
+    documents: dict[tuple[str, str], Path],
     usage_paths: dict[tuple[str, str], Path],
     storage_path: Path,
 ) -> None:
-    _build_frontend()
-    with preview_server(DESKTOP_ROOT) as url:
-        capture_marketplace_screenshots(url, usage_paths, storage_path)
+    for output in (*usage_paths.values(), storage_path):
+        output.parent.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page(locale="en-US", timezone_id="UTC")
+            backgrounds: dict[tuple[str, str], str] = {}
+            for theme in ("day", "night"):
+                for size, viewport in (("wide", VIEWPORT), ("narrow", NARROW_VIEWPORT)):
+                    _open_document(page, documents[(theme, "usage")], viewport)
+                    _check_usage(page, theme)
+                    _check_layout(page, viewport)
+                    backgrounds[(theme, "usage")] = page.locator("body").evaluate(
+                        "element => getComputedStyle(element).backgroundColor"
+                    )
+                    page.evaluate("() => { document.activeElement?.blur(); window.scrollTo(0, 0); }")
+                    page.mouse.move(0, 0)
+                    page.screenshot(path=str(usage_paths[(theme, size)]), full_page=False)
+                for viewport in (VIEWPORT, NARROW_VIEWPORT):
+                    _open_document(page, documents[(theme, "storage")], viewport)
+                    _check_storage(page, theme)
+                    _check_layout(page, viewport)
+                    backgrounds[(theme, "storage")] = page.locator("body").evaluate(
+                        "element => getComputedStyle(element).backgroundColor"
+                    )
+                    if theme == "night" and viewport == VIEWPORT:
+                        page.screenshot(path=str(storage_path), full_page=False)
+            for view in ("usage", "storage"):
+                if backgrounds[("day", view)] == backgrounds[("night", view)]:
+                    raise RuntimeError(f"{view} Day and Night themes render the same background")
+        finally:
+            browser.close()
+
+
+def _open_document(page: Page, document: Path, viewport: dict[str, int]) -> None:
+    page.set_viewport_size(viewport)
+    page.goto(document.as_uri(), wait_until="load")
+    page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+    source = page.locator("body").inner_text()
+    if any(marker.casefold() in source.casefold() for marker in PRIVATE_MARKERS):
+        raise RuntimeError("synthetic extension fixture contains private data or a local path")
+    if page.locator("script").count():
+        raise RuntimeError("Marketplace HTML unexpectedly contains executable script")
+
+
+def _check_usage(page: Page, theme: str) -> None:
+    assert page.locator("html").get_attribute("data-codex-theme") == theme
+    page.get_by_role("heading", name="Token Usage", exact=True).wait_for()
+    page.get_by_role("heading", name="Plan Allowance", exact=True).wait_for()
+    page.get_by_role("link", name="Capture Usage", exact=True).wait_for()
+    page.get_by_role("link", name="Task Transfer", exact=True).wait_for()
+    assert page.get_by_role("link", name="Open App", exact=True).count() == 0
+    assert page.locator(".project-role-group").count() > 0
+    assert page.locator(".model-segment").count() > 1
+    token = page.locator("#compare-scale-tokens")
+    cost = page.locator("#compare-scale-cost")
+    token.focus()
+    token.press("ArrowRight")
+    assert cost.is_checked()
+    cost.press("ArrowLeft")
+    assert token.is_checked()
+    disclosure = page.locator("details.token-accounting").first
+    if disclosure.count():
+        summary = disclosure.locator("summary")
+        summary.focus()
+        summary.press("Enter")
+        assert disclosure.evaluate("element => element.open")
+        summary.press("Enter")
+        assert not disclosure.evaluate("element => element.open")
+    for target in (page.locator(".model-segment").first, page.locator(".model-segment").last):
+        target.focus()
+        tooltip = target.locator(".chart-tooltip")
+        if not tooltip.is_visible():
+            raise RuntimeError("focused model segment has no visible tooltip")
+        box = tooltip.bounding_box()
+        if box is None or box["x"] < -1 or box["x"] + box["width"] > page.viewport_size["width"] + 1:
+            raise RuntimeError(f"focused model tooltip is clipped: {box}")
+
+
+def _check_storage(page: Page, theme: str) -> None:
+    assert page.locator("html").get_attribute("data-codex-theme") == theme
+    page.get_by_role("heading", name="Task Storage", exact=True).wait_for()
+    page.get_by_role("heading", name="Largest Task Trees", exact=True).wait_for()
+    page.get_by_text("Build onboarding flow", exact=True).wait_for()
+    assert page.get_by_role("link", name="Analyze", exact=True).count() >= 1
+    assert page.get_by_role("link", name="Task Transfer", exact=True).count() == 1
+
+
+def _check_layout(page: Page, viewport: dict[str, int]) -> None:
+    width = viewport["width"]
+    metrics = page.evaluate("""() => ({
+      document: document.documentElement.scrollWidth,
+      body: document.body.scrollWidth,
+      viewport: window.innerWidth,
+      nav: (() => { const r = document.querySelector('.companion-actions').getBoundingClientRect(); return {left:r.left,right:r.right}; })(),
+      header: (() => { const r = document.querySelector('.report-header').getBoundingClientRect(); return {left:r.left,right:r.right}; })()
+    })""")
+    if metrics["document"] > width + 1 or metrics["body"] > width + 1:
+        raise RuntimeError(f"extension webview overflows at {width}px: {metrics}")
+    for key in ("nav", "header"):
+        if metrics[key]["left"] < -1 or metrics[key]["right"] > width + 1:
+            raise RuntimeError(f"extension {key} escapes {width}px viewport: {metrics[key]}")
+
+
+def _render_capture_and_validate(usage_paths: dict[tuple[str, str], Path], storage_path: Path) -> None:
+    with TemporaryDirectory() as temporary_directory:
+        documents = render_fixture(Path(temporary_directory))
+        capture_marketplace_screenshots(documents, usage_paths, storage_path)
     for (_theme, size), path in usage_paths.items():
         validate_screenshot(path, NARROW_VIEWPORT if size == "narrow" else VIEWPORT)
     validate_screenshot(storage_path, VIEWPORT)
 
 
-def _build_frontend() -> None:
-    from allowance_fixture import write_fixture
-    write_fixture(REPOSITORY_ROOT)
-    subprocess.run(
-        ["npm", "run", "build"],
-        cwd=DESKTOP_ROOT,
-        check=True,
-    )
-
-
-def capture_marketplace_screenshots(
-    url: str,
-    usage_paths: dict[tuple[str, str], Path],
-    storage_path: Path,
-) -> None:
-    for usage_path in usage_paths.values():
-        usage_path.parent.mkdir(parents=True, exist_ok=True)
-    storage_path.parent.mkdir(parents=True, exist_ok=True)
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
-        try:
-            page = browser.new_page(
-                viewport=VIEWPORT,
-                locale="en-US",
-                timezone_id="UTC",
-                color_scheme="dark",
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="Validate temporary captures without changing tracked images")
+    args = parser.parse_args(argv)
+    if args.check:
+        with TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            _render_capture_and_validate(
+                {key: temporary / path.name for key, path in USAGE_SCREENSHOT_PATHS.items()},
+                temporary / STORAGE_SCREENSHOT_PATH.name,
             )
-            page.goto(url, wait_until="networkidle")
-            _wait_for_usage(page)
-            page.locator("#usage-range").select_option("all")
-            page.wait_for_timeout(150)
-            _reject_private_fixture_data(page)
-            _exercise_theme_modes(page, view="usage")
-            _exercise_usage_chart_controls(page)
-            page.frame_locator("#usage-report").locator(".plan-allowance").evaluate(
-                "element => { element.ownerDocument.scrollingElement.scrollTop = element.offsetTop; }"
-            )
-            page.wait_for_timeout(100)
-            for theme in ("day", "night"):
-                page.evaluate(
-                    "theme => { document.documentElement.dataset.theme = theme; }",
-                    theme,
-                )
-                page.frame_locator("#usage-report").locator("html").evaluate(
-                    "(element, theme) => { element.dataset.codexTheme = theme; }",
-                    theme,
-                )
-                for size, viewport in (("wide", VIEWPORT), ("narrow", NARROW_VIEWPORT)):
-                    _set_viewport(page, viewport)
-                    _validate_layout(page, view="usage", viewport=viewport)
-                    page.frame_locator("#usage-report").locator(
-                        ".plan-allowance"
-                    ).evaluate("element => { element.ownerDocument.scrollingElement.scrollTop = element.offsetTop; }")
-                    page.wait_for_timeout(100)
-                    page.screenshot(
-                        path=str(usage_paths[(theme, size)]),
-                        full_page=False,
-                    )
-
-            _set_viewport(page, VIEWPORT)
-
-            page.get_by_role("button", name="Task Storage", exact=True).click()
-            _wait_for_storage(page)
-            _reject_private_fixture_data(page)
-            _exercise_theme_modes(page, view="storage")
-            page.screenshot(path=str(storage_path), full_page=False)
-        finally:
-            browser.close()
-
-
-def _wait_for_usage(page: Page) -> None:
-    page.get_by_role("heading", name="Token Usage", exact=True).wait_for()
-    page.get_by_text("Collector active", exact=True).wait_for()
-    page.get_by_role("button", name="Capture Usage", exact=True).wait_for()
-    page.frame_locator("#usage-report").locator(
-        'section[aria-label="Usage summary"]'
-    ).wait_for()
-    page.get_by_text("Loaded in", exact=False).wait_for()
-
-
-def _wait_for_storage(page: Page) -> None:
-    page.get_by_role("heading", name="Task Storage", exact=True).wait_for()
-    page.get_by_role("heading", name="Largest Task Trees", exact=True).wait_for()
-    page.get_by_text("Ship native persistent collector", exact=True).wait_for()
-    page.get_by_role(
-        "button", name="Analyze Ship native persistent collector"
-    ).wait_for()
-
-
-def _set_viewport(page: Page, viewport: dict[str, int]) -> None:
-    page.set_viewport_size(viewport)
-    page.wait_for_function(
-        "width => window.innerWidth === width", arg=viewport["width"]
-    )
-    page.evaluate(
-        "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
-    )
-
-
-def _exercise_theme_modes(page: Page, *, view: str) -> None:
-    colors: dict[str, str] = {}
-    for theme in ("day", "night"):
-        page.evaluate(
-            "theme => { document.documentElement.dataset.theme = theme; }",
-            theme,
-        )
-        if view == "usage":
-            page.frame_locator("#usage-report").locator("html").evaluate(
-                "(element, theme) => { element.dataset.codexTheme = theme; }",
-                theme,
-            )
-        _set_viewport(page, VIEWPORT)
-        _validate_layout(page, view=view, viewport=VIEWPORT)
-        _set_viewport(page, NARROW_VIEWPORT)
-        _validate_layout(page, view=view, viewport=NARROW_VIEWPORT)
-        colors[theme] = page.locator("body").evaluate(
-            "element => getComputedStyle(element).backgroundColor"
-        )
-    if colors["day"] == colors["night"]:
-        raise RuntimeError(f"{view} day and night themes render the same background")
-    _set_viewport(page, VIEWPORT)
-
-
-def _exercise_usage_chart_controls(page: Page) -> None:
-    frame = page.frame_locator("#usage-report")
-    role_fill = frame.locator(
-        '.role-fill[data-project-key="persona_generators"][data-role="subagent"]'
-    )
-    model_fill = frame.locator(".mix-fill.luna")
-    token_control = frame.locator("#compare-scale-tokens")
-    cost_control = frame.locator("#compare-scale-cost")
-    week_control = frame.locator("#cost-trend-week")
-    month_control = frame.locator("#cost-trend-month")
-    project_economics = frame.locator(".project-economics-project").first
-    token_accounting = frame.locator(".token-accounting").first
-    image_activity = frame.locator(".image-activity")
-
-    if not image_activity.is_visible():
-        raise RuntimeError("usage fixture is missing Image Generation reporting")
-    image_activity.get_by_role(
-        "heading", name="Image Generation", exact=True
-    ).wait_for()
-    if "Separate accounting" not in image_activity.inner_text():
-        raise RuntimeError(
-            "image reporting fixture lost its separate-accounting disclosure"
-        )
-
-    for theme in ("day", "night"):
-        page.evaluate(
-            "theme => { document.documentElement.dataset.theme = theme; }",
-            theme,
-        )
-        frame.locator("html").evaluate(
-            "(element, theme) => { element.dataset.codexTheme = theme; }",
-            theme,
-        )
-        for viewport in (VIEWPORT, NARROW_VIEWPORT):
-            _set_viewport(page, viewport)
-            _exercise_disclosure(
-                project_economics,
-                "Project Economics details",
-            )
-            _exercise_disclosure(
-                token_accounting,
-                "Token Accounting",
-            )
-            if not week_control.is_checked():
-                raise RuntimeError("all-history cost trend did not default to Week")
-            if not frame.locator(".cost-week-panel").is_visible():
-                raise RuntimeError("weekly cost panel is not visible by default")
-            week_control.focus()
-            week_control.press("ArrowRight")
-            if (
-                not month_control.is_checked()
-                or not frame.locator(".cost-month-panel").is_visible()
-            ):
-                raise RuntimeError("cost trend keyboard did not select Month")
-            month_control.focus()
-            month_control.press("ArrowLeft")
-            if not week_control.is_checked():
-                raise RuntimeError("cost trend keyboard did not restore Week")
-
-            for selector in (
-                ".cost-week-panel .trend-bar:first-child",
-                ".cost-week-panel .trend-bar:last-child",
-            ):
-                bar = frame.locator(selector)
-                bar.focus()
-                tooltip_box = bar.locator(".trend-tooltip").bounding_box()
-                frame_box = page.locator("#usage-report").bounding_box()
-                if tooltip_box is None or frame_box is None:
-                    raise RuntimeError(
-                        "cost trend tooltip containment probe is missing"
-                    )
-                if (
-                    tooltip_box["x"] < frame_box["x"] - 1
-                    or tooltip_box["x"] + tooltip_box["width"]
-                    > frame_box["x"] + frame_box["width"] + 1
-                ):
-                    raise RuntimeError(
-                        "cost trend edge tooltip escapes the report viewport: "
-                        f"tooltip={tooltip_box}, frame={frame_box}, selector={selector}, "
-                        f"viewport={viewport}"
-                    )
-
-            if not cost_control.is_checked():
-                raise RuntimeError("usage fixture did not default to API cost")
-            cost_box = role_fill.bounding_box()
-            model_cost_box = model_fill.bounding_box()
-            if cost_box is None:
-                raise RuntimeError(
-                    "usage fixture is missing the project role scale probe"
-                )
-            if model_cost_box is None:
-                raise RuntimeError("usage fixture is missing the Model Mix scale probe")
-
-            cost_control.focus()
-            cost_control.press("ArrowLeft")
-            if not token_control.is_checked():
-                raise RuntimeError("usage fixture keyboard did not select Tokens")
-            token_box = role_fill.bounding_box()
-            if token_box is None or abs(cost_box["width"] - token_box["width"]) < 4:
-                raise RuntimeError(
-                    "usage fixture Tokens scale did not change project bar geometry"
-                )
-            model_token_box = model_fill.bounding_box()
-            if (
-                model_token_box is None
-                or abs(model_cost_box["width"] - model_token_box["width"]) < 4
-            ):
-                raise RuntimeError(
-                    "usage fixture Tokens scale did not change Model Mix geometry"
-                )
-
-            tracks = frame.locator(".mix-track")
-            track_boxes = [
-                tracks.nth(index).bounding_box() for index in range(tracks.count())
-            ]
-            if not track_boxes or any(box is None for box in track_boxes):
-                raise RuntimeError("usage fixture is missing Model Mix tracks")
-            first = track_boxes[0]
-            assert first is not None
-            if any(
-                abs(box["x"] - first["x"]) > 1 or abs(box["width"] - first["width"]) > 1
-                for box in track_boxes[1:]
-                if box is not None
-            ):
-                raise RuntimeError(
-                    "usage fixture Model Mix tracks do not share equal bounds"
-                )
-
-            token_control.focus()
-            token_control.press("ArrowRight")
-            if not cost_control.is_checked():
-                raise RuntimeError("usage fixture keyboard did not restore API cost")
-
-    _set_viewport(page, VIEWPORT)
-
-
-def _exercise_disclosure(disclosure, label: str) -> None:
-    disclosure.evaluate("element => { element.open = false; }")
-    summary = disclosure.locator("summary")
-    summary.focus()
-    summary.press("Enter")
-    if not disclosure.evaluate("element => element.open"):
-        raise RuntimeError(f"usage fixture keyboard did not expand {label}")
-
-
-def _reject_private_fixture_data(page: Page) -> None:
-    text = page.locator("body").inner_text()
-    for marker in PRIVATE_MARKERS:
-        if marker.casefold() in text.casefold():
-            raise RuntimeError(f"native fixture leaked a private marker: {marker}")
-
-
-def _validate_layout(page: Page, *, view: str, viewport: dict[str, int]) -> None:
-    metrics = page.evaluate(
-        """
-        () => {
-          const selectors = ['html', 'body', '#app', '.app-shell', '.main-shell', '.topbar', '.view-heading', '.view-filters'];
-          return selectors.map(selector => {
-            const element = document.querySelector(selector);
-            if (!element) throw new Error(`Missing ${selector}`);
-            const rect = element.getBoundingClientRect();
-            return {selector, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
-                    left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom};
-          });
-        }
-        """
-    )
-    for metric in metrics:
-        if metric["scrollWidth"] > metric["clientWidth"] + 1:
-            raise RuntimeError(
-                f"{view} overflows horizontally at {viewport['width']}px: "
-                f"{metric['selector']} {metric['scrollWidth']} > {metric['clientWidth']}"
-            )
-        if metric["left"] < -1 or metric["right"] > viewport["width"] + 1:
-            raise RuntimeError(
-                f"{view} escapes the viewport at {viewport['width']}px: "
-                f"{metric['selector']}"
-            )
-
-    _assert_no_overlap(page, ".capture-summary", ".button-capture", view, viewport)
-    contextual_controls = (
-        ("#usage-project-filter", "#usage-reload")
-        if view == "usage"
-        else ("#storage-project-filter", "#storage-refresh")
-    )
-    for selector in contextual_controls:
-        _assert_within_viewport(page, selector, view, viewport)
-    if view == "usage":
-        frame = page.frame_locator("#usage-report")
-        report_metrics = frame.locator("html").evaluate(
-            "element => ({clientWidth: element.clientWidth, scrollWidth: element.scrollWidth})"
-        )
-        if report_metrics["scrollWidth"] > report_metrics["clientWidth"] + 1:
-            raise RuntimeError(
-                f"usage report overflows at {viewport['width']}px: "
-                f"{report_metrics['scrollWidth']} > {report_metrics['clientWidth']}"
-            )
-
-
-def _assert_within_viewport(
-    page: Page,
-    selector: str,
-    view: str,
-    viewport: dict[str, int],
-) -> None:
-    box = page.locator(selector).bounding_box()
-    if box is None:
-        raise RuntimeError(f"{view} is missing required control {selector}")
-    if (
-        box["x"] < -1
-        or box["x"] + box["width"] > viewport["width"] + 1
-        or box["y"] < -1
-        or box["y"] + box["height"] > viewport["height"] + 1
-    ):
-        raise RuntimeError(
-            f"{view} control {selector} escapes the {viewport['width']}px viewport"
-        )
-
-
-def _assert_no_overlap(
-    page: Page,
-    first_selector: str,
-    second_selector: str,
-    view: str,
-    viewport: dict[str, int],
-) -> None:
-    first = page.locator(first_selector).bounding_box()
-    second = page.locator(second_selector).bounding_box()
-    if first is None or second is None:
-        raise RuntimeError(f"{view} is missing a required top-bar control")
-    separated = (
-        first["x"] + first["width"] <= second["x"]
-        or second["x"] + second["width"] <= first["x"]
-        or first["y"] + first["height"] <= second["y"]
-        or second["y"] + second["height"] <= first["y"]
-    )
-    if not separated:
-        raise RuntimeError(f"{view} top-bar controls overlap at {viewport['width']}px")
+    else:
+        _render_capture_and_validate(USAGE_SCREENSHOT_PATHS, STORAGE_SCREENSHOT_PATH)
+        # The main listing image is the Night wide capture.
+        USAGE_SCREENSHOT_PATH.write_bytes(USAGE_SCREENSHOT_PATHS[("night", "wide")].read_bytes())
+    return 0
 
 
 if __name__ == "__main__":

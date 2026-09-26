@@ -1,14 +1,13 @@
 # Codex Usage
 
 Codex Usage is a local toolkit for understanding Codex token usage, model mix,
-project activity, and task storage. The standalone VS Code extension includes
-its own collector; an optional native app preview adds capture that can continue
-after VS Code and the Codex Usage window are closed.
+project activity, and task storage. The VS Code extension includes its own collector. Scheduled capture runs while
+VS Code is open, including when the dashboard is closed.
 
 Everything stays on your computer. Capturing usage does not call a model or the
 OpenAI API.
 
-![Codex Usage native app](docs/marketplace/native-usage-synthetic.png)
+![Codex Usage Companion dashboard](docs/marketplace/extension-usage-synthetic.png)
 
 ## Highlights
 
@@ -45,33 +44,32 @@ from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
 packages each include the matching local collector; the native app, Python,
 `uv`, and this repository are not required.
 
-The optional native app is currently an unsigned preview for macOS 13 or later
-on Apple Silicon and Windows 10 or later on x64. Preview builds and their SHA-256
-integrity metadata are available from the
-[latest distribution workflow](https://github.com/Wenjun-Mao/codex_usage/actions/workflows/package-vsix.yml).
-macOS Gatekeeper or Windows SmartScreen may warn because the builds are not
-Developer ID notarized or Authenticode signed. The native preview is not needed
-for any extension command.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.9.0 release.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.x release line.
+## First Run And Legacy Service Handoff
 
-## Native App First Run
+Open **Codex Usage: Set Up Collector** from the Command Palette and select the
+Codex home containing `sessions` or `archived_sessions`. The usual location is
+`~/.codex` on macOS or `%USERPROFILE%\\.codex` on Windows. The collector uses
+this home's existing `CODEX_HOME/.codex-usage/usage-ledger.sqlite3`; installing
+the extension does not reset usage history or task data. Codex Usage supports
+one active Codex home at a time.
 
-1. Open Codex Usage and choose the Codex home containing `sessions` or
-   `archived_sessions`. The usual location is `~/.codex` on macOS or
-   `%USERPROFILE%\.codex` on Windows.
-2. Choose whether capture should continue after the app closes. Background
-   capture is opt-in and registers only for your user account.
-3. Keep the balanced 15-minute interval, choose 1 to 1,440 minutes, or select
-   **Manual Only**.
-4. Optionally enable a GitHub update check at most once per day. Every update
-   still requires confirmation.
-5. Let the initial baseline continue. Available totals are shown with an
-   incomplete-data warning until all discovered files have been processed.
+If an older native preview registered a Codex Usage background service, the
+extension can attach to its healthy collector. To retire that registration,
+run **Codex Usage: Retire Legacy Background Service** and review the explicit
+handoff prompt. Accepting unregisters only the known Codex Usage service, waits
+for its writer to exit, and starts the bundled collector against the same home.
+Refusing leaves the service in place. Do this before uninstalling the old native
+preview, and preserve the shared `.codex-usage` directory when uninstalling.
+If handoff fails, follow the reported recovery action and retry after resolving
+the error; **Reset Local Data** is not a handoff step.
 
-Codex Usage supports one active Codex home. Changing it in **Settings** stops
-the collector, validates the new home, switches to that home's ledger, repairs
-background registration, and restarts collection.
+The extension captures at the configured interval while VS Code remains open.
+Closing the last VS Code extension host stops its parent-bound collector. On
+reopening, capture resumes against the same ledger. Quota snapshots missed while
+VS Code is closed may be impossible to reconstruct later; inspect the report's
+observation timestamps before treating a quota history as continuous.
 
 ## Capture And History
 
@@ -172,7 +170,7 @@ bytes from structured descendants, and is independent of the Usage date range.
 It shares the selected project filter and theme with Usage; its reload icon
 checks the current storage inventory without capturing token usage.
 
-![Codex Usage Task Storage](docs/marketplace/native-storage-synthetic.png)
+![Codex Usage Task Storage](docs/marketplace/extension-storage-synthetic.png)
 
 Choose **Analyze** on one tree to measure compacted-history amplification,
 inline-media evidence, large descendants, and active-root history risk. Analysis
@@ -248,24 +246,17 @@ resumable and auditable, and legacy databases are never changed.
 
 ## Privacy And Updates
 
-The app has no telemetry, cloud backend, Docker service, Codex hooks, or model
-calls. Session content, usage rows, project paths, and Task Storage diagnostics
-stay local. The only optional automatic network activity is a daily GitHub
-update check. See [PRIVACY.md](PRIVACY.md) for the complete data boundary.
-
-The Marketplace extension updates through VS Code. Unsigned native previews do
-not have a supported automatic update channel; install a newer verified preview
-manually. Windows uninstall asks whether to remove ledger and settings and
-defaults to preserving them. On macOS, use **Unregister Background Agent** and
-**Reset Local Data** before removing the app if you want those effects.
+The extension has no telemetry, cloud backend, Docker service, Codex hooks, or
+model calls. Session content, usage rows, project paths, and Task Storage
+diagnostics stay local. The Marketplace extension updates through VS Code. See
+[PRIVACY.md](PRIVACY.md) for the complete data boundary.
 
 ## Development
 
-The repository contains a Python agent/core, an optional Tauri 2 application
-under `apps/desktop`, and a standalone TypeScript extension under
-`extensions/vscode`.
-The Python executable and loopback protocol are private implementation details;
-2.0.0 intentionally provides no public `codex-usage` console script.
+The repository contains a Python collector/core and a TypeScript VS Code
+extension under `extensions/vscode`. The Python executable and loopback protocol
+are private implementation details; there is no public `codex-usage` console
+script.
 
 Run the core gates from the repository root:
 
@@ -275,29 +266,18 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-Run native frontend and host gates:
-
-```bash
-cd apps/desktop
-npm ci
-npm test
-npm run build
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo test --manifest-path src-tauri/Cargo.toml --all-targets
-```
-
-Run the companion gates:
+Run the extension gates and build the matching VSIX on its platform:
 
 ```bash
 cd extensions/vscode
 npm ci
 npm test
-npm run package:vsix
+npm run package:vsix:mac  # macOS Apple Silicon
+# npm run package:vsix:win  # Windows x64
 ```
 
-Architecture decisions are indexed in [docs/adr](docs/adr/README.md). Signed
-release requirements and native packaging checks are in
-[docs/release.md](docs/release.md).
+Architecture decisions are indexed in [docs/adr](docs/adr/README.md). Release
+checks and handoff acceptance are in [docs/release.md](docs/release.md).
 
 ## Plan Allowance
 

@@ -1,4 +1,4 @@
-name: Native Previews and Platform VSIX
+name: Platform VSIX
 run-name: "Codex Usage VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"
 
 on:
@@ -113,6 +113,17 @@ jobs:
           npm test
           npm run package:vsix:mac
 
+      - name: Verify packaged macOS VSIX
+        run: uv run python scripts/verify-vsix-archive.py output/releases/codex-usage-companion-darwin-arm64.vsix darwin-arm64
+
+      - name: Install visual test browsers
+        run: uv run playwright install chromium firefox webkit
+
+      - name: Verify extension screenshots and allowance UI
+        run: |
+          uv run python scripts/generate_marketplace_screenshot.py --check
+          uv run python scripts/check_allowance_ui.py
+
       - name: Upload macOS VSIX
         uses: actions/upload-artifact@v6
         with:
@@ -156,170 +167,14 @@ jobs:
           npm test
           npm run package:vsix:win
 
+      - name: Verify packaged Windows VSIX
+        run: uv run python scripts/verify-vsix-archive.py output/releases/codex-usage-companion-win32-x64.vsix win32-x64
+
       - name: Upload Windows VSIX
         uses: actions/upload-artifact@v6
         with:
           name: codex-usage-companion-win32-x64
           path: output/releases/codex-usage-companion-win32-x64.vsix
-          if-no-files-found: error
-          retention-days: 14
-
-  macos-native:
-    name: Build unsigned macOS Apple Silicon preview
-    needs: validate
-    runs-on: macos-26
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri -> target
-
-      - name: Build and smoke-test packaged agent
-        run: ./scripts/build-agent-macos-arm64.sh
-
-      - name: Install native app dependencies
-        working-directory: apps/desktop
-        run: npm ci
-
-      - name: Install screenshot browser
-        run: uv run playwright install chromium firefox webkit
-
-      - name: Test native frontend and Rust host
-        working-directory: apps/desktop
-        run: |
-          npm test
-          npm run build
-          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-          cargo test --manifest-path src-tauri/Cargo.toml --all-targets
-          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-
-      - name: Verify native Marketplace screenshots
-        run: |
-          uv run python scripts/generate_marketplace_screenshot.py --check
-          uv run python scripts/check_allowance_ui.py
-
-      - name: Build unsigned native preview
-        working-directory: apps/desktop
-        run: npm run tauri build -- --target aarch64-apple-darwin --bundles dmg --ci
-
-      - name: Emit macOS preview integrity metadata
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          bundle="apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle"
-          dmg="$(find "$bundle/dmg" -maxdepth 1 -name '*.dmg' -print -quit)"
-          test -n "$dmg"
-          mkdir -p output/previews
-          cp "$dmg" "output/previews/Codex-Usage-${VERSION}-macos-arm64-unsigned-preview.dmg"
-          python scripts/prepare-native-release.py \
-            --directory output/previews \
-            --version "$VERSION" \
-            --platform darwin-aarch64
-
-      - name: Upload macOS native preview
-        uses: actions/upload-artifact@v6
-        with:
-          name: codex-usage-macos-arm64-unsigned-preview
-          path: output/previews/*
-          if-no-files-found: error
-          retention-days: 14
-
-  windows-native:
-    name: Build unsigned Windows x64 preview
-    needs: validate
-    runs-on: windows-2025
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri -> target
-
-      - name: Build and smoke-test packaged agent
-        shell: pwsh
-        run: ./scripts/build-agent-windows-x64.ps1
-
-      - name: Install native app dependencies
-        working-directory: apps/desktop
-        run: npm ci
-
-      - name: Test native frontend and Rust host
-        working-directory: apps/desktop
-        run: |
-          npm test
-          npm run build
-          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-          cargo test --manifest-path src-tauri/Cargo.toml --all-targets
-          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-
-      - name: Build unsigned native preview
-        working-directory: apps/desktop
-        run: npm run tauri build -- --target x86_64-pc-windows-msvc --bundles nsis --ci
-
-      - name: Emit Windows preview integrity metadata
-        shell: pwsh
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          $installer = Get-ChildItem "apps\desktop\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis\*-setup.exe" | Select-Object -First 1
-          if (-not $installer) { throw "Tauri did not produce an NSIS installer" }
-          New-Item -ItemType Directory -Force -Path "output\previews" | Out-Null
-          Copy-Item $installer.FullName "output\previews\Codex-Usage-$env:VERSION-windows-x64-unsigned-preview-setup.exe"
-          python scripts/prepare-native-release.py --directory output/previews --version $env:VERSION --platform windows-x86_64
-          if ($LASTEXITCODE -ne 0) { throw "Preview integrity metadata generation failed" }
-
-      - name: Upload Windows native preview
-        uses: actions/upload-artifact@v6
-        with:
-          name: codex-usage-windows-x64-unsigned-preview
-          path: output/previews/*
           if-no-files-found: error
           retention-days: 14
 

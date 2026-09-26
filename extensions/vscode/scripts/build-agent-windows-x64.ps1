@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $extensionRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $repositoryRoot = Resolve-Path (Join-Path $extensionRoot "..\..")
-$sourceBinary = Join-Path $repositoryRoot "apps\desktop\src-tauri\binaries\codex-usage-agent-x86_64-pc-windows-msvc.exe"
+$sourceBinary = Join-Path $repositoryRoot "build\packaged-agent\x86_64-pc-windows-msvc\codex-usage-agent-x86_64-pc-windows-msvc.exe"
 $targetBinary = Join-Path $extensionRoot "bin\win32-x64\codex-usage-agent.exe"
 
 & (Join-Path $repositoryRoot "scripts\build-agent-windows-x64.ps1")

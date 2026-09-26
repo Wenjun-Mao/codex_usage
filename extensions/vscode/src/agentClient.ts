@@ -59,6 +59,10 @@ export class AgentClient {
     return this.descriptor.pid;
   }
 
+  get processOwner(): "background" | "transient" | undefined {
+    return this.descriptor.process_owner;
+  }
+
   isSameAgent(other: AgentClient): boolean {
     return this.descriptor.pid === other.descriptor.pid
       && this.descriptor.token === other.descriptor.token

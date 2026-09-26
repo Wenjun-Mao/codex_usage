@@ -8,8 +8,8 @@ README = ROOT / "README.md"
 COMPANION_README = ROOT / "extensions" / "vscode" / "README.md"
 CHANGELOG_PATHS = (ROOT / "CHANGELOG.md", ROOT / "extensions/vscode/CHANGELOG.md")
 RELEASE_CHECKLIST = ROOT / "docs" / "release.md"
-USAGE_SCREENSHOT = ROOT / "docs" / "marketplace" / "native-usage-synthetic.png"
-STORAGE_SCREENSHOT = ROOT / "docs" / "marketplace" / "native-storage-synthetic.png"
+USAGE_SCREENSHOT = ROOT / "docs" / "marketplace" / "extension-usage-synthetic.png"
+STORAGE_SCREENSHOT = ROOT / "docs" / "marketplace" / "extension-storage-synthetic.png"
 
 
 def markdown_section(path: Path, heading: str) -> str:
@@ -23,25 +23,24 @@ def markdown_section(path: Path, heading: str) -> str:
     return match.group("body")
 
 
-def test_readmes_present_native_usage_and_storage_workflows() -> None:
+def test_readmes_present_extension_usage_and_storage_workflows() -> None:
     root = README.read_text(encoding="utf-8")
     companion = COMPANION_README.read_text(encoding="utf-8")
 
     for text in (root, companion):
         prose = " ".join(text.split())
-        assert "native-usage-synthetic.png" in text
-        assert "native-storage-synthetic.png" in text
+        assert "extension-usage-synthetic.png" in text
+        assert "extension-storage-synthetic.png" in text
         assert "Project Breakdown separates root tasks" in prose
         assert "Capture Usage" in text
         assert "Task Transfer" in text
 
-    assert "Manual Only" in root
-    assert root.index("native-usage-synthetic.png") < root.index("## Install")
-    assert root.index("native-storage-synthetic.png") > root.index("## Task Storage")
-    assert companion.index("native-usage-synthetic.png") < companion.index(
+    assert root.index("extension-usage-synthetic.png") < root.index("## Install")
+    assert root.index("extension-storage-synthetic.png") > root.index("## Task Storage")
+    assert companion.index("extension-usage-synthetic.png") < companion.index(
         "## What You Can Do"
     )
-    assert companion.index("native-storage-synthetic.png") > companion.index(
+    assert companion.index("extension-storage-synthetic.png") > companion.index(
         "## Task Storage"
     )
 
@@ -54,7 +53,7 @@ def test_companion_docs_preserve_the_platform_vsix_runtime_boundary() -> None:
     assert "separate platform VSIX packages" in prose
 
 
-def test_native_marketplace_images_are_at_release_dimensions() -> None:
+def test_extension_marketplace_images_are_at_release_dimensions() -> None:
     from PIL import Image
 
     for path in (USAGE_SCREENSHOT, STORAGE_SCREENSHOT):
@@ -63,7 +62,7 @@ def test_native_marketplace_images_are_at_release_dimensions() -> None:
             assert image.size == (1440, 900)
 
 
-def test_release_checklist_locks_native_visual_gate() -> None:
+def test_release_checklist_locks_extension_visual_gate() -> None:
     checklist = RELEASE_CHECKLIST.read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/package-vsix.yml").read_text(
         encoding="utf-8"

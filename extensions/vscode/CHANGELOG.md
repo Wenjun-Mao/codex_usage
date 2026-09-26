@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 2.9.0 - 2026-09-25
+
+- Retire the separate native preview and its Open App command while retaining
+  the Companion Usage, Task Storage, Task Transfer, export, and report UI.
+- Add an explicit Command Palette handoff for previously registered Codex Usage
+  background services; preserve the selected home and durable ledger.
+- Keep capture scheduled while VS Code is open and disclose quota observation
+  gaps while it is closed.
+- Bundle the collector from an independent build location and validate each
+  platform VSIX and extension-based visual captures before Marketplace release.
+
 ## 2.8.10 - 2026-09-25
 
 - Expand Model Details in the shared dashboard with a keyboard-operable token

@@ -1,46 +1,32 @@
-# 2.8.10 Distribution Checklist
+# 2.9.0 VSIX Release Checklist
 
-Version 2.8.10 publishes standalone macOS Apple Silicon and Windows x64 VSIX
-packages to the VS Code Marketplace. Each VSIX bundles its matching collector
-and does not require the native application.
+Codex Usage 2.9.0 ships only the macOS Apple Silicon and Windows x64 VS Code
+Companion packages. Each VSIX contains exactly one matching, bundled Python
+collector. The extension does not require the former Tauri app, Python, `uv`,
+or a source checkout on the user's machine.
 
-The Usage report now opens a compact, keyboard-operable Model Details breakdown
-for each exact model. It shows total, input, cached input, regular input,
-reported cache-write, and output tokens with event-valued API-equivalent cost
-and estimated Standard Codex credits. Model Details omits the redundant Share
-bar; other detail tables retain it. GPT-6 Sol and Luna Standard credit rates
-start on the published 2026-09-22 launch date. Earlier and unknown activity
-remain visibly unpriced, and the ledger cannot identify Fast-tier use.
+## Release Contract
 
-The report also retains the Plan Allowance meter, API-cost default for the
-shared **Compare by** control, and omission of the one-point daily trend and
-details for Today and Yesterday presets. Custom ranges retain daily details.
+- Preserve the existing `CODEX_HOME/.codex-usage/usage-ledger.sqlite3`, settings,
+  source events, and Task Transfer data. Do not test handoff against live data.
+- Scheduled capture runs while VS Code is open, even with the dashboard closed.
+  The parent-bound collector exits when the final extension host closes. Missed
+  quota snapshots during downtime may be impossible to reconstruct.
+- A legacy registered Codex Usage LaunchAgent or Windows Scheduled Task remains
+  untouched until the user runs **Codex Usage: Retire Legacy Background Service**
+  and confirms. Handoff removes only the known service, waits for its writer to
+  exit, and starts the bundled collector on the same home and ledger. A refusal
+  leaves the service in place. A failure must be visible and recoverable without
+  **Reset Local Data**.
+- Both platform VSIX jobs must pass before publication. No DMG, NSIS, Tauri,
+  Cargo, signing, or native-preview artifact is part of this release.
 
-The 2.8.10 packages include the ledger-derived Plan Allowance index in
-schema 4. Existing ledgers receive a pre-migration backup. The packages also
-retain the device-identity capture correction from 2.8.7. Preserve the
-existing ledger, install the matching updated VSIX, reload VS Code so its
-bundled collector restarts, then use **Capture Usage**. If an
-optional native background collector owns the active home, update that preview
-and re-register its background agent before capturing. **Reset Local Data** is
-not a recovery step. A verified source continuation appends to its trusted
-generation, while a changed processed boundary promotes a distinct generation.
-
-The same workflow builds unsigned native DMG and NSIS previews with SHA-256
-integrity metadata. Native previews are retained as GitHub Actions artifacts for
-evaluation; they are not stable GitHub Release assets and have no automatic
-update channel. Linux, Intel macOS, and Windows ARM64 are not release targets.
-
-## Required Secret
-
-- `VSCE_PAT` with Manage permission for publisher `wenjun-mao`.
-
-The 2.x release workflow has no Apple Developer, Azure Artifact Signing, or Tauri
-updater-signing dependency.
+`VSCE_PAT` with Manage permission for publisher `wenjun-mao` is the sole
+publication secret.
 
 ## Local Gates
 
-Run from the repository root:
+From the repository root:
 
 ```bash
 uv sync --all-groups
@@ -48,104 +34,41 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-Build the macOS packaged sidecar before checking the native frontend and Rust
-host. Tauri validates its configured `externalBin` during Rust builds, so a
-fresh checkout must establish that prerequisite first, matching the CI job:
+From `extensions/vscode`:
 
 ```bash
-./scripts/build-agent-macos-arm64.sh
-cd apps/desktop
 npm ci
 npm test
-npm run build
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo test --manifest-path src-tauri/Cargo.toml --all-targets
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-CI=true npm run tauri build -- --target aarch64-apple-darwin --bundles dmg --ci
+npm run package:vsix:mac  # macOS Apple Silicon
+# npm run package:vsix:win  # Windows x64
 ```
 
-`CI=true` makes the local DMG path match GitHub Actions and skips Finder-only
-window styling, which is not available reliably from a noninteractive build.
-
-Standalone VS Code extension:
+The package command builds and smoke-tests the PyInstaller collector, then
+checks the extension payload. Audit the produced archive as well:
 
 ```bash
-cd extensions/vscode
-npm ci
-npm test
-npm run package:vsix:mac
+uv run python scripts/verify-vsix-archive.py output/releases/codex-usage-companion-darwin-arm64.vsix darwin-arm64
+# On Windows, use the win32-x64 artifact and target.
 ```
 
-The package audit must show the matching collector executable and exclude the
-other platform's binary, Python source, caches, and tests. Windows packaging is
-performed on the Windows CI runner.
-
-### 2.0.0 performance evidence
-
-The 2026-09-02 candidate was checked against a 33 GiB, 1,325-file local corpus
-through an isolated ledger. One bounded baseline slice completed in 0.52 seconds,
-reported 115 MiB of source reads, and correctly exposed 0.19% coverage with all
-unscheduled files and bytes still pending. A separate 100-file live subset
-completed its baseline in 0.15 seconds; the immediately repeated unchanged
-capture completed in 0.01 seconds with 100 files reused and zero source bytes
-read. Timings are machine-specific evidence, not CI thresholds.
-
-## Migration and Performance Scope
-
-Before publication, verify schema-3 to schema-4 migration against a disposable
-SQLite ledger copy. Confirm the pre-migration backup, retained source-event
-counts, new cost-index tables, and packaged collector access. Report views
-should read ledger data without opening source JSONLs. The Plan Allowance
-performance benchmark covered repeated report views; it excluded the first
-migration and VS Code webview rendering.
+The archive must contain the matching executable, `extension/package.json`, and
+`extension/out/extension.js`, with no second collector or Tauri files. Confirm a
+clean VSIX install can choose `CODEX_HOME`, capture, render Usage and Task
+Storage, export Agent Activity, and perform Task Transfer without former native
+app files.
 
 ## Visual Gate
 
-Run the native frontend fixture through Playwright at desktop and narrow window
-sizes (1440 x 900 and 760 x 900). Confirm:
+The screenshot generator renders the production extension webview HTML with
+synthetic, privacy-safe data. Inspect Day and Night at wide and narrow sizes,
+plus the Task Storage image. Check controls, disclosures, keyboard access,
+allowance semantics, tooltips, labels, and clipping. Regenerate and verify:
 
-- the sidebar and Capture Usage remain usable without overlap;
-- each view exposes one contextual reload icon with an accurate accessible label;
-- Usage and Task Storage render distinctly in Day and Night at both viewport sizes;
-- all-history Usage exposes one keyboard-operable **Week | Month** control,
-  defaults to Week, shows readable first/last periods, and contains both edge
-  tooltips within the report viewport;
-- Usage clearly shows last/next capture, pending work, incomplete baseline, and
-  stale-source states;
-- Project Breakdown and Model Mix share one accessible **Compare by** control,
-  default to API cost, use distinct stable colors, preserve role-level
-  API-equivalent cost, and switch coherently to token-scaled bars;
-- Plan Allowance stays account-wide under project/date filters, exposes active
-  buckets, shows a valid current estimate or an explicitly dated same-series
-  Previous window fallback, and exposes newest-first allowance history with
-  current/completed status, confidence, span, and bins in collapsed diagnostics;
-  freshness/recovery diagnostics and bounded capture details work in
-  keyboard-operable disclosures;
-- Project Economics shows the weighted all-project benchmark and expandable
-  project/model details, and both it and Token Accounting disclosures are
-  keyboard-operable at wide and narrow sizes;
-- Image Generation keeps global, model, and project image activity separate
-  from language totals, exposes its disclosures accessibly, and contains no
-  prompt, path, or image-content fixture data;
-- incomplete image history reports complete, pending, unavailable, and artifact
-  counts instead of claiming that an incomplete empty selection has no activity;
-- Agent Activity keeps Daily Summary visible while its keyboard-operable Agents
-  disclosure is closed by default, and CSV export remains complete;
-- Token Accounting is collapsed by default and every cache-write label says
-  **Cache Write (reported)**;
-- Model Details has no Share bar, exposes an accessible disclosure per exact
-  model, keeps unknown rates visible, and shows additive category valuations
-  at wide and narrow widths in both themes;
-- every Model Mix row uses an equal-length neutral track in both comparison modes;
-- report content and tooltips are not clipped;
-- Task Storage exposes Analyze and cancellation without unrelated operations;
-- Task Transfer has separate one-project and task-selection stages, zero default
-  task selection, project-only search, Back navigation, and explicit destination;
-- Settings expose 1-1,440 minutes, Manual Only, background registration, Codex
-  home switching, daily updates, Unregister, and Reset Local Data;
-- no synthetic screenshot contains personal paths or corpus data.
-
-Regenerate and review:
+Visually review Usage at 1440 x 900 and 760 x 900 in both themes. Verify the
+Task Storage surface, Task Transfer stages, contextual reload controls, range
+and project filters, capture state, Model Details, Plan Allowance diagnostics,
+and export affordances stay readable and operable. Record any browser-specific
+meter or clipping difference before promotion.
 
 ```bash
 uv run playwright install chromium firefox webkit
@@ -154,16 +77,28 @@ uv run python scripts/generate_marketplace_screenshot.py --check
 uv run python scripts/check_allowance_ui.py
 ```
 
-The allowance UI gate runs the native `<meter>` renderer in Chromium, WebKit,
-and Firefox. It checks native meter semantics, used/remaining text, remaining
-allowance fill at 0%, 17%, 83%, and 100% used, theme contrast, keyboard focus,
-and narrow viewport overflow. Visually review the canonical Usage images in Day
-and Night at both wide and narrow widths, plus the Task Storage image, before
-committing them. The automated gate catches geometry and overflow regressions,
-but it does not replace a human check for hierarchy, readability, and
-representative product copy.
+Canonical images are `docs/marketplace/extension-usage-synthetic.png` and
+`docs/marketplace/extension-storage-synthetic.png`. The Day/Night wide/narrow
+Usage matrix is retained beside them. Neither screenshots nor fixture data may
+contain personal paths, task content, or a local corpus.
 
-## Non-Publishing Native Gate
+## Legacy Handoff Acceptance
+
+Use a disposable `CODEX_HOME` and disposable known-service registration on
+macOS and Windows. Record before/after ledger revision, event count, settings,
+and selected home. Verify refusal leaves registration and writer unchanged;
+confirmation removes only the known registration, waits for the prior writer,
+and yields one VS Code-owned writer. Capture again and verify the same ledger
+advances without duplicate events. Test a missing legacy executable, failed
+unregistration, and recovery instructions. Never unregister a live service or
+modify a live ledger for release testing.
+
+Also verify scheduled capture while the webview is closed, clean shutdown when
+the last extension host exits, and resumed capture against the same ledger on
+reopen. The report should mark quota observation gaps rather than imply
+continuous coverage.
+
+## Non-Publishing Platform Gate
 
 Push the candidate commit to `main`, then dispatch:
 
@@ -171,73 +106,27 @@ Push the candidate commit to `main`, then dispatch:
 gh workflow run package-vsix.yml --ref main -f publish=false
 ```
 
-Require all five jobs to pass before publication:
-
-- core/release-contract validation;
-- macOS Apple Silicon VSIX packaging with its bundled collector;
-- Windows x64 VSIX packaging with its bundled collector;
-- macOS ARM64 PyInstaller, frontend, Rust, and unsigned DMG preview;
-- Windows x64 PyInstaller, frontend, Rust, and unsigned NSIS preview.
-
-The two native jobs upload 14-day unsigned preview artifacts and integrity
-metadata. They validate the optional app but do not gate Marketplace publishing
-as a runtime dependency.
+Require the `validate`, `macos-vsix`, and `windows-vsix` jobs to pass. Preserve
+the run URL and both artifact checksums as release evidence. The macOS job also
+checks the extension screenshot and allowance visual gates. A platform gate that
+cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm all Python, npm, Cargo, Tauri, and lockfile versions are `2.8.10`, both
-changelogs have a dated `2.8.10` entry, and the candidate commit is contained in
-`origin/main`.
-
-The only valid release tag for this version is `v2.8.10`. Create and push that
-exact tag after the non-publishing gate succeeds:
+Confirm Python and extension metadata and lockfiles all say `2.9.0`, both
+changelogs contain a dated entry, and the candidate commit is in `origin/main`.
+Only after the non-publishing platform gate succeeds, create and push `v2.9.0`:
 
 ```bash
-git tag v2.8.10
-git push origin v2.8.10
+git tag v2.9.0
+git push origin v2.9.0
 ```
 
-The tag reruns every platform gate and publishes these immutable Marketplace
-packages:
+The tag reruns all platform gates and publishes
+`codex-usage-companion-darwin-arm64.vsix` and
+`codex-usage-companion-win32-x64.vsix`. Record the tag commit, workflow URL,
+Marketplace versions, and package hashes. The workflow does not create a GitHub
+Release; VSCE uses `--skip-duplicate` on a rerun.
 
-```text
-codex-usage-companion-darwin-arm64.vsix
-codex-usage-companion-win32-x64.vsix
-```
-
-The native jobs also produce these run-scoped artifacts:
-
-```text
-Codex-Usage-2.8.10-macos-arm64-unsigned-preview.dmg
-Codex-Usage-2.8.10-windows-x64-unsigned-preview-setup.exe
-preview-integrity.json
-SHA256SUMS.txt
-```
-
-The workflow does not create a GitHub Release. Marketplace publication is
-rerunnable because VSCE uses `--skip-duplicate`.
-
-## Clean-Install Acceptance
-
-On clean macOS Apple Silicon and Windows x64 accounts, install the matching VSIX
-from the Marketplace and verify setup, capture, reports, Task Storage, and Task
-Transfer without installing the native app.
-
-For optional native-preview acceptance:
-
-1. Download the platform artifact and verify it against `SHA256SUMS.txt` and
-   `preview-integrity.json`.
-2. Confirm the expected Gatekeeper or SmartScreen warning identifies the build
-   as unsigned, then use the platform's deliberate local override.
-3. Complete onboarding with background capture both disabled and enabled.
-4. Close the app and prove only opted-in background capture remains running.
-5. Use **Unregister Background Agent** and **Reset Local Data** and confirm each
-   affects only Codex Usage-owned state.
-6. On Windows, uninstall with preservation selected, then repeat with local-data
-   removal and verify each choice affects only Codex Usage-owned state.
-
-On both platforms, verify ledger-only range/project/theme changes open zero
-JSONLs, an unchanged capture reads zero source bytes, Capture Usage coalesces,
-partial baseline totals remain visibly incomplete, Task Storage analysis is
-selected-tree-only and cancellable, and Task Transfer preserves its guarded
-one-project contract.
+Tell users with an older native preview to complete explicit service handoff
+before uninstalling it, and to preserve their shared `.codex-usage` data.
