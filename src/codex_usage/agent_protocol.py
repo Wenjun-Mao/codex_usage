@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import tempfile
 from dataclasses import asdict, dataclass
@@ -18,6 +19,7 @@ from codex_usage.agent_private_files import (
 AGENT_API_VERSION = 1
 MAX_API_REQUEST_BYTES = 2 * 1024 * 1024
 _PROCESS_OWNERS = frozenset({"background", "transient", "unknown"})
+_LAUNCH_ID = re.compile(r"[0-9a-f]{48}\Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +34,7 @@ class AgentDescriptor:
     # them, but must not infer that they are safe to stop.
     process_owner: str = "unknown"
     parent_pid: int | None = None
+    launch_id: str | None = None
 
     @classmethod
     def create(
@@ -41,8 +44,9 @@ class AgentDescriptor:
         codex_home: Path,
         process_owner: str,
         parent_pid: int | None,
+        launch_id: str | None = None,
     ) -> "AgentDescriptor":
-        _validate_process_owner(process_owner, parent_pid)
+        _validate_process_owner(process_owner, parent_pid, launch_id)
         return cls(
             pid=os.getpid(),
             api_version=AGENT_API_VERSION,
@@ -52,6 +56,7 @@ class AgentDescriptor:
             codex_home=str(codex_home),
             process_owner=process_owner,
             parent_pid=parent_pid,
+            launch_id=launch_id,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -84,7 +89,8 @@ def read_agent_descriptor(path: Path) -> AgentDescriptor:
     process_owner = str(payload.get("process_owner", "unknown"))
     raw_parent_pid = payload.get("parent_pid")
     parent_pid = _optional_process_id(raw_parent_pid)
-    _validate_process_owner(process_owner, parent_pid)
+    launch_id = payload.get("launch_id")
+    _validate_process_owner(process_owner, parent_pid, launch_id)
     descriptor = AgentDescriptor(
         pid=int(payload["pid"]),
         api_version=int(payload["api_version"]),
@@ -94,6 +100,7 @@ def read_agent_descriptor(path: Path) -> AgentDescriptor:
         codex_home=str(payload["codex_home"]),
         process_owner=process_owner,
         parent_pid=parent_pid,
+        launch_id=launch_id,
     )
     if descriptor.api_version != AGENT_API_VERSION:
         raise ValueError(
@@ -115,10 +122,15 @@ def _optional_process_id(value: object) -> int | None:
     return process_id
 
 
-def _validate_process_owner(process_owner: str, parent_pid: int | None) -> None:
+def _validate_process_owner(
+    process_owner: str, parent_pid: int | None, launch_id: str | None,
+) -> None:
     if process_owner not in _PROCESS_OWNERS:
         raise ValueError("agent descriptor has an unsupported process owner")
     if process_owner == "transient" and parent_pid is None:
         raise ValueError("transient agent descriptors require a parent PID")
     if process_owner != "transient" and parent_pid is not None:
         raise ValueError("only transient agent descriptors may have a parent PID")
+    if launch_id is not None:
+        if process_owner != "transient" or not isinstance(launch_id, str) or not _LAUNCH_ID.fullmatch(launch_id):
+            raise ValueError("only transient agents may have a valid launch ID")

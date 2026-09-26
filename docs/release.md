@@ -1,6 +1,6 @@
-# 2.9.0 VSIX Release Checklist
+# 2.9.1 VSIX Release Checklist
 
-Codex Usage 2.9.0 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.9.1 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
@@ -14,10 +14,14 @@ or a source checkout on the user's machine.
   quota snapshots during downtime may be impossible to reconstruct.
 - A legacy registered Codex Usage LaunchAgent or Windows Scheduled Task remains
   untouched until the user runs **Codex Usage: Retire Legacy Background Service**
-  and confirms. Handoff removes only the known service, waits for its writer to
-  exit, and starts the bundled collector on the same home and ledger. A refusal
-  leaves the service in place. A failure must be visible and recoverable without
-  **Reset Local Data**.
+  and confirms. Handoff removes only the known service, waits for any old
+  background writer to exit, and starts or keeps the bundled collector on the
+  same home and ledger. A refusal leaves the service in place. A failure must
+  be visible and recoverable without **Reset Local Data**. An inactive legacy
+  registration can be retired while VS Code keeps its
+  already owned collector. An unrecognized command or ambiguous macOS launchd
+  state leaves the registration in place. Handoff verifies the selected home,
+  ledger revision, and first capture outcome before reporting success.
 - Both platform VSIX jobs must pass before publication. No DMG, NSIS, Tauri,
   Cargo, signing, or native-preview artifact is part of this release.
 
@@ -84,14 +88,23 @@ contain personal paths, task content, or a local corpus.
 
 ## Legacy Handoff Acceptance
 
+The platform workflow runs `scripts/accept_disposable_handoff.js` on fresh
+macOS and Windows runners after each collector package is built. It uses a
+synthetic Codex home and an inactive OS registration to verify that the real
+supervisor keeps its owned collector, removes the known registration, and
+captures into the same ledger. This gate fails if the runner cannot inspect
+the OS service registry; it must not silently skip the handoff.
+
 Use a disposable `CODEX_HOME` and disposable known-service registration on
 macOS and Windows. Record before/after ledger revision, event count, settings,
 and selected home. Verify refusal leaves registration and writer unchanged;
 confirmation removes only the known registration, waits for the prior writer,
 and yields one VS Code-owned writer. Capture again and verify the same ledger
 advances without duplicate events. Test a missing legacy executable, failed
-unregistration, and recovery instructions. Never unregister a live service or
-modify a live ledger for release testing.
+unregistration, an inactive service with an already owned VS Code collector,
+foreign transient ownership, lookalike service commands, ambiguous launchd
+status, a mismatched home, failed capture, and recovery instructions. Never
+unregister a live service or modify a live ledger for release testing.
 
 Also verify scheduled capture while the webview is closed, clean shutdown when
 the last extension host exits, and resumed capture against the same ledger on
@@ -100,7 +113,15 @@ continuous coverage.
 
 ## Non-Publishing Platform Gate
 
-Push the candidate commit to `main`, then dispatch:
+Push the candidate branch and dispatch the workflow from that branch before
+review. For the 2.9.1 patch candidate:
+
+```bash
+gh workflow run package-vsix.yml --ref codex/2.9.0-extension-only -f publish=false
+```
+
+After an approved candidate is merged, dispatch again from `main` before
+tagging:
 
 ```bash
 gh workflow run package-vsix.yml --ref main -f publish=false
@@ -113,13 +134,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.9.0`, both
+Confirm Python and extension metadata and lockfiles all say `2.9.1`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.9.0`:
+Only after the non-publishing platform gate succeeds, create and push `v2.9.1`:
 
 ```bash
-git tag v2.9.0
-git push origin v2.9.0
+git tag v2.9.1
+git push origin v2.9.1
 ```
 
 The tag reruns all platform gates and publishes

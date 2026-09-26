@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.9.1 - 2026-09-25
+
+- Let an explicit legacy-service handoff retire an inactive registration while
+  keeping the collector already owned by VS Code.
+- Restrict retirement to known legacy commands, preserve the macOS registration
+  when launchd state is ambiguous, and verify the selected home and first
+  capture before reporting success.
+- Identify the VS Code-owned collector by its launch ID so a packaged
+  PyInstaller child process remains eligible for safe handoff.
+
 ## 2.9.0 - 2026-09-25
 
 - Retire the separate macOS and Windows native preview. Ship only the two

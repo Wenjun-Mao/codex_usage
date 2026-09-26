@@ -4,6 +4,7 @@ const path = require("node:path");
 const { decorateUsageReport, renderStorageReport } = require(path.join(
   __dirname, "../extensions/vscode/out/reportHtml.js",
 ));
+const { version } = require(path.join(__dirname, "../extensions/vscode/package.json"));
 
 const [usageInput, outputDirectory] = process.argv.slice(2);
 if (!usageInput || !outputDirectory) {
@@ -36,7 +37,7 @@ const storage = {
 for (const theme of ["day", "night"]) {
   const state = {
     range: "All", theme, projectCount: 0, loadedSeconds: 0.04,
-    cacheHit: true, version: "2.9.0", view: "usage",
+    cacheHit: true, version, view: "usage",
     lastCaptureAt: "synthetic · 2026-09-02 16:00 UTC",
   };
   fs.writeFileSync(path.join(outputDirectory, `usage-${theme}.html`),

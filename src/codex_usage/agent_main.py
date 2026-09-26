@@ -30,6 +30,7 @@ def build_agent_parser() -> argparse.ArgumentParser:
     parser.add_argument("--background", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--port", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--parent-pid", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--launch-id", help=argparse.SUPPRESS)
     parser.add_argument("--settings-file", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--capture-once", action="store_true", help=argparse.SUPPRESS)
     controls = parser.add_mutually_exclusive_group()
@@ -46,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.parent_pid is not None and args.parent_pid <= 0:
         parser.error("--parent-pid must be greater than zero")
+    if args.launch_id is not None and args.parent_pid is None:
+        parser.error("--launch-id requires --parent-pid")
     if args.uninstall_service:
         return _print_control_result(uninstall_background_agent().to_dict())
     if args.service_status:
@@ -70,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         settings_file=args.settings_file,
         process_owner="transient" if args.parent_pid is not None else "background",
         parent_pid=args.parent_pid,
+        launch_id=args.launch_id,
     )
     try:
         agent.start(port=args.port)

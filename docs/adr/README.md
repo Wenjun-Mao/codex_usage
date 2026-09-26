@@ -61,3 +61,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0046: Model Category Valuations And Standard Credit Estimates](0046-model-category-valuations-and-standard-credits.md)
 
 - [0047: Extension-Only Distribution](0047-extension-only-distribution.md)
+- [0048: Transient Collector Launch Identity](0048-transient-collector-launch-identity.md)

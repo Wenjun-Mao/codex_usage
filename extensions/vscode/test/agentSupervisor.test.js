@@ -5,6 +5,7 @@ const test = require("node:test");
 
 const { AgentUnavailableError } = require("../out/agentClient");
 const { AgentSupervisor } = require("../out/agentSupervisor");
+const TEST_LAUNCH_ID = "a".repeat(48);
 
 function childForControl(stdout = "") {
   const child = new EventEmitter();
@@ -26,7 +27,7 @@ function childForAgent(pid = 9876) {
   return child;
 }
 
-function collector({ identity, pid, parentPid, owner = "transient", post = async () => ({ stopping: true }) }) {
+function collector({ identity, pid, parentPid, launchId = TEST_LAUNCH_ID, owner = "transient", post = async () => ({ stopping: true }) }) {
   return {
     identity,
     processId: pid,
@@ -35,8 +36,8 @@ function collector({ identity, pid, parentPid, owner = "transient", post = async
     isSameAgent(other) {
       return this.identity === other.identity;
     },
-    isTransientOwnedBy(expectedParentPid, expectedPid) {
-      return owner === "transient" && parentPid === expectedParentPid && pid === expectedPid;
+    isTransientOwnedBy(expectedParentPid, expectedLaunchId) {
+      return owner === "transient" && parentPid === expectedParentPid && launchId === expectedLaunchId;
     },
   };
 }
@@ -50,6 +51,7 @@ test("a stale descriptor starts one parent-bound collector and waits for its aut
     getCodexHome: async () => "/tmp/codex-home",
     resolveExecutable: async () => "/tmp/codex-usage-agent",
     parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
     discover: async () => {
       discoveryAttempts += 1;
       if (discoveryAttempts < 3) throw new AgentUnavailableError("stale descriptor");
@@ -57,7 +59,7 @@ test("a stale descriptor starts one parent-bound collector and waits for its aut
     },
     spawn: (_command, args) => {
       calls.push([...args]);
-      return args.includes("--set-codex-home") ? childForControl() : childForAgent(9876);
+      return args.includes("--set-codex-home") ? childForControl() : childForAgent(9875);
     },
     sleep: async () => {},
   });
@@ -66,7 +68,9 @@ test("a stale descriptor starts one parent-bound collector and waits for its aut
   assert.equal(calls.filter((args) => args.includes("--parent-pid")).length, 1);
   assert.deepEqual(calls.at(-1), [
     "--settings-file", "/tmp/codex-usage-agent-settings.json", "--parent-pid", "4321",
+    "--launch-id", TEST_LAUNCH_ID,
   ]);
+  assert.equal(supervisor.managedClient, client);
   await supervisor.acquire();
   assert.equal(calls.filter((args) => args.includes("--parent-pid")).length, 1);
 });
@@ -91,16 +95,18 @@ test("legacy handoff waits for the old writer and verifies the same ledger befor
   let removed = false;
   let discovery = 0;
   let captured = false;
+  const home = path.resolve("/tmp/codex-home");
   const old = collector({ identity: "old", pid: 3000, owner: "background" });
-  old.get = async () => ({ ledger_revision: 42 });
+  old.get = async () => ({ codex_home: home, ledger_revision: 42 });
   const owned = collector({ identity: "owned", pid: 4000, parentPid: 4321 });
-  owned.get = async () => ({ ledger_revision: captured ? 43 : 42 });
+  owned.get = async () => ({ codex_home: home, ledger_revision: captured ? 43 : 42 });
   owned.post = async () => { captured = true; return { outcome: "success" }; };
   const supervisor = new AgentSupervisor({
     settingsFile: "/tmp/settings.json",
     getCodexHome: async () => "/tmp/codex-home",
     resolveExecutable: async () => "/tmp/agent",
     parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
     discover: async () => {
       discovery += 1;
       if (!removed) return old;
@@ -123,7 +129,119 @@ test("legacy handoff waits for the old writer and verifies the same ledger befor
   assert.equal(result.codexHome, path.resolve("/tmp/codex-home"));
   assert.equal(captured, true);
   assert.ok(commands.includes("--uninstall-service"));
-  assert.ok(commands.includes("4321"));
+  assert.ok(commands.includes(TEST_LAUNCH_ID));
+});
+
+test("inactive legacy registration retires while the already owned collector keeps running", async () => {
+  const home = path.resolve("/tmp/codex-home");
+  const commands = [];
+  let removed = false;
+  let discovery = 0;
+  let captured = false;
+  const owned = collector({ identity: "owned", pid: 4000, parentPid: 4321 });
+  owned.get = async () => ({ codex_home: home, ledger_revision: captured ? 16 : 15 });
+  owned.post = async (requestPath) => {
+    assert.equal(requestPath, "/v1/capture");
+    captured = true;
+    return { outcome: "success" };
+  };
+  const supervisor = new AgentSupervisor({
+    settingsFile: "/tmp/settings.json",
+    getCodexHome: async () => home,
+    resolveExecutable: async () => "/tmp/agent",
+    parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
+    discover: async () => {
+      discovery += 1;
+      if (discovery === 1) throw new AgentUnavailableError("not running yet");
+      return owned;
+    },
+    spawn: (_command, args) => {
+      const operation = args.at(-1);
+      commands.push(operation);
+      if (operation === "--service-status") {
+        return childForControl(JSON.stringify({ supported: true, installed: !removed, recognized: !removed, detail: "legacy" }));
+      }
+      if (operation === "--uninstall-service") removed = true;
+      return args.includes("--parent-pid") ? childForAgent(4000) : childForControl();
+    },
+    sleep: async () => {},
+  });
+  await supervisor.acquire();
+  const result = await supervisor.handoffLegacyService();
+  assert.equal(result.ledgerRevision, 16);
+  assert.equal(captured, true);
+  assert.equal(commands.filter((operation) => operation === TEST_LAUNCH_ID).length, 1);
+  assert.equal(commands.filter((operation) => operation === "--uninstall-service").length, 1);
+});
+
+test("a foreign transient collector leaves the legacy registration untouched", async () => {
+  const commands = [];
+  const foreign = collector({ identity: "foreign", pid: 4000, parentPid: 9999 });
+  const supervisor = new AgentSupervisor({
+    settingsFile: "/tmp/settings.json",
+    getCodexHome: async () => "/tmp/codex-home",
+    resolveExecutable: async () => "/tmp/agent",
+    parentPid: 4321,
+    discover: async () => foreign,
+    spawn: (_command, args) => {
+      commands.push(args.at(-1));
+      return childForControl(JSON.stringify({ supported: true, installed: true, recognized: true, detail: "legacy" }));
+    },
+  });
+  await assert.rejects(supervisor.handoffLegacyService(), /another client/i);
+  assert.deepEqual(commands, ["--service-status"]);
+});
+
+test("handoff refuses a mismatched selected home before service removal", async () => {
+  const commands = [];
+  const old = collector({ identity: "old", pid: 3000, owner: "background" });
+  old.get = async () => ({ codex_home: "/tmp/another-home", ledger_revision: 42 });
+  const supervisor = new AgentSupervisor({
+    settingsFile: "/tmp/settings.json",
+    getCodexHome: async () => "/tmp/codex-home",
+    resolveExecutable: async () => "/tmp/agent",
+    discover: async () => old,
+    spawn: (_command, args) => {
+      commands.push(args.at(-1));
+      return childForControl(JSON.stringify({ supported: true, installed: true, recognized: true, detail: "legacy" }));
+    },
+  });
+  await assert.rejects(supervisor.handoffLegacyService(), /does not match the selected CODEX_HOME/);
+  assert.deepEqual(commands, ["--service-status"]);
+});
+
+test("handoff reports a failed capture instead of claiming success", async () => {
+  const home = path.resolve("/tmp/codex-home");
+  let removed = false;
+  let discovery = 0;
+  const owned = collector({ identity: "owned", pid: 4000, parentPid: 4321 });
+  owned.get = async () => ({ codex_home: home, ledger_revision: 42 });
+  owned.post = async () => ({ outcome: "failed", error: "disposable fixture failed" });
+  const supervisor = new AgentSupervisor({
+    settingsFile: "/tmp/settings.json",
+    getCodexHome: async () => home,
+    resolveExecutable: async () => "/tmp/agent",
+    parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
+    discover: async () => {
+      discovery += 1;
+      if (discovery === 1) throw new AgentUnavailableError("not running yet");
+      return owned;
+    },
+    spawn: (_command, args) => {
+      const operation = args.at(-1);
+      if (operation === "--service-status") {
+        return childForControl(JSON.stringify({ supported: true, installed: !removed, recognized: !removed, detail: "legacy" }));
+      }
+      if (operation === "--uninstall-service") removed = true;
+      return args.includes("--parent-pid") ? childForAgent(4000) : childForControl();
+    },
+    sleep: async () => {},
+  });
+  await supervisor.acquire();
+  await assert.rejects(supervisor.handoffLegacyService(), /first VS Code capture failed: disposable fixture failed/);
+  assert.equal(removed, true);
 });
 
 test("changing CODEX_HOME validates before persisting the selected home", async () => {
@@ -199,6 +317,7 @@ test("a replacement collector at the same home is never treated as the spawned t
     getCodexHome: async () => "/tmp/codex-home",
     resolveExecutable: async () => "/tmp/codex-usage-agent",
     parentPid: 4321,
+    createLaunchId: () => TEST_LAUNCH_ID,
     discover: async () => {
       discoveryAttempts += 1;
       if (discoveryAttempts === 1) throw new AgentUnavailableError("stale descriptor");

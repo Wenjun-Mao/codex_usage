@@ -116,6 +116,9 @@ jobs:
       - name: Verify packaged macOS VSIX
         run: uv run python scripts/verify-vsix-archive.py output/releases/codex-usage-companion-darwin-arm64.vsix darwin-arm64
 
+      - name: Accept disposable macOS legacy handoff
+        run: node scripts/accept_disposable_handoff.js
+
       - name: Install visual test browsers
         run: uv run playwright install chromium firefox webkit
 
@@ -169,6 +172,9 @@ jobs:
 
       - name: Verify packaged Windows VSIX
         run: uv run python scripts/verify-vsix-archive.py output/releases/codex-usage-companion-win32-x64.vsix win32-x64
+
+      - name: Accept disposable Windows legacy handoff
+        run: node scripts/accept_disposable_handoff.js
 
       - name: Upload Windows VSIX
         uses: actions/upload-artifact@v6

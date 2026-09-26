@@ -31,8 +31,14 @@ capture cannot always fill.
 Provide a Command Palette handoff for the known legacy Codex Usage LaunchAgent
 or Windows Scheduled Task. Detection and removal require explicit confirmation;
 normal activation and updates never unregister a service. Handoff retains the
-same `CODEX_HOME` and ledger, waits for the old writer to exit, then starts the
-bundled collector. Failure stays visible and recoverable without data reset.
+same `CODEX_HOME` and ledger, waits for any old background writer to exit, then
+starts or keeps the bundled collector. Failure stays visible and recoverable
+without data reset.
+If VS Code already owns the parent-bound collector because the legacy service
+was inactive, handoff keeps that writer and removes only the registration.
+Foreign transient collectors never authorize removal. The before/after status
+must identify the selected `CODEX_HOME`, and a successful first capture is
+required before handoff reports success.
 
 ## Rejected Alternatives
 
@@ -54,3 +60,8 @@ archive contents, and extension visual gates on supported platforms. Marketplace
 publication waits for both VSIX jobs. Native DMG/NSIS, Tauri, Cargo, and signing
 checks leave the release workflow. Handoff acceptance uses disposable data and
 known-service registrations; no release test touches a live ledger or service.
+Legacy registration identity is limited to the exact packaged-agent names and
+Python module invocation emitted by prior releases. On macOS, a failed
+`launchctl bootout` permits plist removal only when a successful, parseable
+`launchctl print gui/<uid>` proves the service label absent; ambiguous launchd
+state keeps the registration for recovery.
