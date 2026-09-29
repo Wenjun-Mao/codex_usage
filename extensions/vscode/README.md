@@ -27,7 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.9.1.
+Linux are not supported in 2.9.2.
 
 ## What You Can Do
 

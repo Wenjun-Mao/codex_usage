@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.9.2 - 2026-09-29
+
+- Price exact GPT-6.1 Sol usage from its published September 29 launch using
+  effective-dated API-equivalent and Standard Codex credit rates. Keep earlier
+  usage unpriced and GPT-6 Sol's distinct cached-input rates unchanged.
+- Show estimated credits to two decimal places in Model Details while keeping
+  small positive estimates visible and stored valuations unchanged.
+
 ## 2.9.1 - 2026-09-25
 
 - Let an explicit legacy-service handoff retire an inactive registration while

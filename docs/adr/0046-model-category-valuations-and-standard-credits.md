@@ -36,6 +36,11 @@ about the exact rollout instant. Earlier activity stays unpriced. Fast is 2.5x
 Standard where supported, but the ledger cannot identify it, so the report
 labels its values Standard estimates rather than claiming actual billed credits.
 
+GPT-6.1 Sol follows the same effective-date policy from its September 29,
+2026 announcement. Its published Standard rates reduce cached input to $0.10
+and 2.5 credits per million tokens while retaining separate model identity;
+earlier GPT-6 Sol usage keeps its own $0.20 and 5-credit cached-input rates.
+
 ## Rejected Alternatives
 
 - Adding all categories as wide columns would make Model Details difficult to
@@ -54,3 +59,6 @@ events, missing rates, and the disclosure structure.
 
 Sources: [Codex credit rate card](https://learn.chatgpt.com/docs/pricing),
 [2026-09-22 launch announcement](https://learn.chatgpt.com/docs/changelog).
+GPT-6.1 Sol: [model pricing](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
+[credit rates](https://learn.chatgpt.com/docs/pricing), and
+[2026-09-29 launch announcement](https://developers.openai.com/api/docs/changelog).

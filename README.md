@@ -44,7 +44,7 @@ from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
 packages each include the matching local collector; the native app, Python,
 `uv`, and this repository are not required.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.9.1 release.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.9.2 release.
 
 ## First Run And Legacy Service Handoff
 
@@ -149,16 +149,17 @@ Pricing is bundled and effective-dated; the app makes no live pricing request.
 Image pricing is similarly effective-dated and applies only when retained
 upstream usage and model evidence support it; image prompts, paths, bytes, and
 contents are not stored in the ledger.
-The bundled table recognizes GPT-6 Astra from September 4 and exact GPT-6 Sol
-and Luna IDs from their September 22, 2026 launch. It applies published
-standard API input, cached input, cache-write, and output rates, including the
-full-request long-context multiplier above 272K input tokens. Earlier Sol and
-Luna activity remains unpriced in USD. Their Codex credit rates have not been
-published, so those tokens remain visibly unpriced in credit estimates.
-See the [Sol model page](https://developers.openai.com/api/docs/models/gpt-6-sol),
-[Luna model page](https://developers.openai.com/api/docs/models/gpt-6-luna),
-and [API pricing](https://developers.openai.com/api/docs/pricing) for the rates.
-Other credit estimates use published standard token rates; Codex Usage does not infer
+The bundled table recognizes GPT-6 Astra from September 4, GPT-6 Sol and Luna
+from September 22, and exact GPT-6.1 Sol from September 29, 2026. It applies
+published Standard API input, cached input, cache-write, and output rates,
+including the full-request long-context multiplier above 272K input tokens.
+Earlier usage of each model remains unpriced. GPT-6.1 Sol's cached input is
+priced at $0.10 per million tokens, half the GPT-6 Sol rate; its published
+Standard credit rate is likewise 2.5 rather than 5 credits per million cached
+tokens. See the [GPT-6.1 Sol model page](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
+[API pricing](https://developers.openai.com/api/docs/pricing), and
+[Codex credit rates](https://learn.chatgpt.com/docs/pricing).
+Credit estimates use published Standard token rates; Codex Usage does not infer
 plan-specific or Fast-mode multipliers because task records do not identify
 them reliably. Estimates are not an OpenAI invoice and do not know the price of
 your plan.

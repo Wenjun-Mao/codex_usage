@@ -5,7 +5,11 @@ import pytest
 
 from codex_usage.aggregation import aggregate_records
 from codex_usage.models import TokenUsage, UsageRecord
-from codex_usage.report_tables import render_aggregate_table, render_model_details_table
+from codex_usage.report_tables import (
+    _partial_amount,
+    render_aggregate_table,
+    render_model_details_table,
+)
 
 
 LAUNCH = datetime(2026, 9, 22, tzinfo=UTC)
@@ -85,6 +89,11 @@ def test_categories_conserve_event_valuations_across_context_and_date() -> None:
     assert 'aria-label="Token and price categories for gpt-6-sol"' in model_html
     assert "ordinary input contribution, not a separate surcharge" in model_html
     assert "Fast usage cannot be identified" in model_html
+    assert (
+        f'{credits.total_credits:,.2f} '
+        '<span class="model-partial">partial</span></td>'
+    ) in model_html
+    assert f'{credits.total_credits:,.6f}</td>' not in model_html
 
     hourly_html = render_aggregate_table(
         "Hourly Details", rows, section_id="hourly-details"
@@ -107,3 +116,11 @@ def test_unknown_model_categories_do_not_display_price_zero() -> None:
     assert model_html.count('aria-label="No published rate"') == 14
     assert "No Credit Rate</th>" in model_html
     assert "105</td>" in model_html
+
+
+def test_tiny_estimated_credit_remains_visible_when_rounded() -> None:
+    assert _partial_amount(0.001, 0, 1, "", decimals=2) == "&lt;0.01"
+    assert _partial_amount(0, 0, 1, "", decimals=2) == "0.00"
+    assert _partial_amount(0, 1, 1, "", decimals=2) == (
+        '<span aria-label="No published rate">—</span>'
+    )

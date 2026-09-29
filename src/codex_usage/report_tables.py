@@ -115,7 +115,7 @@ def _model_rows_html(row: AggregateRow) -> str:
         f'<th scope="row">{html.escape(category)}</th>'
         f'<td class="num">{format_int(tokens)}</td>'
         f'<td class="num">{_partial_amount(amount, missing, tokens, "$")}</td>'
-        f'<td class="num">{_partial_amount(credit_amount, credit_missing, tokens, "")}</td>'
+        f'<td class="num">{_partial_amount(credit_amount, credit_missing, tokens, "", decimals=2)}</td>'
         "</tr>"
         for category, tokens, amount, credit_amount, missing, credit_missing in categories
     )
@@ -124,7 +124,7 @@ def _model_rows_html(row: AggregateRow) -> str:
         f'<th scope="row">{label}</th>'
         f'<td class="num">{format_int(usage.total_tokens)}</td>'
         f'<td class="num">{_partial_amount(cost.total_usd, cost.unpriced_tokens, usage.total_tokens, "$")}</td>'
-        f'<td class="num">{_partial_amount(credits.total_credits, credits.unpriced_tokens, usage.total_tokens, "")}</td>'
+        f'<td class="num">{_partial_amount(credits.total_credits, credits.unpriced_tokens, usage.total_tokens, "", decimals=2)}</td>'
         f'<td class="num">{format_int(cost.unpriced_tokens)}</td>'
         f'<td class="num">{format_int(credits.unpriced_tokens)}</td></tr>'
         '<tr class="model-breakdown-row"><td colspan="6">'
@@ -144,12 +144,14 @@ def _model_rows_html(row: AggregateRow) -> str:
     )
 
 
-def _partial_amount(amount: float, missing: int, tokens: int, prefix: str) -> str:
+def _partial_amount(
+    amount: float, missing: int, tokens: int, prefix: str, *, decimals: int = 6
+) -> str:
     if tokens > 0 and missing >= tokens:
         return '<span aria-label="No published rate">—</span>'
-    value = f"{amount:,.6f}" if amount or not missing else "0.000000"
-    if amount and amount < 0.0000005:
-        value = "&lt;0.000001"
+    value = f"{amount:,.{decimals}f}"
+    if amount > 0 and value == f"{0:.{decimals}f}":
+        value = f"&lt;{10 ** -decimals:.{decimals}f}"
     suffix = ' <span class="model-partial">partial</span>' if missing else ""
     return f"{prefix}{value}{suffix}"
 

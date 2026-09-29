@@ -12,7 +12,7 @@ from codex_usage.models import TokenUsage
 from codex_usage.pricing_breakdowns import CostBreakdown, CreditBreakdown
 
 
-PRICING_AS_OF = "2026-09-22"
+PRICING_AS_OF = "2026-09-29"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
@@ -31,6 +31,7 @@ GPT_5_6_SOL_API_REDUCTION_EFFECTIVE_FROM = datetime(
 )
 GPT_6_ASTRA_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
 GPT_6_SOL_LUNA_API_EFFECTIVE_FROM = datetime(2026, 9, 22, tzinfo=UTC)
+GPT_6_1_SOL_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 29, tzinfo=UTC)
 GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
 
 
@@ -155,6 +156,15 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = tuple(
     for row in BEDROCK_API_RATE_ROWS
 ) + (
     _effective_rate(
+        "gpt-6.1-sol",
+        input_per_1m=2.00,
+        cached_input_per_1m=0.10,
+        output_per_1m=10.00,
+        cache_write_input_per_1m=2.50,
+        effective_from=GPT_6_1_SOL_PRICING_EFFECTIVE_FROM,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
+    ),
+    _effective_rate(
         "gpt-6-sol",
         input_per_1m=2.00,
         cached_input_per_1m=0.20,
@@ -258,6 +268,13 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = tuple(
 )
 
 CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate(
+        "gpt-6.1-sol",
+        input_per_1m=50.0,
+        cached_input_per_1m=2.5,
+        output_per_1m=250.0,
+        effective_from=GPT_6_1_SOL_PRICING_EFFECTIVE_FROM,
+    ),
     _effective_rate(
         "gpt-6-sol",
         input_per_1m=50.0,

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.9.2 - 2026-09-29
+
+- Recognize GPT-6.1 Sol with its published API-equivalent and Standard credit
+  rates from launch; retain distinct GPT-6 Sol pricing and unpriced prelaunch
+  history.
+- Round Model Details estimated credits to two decimal places without changing
+  ledger values or cost calculations.
+
 ## 2.9.1 - 2026-09-25
 
 - Complete explicit legacy-service handoff when VS Code already owns the
