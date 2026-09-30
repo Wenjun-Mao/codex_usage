@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.9.3 - 2026-09-29
+
+- Restore Plan Allowance capture for system and user installs of the current
+  ChatGPT-bundled Codex CLI on macOS.
+- Show whether a quota meter is current, last known, or partially refreshed,
+  with the successful observation's local date and time.
+
 ## 2.9.2 - 2026-09-29
 
 - Recognize GPT-6.1 Sol with its published API-equivalent and Standard credit

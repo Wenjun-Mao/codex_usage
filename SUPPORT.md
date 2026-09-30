@@ -10,6 +10,8 @@ Include:
 - Operating system and architecture: macOS Apple Silicon or Windows x64.
 - Configured capture interval and whether VS Code remained open.
 - Last capture, pending files/bytes, baseline coverage, and stale-source state.
+- Plan Allowance reading label and local observation time if the displayed
+  percentage differs from the Codex app.
 - The affected workflow: Usage, Task Storage, Task Transfer, onboarding, or
   background capture.
 - Relevant redacted collector/extension output and reproducible steps.

@@ -4,7 +4,7 @@
 
 Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24,
 indexed report calculation on 2026-09-25, and visible reading freshness for
-2.9.2 on 2026-09-29.
+2.9.3 on 2026-09-29.
 
 ## Context
 

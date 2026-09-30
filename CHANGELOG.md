@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.9.3 - 2026-09-29
+
+- Fix Plan Allowance capture with the current ChatGPT-bundled Codex CLI layout
+  on macOS, preserving override, legacy, PATH, and Windows discovery.
+- Mark quota readings current, last known, or partially refreshed and show
+  their observation time in the report's local timezone.
+
 ## 2.9.2 - 2026-09-29
 
 - Price exact GPT-6.1 Sol usage from its published September 29 launch using

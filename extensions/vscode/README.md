@@ -27,7 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.9.2.
+Linux are not supported in 2.9.3.
 
 ## What You Can Do
 
@@ -59,7 +59,9 @@ Linux are not supported in 2.9.2.
 The Companion's collector is parent-bound: automatic capture stops when VS Code
 closes. It continues while VS Code is open, even if the dashboard panel is
 closed. Quota snapshots missed while VS Code is closed cannot always be
-reconstructed later. The default interval is 15 minutes.
+reconstructed later. The Plan Allowance meter marks each reading current,
+partially refreshed, or last known and shows its local observation time. The
+default interval is 15 minutes.
 
 ## Commands
 
