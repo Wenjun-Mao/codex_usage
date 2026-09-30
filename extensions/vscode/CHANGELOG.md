@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.9.4 - 2026-09-29
+
+- Fix false Previous window estimates caused by missing plan metadata within
+  the current quota cycle; preserve real resets and provisional confidence.
+- Refresh cached allowance calculations and report HTML after upgrading.
+
 ## 2.9.3 - 2026-09-29
 
 - Restore Plan Allowance capture for system and user installs of the current

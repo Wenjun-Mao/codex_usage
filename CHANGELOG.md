@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.9.4 - 2026-09-29
+
+- Keep Plan Allowance cycles continuous when observations omit plan metadata,
+  preserving raw evidence, real reset boundaries, and confidence thresholds.
+- Invalidate derived allowance and rendered report caches so existing ledgers
+  receive the corrected current-window estimate.
+
 ## 2.9.3 - 2026-09-29
 
 - Fix Plan Allowance capture with the current ChatGPT-bundled Codex CLI layout
