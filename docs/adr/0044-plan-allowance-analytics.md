@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24 and
-indexed report calculation on 2026-09-25.
+Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24,
+indexed report calculation on 2026-09-25, and visible reading freshness for
+2.9.2 on 2026-09-29.
 
 ## Context
 
@@ -23,6 +24,9 @@ diagnostic and does not fail ordinary usage capture. The selected CODEX_HOME is
 passed explicitly. Retain only plan, bucket, slot, numeric usage/reset metadata,
 reset-credit count, and lifetime-token coverage diagnostics. Never persist
 account identity, authentication, prompts, response content, or raw RPC frames.
+Executable selection uses the shared resolver recorded in
+[ADR 0016](0016-register-imported-tasks-through-codex.md), including the current
+nested macOS desktop layout and its legacy and PATH fallbacks.
 Protocol reference: https://learn.chatgpt.com/docs/app-server.
 
 Ledger schema 3 and parser cache schema 10 add quota tables without rebuilding
@@ -93,6 +97,13 @@ and exposes reset-window and capture details in Day/Night and narrow layouts.
 Each active bucket's native meter depicts the remaining allowance. Its adjacent
 copy continues to show both used and remaining percentages, while the accessible
 label and value text describe the remaining percentage.
+The meter also labels the reading as current, last known, or partially refreshed
+and shows the successful observation's local date and time. A failed newest
+probe keeps that last successful value visibly labeled as last known; when no
+successful quota reading exists, the report shows an explicit empty state.
+Capture does not infer a replacement percentage from token totals or synthesize
+missing history. Renderer changes advance the report-render revision so cached
+HTML receives the freshness label.
 Probe timestamps, recovery counts, fit diagnostics, and allowance history stay
 in one collapsed diagnostics disclosure. History includes valid priced fits
 from ongoing, completed, and plan-change-ended windows, including provisional

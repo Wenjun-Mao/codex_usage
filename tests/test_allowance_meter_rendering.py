@@ -29,6 +29,8 @@ def test_active_bucket_meter_represents_remaining_allowance_and_keeps_theme_styl
 
     assert 'value="83"' in markup
     assert 'aria-label="codex · 7 days percentage remaining"' in markup
+    assert 'aria-describedby="allowance-observation-0"' in markup
+    assert 'class="muted allowance-observation">Current reading ·' in markup
     assert 'aria-valuetext="83% remaining"' in markup
     assert "17% used · 83% remaining" in markup
     assert 'role="progressbar"' not in markup and 'role="meter"' not in markup
@@ -40,3 +42,4 @@ def test_active_bucket_meter_represents_remaining_allowance_and_keeps_theme_styl
     assert "background: var(--accent, var(--astra" in css
     assert "background: var(--surface-soft, var(--soft" in css
     assert ".plan-allowance summary:focus-visible" in css
+    assert ".allowance-observation {" in css

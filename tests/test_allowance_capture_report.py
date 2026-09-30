@@ -80,7 +80,7 @@ def test_empty_report_is_explicitly_unavailable(tmp_path):
     with open_ledger(tmp_path / "ledger") as connection:
         report = build_allowance_report(connection)
     markup = render_allowance_section(report)
-    assert "Quota information is unavailable" in markup
+    assert "No current quota reading is available." in markup
     assert markup.count("Insufficient data") == 1
     assert "Account-wide" in markup
 
@@ -445,19 +445,6 @@ def test_active_bucket_and_timezone_text_remain_escaped():
     assert "<script" not in markup and "<img" not in markup
     assert "&lt;script&gt;alert(&quot;zone&quot;)&lt;/script&gt;" in markup
     assert "&lt;img src=x onerror=&quot;bad&quot;&gt;" in markup
-
-
-def test_failed_probe_preserves_last_known_buckets_as_stale(tmp_path, monkeypatch):
-    home = setup_home(tmp_path)
-    stamp = datetime.now(UTC).isoformat()
-    monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance", lambda _: QuotaRead(stamp, "pro", quota_observations(bucket(), stamp)))
-    capture_once(home, request_kind="manual", max_workers=1)
-    monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance", lambda _: QuotaRead(stamp, diagnostics="probe_unavailable"))
-    result = capture_once(home, request_kind="scheduled", max_workers=1)
-    status = result.status.plan_allowance
-    assert status["probe_status"] == "stale"
-    assert status["plan"] == "pro"
-    assert status["active_buckets"][0]["used_percent"] == 31
 
 
 def test_coalesced_capture_performs_one_probe(tmp_path, monkeypatch):

@@ -129,12 +129,34 @@ def _local_reset(timestamp, timezone):
     return value.isoformat(timespec="minutes"), display
 
 
+def _local_observation(timestamp, timezone):
+    if not isinstance(timestamp, str) or not timestamp:
+        return "", "time unavailable"
+    try:
+        value = datetime.fromisoformat(timestamp)
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        local = value.astimezone(timezone)
+        display = f"{local:%Y-%m-%d %H:%M} {local.tzname() or 'local time'}"
+    except (OverflowError, TypeError, ValueError):
+        return "", "time unavailable"
+    return value.isoformat(timespec="seconds"), display
+
+
+def _reading_label(probe_status):
+    return {
+        "fresh": "Current reading",
+        "stale": "Last known reading",
+        "partial": "Partially refreshed reading",
+    }.get(probe_status, "Last known reading")
+
+
 def render_allowance_section(report, *, timezone: tzinfo = UTC):
     if report is None:
         return ""
     status = report["status"]
     buckets = []
-    for bucket in status["active_buckets"]:
+    for index, bucket in enumerate(status["active_buckets"]):
         remaining_percent = 100 - bucket["used_percent"]
         reset = bucket["resets_at"]
         if reset is not None:
@@ -145,6 +167,19 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
             reset_markup = "Unavailable"
         identity = (f'{text(bucket["limit_id"])} · '
                     f'{text(duration_label(bucket["duration_minutes"]))}')
+        observation_id = f"allowance-observation-{index}"
+        observed_at, observed_display = _local_observation(
+            bucket.get("timestamp") or status.get("last_observed_at"), timezone
+        )
+        observation_time = (
+            f'<time datetime="{text(observed_at)}">{text(observed_display)}</time>'
+            if observed_at else text(observed_display)
+        )
+        observation_markup = (
+            f'<p id="{observation_id}" class="muted allowance-observation">'
+            f'{text(_reading_label(status.get("probe_status")))} · '
+            f'{observation_time}</p>'
+        )
         buckets.append(
             '<div class="allowance-bucket">'
             '<div class="allowance-bucket-summary">'
@@ -155,7 +190,9 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
             '</div>'
             f'<meter min="0" max="100" value="{remaining_percent:g}" '
             f'aria-label="{identity} percentage remaining" '
-            f'aria-valuetext="{remaining_percent:g}% remaining"></meter></div>'
+            f'aria-describedby="{observation_id}" '
+            f'aria-valuetext="{remaining_percent:g}% remaining"></meter>'
+            f'{observation_markup}</div>'
         )
     qualified = report["qualified"]
     details = []
@@ -207,7 +244,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
         '<section class="card plan-allowance" id="plan-allowance" aria-labelledby="plan-allowance-title">'
         '<h2 id="plan-allowance-title">Plan Allowance</h2>'
         '<p class="muted">Account-wide · unaffected by project and date filters.</p>'
-        f'<div class="allowance-buckets">{"".join(buckets) or "<p>Quota information is unavailable.</p>"}</div>'
+        f'<div class="allowance-buckets">{"".join(buckets) or "<p>No current quota reading is available.</p>"}</div>'
         '<h3>Observed API-equivalent value per 100% allowance</h3>'
         f'<div class="allowance-economics">{economic_summary(headline, latest=latest, show_series=show_headline_series, is_previous=headline_previous)}</div>'
         '<p class="muted">Workload-specific local estimate, not cash or a contractual allowance. '
@@ -234,6 +271,8 @@ def allowance_css():
 .plan-allowance { margin: 18px 0; padding: 20px; border: 1px solid var(--border, var(--line)); border-radius: 12px; overflow-wrap: anywhere; }
 .allowance-buckets { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(320px,100%),1fr)); gap: 10px 18px; }
 .allowance-bucket { min-width: 0; }
+.allowance-observation { margin: 4px 0 0; min-width: 0; overflow-wrap: anywhere; }
+.allowance-observation time { font-variant-numeric: tabular-nums; }
 .allowance-bucket-summary { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; row-gap: 3px; }
 .allowance-bucket-summary > * { min-width: 0; margin: 0; }
 .allowance-bucket-usage { font-weight: 600; }

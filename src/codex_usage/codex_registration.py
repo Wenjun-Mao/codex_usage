@@ -44,15 +44,7 @@ def discover_codex_executables() -> tuple[str, ...]:
     if override:
         candidates.append(override)
     if sys.platform == "darwin":
-        candidates.extend(
-            (
-                "/Applications/ChatGPT.app/Contents/Resources/codex",
-                str(
-                    Path.home()
-                    / "Applications/ChatGPT.app/Contents/Resources/codex"
-                ),
-            )
-        )
+        candidates.extend(_macos_codex_executables())
     elif os.name == "nt":
         local = Path(os.environ.get("LOCALAPPDATA", ""))
         if str(local):
@@ -70,6 +62,26 @@ def discover_codex_executables() -> tuple[str, ...]:
         candidates.append(discovered)
     candidates.append("codex.exe" if os.name == "nt" else "codex")
     return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _macos_codex_executables() -> tuple[str, ...]:
+    applications = _macos_chatgpt_applications()
+    current_layout = Path(
+        "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+    )
+    legacy_layout = Path("Contents/Resources/codex")
+    return tuple(
+        str(application / layout)
+        for layout in (current_layout, legacy_layout)
+        for application in applications
+    )
+
+
+def _macos_chatgpt_applications() -> tuple[Path, ...]:
+    return (
+        Path("/Applications/ChatGPT.app"),
+        Path.home() / "Applications" / "ChatGPT.app",
+    )
 
 
 def register_codex_tasks(

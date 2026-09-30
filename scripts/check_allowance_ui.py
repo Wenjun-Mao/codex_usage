@@ -112,7 +112,9 @@ def _check_report_content(page, report, state, theme, history_colors):
         assert "$1,260.00" in summary_text
         assert "2026-08-29" not in summary_text
     assert page.get_by_role("meter").count() == len(report["status"]["active_buckets"])
-    for bucket in report["status"]["active_buckets"]:
+    observations = page.locator(".allowance-observation")
+    assert observations.count() == len(report["status"]["active_buckets"])
+    for index, bucket in enumerate(report["status"]["active_buckets"]):
         identity = f'{bucket["limit_id"]} · {duration_label(bucket["duration_minutes"])}'
         meter = page.get_by_role("meter", name=f"{identity} percentage remaining")
         assert meter.count() == 1
@@ -123,6 +125,19 @@ def _check_report_content(page, report, state, theme, history_colors):
         assert page.locator(".allowance-bucket-usage").filter(
             has_text=f"{used:g}% used · {100 - used:g}% remaining"
         ).count() == 1
+        observation = observations.nth(index)
+        expected_label = {
+            "fresh": "Current reading",
+            "stale": "Last known reading",
+            "partial": "Partially refreshed reading",
+        }.get(report["status"]["probe_status"], "Last known reading")
+        assert observation.inner_text().startswith(expected_label)
+        assert meter.get_attribute("aria-describedby") == observation.get_attribute("id")
+        assert observation.evaluate("e => e.scrollWidth <= e.clientWidth")
+        if state == "stale" and index == 0:
+            bucket_text = page.locator(".allowance-bucket").nth(index).inner_text()
+            assert "Last known reading" in bucket_text
+            assert f"{used:g}% used · {100 - used:g}% remaining" in bucket_text
     assert page.locator(".allowance-bucket-summary").evaluate_all(
         "elements => elements.every(element => { const rects = Array.from(element.children, child => child.getBoundingClientRect()); "
         "if (element.scrollWidth > element.clientWidth + 1) return false; "
@@ -132,6 +147,10 @@ def _check_report_content(page, report, state, theme, history_colors):
     )
     if report["status"]["active_buckets"]:
         assert "EDT (UTC−04:00)" in page.locator(".allowance-bucket-reset").first.inner_text()
+    else:
+        assert page.get_by_text(
+            "No current quota reading is available.", exact=True
+        ).is_visible()
 
     diagnostics = page.locator("details").filter(
         has_text="Probe, coverage, and allowance history"

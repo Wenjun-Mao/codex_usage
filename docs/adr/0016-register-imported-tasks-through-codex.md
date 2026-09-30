@@ -27,6 +27,13 @@ Discover official Codex runtimes from the official VS Code extension, the native
 desktop app for Windows or macOS, and `PATH`. Do not require the desktop app when
 another official runtime is available.
 
+The shared executable resolver checks `CODEX_CLI_PATH` first. On macOS it then
+checks the current `ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`
+layout in `/Applications` and `~/Applications`, followed by the legacy
+`Contents/Resources/codex` locations and `PATH`. Quota metadata probes use this
+same resolver. Windows discovery keeps its existing LocalAppData and PATH
+locations.
+
 ## Alternatives Considered
 
 - Continue relying on client restart or incidental filesystem scans.
