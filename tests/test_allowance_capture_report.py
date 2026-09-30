@@ -416,11 +416,14 @@ def test_report_pipeline_passes_configured_timezone_and_cache_identity(tmp_path,
 def test_rendered_capture_table_is_bounded_and_escaped():
     window = _window("2026-09-19", "2026-09-24", "Low/provisional", 1375, completed=False,
                      limit_id="<script>alert(1)</script>")
-    window["points"] = [{"timestamp": f"2026-09-24T{i:03d}", "used_percent": i,
+    base = datetime(2026, 9, 24, tzinfo=UTC)
+    window["points"] = [{"timestamp": (base + timedelta(minutes=i)).isoformat(), "used_percent": i,
                          "slot": "primary", "resets_at": None} for i in range(105)]
     markup = render_allowance_section(_report([window]))
     assert "Most recent 100 of 105 observations shown" in markup
-    assert "2026-09-24T000" not in markup and "2026-09-24T104" in markup
+    table = markup.split('<table class="allowance-observations">')[1].split('</table>')[0]
+    assert 'title="UTC: 2026-09-24T00:00:00+00:00"' not in table
+    assert 'title="UTC: 2026-09-24T01:44:00+00:00"' in table
     assert "<script" not in markup and "&lt;script&gt;" in markup
 
 

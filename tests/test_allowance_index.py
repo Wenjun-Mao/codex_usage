@@ -269,7 +269,7 @@ def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_
     assert [p["plan"] for p in report["windows"][0]["points"]] == [p.plan for p in points]
     with open_ledger(ledger) as connection:
         assert {r[0] for r in connection.execute("select pricing_revision from allowance_report_cache")} == {
-            "p1:allowance-index-2"}
+            "p1:allowance-index-2:report-1"}
 
     # Use independent synthetic cumulative costs to exercise headline selection.
     from codex_usage.allowance_queries import _build_from_costs
@@ -291,3 +291,36 @@ def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_
         increment_ledger_revision(connection)
         connection.commit()
     _compare(ledger)
+
+
+def test_report_revision_refreshes_provenance_without_repricing_events(tmp_path, monkeypatch):
+    home = tmp_path / "codex"
+    sessions = home / "sessions"
+    sessions.mkdir(parents=True)
+    _session(sessions / "rollout-task-1.jsonl", [100])
+    monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance",
+                        lambda *_: QuotaRead("2026-09-02T10:00:00+00:00", diagnostics="test"))
+    capture_once(home, request_kind="manual", max_workers=1)
+    ledger = ledger_database_path(home)
+    with open_ledger(ledger) as connection:
+        store_observations(connection, [_point(0, 10), _point(2, 20)],
+                           source_key="task", provenance="parsed")
+        increment_ledger_revision(connection)
+        connection.commit()
+    _compare(ledger)
+    with open_ledger(ledger) as connection:
+        costs = [tuple(row) for row in connection.execute("select * from allowance_event_costs")]
+        connection.execute("update allowance_report_cache set pricing_revision = 'p1:allowance-index-2', report_json = ?",
+                           ('{"stale": true}',))
+        connection.commit()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("a presentation revision repriced existing events")
+
+    monkeypatch.setattr(allowance_index, "estimate_cost", forbidden)
+    report = _compare(ledger)
+    assert all(point["provenance"] == "Task snapshot" for point in report["windows"][0]["points"])
+    monkeypatch.setattr(allowance_index, "ALLOWANCE_REPORT_REVISION", 2)
+    _compare(ledger)
+    with open_ledger(ledger, read_only=True) as connection:
+        assert [tuple(row) for row in connection.execute("select * from allowance_event_costs")] == costs

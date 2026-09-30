@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.9.5 - 2026-09-30
+
+- Label Plan Allowance observations as live probes, task snapshots, or recovered
+  task snapshots so frequent task readings are not mistaken for collector polls.
+- Show observation and reset details in local time, with source descriptions
+  and original timestamp metadata on hover.
+- Refresh cached details; capture frequency, allowance estimates, pricing,
+  and reset detection are unchanged.
+
 ## 2.9.4 - 2026-09-29
 
 - Fix false Previous window estimates caused by missing plan metadata within

@@ -1,6 +1,6 @@
-# 2.9.4 VSIX Release Checklist
+# 2.9.5 VSIX Release Checklist
 
-Codex Usage 2.9.4 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.9.5 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
@@ -128,13 +128,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.9.4`, both
+Confirm Python and extension metadata and lockfiles all say `2.9.5`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.9.4`:
+Only after the non-publishing platform gate succeeds, create and push `v2.9.5`:
 
 ```bash
-git tag v2.9.4
-git push origin v2.9.4
+git tag v2.9.5
+git push origin v2.9.5
 ```
 
 The tag reruns all platform gates and publishes

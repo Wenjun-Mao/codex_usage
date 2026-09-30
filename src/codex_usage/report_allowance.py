@@ -4,6 +4,11 @@ from html import escape
 
 
 ALLOWANCE_HISTORY_LIMIT = 12
+_SOURCE_DESCRIPTION = (
+    "Live probe: quota reading queried during collector capture. "
+    "Task snapshot: task-reported quota reading; concurrent tasks may report slightly different values. "
+    "Recovered task snapshot: historical reading recovered from bounded log sampling."
+)
 
 
 def duration_label(minutes):
@@ -129,7 +134,7 @@ def _local_reset(timestamp, timezone):
     return value.isoformat(timespec="minutes"), display
 
 
-def _local_observation(timestamp, timezone):
+def _local_observation(timestamp, timezone, *, detailed=False):
     if not isinstance(timestamp, str) or not timestamp:
         return "", "time unavailable"
     try:
@@ -137,10 +142,41 @@ def _local_observation(timestamp, timezone):
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
         local = value.astimezone(timezone)
-        display = f"{local:%Y-%m-%d %H:%M} {local.tzname() or 'local time'}"
+        clock = local.strftime("%Y-%m-%d %H:%M:%S" if detailed else "%Y-%m-%d %H:%M")
+        if detailed and local.microsecond:
+            clock += f".{local.microsecond // 1000:03d}"
+        display = f"{clock} {local.tzname() or 'local time'}"
     except (OverflowError, TypeError, ValueError):
         return "", "time unavailable"
-    return value.isoformat(timespec="seconds"), display
+    return value.isoformat() if detailed else value.isoformat(timespec="seconds"), display
+
+
+def _observation_time(timestamp, timezone):
+    if not timestamp:
+        return "Not captured"
+    iso, display = _local_observation(timestamp, timezone, detailed=True)
+    if not iso:
+        return text(display)
+    utc = datetime.fromisoformat(iso).astimezone(UTC).isoformat()
+    return f'<time datetime="{text(iso)}" title="UTC: {text(utc)}">{text(display)}</time>'
+
+
+def _observation_row(point, timezone):
+    source = point.get("provenance", "Unknown source")
+    iso, observed = _local_observation(point["timestamp"], timezone, detailed=True)
+    observed_title = (
+        f' title="UTC: {text(datetime.fromisoformat(iso).astimezone(UTC).isoformat())}"' if iso else ""
+    )
+    reset = point["resets_at"]
+    if reset is not None:
+        _, reset_display = _local_observation(datetime.fromtimestamp(reset, UTC).isoformat(), timezone)
+        reset_cell = f'<td title="Unix seconds: {text(reset)}">{text(reset_display)}</td>'
+    else:
+        reset_cell = '<td>Unavailable</td>'
+    return (
+        f'<tr><td{observed_title}>{text(observed)}</td><td>{point["used_percent"]:g}%</td>'
+        f'<td>{text(point["slot"])} · {text(source)}</td>{reset_cell}</tr>'
+    )
 
 
 def _reading_label(probe_status):
@@ -202,11 +238,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
         shown_points = window["points"][-100:]
         shown_label = ("All" if len(shown_points) == len(window["points"])
                        else f'Most recent {len(shown_points)} of {len(window["points"])}')
-        captures = ''.join(
-            f'<tr><td>{text(p["timestamp"])}</td><td>{p["used_percent"]:g}%</td>'
-            f'<td>{text(p["slot"])} · {text(p.get("provenance", "Captured"))}</td><td>{text(p["resets_at"] or "Unavailable")}</td></tr>'
-            for p in shown_points
-        )
+        captures = ''.join(_observation_row(point, timezone) for point in shown_points)
         details.append(
             f'<details class="allowance-window{provisional}"><summary>{text(window["limit_id"])} · '
             f'{text(window["start"][:10])}–{text(window["end"][:10])} · {text(estimate["confidence"])}'
@@ -217,9 +249,11 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
             f'<p>{"100% priced" if window.get("fully_priced", True) else "Unpriced usage: monetary estimate unavailable"} · {"Complete local ledger" if window.get("coverage_complete", True) else "Partial local ledger"}</p>'
             f'<p>R² {estimate["r_squared"]:.3f} · sensitivity P90/P10 {text(estimate["sensitivity_ratio"])} · '
             f'{window["corrections"]} meter corrections</p>'
-            f'<details><summary>Captured observations ({len(window["points"])})</summary>'
+            f'<details><summary>Quota observations ({len(window["points"])})</summary>'
             f'<p>{shown_label} observations shown.</p>'
-            f'<div class="table-scroll"><table><thead><tr><th>Captured at</th><th>Used</th><th>Slot</th><th>Reset (Unix seconds)</th>'
+            f'<div class="table-scroll" tabindex="0" role="region" aria-label="Quota observations">'
+            f'<table class="allowance-observations"><thead><tr><th>Observed at</th><th>Used</th>'
+            f'<th title="{text(_SOURCE_DESCRIPTION)}">Slot · Source</th><th>Reset</th>'
             f'</tr></thead><tbody>{captures}</tbody></table></div></details></details>'
         )
     recovery = status["recovery"]
@@ -253,8 +287,8 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
         '<details><summary>Probe, coverage, and allowance history</summary>'
         f'{highlighted_evidence}'
         f'<p>Plan: {text(status["plan"] or "Unavailable")} · Probe: {text(status["probe_status"])} · '
-        f'Last checked: {text(status["last_probe_at"] or "Not captured")} · '
-        f'Last observed: {text(status.get("last_observed_at") or "Not captured")}</p>'
+        f'Last checked: {_observation_time(status["last_probe_at"], timezone)} · '
+        f'Last observed: {_observation_time(status.get("last_observed_at"), timezone)}</p>'
         f'<p>Probe diagnostic: {text(status.get("diagnostics") or "None")}</p>'
         f'<p>Bounded recovered history: {recovery["complete"]} sources checked, '
         f'{recovery["pending"]} pending, {recovery["unavailable"]} unavailable. Endpoint sampling is partial.</p>'
@@ -301,4 +335,7 @@ def allowance_css():
 .plan-allowance summary { cursor: pointer; }
 .plan-allowance summary:focus-visible { outline: 2px solid var(--accent, var(--astra, #087ea4)); outline-offset: 2px; border-radius: 2px; }
 .plan-allowance .table-scroll { overflow-x: auto; }
+.allowance-observations { min-width: 760px; }
+.allowance-observations th, .allowance-observations td:first-child, .allowance-observations td:nth-child(2), .allowance-observations td:last-child { white-space: nowrap; }
+.plan-allowance .table-scroll:focus-visible { outline: 2px solid var(--accent, var(--astra, #087ea4)); outline-offset: 2px; }
 """

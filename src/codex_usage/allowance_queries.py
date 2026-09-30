@@ -12,6 +12,7 @@ from codex_usage.allowance_windows import segment_windows
 
 
 _VALID_ESTIMATE_CONFIDENCE = {"High", "Medium", "Low/provisional"}
+_SOURCE_LABELS = {"live": "Live probe", "parsed": "Task snapshot", "recovered": "Recovered task snapshot"}
 
 
 def _has_valid_priced_estimate(window):
@@ -104,17 +105,24 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     """Keep the full estimator and indexed estimator on the same window path."""
     status = allowance_status(connection)
     rows = connection.execute(
-        "select * from quota_observations order by timestamp, rowid"
+        """select o.*, p.origins from quota_observations o
+        left join (
+            select observation_key, json_group_array(distinct provenance) origins
+            from quota_provenance group by observation_key
+        ) p using(observation_key)
+        order by o.timestamp, o.rowid"""
     ).fetchall()
     points = []
     provenance = {}
     for row in rows:
         point = QuotaObservation(**{key: row[key] for key in QuotaObservation.__dataclass_fields__})
         times = json.loads(zlib.decompress(row["timestamps_blob"])) if row["timestamps_blob"] else [point.timestamp]
+        origins = json.loads(row["origins"]) if row["origins"] else []
+        sources = {_SOURCE_LABELS.get(origin, "Unknown source") for origin in origins} or {"Unknown source"}
         for stamp in times:
             selected = replace(point, timestamp=stamp)
             points.append(selected)
-            provenance.setdefault(selected, set()).add("Recovered" if row["timestamps_blob"] else "Captured")
+            provenance.setdefault(selected, set()).update(sources)
     if not points:
         return {"status": status, "windows": [], "qualified": [], "headline": None,
                 "headline_previous": False, "history": []}

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.9.5 - 2026-09-30
+
+- Distinguish live quota probes, task snapshots, and recovered task snapshots
+  in Plan Allowance details without changing raw readings or capture frequency.
+- Show observation, diagnostic, and detail-reset timestamps in the configured
+  local timezone, retaining precise source timestamps in hover metadata.
+- Invalidate old report details while preserving allowance estimates, pricing,
+  and reset rules. Pace forecasting remains a separate change.
+
 ## 2.9.4 - 2026-09-29
 
 - Keep Plan Allowance cycles continuous when observations omit plan metadata,

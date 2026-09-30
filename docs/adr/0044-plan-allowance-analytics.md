@@ -4,7 +4,8 @@
 
 Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24,
 indexed report calculation on 2026-09-25, and visible reading freshness for
-2.9.3 on 2026-09-29; amended for unknown plan identity on 2026-09-29.
+2.9.3 on 2026-09-29; amended for unknown plan identity on 2026-09-29
+and observation-source clarity for 2.9.5 on 2026-09-30.
 
 ## Context
 
@@ -128,6 +129,20 @@ show at most the latest 100 points per window and disclose the full count. The
 economic summary is unframed and uses a subtle divider. Report interactions
 derive data only from the ledger and never probe or open JSONLs.
 
+Observation details distinguish **Live probe**, **Task snapshot**, and
+**Recovered task snapshot** from the stored provenance, retaining all applicable
+labels for deduplicated observations without multiplying their count. Missing
+or unrecognized provenance is **Unknown source**, never inferred to be a live
+probe. A task snapshot's timestamp is when its quota reading was recorded by
+Codex, not when the collector polled. Concurrent task snapshots can disagree
+by a percentage point; raw values remain unchanged and small decreases retain
+the existing correction semantics. Source-column hover text explains the
+distinction once per table without adding summary text or repeating long
+descriptions in every row. Observation, probe-diagnostic, and
+detail-reset times use the configured report timezone. Observation details show
+seconds and milliseconds; hover metadata retains precise UTC timestamps or
+reset Unix seconds. Table markup avoids redundant representations per cell.
+
 ## Indexed report calculation (2026-09-25)
 
 Ledger schema 4 adds disposable event costs and an account-wide allowance
@@ -162,6 +177,16 @@ windows under different Python hash seeds. The current headline estimate was
 identical in those runs and with insertion ordering; older window details
 differed. The explicit insertion rule makes subsequent cached results
 reproducible without discarding any observation from storage.
+
+From 2.9.5, an independent allowance-report revision also participates in the
+window-cache identity. When the pricing identity is unchanged, report-revision
+changes invalidate derived reports without deleting or repricing event costs. Cost-index revision
+2 remains unchanged; allowance-report revision 1 and HTML-render revision 18
+invalidate the old generic source labels. No schema migration is needed.
+The existing pricing identity still includes the software release version, so
+an upgrade can rebuild the cost index once even when rates have not changed.
+Decoupling releases from pricing invalidation requires a separate pricing-cache
+contract and is not part of this presentation patch.
 
 The index is derived from normalized ledger rows. Report views never read
 source JSONL files or invoke capture, though an uncached view may write the

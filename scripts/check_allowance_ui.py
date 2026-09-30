@@ -198,6 +198,25 @@ def _check_report_content(page, report, state, theme, history_colors):
         capture.focus()
         capture.press("Enter")
         assert capture.evaluate("e => e.parentElement.open")
+        table = page.locator(".allowance-window").first.locator("table")
+        assert table.get_by_role("columnheader", name="Observed at", exact=True).count() == 1
+        assert table.get_by_role("columnheader", name="Slot · Source", exact=True).count() == 1
+        assert "Task snapshot" in table.inner_text() and "Live probe" in table.inner_text()
+        assert "EDT" in table.locator("tbody tr").first.inner_text()
+        assert table.locator('td[title^="UTC:"]').count() == len(report["windows"][-1]["points"])
+        assert table.locator('td[title^="Unix seconds:"]').count() == len(report["windows"][-1]["points"])
+        assert "collector capture" in table.get_by_role("columnheader", name="Slot · Source").get_attribute("title")
+        assert "concurrent tasks" in table.get_by_role("columnheader", name="Slot · Source").get_attribute("title")
+        assert table.locator("th").evaluate_all(
+            'elements => elements.every(e => getComputedStyle(e).whiteSpace === "nowrap")'
+        )
+        scroll = page.get_by_role("region", name="Quota observations").first
+        assert scroll.get_attribute("tabindex") == "0"
+        if page.viewport_size["width"] == 360:
+            assert scroll.evaluate('e => e.scrollWidth > e.clientWidth && getComputedStyle(e).overflowX === "auto"')
+            scroll.focus()
+            scroll.evaluate("e => e.scrollLeft = e.scrollWidth")
+            assert scroll.evaluate("e => e.scrollLeft > 0")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
 
 

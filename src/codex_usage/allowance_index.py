@@ -9,6 +9,7 @@ from codex_usage.parser import parse_timestamp
 from codex_usage.pricing import estimate_cost
 
 ALLOWANCE_INDEX_REVISION = 2
+ALLOWANCE_REPORT_REVISION = 1
 
 
 def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revision,
@@ -19,9 +20,10 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
     snapshot. In that case the snapshot's full estimator is the safe fallback.
     """
     pricing_revision = f"{pricing_revision}:allowance-index-{ALLOWANCE_INDEX_REVISION}"
+    report_revision = f"{pricing_revision}:report-{ALLOWANCE_REPORT_REVISION}"
     if snapshot.execute("select 1 from quota_observations limit 1").fetchone() is None:
         return _build_from_costs(snapshot, (), coverage_complete=coverage_complete)
-    key = (revision, pricing_revision, int(coverage_complete))
+    key = (revision, report_revision, int(coverage_complete))
     try:
         cached = snapshot.execute("""select report_json from allowance_report_cache
             where ledger_revision = ? and pricing_revision = ? and coverage_complete = ?""", key).fetchone()
@@ -59,7 +61,7 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
         writer.execute("""insert or replace into allowance_report_cache values (?,?,?,?)""",
                        (*key, json.dumps(report)))
         writer.execute("delete from allowance_report_cache where ledger_revision != ? or pricing_revision != ?",
-                       (revision, pricing_revision))
+                       (revision, report_revision))
         writer.commit()
     report["status"] = _status(snapshot)
     return report

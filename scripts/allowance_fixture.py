@@ -30,7 +30,10 @@ def allowance_fixture() -> dict:
             "completed": window.completed, "closure": window.closure,
             "corrections": 0, "estimate": estimate.to_dict(),
             "fully_priced": True, "coverage_complete": True,
-            "points": [dict(point.to_dict(), provenance="Recovered") for point in points],
+            "points": [dict(point.to_dict(), provenance=(
+                "Recovered task snapshot" if index < 4 else
+                "Live probe" if offset % 2 else "Task snapshot"
+            )) for offset, point in enumerate(points)],
         })
     active = windows[-1]["points"][-1]
     qualified, headline = allowance_highlights(windows)
