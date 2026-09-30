@@ -133,7 +133,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
             coverage_complete=coverage_complete)
         first = window.points[0]
         windows.append({
-            "limit_id": first.limit_id, "plan": first.plan, "duration_minutes": first.duration_minutes,
+            "limit_id": first.limit_id, "plan": window.identity_plan, "duration_minutes": first.duration_minutes,
             "start": first.timestamp, "end": window.points[-1].timestamp,
             "completed": window.completed, "closure": window.closure,
             "corrections": window.corrections, "estimate": estimate.to_dict(),

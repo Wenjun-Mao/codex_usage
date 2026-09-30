@@ -125,7 +125,7 @@ def test_index_matches_oracle_across_append_replacement_recovery_pricing_and_res
     assert len(priced_calls) == 3
     with open_ledger(ledger) as connection:
         assert {row[0] for row in connection.execute(
-            "select distinct pricing_revision from allowance_event_costs")} == {"p2:allowance-index-1"}
+            "select distinct pricing_revision from allowance_event_costs")} == {"p2:allowance-index-2"}
 
 
 def test_read_only_pre_migration_report_uses_full_estimator(tmp_path):
@@ -249,3 +249,45 @@ def test_uncached_views_reuse_account_wide_allowance_result(tmp_path, monkeypatc
     assert calls == {"price": 1, "events": 1, "windows": 1}
     with open_ledger(ledger, read_only=True) as connection:
         assert connection.execute("select count(*) from allowance_report_cache").fetchone()[0] == 1
+
+
+def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_path):
+    from dataclasses import replace
+
+    ledger = tmp_path / "ledger.sqlite3"
+    points = [replace(_point(i, 10 + i * 5), plan="pro" if i % 2 else "") for i in range(7)]
+    with open_ledger(ledger) as connection:
+        store_observations(connection, points, source_key="fixture", provenance="live")
+        increment_ledger_revision(connection)
+        # A stale derived result from the old grouping contract must not win.
+        connection.execute("insert into allowance_report_cache values (?,?,?,?)",
+                           (ledger_revision(connection), "p1:allowance-index-1", 1, '{"stale": true}'))
+        connection.commit()
+    report = _compare(ledger)
+    assert len(report["windows"]) == 1
+    assert report["windows"][0]["plan"] == "pro"
+    assert [p["plan"] for p in report["windows"][0]["points"]] == [p.plan for p in points]
+    with open_ledger(ledger) as connection:
+        assert {r[0] for r in connection.execute("select pricing_revision from allowance_report_cache")} == {
+            "p1:allowance-index-2"}
+
+    # Use independent synthetic cumulative costs to exercise headline selection.
+    from codex_usage.allowance_queries import _build_from_costs
+
+    with open_ledger(ledger) as connection:
+        before = _build_from_costs(connection, [(datetime.fromisoformat(i.timestamp).timestamp(),
+                                               60, 0) for i in points])
+        assert not before["headline_previous"]
+        assert before["headline"]["estimate"]["span"] == 30
+        assert before["headline"]["estimate"]["confidence"] == "Low/provisional"
+        store_observations(connection, [replace(_point(8, 2), plan=""), _point(9, 4)],
+                           source_key="reset", provenance="live")
+        after = _build_from_costs(connection, [(datetime.fromisoformat(i.timestamp).timestamp(), 60, 0)
+                                              for i in points])
+        assert after["headline_previous"]
+        assert after["headline"]["start"] == points[0].timestamp
+        assert after["windows"][-1]["estimate"]["confidence"] == "insufficient"
+        assert after["windows"][-2]["closure"] == "early/unknown"
+        increment_ledger_revision(connection)
+        connection.commit()
+    _compare(ledger)

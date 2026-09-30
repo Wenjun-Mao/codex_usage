@@ -4,7 +4,7 @@
 
 Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24,
 indexed report calculation on 2026-09-25, and visible reading freshness for
-2.9.3 on 2026-09-29.
+2.9.3 on 2026-09-29; amended for unknown plan identity on 2026-09-29.
 
 ## Context
 
@@ -47,7 +47,19 @@ not identity. One-point decreases and unsupported decreases below five points
 remain meter corrections. Supported boundaries are classified conservatively:
 scheduled-compatible, banked-reset-compatible, global-reset-compatible, or
 early/unknown. Classifications describe evidence, not proven causes. A plan
-change invalidates continuity. No cost or percentage delta crosses a segment.
+change invalidates continuity. Empty plan metadata means unknown, not a change.
+Within each limit ID, derive plan identity from neighboring known observations:
+leading/trailing unknown runs use their sole known endpoint; interspersed runs
+use matching known endpoints. Runs between different known plans stay unknown
+and separate from both known series because the change time is unproven. An
+all-unknown series retains unknown identity. Report/window identity uses this
+derived plan; raw points, empty plans, and provenance remain unchanged. Duration
+buckets stay separate and slot moves do not split them. Same-timestamp conflicts
+retain deterministic insertion precedence and ambiguity; explicit different
+plans never merge. Reset/correction detection still runs across metadata gaps,
+so genuine reset boundaries remain intact. Missing raw identity still blocks
+High/Medium confidence; resolving continuity does not strengthen evidence.
+No cost or percentage delta crosses a segment.
 No weekly duration is hard-coded.
 
 For each segment, fit the median cumulative priced ledger API-equivalent cost
@@ -135,7 +147,10 @@ of their costs. Superseded generations are excluded from accumulation.
 Recovery, corrections, reset observations, and coverage changes advance the
 ledger revision and rebuild the window result from indexed costs. A pricing
 revision invalidates all event costs and the window result atomically. The
-index revision must advance when the cost-index contract changes. A read-only
+index revision must advance when the cost-index or derived grouping contract
+changes. Unknown-plan grouping advances allowance index revision to 2 and HTML
+render revision to 17; otherwise unchanged ledgers could reuse fragmented
+windows or their previous-window headline. A read-only
 view of a pre-migration ledger or a snapshot overtaken by capture uses the
 full estimator. Tied quota observations now use timestamp then SQLite insertion
 rowid during loading, and retain that order during deduplication; set iteration
@@ -169,5 +184,6 @@ derived SQLite caches. This keeps the ledger-only reporting contract.
 Local estimates remain workload-specific and may omit usage on other devices.
 No UI claims cash value, contractual entitlement, or changes to OpenAI limits.
 Oracle tests enforce segmentation, pricing, confidence, and no cross-window
-consumption; migration tests preserve usage; report tests forbid source reads and
-probes. Quota storage is independent of language and image accounting.
+consumption, unknown-plan bridges, explicit plan changes, real resets around
+metadata gaps, and genuine insufficient-window fallback; migration tests preserve
+usage; report tests forbid source reads and probes. Quota storage is independent of language and image accounting.

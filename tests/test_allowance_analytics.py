@@ -133,3 +133,73 @@ def test_same_limit_different_duration_can_support_global_reset():
     points = [point(0, 70), point(1, 2)]
     points += [replace(p, duration_minutes=300, slot="secondary") for p in points]
     assert [w.closure for w in segment_windows(points)].count("global-reset-compatible") == 2
+
+
+@pytest.mark.parametrize("plans,identities,sizes", [
+    (["pro", "", "pro", "", "pro"], ["pro"], [5]),
+    (["", "", "pro", "", ""], ["pro"], [5]),
+    (["", "", "", "", ""], [""], [5]),
+    (["pro", "", "", "plus", ""], ["pro", "", "plus"], [1, 2, 2]),
+    (["pro", "", "plus", "", "pro"], ["pro", "", "plus", "", "pro"], [1] * 5),
+])
+def test_unknown_plan_runs_have_separate_derived_identity(plans, identities, sizes):
+    points = [replace(point(i, i * 5), plan=plan) for i, plan in enumerate(plans)]
+    windows = segment_windows(points)
+    assert [w.identity_plan for w in windows] == identities
+    assert [len(w.points) for w in windows] == sizes
+    assert [p for w in windows for p in w.points] == points
+    assert all(w.closure == "identity-change" for w in windows[:-1])
+
+
+@pytest.mark.parametrize("kind", ["scheduled-compatible", "banked-reset-compatible", "global-reset-compatible"])
+def test_unknown_plans_preserve_supported_resets(kind):
+    points = [point(0, 20, reset_credits=2), replace(point(1, 70, reset_credits=2), plan="")]
+    last = replace(point(21, 2, reset_credits=2), plan="")
+    if kind == "scheduled-compatible":
+        last = replace(last, resets_at=int((BASE + timedelta(hours=30)).timestamp()))
+    elif kind == "banked-reset-compatible":
+        last = replace(last, reset_credits=1)
+    points += [last, point(22, 10, reset_credits=last.reset_credits)]
+    if kind == "global-reset-compatible":
+        points += [replace(p, limit_id="other") for p in points]
+    windows = segment_windows(points)
+    assert windows[0].closure == kind
+    assert windows[0].points[-1].used_percent == 70
+    assert windows[1].points[0].used_percent == 2
+    assert all(w.identity_plan == "pro" for w in windows)
+
+
+def test_unknown_plan_identity_isolated_by_limit_and_duration_with_slot_moves():
+    points = [point(0, 10), replace(point(1, 20), plan="", slot="secondary"), point(2, 30)]
+    points += [replace(point(i, 50 + i), plan="", duration_minutes=300) for i in range(3)]
+    points += [replace(point(i, 60 + i), plan="", limit_id="other") for i in range(3)]
+    windows = segment_windows(points)
+    assert [(w.identity_plan, len(w.points)) for w in windows] == [("pro", 3), ("pro", 3), ("", 3)]
+    assert windows[0].points[1].slot == "secondary"
+
+
+def test_same_timestamp_unknown_metadata_does_not_hide_conflict():
+    points = [point(0, 20), replace(point(0, 70), plan=""), point(1, 80)]
+    windows = segment_windows(points)
+    assert len(windows) == 1 and windows[0].ambiguous
+    assert windows[0].points == [points[0], points[2]]
+    changed = segment_windows([point(0, 20), replace(point(0, 20), plan="plus"), point(1, 30)])
+    assert [w.identity_plan for w in changed] == ["pro", "plus", "pro"]
+
+
+def test_derived_plan_does_not_promote_missing_metadata_confidence():
+    points = [replace(point(i, i * 5), plan="" if i == 3 else "pro") for i in range(13)]
+    window = segment_windows(points)[0]
+    window.closure = "scheduled-compatible"
+    assert window.identity_plan == "pro"
+    assert estimate_window(window, [p.used_percent * 12 for p in points],
+                           fully_priced=True).confidence == "Low/provisional"
+
+
+def test_alternating_plan_metadata_at_subsecond_cadence_is_one_cycle():
+    points = [replace(point(0, 35), timestamp=(BASE + timedelta(milliseconds=offset)).isoformat(),
+                      plan=plan, duration_minutes=10080)
+              for offset, plan in [(407, "pro"), (1029, ""), (2135, "pro")]]
+    windows = segment_windows(points)
+    assert len(windows) == 1 and windows[0].points == points
+    assert windows[0].identity_plan == "pro" and windows[0].closure == "ongoing"

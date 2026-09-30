@@ -11,6 +11,7 @@ class AllowanceWindow:
     closure: str = "ongoing"
     corrections: int = 0
     ambiguous: bool = False
+    identity_plan: str = ""
 
     @property
     def completed(self):
@@ -41,30 +42,55 @@ def boundary(previous, current):
     return "early/unknown"
 
 
+def _identity_plans(series):
+    """Resolve unknown runs without asserting a plan on raw observations.
+
+    Different known endpoints leave the bridge unknown: there is no evidence
+    locating the plan change within it. Leading/trailing runs have only one
+    known endpoint; an entirely unknown series retains an unknown identity.
+    """
+    plans = [point.plan for point in series]
+    previous = ""
+    index = 0
+    while index < len(plans):
+        if plans[index]:
+            previous = plans[index]
+            index += 1
+            continue
+        end = index
+        while end < len(plans) and not plans[end]:
+            end += 1
+        following = plans[end] if end < len(plans) else ""
+        resolved = "" if previous and following and previous != following else previous or following
+        plans[index:end] = [resolved] * (end - index)
+        index = end
+    return plans
+
+
 def segment_windows(points):
     grouped = {}
     # Keep ledger insertion order for conflicting samples at the same timestamp
     # and slot. A set's iteration order changes across processes and can move
     # a reset boundary between views.
     for point in sorted(dict.fromkeys(points), key=lambda p: (p.timestamp, p.slot)):
-        # Slot is transport layout, not identity. Duration and plan changes
-        # break the fit, even when the producer reuses a limit ID.
+        # Slot is transport layout, not identity. Known plan changes break
+        # continuity; missing plan metadata alone does not.
         grouped.setdefault(point.limit_id, []).append(point)
     results = []
     candidates = []
     for series in grouped.values():
         active = {}
         prior_plan = None
-        for point in series:
-            if prior_plan is not None and point.plan != prior_plan:
+        for point, plan in zip(series, _identity_plans(series), strict=True):
+            if prior_plan is not None and plan != prior_plan:
                 for old_window in active.values():
                     old_window.closure = "identity-change"
                 active = {}
-            prior_plan = point.plan
-            key = (point.plan, point.duration_minutes)
+            prior_plan = plan
+            key = point.duration_minutes
             window = active.get(key)
             if window is None:
-                window = AllowanceWindow()
+                window = AllowanceWindow(identity_plan=plan)
                 active[key] = window
                 results.append(window)
             if window.points:
@@ -80,7 +106,7 @@ def segment_windows(points):
                     window.closure = kind
                     window.ambiguous |= kind == "early/unknown"
                     candidates.append((point.timestamp, (point.limit_id, point.duration_minutes), window))
-                    window = AllowanceWindow(ambiguous=kind == "early/unknown")
+                    window = AllowanceWindow(ambiguous=kind == "early/unknown", identity_plan=plan)
                     active[key] = window
                     results.append(window)
             window.points.append(point)
