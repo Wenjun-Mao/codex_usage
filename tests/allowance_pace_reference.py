@@ -131,4 +131,3 @@ def fit_paces(points, anchor, live_points):
                         "used": anchor.used_percent, "exhaustion": exhaustion,
                         "reset_balance": reset_balance})
     return results
-
