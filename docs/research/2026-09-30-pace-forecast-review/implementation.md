@@ -3,8 +3,9 @@
 The implementation follows the approved plan: signed Recent net rate and
 exponentially weighted Daily interval rates, unchanged initial gates, six-hour
 half-life, exact live endpoint and captured reset. ADR 0044 owns continuity,
-expiry and cache contracts. This is a candidate for review, not release or a
-claim of predictive accuracy.
+expiry and cache contracts. Director review accepted the implementation through `a88be5b7`; human approval
+for the 2.10.0 release was granted on 2026-10-01. This does not establish
+predictive accuracy.
 
 ## Director Review And Durable Fix
 
@@ -106,5 +107,5 @@ arithmetic is verified; exhaustion accuracy and harmful-error rates remain
 unidentifiable. Parsed/recovered evidence lacks complete historical availability.
 Preparation is full-history work per materialized revision, and very dense data
 inside 24 hours still increases fitting work: no samples are silently discarded.
-No live ledger, installed extension, tasks or OS services were modified. Version,
-publication and release acceptance remain outside this assignment.
+No live ledger, installed extension, tasks or OS services were modified. Release metadata and publication follow the separately approved 2.10.0
+release workflow; these measurement limits remain unchanged.

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 2.10.0 - 2026-10-01
+
+- Add independent Recent and Daily conditional pace rows beneath each active
+  Plan Allowance meter, showing actual observed coverage and the captured reset
+  in the configured local timezone. Keep both when their outcomes disagree.
+- Preserve signed corrections and exact live anchors; withhold unsupported
+  forecasts and expire them after stale, failed, reset or predicted-exhaustion
+  boundaries without moving predictions forward when opening a view.
+- Reuse compact pace state on warm HTML hits and fit bounded observations from
+  shared causal evidence preparation. New revisions still prepare history and
+  uncached views still render it; sub-millisecond fitting is not an end-to-end
+  VS Code latency promise.
+- Keep dollar estimation, historical quota segmentation and capture scheduling
+  unchanged. Exhaustion prediction accuracy remains unvalidated.
+
 ## 2.9.5 - 2026-09-30
 
 - Distinguish live quota probes, task snapshots, and recovered task snapshots

@@ -6,7 +6,8 @@ Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24,
 indexed report calculation on 2026-09-25, and visible reading freshness for
 2.9.3 on 2026-09-29; amended for unknown plan identity on 2026-09-29
 and observation-source clarity for 2.9.5 on 2026-09-30; amended for
-conditional pace semantics on 2026-09-30 (candidate, no release change).
+conditional pace semantics on 2026-09-30 and accepted for release 2.10.0
+on 2026-10-01 after director review and human release approval.
 
 ## Context
 
