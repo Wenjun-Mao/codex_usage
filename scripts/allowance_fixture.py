@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from codex_usage.allowance_estimation import estimate_window
 from codex_usage.allowance_models import QuotaObservation
+from codex_usage.allowance_pace import fit_paces
 from codex_usage.allowance_queries import allowance_highlights, allowance_history
 from codex_usage.allowance_windows import AllowanceWindow
 
@@ -35,19 +36,32 @@ def allowance_fixture() -> dict:
                 "Live probe" if offset % 2 else "Task snapshot"
             )) for offset, point in enumerate(points)],
         })
-    active = windows[-1]["points"][-1]
+    active = dict(windows[-1]["points"][-1], timestamp="2026-09-02T16:00:00+00:00")
+    anchor = QuotaObservation(**{key: active[key] for key in QuotaObservation.__dataclass_fields__})
+    observed = datetime.fromisoformat(anchor.timestamp)
+    pace_points = [QuotaObservation((observed - timedelta(hours=h)).isoformat(),
+                   anchor.limit_id, anchor.slot, anchor.plan, 18, anchor.duration_minutes,
+                   anchor.resets_at) for h in range(24, 0, -2)]
+    pace_points += [QuotaObservation((observed - timedelta(minutes=m)).isoformat(),
+                    anchor.limit_id, anchor.slot, anchor.plan, used, anchor.duration_minutes,
+                    anchor.resets_at) for m, used in ((60, 18), (30, 18), (15, 19))]
+    pace_points.append(anchor)
+    paces = fit_paces(pace_points, anchor, {anchor})
+    extra = dict(active, limit_id="extra-model", used_percent=8, duration_minutes=300)
+    extra_anchor = QuotaObservation(**{key: extra[key] for key in QuotaObservation.__dataclass_fields__})
     qualified, headline = allowance_highlights(windows)
     return {
         "status": {
             "plan": "pro",
             "active_buckets": [
                 active,
-                dict(active, limit_id="extra-model", used_percent=8, duration_minutes=300),
+                extra,
             ],
             "probe_status": "fresh", "last_probe_at": active["timestamp"],
             "lifetime_tokens": 900000000,
             "recovery": {"total": 80, "complete": 72, "pending": 8, "unavailable": 0},
         },
+        "paces": [paces, fit_paces([extra_anchor], extra_anchor, {extra_anchor})],
         "windows": windows, "qualified": qualified, "headline": headline,
         "headline_previous": False, "history": allowance_history(windows),
     }

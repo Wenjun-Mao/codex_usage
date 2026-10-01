@@ -226,6 +226,15 @@ and redacted Codex Usage output. Never attach raw task JSONLs publicly.
 
 ## Plan Allowance
 
+Two compact conditional pace rows beneath each active meter show Recent (up to
+60 minutes) and Daily (up to 24 hours, with six-hour recency decay), including
+the actual observed span. Both compare signed percentage movement with the
+captured reset in your configured timezone; they may disagree. They describe
+what would happen if the measured pace continued, without promising future
+usage. Sparse or conflicting evidence stays unmeasurable. Failed, stale or
+expired predictions await fresh capture; opening a view does not restart them.
+Method and evidence diagnostics stay in the existing allowance disclosure.
+
 The account-wide Plan Allowance section shows active quota buckets and reset
 metadata, plus the **Observed API-equivalent value of full allowance** when a
 window has a valid priced fit. Fits need at least 10 percentage points; stronger

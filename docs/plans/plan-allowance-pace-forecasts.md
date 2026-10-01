@@ -3,8 +3,8 @@
 ## Status And Goal
 
 Proposed 2026-09-30; revised after the two external reviews and checked against
-released 2.9.5 (`31f62a4d7778988890554065f31730896c7512c3`). Planning only:
-implementation and release still require approval. The bounded read-only
+released 2.9.5 (`31f62a4d7778988890554065f31730896c7512c3`). Implementation approved after calibration review; the candidate is being
+implemented for director review. Release still requires separate approval. The bounded read-only
 calibration is complete; its generic method and reproduction contract are in the
 [calibration record](../research/2026-09-30-pace-forecast-review/calibration/README.md).
 The unchanged reports,

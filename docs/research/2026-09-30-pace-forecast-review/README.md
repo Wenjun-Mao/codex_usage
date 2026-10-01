@@ -133,3 +133,11 @@ contender, not accepted for product implementation.
 | `report-2.md` | `f444941cfc1ee7ffea72ea32ef3e653abae92e56de9f53d5696916f836eb656e` |
 | `quota_forecast_synthetic_checks.py` | `4a318aa58a7ebd62f981cabbae4d6e50a147314764b0803dd5843cba063f11c6` |
 | `quota_forecast_synthetic_results.txt` | `c24ee46b58cae4671fca70139bfda89c2ea0df787df39dd5ca9be570b15d3565` |
+
+## Implementation Candidate
+
+Implementation was subsequently approved as a serial assignment. The
+[candidate evidence](implementation.md) records contract tests, disposable
+performance measurements, numerical preservation and remaining limits. The
+approved plan and ADR 0044 govern production semantics; the consultation and
+calibration files remain research evidence. Release approval is separate.

@@ -5,7 +5,8 @@
 Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24,
 indexed report calculation on 2026-09-25, and visible reading freshness for
 2.9.3 on 2026-09-29; amended for unknown plan identity on 2026-09-29
-and observation-source clarity for 2.9.5 on 2026-09-30.
+and observation-source clarity for 2.9.5 on 2026-09-30; amended for
+conditional pace semantics on 2026-09-30 (candidate, no release change).
 
 ## Context
 
@@ -191,6 +192,70 @@ contract and is not part of this presentation patch.
 The index is derived from normalized ledger rows. Report views never read
 source JSONL files or invoke capture, though an uncached view may write the
 derived SQLite caches. This keeps the ledger-only reporting contract.
+
+## Conditional quota pace (2026-09-30)
+
+Two independent wrapping rows under each active meter continue the captured
+percentage conditionally. Recent is signed net movement over actual elapsed
+time, within 60 minutes. Daily weights signed interval rates by the integral
+of exponential time decay, with a provisional six-hour half-life, within 24
+hours. Intervals assume uniformly spread movement. Keep both when they disagree.
+Use actual endpoints, preserve equal readings at distinct times and negative
+corrections, and show actual observed span. Gates remain three/five observation
+times, 30 minutes/three hours minimum span and maximum adjacent gap, and two
+signed endpoint percentage points. These settings favor understandable semantics;
+the calibration lacks uncensored exhaustion outcomes and does not prove accuracy.
+
+The existing dollar segmenter cannot own forecast eligibility: it intentionally
+accepts small decreases as corrections before checking resets, derives identities
+retrospectively, and drops conflicting same-time samples. Those behaviors were
+reproduced in the [review](../research/2026-09-30-pace-forecast-review/README.md).
+Changing that model would change historical dollar results. Instead, a separate
+pure evidence contract filters to the exact live anchor before resolving plans
+or checking continuity. It uses raw provenance membership, limit ID, compatible
+plan and duration; slot is transport metadata. Known plan changes under the
+same limit cut continuity even when only another duration bucket reports them. Contradictory usage, known plans,
+reset credits, or materially different reset clocks at one instant cut continuity;
+an ambiguous live endpoint refuses fitting. A coherent later suffix can recover.
+Identical evidence is deduplicated, without averaging conflicting readings.
+
+Forecast continuity gives crossed-and-advanced reset evidence, credit decreases,
+and material deadline rebases precedence over small corrections. Differences
+within 60 seconds alone are clock jitter. Known reset/credit metadata survives
+missing intermediate fields until a boundary or plan change. That memory checks
+continuity only: never fill in a missing live reset for projection. Historical
+segmentation, dollars, meter semantics and capture scheduling remain unchanged.
+
+Project from the exact captured timestamp/percentage, using the captured reset,
+never an intercept or the time the view opens. Compare unrounded arithmetic;
+round displayed exhaustion times to 15 minutes, mark results within 15 minutes
+of reset as near reset, and display whole positive balances (less than 1% below
+rounding). Configured local dates and zone offsets disambiguate midnight and DST.
+Rates and diagnostics survive missing reset metadata but reset-relative promises
+do not. A failed latest read suppresses both; partial reads use present buckets
+only. Expire at 30 minutes after capture or the captured reset, and also at the
+predicted exhaustion when it is at/before reset. Expiry is inclusive. Expired
+rows await fresh capture; only a fresh captured 100% reading reports 100% used.
+An already open script-free page retains its visible observation timestamp.
+
+Use the existing quota load and disposable allowance-report cache, retaining
+raw provenance enums separately from display labels. Account-wide fits are shared
+across date/project/theme/timezone views. HTML identity includes each row's
+clock-derived presentation state; reevaluating that state neither reloads quota
+history nor refits nor moves the absolute prediction. Inject the rendering clock
+for deterministic expiry checks. Allowance report revision 2 and HTML revision
+19 invalidate derived presentation; event-cost index revision stays 2. The
+release-version pricing coupling remains, including one-time upgrade repricing.
+No new table, service, dependency, chart or capture mechanism is introduced.
+
+Production fits use evidence available in the ledger snapshot. Parsed/recovered
+points lack reconstructible historical first availability: timestamp-prefix tests
+prove no future metadata influence, not strict historical availability. Live-only
+replay requires an additional read-availability cutoff. Focused contract/cache
+regressions guard boundary memory, conflicts, signed movement, exact anchors,
+expiry, no view-triggered probes/source reads/allowance repricing/refitting, and
+indexed/full equality. Synthetic browser checks guard disagreement, wrapping,
+contrast and existing meter accessibility in Day/Night at 360px and wider.
 
 ## Rejected Alternatives
 

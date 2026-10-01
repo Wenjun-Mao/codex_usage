@@ -6,7 +6,7 @@ import json
 import sqlite3
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 
@@ -42,7 +42,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}:gpt-6-sol-luna-6.1-sol-standard-credits-v1:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
-REPORT_RENDER_REVISION = 18
+REPORT_RENDER_REVISION = 19
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,8 +87,10 @@ def render_ledger_report(
     theme: str,
     timezone_name: str | None,
     auto_transitions: bool = True,
+    now: datetime | None = None,
 ) -> RenderedLedgerReport:
     started = monotonic()
+    now = now or datetime.now(UTC)
     ledger_path = ledger_database_path(codex_home)
     timezone = resolve_timezone(timezone_name)
     normalized_keys = sorted({key for key in project_keys or [] if key})
@@ -101,6 +103,13 @@ def render_ledger_report(
     with open_ledger(ledger_path, read_only=True) as connection:
         connection.execute("begin")
         status = query_ledger_status(connection)
+        allowance_report = indexed_allowance_report(
+            connection, ledger_path, revision=status.revision,
+            pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
+        )
+        from codex_usage.allowance_pace import presentation_identity
+        from codex_usage.allowance_queries import allowance_status
+        allowance_report["status"] = allowance_status(connection, now=now)
         cache_key = _report_cache_key(
             status.revision,
             report_range.cache_identity,
@@ -108,7 +117,8 @@ def render_ledger_report(
             theme,
             str(timezone),
             auto_transitions,
-            status.plan_allowance.get("probe_status", "unavailable"),
+            allowance_report["status"]["probe_status"],
+            presentation_identity(allowance_report, now.timestamp()),
         )
         cached = _load_cached_report(connection, cache_key)
         if cached is not None:
@@ -120,13 +130,6 @@ def render_ledger_report(
                 status=status,
             )
 
-        allowance_report = indexed_allowance_report(
-            connection,
-            ledger_path,
-            revision=status.revision,
-            pricing_revision=PRICING_REVISION,
-            coverage_complete=status.coverage.complete,
-        )
         records = finalize_session_records(
             [query_ledger_records(connection, bounds=report_range.bounds)]
         )
@@ -154,7 +157,7 @@ def render_ledger_report(
         output_path = Path(directory) / "report.html"
         render_html_report(
             output_path=output_path,
-            generated_at=datetime.now(timezone),
+            generated_at=now.astimezone(timezone),
             range_name=report_range.kind,
             range_label=report_range.display_label,
             use_period_trend=report_range.uses_period_trend,
@@ -274,6 +277,7 @@ def _report_cache_key(
     timezone: str,
     auto_transitions: bool,
     probe_freshness: str = "unavailable",
+    pace_identity: list | None = None,
 ) -> str:
     payload = json.dumps(
         {
@@ -281,6 +285,7 @@ def _report_cache_key(
             "pricing_revision": PRICING_REVISION,
             "report_render_revision": REPORT_RENDER_REVISION,
             "probe_freshness": probe_freshness,
+            "pace_identity": pace_identity,
             "range": range_identity,
             "project_keys": project_keys,
             "theme": theme,

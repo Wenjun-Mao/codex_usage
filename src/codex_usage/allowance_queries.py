@@ -52,7 +52,7 @@ def allowance_highlights(windows):
     return qualified, headline
 
 
-def allowance_status(connection):
+def allowance_status(connection, *, now=None):
     read = connection.execute("select * from quota_reads order by read_id desc limit 1").fetchone()
     recovered = connection.execute("""select count(*) total,
         sum(r.status = 'complete' and r.size_bytes = s.size_bytes and r.mtime_ns = s.mtime_ns and r.source_device = s.source_device and r.source_inode = s.source_inode) complete,
@@ -73,7 +73,7 @@ def allowance_status(connection):
             order by limit_id, duration_minutes
         """, (f"read:{observed_read['read_id']}",))]
     stamp = observed_read["timestamp"] if observed_read else ""
-    age = max(0, (datetime.now(UTC) - datetime.fromisoformat(stamp)).total_seconds()) if stamp else None
+    age = max(0, ((now or datetime.now(UTC)) - datetime.fromisoformat(stamp)).total_seconds()) if stamp else None
     complete = int(recovered["complete"] or 0)
     unavailable = int(recovered["unavailable"] or 0)
     return {
@@ -104,27 +104,13 @@ def build_allowance_report(connection, *, coverage_complete=True):
 def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     """Keep the full estimator and indexed estimator on the same window path."""
     status = allowance_status(connection)
-    rows = connection.execute(
-        """select o.*, p.origins from quota_observations o
-        left join (
-            select observation_key, json_group_array(distinct provenance) origins
-            from quota_provenance group by observation_key
-        ) p using(observation_key)
-        order by o.timestamp, o.rowid"""
-    ).fetchall()
-    points = []
-    provenance = {}
-    for row in rows:
-        point = QuotaObservation(**{key: row[key] for key in QuotaObservation.__dataclass_fields__})
-        times = json.loads(zlib.decompress(row["timestamps_blob"])) if row["timestamps_blob"] else [point.timestamp]
-        origins = json.loads(row["origins"]) if row["origins"] else []
-        sources = {_SOURCE_LABELS.get(origin, "Unknown source") for origin in origins} or {"Unknown source"}
-        for stamp in times:
-            selected = replace(point, timestamp=stamp)
-            points.append(selected)
-            provenance.setdefault(selected, set()).update(sources)
+    points, provenance, live_points = load_quota_evidence(connection)
+    from codex_usage.allowance_pace import fit_paces
+    paces = [fit_paces(points, QuotaObservation(**{key: bucket[key]
+              for key in QuotaObservation.__dataclass_fields__}), live_points)
+             for bucket in status["active_buckets"]]
     if not points:
-        return {"status": status, "windows": [], "qualified": [], "headline": None,
+        return {"status": status, "paces": paces, "windows": [], "qualified": [], "headline": None,
                 "headline_previous": False, "history": []}
     times, costs, unpriced = [], [0.0], [0]
     for timestamp, cost, unpriced_tokens in priced_events:
@@ -153,9 +139,37 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     latest = windows[-1] if windows else None
     return {
         "status": status,
+        "paces": paces,
         "windows": windows,
         "qualified": qualified,
         "headline": headline,
         "headline_previous": headline is not None and headline is not latest,
         "history": allowance_history(windows),
     }
+
+
+def load_quota_evidence(connection):
+    """Load raw, timestamp-expanded quota evidence once for both analytics paths."""
+    rows = connection.execute(
+        """select o.*, p.origins from quota_observations o
+        left join (
+            select observation_key, json_group_array(distinct provenance) origins
+            from quota_provenance group by observation_key
+        ) p using(observation_key)
+        order by o.timestamp, o.rowid"""
+    ).fetchall()
+    points = []
+    provenance = {}
+    live_points = set()
+    for row in rows:
+        point = QuotaObservation(**{key: row[key] for key in QuotaObservation.__dataclass_fields__})
+        times = json.loads(zlib.decompress(row["timestamps_blob"])) if row["timestamps_blob"] else [point.timestamp]
+        origins = json.loads(row["origins"]) if row["origins"] else []
+        sources = {_SOURCE_LABELS.get(origin, "Unknown source") for origin in origins} or {"Unknown source"}
+        for stamp in times:
+            selected = replace(point, timestamp=stamp)
+            points.append(selected)
+            if "live" in origins:
+                live_points.add(selected)
+            provenance.setdefault(selected, set()).update(sources)
+    return points, provenance, live_points

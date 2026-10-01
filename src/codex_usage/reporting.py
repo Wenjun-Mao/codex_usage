@@ -225,6 +225,7 @@ def render_html_report(
             image_report=image_report,
             allowance_report=allowance_report,
             allowance_timezone=generated_at.tzinfo or UTC,
+            allowance_now=generated_at,
         ),
     )
     storage_view_html = render_report_view(STORAGE_REPORT_VIEW, task_storage_html)
@@ -281,6 +282,7 @@ def _render_usage_view(
     image_report: ImageReport | None,
     allowance_report: dict | None = None,
     allowance_timezone: tzinfo = UTC,
+    allowance_now: datetime | None = None,
 ) -> str:
     temporal_chart = render_temporal_chart(
         view_model, range_name, use_period_trend=use_period_trend
@@ -296,7 +298,7 @@ def _render_usage_view(
         f"{pricing_notice_html}"
         f"{_empty_report_notice(view_model)}"
         f"{project_transitions_html}"
-        f"{render_allowance_section(allowance_report, timezone=allowance_timezone)}"
+        f"{render_allowance_section(allowance_report, timezone=allowance_timezone, now=allowance_now)}"
         f"{render_project_economics_section(view_model.project_economics)}"
         f"{render_image_activity_section(image_report)}"
         '<div class="dashboard-grid">'

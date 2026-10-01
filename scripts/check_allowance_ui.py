@@ -1,5 +1,6 @@
 """Exercise production report allowance and meter rendering across browsers."""
 from copy import deepcopy
+from datetime import datetime
 from io import BytesIO
 import re
 from zoneinfo import ZoneInfo
@@ -36,7 +37,8 @@ def _document(report, theme_name):
         f'<!doctype html><html data-codex-theme="{html_theme}"><style>'
         f'{report_css()}{allowance_css()}</style>'
         f'<body class="{body_class}" style="{body_style}">'
-        f'{render_allowance_section(report, timezone=ZoneInfo("America/Toronto"))}'
+        f'{render_allowance_section(report, timezone=ZoneInfo("America/Toronto"),
+                                    now=datetime.fromisoformat(report["status"]["last_probe_at"]))}'
         "</body></html>"
     )
 
@@ -112,6 +114,14 @@ def _check_report_content(page, report, state, theme, history_colors):
         assert "$1,260.00" in summary_text
         assert "2026-08-29" not in summary_text
     assert page.get_by_role("meter").count() == len(report["status"]["active_buckets"])
+    paces = page.locator(".allowance-pace")
+    assert paces.count() == 2 * len(report["status"]["active_buckets"])
+    assert paces.evaluate_all("elements => elements.every(e => e.scrollWidth <= e.clientWidth)")
+    if state not in {"stale", "unavailable"}:
+        assert "would run out around" in paces.nth(0).inner_text()
+        assert "would remain at reset" in paces.nth(1).inner_text()
+    if state == "stale":
+        assert "Forecast awaiting fresh capture" in paces.first.inner_text()
     observations = page.locator(".allowance-observation")
     assert observations.count() == len(report["status"]["active_buckets"])
     for index, bucket in enumerate(report["status"]["active_buckets"]):
@@ -283,6 +293,8 @@ def _check_meter_visuals(page, browser_name):
             assert _contrast_ratio(accent_rgb, track_rgb) >= 3
             assert _contrast_ratio(track_rgb, page_rgb) < _contrast_ratio(accent_rgb, page_rgb)
             assert _contrast_ratio(_css_rgb(styles["text"]), page_rgb) >= 4.5
+            pace_color = page.locator(".allowance-pace").first.evaluate("e => getComputedStyle(e).color")
+            assert _contrast_ratio(_css_rgb(pace_color), page_rgb) >= 4.5
             assert _contrast_ratio(accent_rgb, page_rgb) >= 3
 
             # Meter value pseudo styles are not reflected consistently by

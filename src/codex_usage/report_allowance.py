@@ -2,6 +2,8 @@
 from datetime import UTC, datetime, tzinfo
 from html import escape
 
+from codex_usage.report_allowance_pace import pace_details, pace_rows
+
 
 ALLOWANCE_HISTORY_LIMIT = 12
 _SOURCE_DESCRIPTION = (
@@ -187,7 +189,7 @@ def _reading_label(probe_status):
     }.get(probe_status, "Last known reading")
 
 
-def render_allowance_section(report, *, timezone: tzinfo = UTC):
+def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
     if report is None:
         return ""
     status = report["status"]
@@ -216,6 +218,8 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
             f'{text(_reading_label(status.get("probe_status")))} · '
             f'{observation_time}</p>'
         )
+        paces = report.get("paces", [])
+        pace_markup = pace_rows(paces[index], status.get("probe_status"), timezone=timezone, now=now) if index < len(paces) else ""
         buckets.append(
             '<div class="allowance-bucket">'
             '<div class="allowance-bucket-summary">'
@@ -228,7 +232,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
             f'aria-label="{identity} percentage remaining" '
             f'aria-describedby="{observation_id}" '
             f'aria-valuetext="{remaining_percent:g}% remaining"></meter>'
-            f'{observation_markup}</div>'
+            f'{observation_markup}{pace_markup}</div>'
         )
     qualified = report["qualified"]
     details = []
@@ -285,7 +289,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC):
         'Other devices and missing history may change it.</p>'
         '<p class="muted">VS Code capture stops when VS Code closes. Quota snapshots missed during that time may not be reconstructable.</p>'
         '<details><summary>Probe, coverage, and allowance history</summary>'
-        f'{highlighted_evidence}'
+        f'{highlighted_evidence}{pace_details(report.get("paces", []), status.get("probe_status"), now=now)}'
         f'<p>Plan: {text(status["plan"] or "Unavailable")} · Probe: {text(status["probe_status"])} · '
         f'Last checked: {_observation_time(status["last_probe_at"], timezone)} · '
         f'Last observed: {_observation_time(status.get("last_observed_at"), timezone)}</p>'
@@ -305,6 +309,7 @@ def allowance_css():
 .plan-allowance { margin: 18px 0; padding: 20px; border: 1px solid var(--border, var(--line)); border-radius: 12px; overflow-wrap: anywhere; }
 .allowance-buckets { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(320px,100%),1fr)); gap: 10px 18px; }
 .allowance-bucket { min-width: 0; }
+.allowance-pace { margin: 4px 0; font-size: .9rem; overflow-wrap: anywhere; }
 .allowance-observation { margin: 4px 0 0; min-width: 0; overflow-wrap: anywhere; }
 .allowance-observation time { font-variant-numeric: tabular-nums; }
 .allowance-bucket-summary { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; row-gap: 3px; }
