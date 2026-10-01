@@ -7,9 +7,18 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from codex_usage.allowance_models import QuotaObservation
-from codex_usage.allowance_pace import active_evidence, fit_paces, pace_state
+from codex_usage.allowance_pace import active_evidence as select_evidence, fit_paces as fit_prepared, pace_state
+from codex_usage.allowance_pace_evidence import prepare_pace_evidence
 from codex_usage.allowance_windows import boundary, seconds
 from codex_usage.report_allowance_pace import pace_rows
+
+
+def fit_paces(points, anchor, live_points):
+    return fit_prepared(prepare_pace_evidence(points, live_points), anchor)
+
+
+def active_evidence(points, anchor, live_points):
+    return select_evidence(prepare_pace_evidence(points, live_points), anchor)
 
 BASE = datetime(2026, 9, 30, 12, tzinfo=UTC)
 RESET = int((BASE + timedelta(days=2)).timestamp())

@@ -76,3 +76,86 @@ def test_partial_response_does_not_borrow_missing_previous_bucket(tmp_path, monk
         report = build_allowance_report(connection)
     assert len(report["paces"]) == len(report["status"]["active_buckets"]) == 1
     assert report["paces"][0][0]["rate"] == 4
+
+
+def test_warm_html_hits_never_select_or_decode_historical_payload(tmp_path, monkeypatch):
+    import json
+    from unittest.mock import patch
+
+    import codex_usage.agent_reports as reports
+    from codex_usage.agent_paths import ledger_database_path
+    from codex_usage.ledger_schema import open_ledger
+
+    home = tmp_path / "codex"
+    (home / "sessions").mkdir(parents=True)
+    anchor = datetime(2026, 9, 30, 12, tzinfo=UTC)
+    stamp = anchor.isoformat()
+    point = QuotaObservation(stamp, "codex", "primary", "pro", 80, 300, int(anchor.timestamp())+3600)
+    monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance", lambda _: QuotaRead(stamp, "pro", (point,)))
+    capture_once(home, request_kind="manual", max_workers=1)
+
+    def render(now=anchor):
+        return reports.render_ledger_report(home, range_name="all", project_keys=[], theme="day",
+                                            timezone_name="UTC", now=now)
+
+    first = render()
+    ledger = ledger_database_path(home)
+    with open_ledger(ledger) as connection:
+        row = connection.execute("select * from allowance_report_cache where pricing_revision not like '%:pace-state'").fetchone()
+        payload = json.loads(row["report_json"])
+        payload["synthetic_historical_padding"] = "historical quota payload " * 250000
+        connection.execute("update allowance_report_cache set report_json = ? where pricing_revision = ?",
+                           (json.dumps(payload), row["pricing_revision"]))
+        connection.commit()
+    queries_seen = []
+    original_open = reports.open_ledger
+    original_loads = json.loads
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def tracked_open(*args, **kwargs):
+        with original_open(*args, **kwargs) as connection:
+            connection.set_trace_callback(queries_seen.append)
+            yield connection
+
+    def small_decode(value, *args, **kwargs):
+        assert len(value) < 10000, "warm view decoded historical allowance payload"
+        return original_loads(value, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("warm HTML lookup loaded full allowance report")
+
+    with patch.object(reports, "open_ledger", tracked_open), patch.object(reports, "indexed_allowance_report", forbidden), patch.object(json, "loads", small_decode):
+        warm = render(anchor + timedelta(minutes=1))
+    assert warm.cache_hit and warm.html == first.html
+    assert all(":pace-state" in sql for sql in queries_seen if "from allowance_report_cache" in sql.lower())
+    # A presentation transition may render history once; the subsequent hit
+    # still uses only compact clock state and preserves stale-meter labeling.
+    expired = render(anchor + timedelta(minutes=31))
+    assert not expired.cache_hit and "Forecast awaiting fresh capture" in expired.html
+    with patch.object(reports, "indexed_allowance_report", forbidden), patch.object(json, "loads", small_decode):
+        assert render(anchor + timedelta(minutes=32)).cache_hit
+    stale = render(anchor + timedelta(minutes=61))
+    assert not stale.cache_hit and "Last known reading" in stale.html
+    with patch.object(reports, "indexed_allowance_report", forbidden), patch.object(json, "loads", small_decode):
+        assert render(anchor + timedelta(minutes=62)).cache_hit
+
+
+def test_compact_cache_key_preserves_snapshot_pricing_and_coverage(tmp_path):
+    from codex_usage.allowance_index import cached_allowance_pace
+    from codex_usage.ledger_schema import open_ledger
+    from codex_usage.allowance_store import store_observations
+    import json
+
+    ledger = tmp_path / "ledger.sqlite3"
+    point = QuotaObservation(datetime(2026, 9, 30, tzinfo=UTC).isoformat(), "codex", "primary", "pro", 10, 300, None)
+    with open_ledger(ledger) as connection:
+        store_observations(connection, [point], source_key="fixture", provenance="live")
+        connection.execute("insert into allowance_report_cache values (?,?,?,?)",
+                           (4, "p1:allowance-index-2:report-3:pace-state", 1, json.dumps({"paces": [[{"fixture": True}]]})))
+        assert cached_allowance_pace(connection, revision=4, pricing_revision="p1", coverage_complete=True) == {"paces": [[{"fixture": True}]]}
+        for revision, pricing, coverage in ((5, "p1", True), (4, "p2", True), (4, "p1", False)):
+            assert cached_allowance_pace(connection, revision=revision, pricing_revision=pricing, coverage_complete=coverage) is None
+        connection.execute("drop table allowance_report_cache")
+        assert cached_allowance_pace(connection, revision=4, pricing_revision="p1", coverage_complete=True) is None

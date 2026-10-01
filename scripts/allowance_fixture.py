@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from codex_usage.allowance_estimation import estimate_window
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_pace import fit_paces
+from codex_usage.allowance_pace_evidence import prepare_pace_evidence
 from codex_usage.allowance_queries import allowance_highlights, allowance_history
 from codex_usage.allowance_windows import AllowanceWindow
 
@@ -46,7 +47,7 @@ def allowance_fixture() -> dict:
                     anchor.limit_id, anchor.slot, anchor.plan, used, anchor.duration_minutes,
                     anchor.resets_at) for m, used in ((60, 18), (30, 18), (15, 19))]
     pace_points.append(anchor)
-    paces = fit_paces(pace_points, anchor, {anchor})
+    paces = fit_paces(prepare_pace_evidence(pace_points, {anchor}), anchor)
     extra = dict(active, limit_id="extra-model", used_percent=8, duration_minutes=300)
     extra_anchor = QuotaObservation(**{key: extra[key] for key in QuotaObservation.__dataclass_fields__})
     qualified, headline = allowance_highlights(windows)
@@ -61,7 +62,7 @@ def allowance_fixture() -> dict:
             "lifetime_tokens": 900000000,
             "recovery": {"total": 80, "complete": 72, "pending": 8, "unavailable": 0},
         },
-        "paces": [paces, fit_paces([extra_anchor], extra_anchor, {extra_anchor})],
+        "paces": [paces, fit_paces(prepare_pace_evidence([extra_anchor], {extra_anchor}), extra_anchor)],
         "windows": windows, "qualified": qualified, "headline": headline,
         "headline_previous": False, "history": allowance_history(windows),
     }

@@ -248,7 +248,7 @@ def test_uncached_views_reuse_account_wide_allowance_result(tmp_path, monkeypatc
         assert not report.cache_hit
     assert calls == {"price": 1, "events": 1, "windows": 1}
     with open_ledger(ledger, read_only=True) as connection:
-        assert connection.execute("select count(*) from allowance_report_cache").fetchone()[0] == 1
+        assert connection.execute("select count(*) from allowance_report_cache").fetchone()[0] == 2
 
 
 def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_path):
@@ -269,7 +269,7 @@ def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_
     assert [p["plan"] for p in report["windows"][0]["points"]] == [p.plan for p in points]
     with open_ledger(ledger) as connection:
         assert {r[0] for r in connection.execute("select pricing_revision from allowance_report_cache")} == {
-            "p1:allowance-index-2:report-2"}
+            "p1:allowance-index-2:report-3", "p1:allowance-index-2:report-3:pace-state"}
 
     # Use independent synthetic cumulative costs to exercise headline selection.
     from codex_usage.allowance_queries import _build_from_costs
@@ -310,7 +310,7 @@ def test_report_revision_refreshes_provenance_without_repricing_events(tmp_path,
     _compare(ledger)
     with open_ledger(ledger) as connection:
         costs = [tuple(row) for row in connection.execute("select * from allowance_event_costs")]
-        connection.execute("update allowance_report_cache set pricing_revision = 'p1:allowance-index-2', report_json = ?",
+        connection.execute("update allowance_report_cache set pricing_revision = 'p1:allowance-index-2', report_json = ? where pricing_revision not like '%:pace-state'",
                            ('{"stale": true}',))
         connection.commit()
 
@@ -320,7 +320,7 @@ def test_report_revision_refreshes_provenance_without_repricing_events(tmp_path,
     monkeypatch.setattr(allowance_index, "estimate_cost", forbidden)
     report = _compare(ledger)
     assert all(point["provenance"] == "Task snapshot" for point in report["windows"][0]["points"])
-    monkeypatch.setattr(allowance_index, "ALLOWANCE_REPORT_REVISION", 3)
+    monkeypatch.setattr(allowance_index, "ALLOWANCE_REPORT_REVISION", 4)
     _compare(ledger)
     with open_ledger(ledger, read_only=True) as connection:
         assert [tuple(row) for row in connection.execute("select * from allowance_event_costs")] == costs

@@ -9,7 +9,7 @@ from codex_usage.parser import parse_timestamp
 from codex_usage.pricing import estimate_cost
 
 ALLOWANCE_INDEX_REVISION = 2
-ALLOWANCE_REPORT_REVISION = 2
+ALLOWANCE_REPORT_REVISION = 3
 
 
 def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revision,
@@ -19,8 +19,7 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
     A simultaneous capture may advance the writer beyond the caller's read
     snapshot. In that case the snapshot's full estimator is the safe fallback.
     """
-    pricing_revision = f"{pricing_revision}:allowance-index-{ALLOWANCE_INDEX_REVISION}"
-    report_revision = f"{pricing_revision}:report-{ALLOWANCE_REPORT_REVISION}"
+    pricing_revision, report_revision = _revisions(pricing_revision)
     if snapshot.execute("select 1 from quota_observations limit 1").fetchone() is None:
         return _build_from_costs(snapshot, (), coverage_complete=coverage_complete)
     key = (revision, report_revision, int(coverage_complete))
@@ -33,7 +32,7 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
         # A read-only report can precede the next capture's schema migration.
         return build_allowance_report(snapshot, coverage_complete=coverage_complete)
     if cached:
-        report = json.loads(cached[0])
+        report = _decode_cached_report(cached[0])
         report["status"] = _status(snapshot)
         return report
     with open_ledger(ledger_path) as writer:
@@ -60,11 +59,50 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
         ), coverage_complete=coverage_complete)
         writer.execute("""insert or replace into allowance_report_cache values (?,?,?,?)""",
                        (*key, json.dumps(report)))
-        writer.execute("delete from allowance_report_cache where ledger_revision != ? or pricing_revision != ?",
-                       (revision, report_revision))
+        writer.execute("""insert or replace into allowance_report_cache values (?,?,?,?)""",
+                       (revision, report_revision + ":pace-state", int(coverage_complete),
+                        json.dumps({"paces": report.get("paces", [])})))
+        writer.execute("""delete from allowance_report_cache where ledger_revision != ?
+                       or pricing_revision not in (?, ?)""",
+                       (revision, report_revision, report_revision + ":pace-state"))
         writer.commit()
     report["status"] = _status(snapshot)
     return report
+
+
+def _revisions(pricing_revision):
+    pricing = f"{pricing_revision}:allowance-index-{ALLOWANCE_INDEX_REVISION}"
+    return pricing, f"{pricing}:report-{ALLOWANCE_REPORT_REVISION}"
+
+
+def cached_allowance_pace(snapshot, *, revision, pricing_revision, coverage_complete):
+    """Read compact clock state without touching the historical report payload.
+
+    Both cache rows are written atomically under the same revision/coverage key.
+    A missing state row is a cold lookup, never permission to reuse old HTML.
+    """
+    if snapshot.execute("select 1 from quota_observations limit 1").fetchone() is None:
+        return {"paces": []}
+    _, report_revision = _revisions(pricing_revision)
+    try:
+        row = snapshot.execute("""select report_json from allowance_report_cache
+            where ledger_revision = ? and pricing_revision = ? and coverage_complete = ?""",
+            (revision, report_revision + ":pace-state", int(coverage_complete))).fetchone()
+    except sqlite3.OperationalError as error:
+        if "no such table: allowance_report_cache" not in str(error):
+            raise
+        return None
+    return _decode_cached_pace(row[0]) if row else None
+
+
+def _decode_cached_report(payload):
+    """Keep derived-cache decoding inspectable separately from evidence loading."""
+    return json.loads(payload)
+
+
+def _decode_cached_pace(payload):
+    """Decode only compact state; historical decoding has a separate boundary."""
+    return json.loads(payload)
 
 
 def _status(connection):

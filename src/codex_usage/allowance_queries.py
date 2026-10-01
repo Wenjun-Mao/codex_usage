@@ -106,9 +106,12 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     status = allowance_status(connection)
     points, provenance, live_points = load_quota_evidence(connection)
     from codex_usage.allowance_pace import fit_paces
-    paces = [fit_paces(points, QuotaObservation(**{key: bucket[key]
-              for key in QuotaObservation.__dataclass_fields__}), live_points)
-             for bucket in status["active_buckets"]]
+    from codex_usage.allowance_pace_evidence import prepare_pace_evidence
+    anchors = [QuotaObservation(**{key: bucket[key] for key in QuotaObservation.__dataclass_fields__})
+               for bucket in status["active_buckets"]]
+    prepared = prepare_pace_evidence(points, live_points,
+        series_keys={(p.limit_id, p.duration_minutes) for p in anchors}) if anchors else None
+    paces = [fit_paces(prepared, anchor) for anchor in anchors]
     if not points:
         return {"status": status, "paces": paces, "windows": [], "qualified": [], "headline": None,
                 "headline_previous": False, "history": []}

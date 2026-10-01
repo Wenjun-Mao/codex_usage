@@ -19,7 +19,7 @@ from codex_usage.aggregation import (
     summarize_valued_records,
     value_records,
 )
-from codex_usage.allowance_index import indexed_allowance_report
+from codex_usage.allowance_index import cached_allowance_pace, indexed_allowance_report
 from codex_usage.agent_activity import agent_activity_csv, build_agent_activity
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.ledger_queries import (
@@ -42,7 +42,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}:gpt-6-sol-luna-6.1-sol-standard-credits-v1:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
-REPORT_RENDER_REVISION = 19
+REPORT_RENDER_REVISION = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,13 +103,20 @@ def render_ledger_report(
     with open_ledger(ledger_path, read_only=True) as connection:
         connection.execute("begin")
         status = query_ledger_status(connection)
-        allowance_report = indexed_allowance_report(
-            connection, ledger_path, revision=status.revision,
-            pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
+        pace_report = cached_allowance_pace(
+            connection, revision=status.revision, pricing_revision=PRICING_REVISION,
+            coverage_complete=status.coverage.complete,
         )
+        allowance_report = None
+        if pace_report is None:
+            allowance_report = indexed_allowance_report(
+                connection, ledger_path, revision=status.revision,
+                pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
+            )
+            pace_report = allowance_report
         from codex_usage.allowance_pace import presentation_identity
         from codex_usage.allowance_queries import allowance_status
-        allowance_report["status"] = allowance_status(connection, now=now)
+        pace_report["status"] = allowance_status(connection, now=now)
         cache_key = _report_cache_key(
             status.revision,
             report_range.cache_identity,
@@ -117,8 +124,8 @@ def render_ledger_report(
             theme,
             str(timezone),
             auto_transitions,
-            allowance_report["status"]["probe_status"],
-            presentation_identity(allowance_report, now.timestamp()),
+            pace_report["status"]["probe_status"],
+            presentation_identity(pace_report, now.timestamp()),
         )
         cached = _load_cached_report(connection, cache_key)
         if cached is not None:
@@ -130,6 +137,12 @@ def render_ledger_report(
                 status=status,
             )
 
+        if allowance_report is None:
+            allowance_report = indexed_allowance_report(
+                connection, ledger_path, revision=status.revision,
+                pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
+            )
+        allowance_report["status"] = pace_report["status"]
         records = finalize_session_records(
             [query_ledger_records(connection, bounds=report_range.bounds)]
         )

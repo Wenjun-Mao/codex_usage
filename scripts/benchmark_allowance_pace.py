@@ -7,6 +7,7 @@ stages. No wall-clock timing assertions are used as CI gates.
 """
 import json
 from datetime import UTC, datetime, timedelta
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
@@ -21,6 +22,7 @@ from codex_usage.agent_reports import PRICING_REVISION, render_ledger_report
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_probe import QuotaRead
 from codex_usage.allowance_store import store_read
+import codex_usage.allowance_pace_evidence as evidence
 from codex_usage.ledger_schema import increment_ledger_revision, ledger_revision, open_ledger
 
 
@@ -33,7 +35,7 @@ def timed(function, *args, **kwargs):
 def main():
     stages = {}
     phases = {}
-    counts = {"allowance_prices": 0, "fits": 0, "evidence_loads": 0}
+    counts = {"allowance_prices": 0, "fits": 0, "evidence_loads": 0, "preparations": 0, "historical_cache_decodes": 0}
 
     def instrument(name, original, count=None):
         def measured(*args, **kwargs):
@@ -49,7 +51,8 @@ def main():
         sessions = home / "sessions"
         sessions.mkdir(parents=True)
         base = datetime(2026, 9, 23, 12, tzinfo=UTC)
-        anchor = base + timedelta(days=7, hours=23, minutes=45)
+        quota_count = 52000
+        anchor = base + timedelta(minutes=(quota_count-1)*15)
         rows = [{"timestamp": base.isoformat(), "type": "session_meta", "payload": {"id": "fixture", "cwd": "/synthetic"}},
                 {"timestamp": base.isoformat(), "type": "turn_context", "payload": {"model": "gpt-5.6-sol"}}]
         for i in range(10000):
@@ -60,15 +63,18 @@ def main():
         with patch("codex_usage.allowance_capture.probe_allowance", return_value=QuotaRead(base.isoformat(), diagnostics="synthetic")):
             _, rebuild_ms = timed(capture_once, home, request_kind="manual", max_workers=1)
         ledger = ledger_database_path(home)
-        points = [QuotaObservation((base+timedelta(minutes=i*15)).isoformat(), "codex", "primary", "pro",
-                                   (i % 96)*.8, 1440, int((base+timedelta(days=i//96+1)).timestamp()), 3)
-                  for i in range(768)]
+        points = [QuotaObservation((base+timedelta(minutes=i*15)).isoformat(), "codex", "primary" if i % 2 == 0 else "secondary", "pro",
+                                   (i % 96)*.8, 1440 if i % 2 == 0 else 10080, int((base+timedelta(days=i//96+1)).timestamp()), 3)
+                  for i in range(quota_count)]
         with open_ledger(ledger) as connection:
             run_id = connection.execute("select max(run_id) from capture_runs").fetchone()[0]
             for point in points:
                 store_read(connection, QuotaRead(point.timestamp, "pro", (point,)), run_id)
+            anchors = [replace(points[-2], timestamp=anchor.isoformat()), points[-1]]
+            store_read(connection, QuotaRead(anchor.isoformat(), "pro", tuple(anchors)), run_id)
             increment_ledger_revision(connection)
             connection.commit()
+        points.append(anchors[0])
 
         def build(pricing=PRICING_REVISION):
             with open_ledger(ledger, read_only=True) as connection:
@@ -86,7 +92,10 @@ def main():
             phases[name] = {"timings": phase, "additional_counts": {k: counts[k] - before[k] for k in counts}}
             return result
 
-        with patch.object(queries, "load_quota_evidence", instrument("quota_evidence_loading_ms", queries.load_quota_evidence, "evidence_loads")), \
+        with patch.object(index, "_decode_cached_report", instrument("historical_cache_decode_ms", index._decode_cached_report, "historical_cache_decodes")), \
+             patch.object(index, "_decode_cached_pace", instrument("compact_cache_decode_ms", index._decode_cached_pace)), \
+             patch.object(evidence, "prepare_pace_evidence", instrument("causal_preparation_ms", evidence.prepare_pace_evidence, "preparations")), \
+             patch.object(queries, "load_quota_evidence", instrument("quota_evidence_loading_ms", queries.load_quota_evidence, "evidence_loads")), \
              patch.object(pace, "active_evidence", instrument("continuity_selection_ms", pace.active_evidence)), \
              patch.object(pace, "fit_paces", instrument("evidence_plus_fit_ms", pace.fit_paces, "fits")), \
              patch.object(index, "estimate_cost", instrument("allowance_pricing_ms", index.estimate_cost, "allowance_prices")):
@@ -97,8 +106,20 @@ def main():
                                             theme=kw.pop("theme", "day"), timezone_name="UTC", now=anchor, **kw)
             measure("first_html_report", render)
             measure("warm_same_view", render)
-            measure("warm_changed_view", render, theme="night", project_keys=["other"])
-            assert counts == first_counts, "warm views must not reprice allowance or reconstruct/refit quota"
+            measure("uncached_changed_view", render, theme="night", project_keys=["other"])
+            # An uncached changed view renders the history. Only a warm HTML
+            # hit must avoid reading/decoding that historical payload entirely.
+            for name in ("first_html_report", "warm_same_view", "uncached_changed_view"):
+                assert all(phases[name]["additional_counts"][key] == 0
+                           for key in ("allowance_prices", "fits", "evidence_loads", "preparations"))
+            assert phases["warm_same_view"]["additional_counts"]["historical_cache_decodes"] == 0
+            with open_ledger(ledger, read_only=True) as connection:
+                sizes = {"compact" if row[0].endswith(":pace-state") else "historical": row[1]
+                         for row in connection.execute("select pricing_revision,length(cast(report_json as blob)) from allowance_report_cache")}
+            prepared = measure("standalone_preparation", evidence.prepare_pace_evidence, points, points)
+            for number, endpoint in enumerate(anchors):
+                measure(f"prepared_origin_fit_{number}", pace.fit_paces, prepared, endpoint)
+            measure("prepared_earlier_origin_fit", pace.fit_paces, prepared, points[-5])
             with open_ledger(ledger, read_only=True) as connection:
                 connection.execute("begin")
                 oracle = queries.build_allowance_report(connection)
@@ -113,7 +134,7 @@ def main():
                 latest = points[-1]
                 updated = QuotaObservation((anchor+timedelta(minutes=15)).isoformat(), latest.limit_id, latest.slot,
                                            latest.plan, 77, latest.duration_minutes, latest.resets_at)
-                store_read(connection, QuotaRead(updated.timestamp, "pro", (updated,)), run_id)
+                store_read(connection, QuotaRead(updated.timestamp, "pro", (updated, replace(anchors[1], timestamp=updated.timestamp))), run_id)
                 increment_ledger_revision(connection)
                 connection.commit()
             before = counts["allowance_prices"]
@@ -121,8 +142,8 @@ def main():
             assert counts["allowance_prices"] == before
             measure("simulated_upgrade_allowance_repricing_report", build, "synthetic-upgrade-pricing")
             assert counts["allowance_prices"] - before == 10000
-        print(json.dumps({"synthetic_events": 10000, "quota_points": len(points), "first_counts": first_counts,
-                          "warm_additional_counts": {key: 0 for key in counts},
+        print(json.dumps({"synthetic_events": 10000, "quota_points": len(points), "active_buckets": len(anchors), "first_counts": first_counts,
+                          "cache_payload_bytes": sizes,
                           "dollar_and_indexed_full_preservation": "exact equality", "initial_capture_rebuild_ms": rebuild_ms,
                           "phases": phases,
                           "scope": "local Python only; no UI/HTTP transport; per-phase instrumentation; existing language valuation is part of HTML totals"}, indent=2))

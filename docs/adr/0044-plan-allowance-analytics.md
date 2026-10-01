@@ -257,6 +257,51 @@ expiry, no view-triggered probes/source reads/allowance repricing/refitting, and
 indexed/full equality. Synthetic browser checks guard disagreement, wrapping,
 contrast and existing meter accessibility in Day/Night at 360px and wider.
 
+## Pace cache and preparation revision (director review)
+
+The initial candidate decoded the full historical allowance JSON before checking
+for a warm HTML hit, and reconstructed the full causal prefix inside each fit.
+Counters covering quota queries and pricing missed cache decoding; a small
+synthetic history also failed to exercise the actual history-size cost. Warm
+cache verification must cover bytes selected/decoded as well as computation.
+
+Store a compact pace-state sibling in the existing disposable allowance-report
+cache. Full and compact rows share ledger, pricing/index/report revision and
+coverage identity and are written atomically. The compact key appends
+`:pace-state`; obsolete variants are discarded together. Use it plus the current
+injected-clock probe status before HTML lookup; load historical windows only
+when an HTML view must be rendered. Missing compact state is a cold lookup;
+a pre-migration database retains the safe full-estimator fallback. Reject SQL
+JSON extraction from the full payload: it would still read/parse history. No
+new persistent table or schema migration is needed. Report revision 3 and HTML
+revision 20 invalidate the initial candidate's cache; cost index stays 2.
+
+`PreparedPaceEvidence` owns revision-scoped causal continuity checkpoints and
+binary-searchable actual observations. Build it once from already-loaded raw
+quota evidence for the active series; include limit-wide plan events from other
+durations. Each checkpoint reflects only its observation-time prefix. Resolve
+leading unknown identity at its first known endpoint by replaying that leading
+run once at that origin, preserving earlier origins' unknown checkpoints. Known
+plan changes end the current suffix; missing reset/credit memory, conflicts and
+boundary evidence survive outside the fit lookback. Fitting accepts prepared
+evidence only and selects actual points within 24 hours by indexed boundaries,
+then applies the unchanged Recent/Daily gates. Never trim away continuity memory
+at an arbitrary lookback cutoff or resolve identities using future metadata.
+
+Preparation remains linear/full-history work on each newly materialized report
+revision, shared by its active buckets. It is not a durable incremental index:
+recovery or source replacement may alter old evidence. Warm cached views reuse
+rates and checkpoints are not rebuilt. Selection/fitting is bounded by observed
+time, not by an invented sample-count cap. Separate loading, preparation,
+selection/fitting, historical cache decoding and repricing in benchmarks. New
+revision materialization and uncached history rendering still have measurable
+costs; the under-20ms fit target is not an end-to-end report latency claim.
+
+Guardrails compare prepared origins with the frozen full-prefix oracle, forbid
+prefix iteration/preparation during fits, and trace compact-only cache SQL plus
+small decoding on warm HTML hits. Large synthetic benchmarks cover two active
+buckets and full monetary equality. Keep raw private snapshot evidence ignored.
+
 ## Rejected Alternatives
 
 - Dividing cumulative lifetime dollars by current usage crosses resets and
