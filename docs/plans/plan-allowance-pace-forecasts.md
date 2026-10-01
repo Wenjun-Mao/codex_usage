@@ -4,7 +4,10 @@
 
 Proposed 2026-09-30; revised after the two external reviews and checked against
 released 2.9.5 (`31f62a4d7778988890554065f31730896c7512c3`). Planning only:
-implementation and release still require approval. The unchanged reports,
+implementation and release still require approval. The bounded read-only
+calibration is complete; its generic method and reproduction contract are in the
+[calibration record](../research/2026-09-30-pace-forecast-review/calibration/README.md).
+The unchanged reports,
 reproduced synthetic results, and our dispositions are in the
 [review record](../research/2026-09-30-pace-forecast-review/README.md).
 
@@ -71,6 +74,10 @@ conflict information and may have used observations later than the live anchor.
    decrease, or a material contradictory rebase requires a new coherent suffix
    or refusal, even if net usage dropped by only one point or did not drop.
    Reset credits are evidence about boundaries, not additional quota.
+   Missing intermediate metadata must not erase the last known reset/credit
+   evidence within that compatible suffix. Track this evidence separately from
+   raw observations; never fill in a missing live reset for projection. Treat
+   contradictory same-time reset credits as a conflict too.
 4. Keep shared historical segmentation and dollar estimation unchanged in this
    feature. The forecast check is an explicit, tested eligibility policy, not a
    silent repair of raw data or retrospective history. Document its distinction
@@ -95,8 +102,8 @@ from display text or the absence of a compressed timestamp blob.
 
 ## Estimator Comparison
 
-Use one bounded offline comparison, with the same evidence and gates for each
-method. Our preferred starting references, not yet a demonstrated winner, are:
+Use the bounded offline comparison, with the same evidence and gates for each
+method. The calibrated recommendation, not a demonstrated accuracy winner, is:
 
 - **Recent:** signed net percentage movement divided by observed wall-clock
   hours. This measures the recent elapsed-time average directly and is invariant
@@ -133,6 +140,16 @@ per occupied bucket does not make cumulative regression density invariant.
 Regression can nevertheless reduce endpoint rounding noise. Do not select a
 method from these synthetic counterexamples alone. Theil-Sen is an optional
 diagnostic for demonstrated outlier problems, not a product default.
+
+The September 30 read-only replay confirms that no contender dominates the
+near-term meter proxies. Retain net Recent for its clear elapsed-time meaning
+and directly weighted Daily for its explicit recency response. Keep six-hour
+decay and the initial gates as provisional design settings. All completed
+captured cycles were censored at early boundaries without an observed 100%;
+exhaustion timing and false-warning/reassurance rates remain unidentifiable.
+Keep failed origins and never-available contenders in denominators. Targets
+must use the same continuity/conflict safeguards as fits, and the latest failed
+read must not be hidden by a previous-successful-origin summary.
 
 ## Initial Gates And Projection
 

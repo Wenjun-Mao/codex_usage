@@ -94,10 +94,26 @@ historical replay of what the extension knew.
 | Discard | Positive-only deltas, fabricated boundary samples, promised survival | They overstate what the observations establish. |
 | Discard | Synthetic consensus proves a real-world winner | It does not; accuracy, harmful errors, availability, and stability remain unmeasured. |
 
-## Next Decision
+## Calibration Checkpoint
 
-The [revised plan](../../plans/plan-allowance-pace-forecasts.md) makes a bounded
-offline comparison the first deliverable, before product wiring. Prefer net
+Completed the approved read-only comparison. The generic
+[harness and reproduction contract](calibration/README.md) are committed;
+private observations, scores, and the local readout remain in ignored output.
+An independent native subagent review exposed metadata-memory, same-time credit,
+label-continuity, missing-reset, matched-contender, and latest-failed-read issues
+in the research harness. Regression probes now cover each; the frozen replay was
+rerun after repair. Those were calibration issues, not product fixes.
+
+Keep net Recent and directly weighted Daily as the recommended simple methods,
+not empirically proven exhaustion predictors. Maintain the provisional initial
+gates and six-hour Daily decay. The captured cycles cannot supply uncensored
+exhaustion labels, so near-term movement proxies and stability do not establish
+false-warning/reassurance rates. The implementation approval gate remains open.
+
+## Delivery Decision
+
+The [revised plan](../../plans/plan-allowance-pace-forecasts.md) makes the bounded
+offline comparison a separate deliverable before product wiring. Recommend net
 wall-clock Recent pace and directly weighted Daily interval pace unless frozen
 evaluation demonstrates a material reason to choose regression. Compare false
 reassurance separately from premature warnings and retain abstentions; do not
