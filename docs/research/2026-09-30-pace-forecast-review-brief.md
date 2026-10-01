@@ -9,6 +9,12 @@ brief and the plan, then bind their documentation commit in the final handoff.
 No private ledger, captured account percentages,
 task content, credentials, or local paths are part of this packet.
 
+Two returned reports and the supplied synthetic files are now preserved in the
+[review record](2026-09-30-pace-forecast-review/README.md), with verification and
+our dispositions separate from the originals. The
+[implementation plan](../plans/plan-allowance-pace-forecasts.md) has been revised
+after review; the prompt below preserves the originally submitted proposal.
+
 ## Consultant Prompt
 
 Review a proposed quota-exhaustion forecasting method for Codex Usage Companion,

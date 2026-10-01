@@ -2,185 +2,271 @@
 
 ## Status And Goal
 
-Proposed on 2026-09-30, grounded in released 2.9.4. Planning only; implementation
-and publication require approval. Add two compact forecasts beside each active
-allowance bucket so users can compare likely exhaustion with its actual reset.
-Keep the existing allowance meter and API-equivalent value calculation intact.
+Proposed 2026-09-30; revised after the two external reviews and checked against
+released 2.9.5 (`31f62a4d7778988890554065f31730896c7512c3`). Planning only:
+implementation and release still require approval. The unchanged reports,
+reproduced synthetic results, and our dispositions are in the
+[review record](../research/2026-09-30-pace-forecast-review/README.md).
+
+Add two compact, conditional forecasts beneath each active allowance meter.
+Compare the observed Recent and Daily paces with the reset deadline actually
+captured for that bucket. Keep the meter, capture schedule, raw observations,
+reset-history classifications, and API-equivalent dollar estimates unchanged.
+Do not add a forecasting service, durable table, dependency, or second pricing
+pass. Validate the evidence contract and compare simple methods before choosing
+the shipped calculation; consultation is not release evidence.
 
 ## User Experience
 
-Show two wrapping text rows beneath each bucket's meter and reading timestamp:
+Keep two wrapping rows beneath the meter and its reading timestamp. Examples:
 
-- **Recent pace · 1 hour:** Estimated to run out around [local date/time],
-  about [duration] before reset.
-- **Daily pace · 24 hours:** Expected to last until reset, with about
-  [percentage] remaining.
+- **Recent pace · 45m observed:** At this pace, quota would run out around
+  [local date/time], about [duration] before reset.
+- **Daily pace · 18h observed:** At this pace, about [percentage] would remain
+  at reset.
 
-Both rows support either outcome. These examples illustrate wording, not
-predictions. Use conditional language, not promises: the result assumes the
-measured pace continues. Where forecasts disagree, show both without selecting
-the faster one, averaging them, or presenting their difference as a confidence
-interval. The existing reading timestamp supplies the observation context.
+Both rows support either outcome. Recent means a maximum 60-minute lookback;
+Daily means a maximum 24-hour lookback with recency weighting. Show actual
+observed coverage beside the row label, particularly after a reset: three
+hours of evidence is not a measured day. These are conditional continuations,
+not forecasts of future user behavior. Preserve both when they disagree;
+do not average them, choose the faster one, or call their difference a
+confidence interval.
 
-If exhaustion is within 15 minutes of reset, say "Estimated to run out near
-reset" rather than suggesting a meaningful lead or surplus. Show "Allowance
-exhausted" at a captured 100% usage. Never replace the dollar headline with
-forecast availability messaging.
+Use local dates/times in the configured report timezone. Include a date if the
+forecast is on a different local day than the observation. Round exhaustion
+times to 15 minutes and durations to practical units, without seconds or a
+countdown. Compare unrounded results; within 15 minutes of reset, say "At this
+pace, quota would run out near reset." This band is a display convention, not
+uncertainty. Round positive reset balances to whole percentages, using "less
+than 1%" when they would round to zero. A fresh captured 100% reading may say
+"Meter reports 100% used"; a forecast alone must never assert actual exhaustion.
 
-Use local dates/times in the configured report timezone, including a date when
-the forecast is not on the observation's local day. Round forecast times to
-15 minutes and durations to practical units; do not display seconds or a live
-countdown. Round projected remaining percentages to whole percentages, using
-"less than 1%" for positive values that would round to zero. Outcome comparisons
-use unrounded values. Keep wide/narrow and Day/Night layouts compact, accessible,
-and script-free; add no controls, cards, chart, or explanatory paragraphs.
+Use quiet "Pace not yet measurable" or "Forecast awaiting fresh capture"
+states where applicable. Never replace the dollar headline with forecast
+availability. Keep details in the existing "Probe, coverage, and allowance
+history" disclosure: method, lookback, actual coverage, observations, movement,
+rate in percentage points/hour, gaps, correction/conflict evidence, and reasons
+for unavailability. Add no chart, controls, cards, or explanatory paragraphs.
 
-Put horizon, actual observed coverage, bucket count, usage movement, fitted
-percentage-points/hour, weighting, gaps, and availability reasons inside the
-existing "Probe, coverage, and allowance history" disclosure. Scope diagnostics
-to their bucket and distinguish measured readings from extrapolated forecasts.
+## Evidence Contract
 
-## Calculation Contract
+Forecast account-wide quota percentages, not dollars or tokens. Date, project,
+and theme filters must not change the fit. Reuse already-loaded ledger evidence,
+but do not consume only the retrospective window dictionaries: they discard
+conflict information and may have used observations later than the live anchor.
 
-Forecast account-wide quota percentage, not API-equivalent dollars or tokens.
-Reuse already-loaded observations and the released reset segmentation from
-ADR 0044. Forecasts ignore project/date/theme filters just like Plan Allowance.
+1. Select the evidence available at the decision and exclude observations whose
+   observation time is after the applicable live anchor **before** resolving
+   plans, classifying boundaries, selecting a segment, or sampling. Historical
+   replay additionally requires availability by that historical decision time.
+2. Match the exact latest successful live observation to its bucket by limit
+   ID, duration, compatible plan identity, and observation membership. Preserve
+   raw provenance, deterministic ordering, and same-time conflict information.
+   Slot is transport layout, not identity; small reset-clock jitter alone must
+   not create a cycle. Never borrow another cycle or the dollar fallback.
+3. Add a forecast-specific continuity check while raw evidence is present.
+   Strong reset evidence must override the small-drop correction shortcut for
+   forecast eligibility. A crossed reset plus advanced deadline, a reset-credit
+   decrease, or a material contradictory rebase requires a new coherent suffix
+   or refusal, even if net usage dropped by only one point or did not drop.
+   Reset credits are evidence about boundaries, not additional quota.
+4. Keep shared historical segmentation and dollar estimation unchanged in this
+   feature. The forecast check is an explicit, tested eligibility policy, not a
+   silent repair of raw data or retrospective history. Document its distinction
+   in ADR 0044. Any shared-boundary correction needs separate numerical review.
+5. Localize ambiguity. Conflicting same-time readings must not be averaged into
+   a fabricated observation. If an exact live anchor cannot be matched uniquely,
+   withhold the forecast. A coherent suffix after a separated unknown-cause
+   boundary can become eligible; do not permanently reject every ambiguous
+   historical window. Do not cross incompatible plan transitions.
+6. Deduplicate identical evidence, not repeated equal readings at different
+   times. Preserve actual time/value pairs and the exact live endpoint. Measure
+   coverage and gaps before bucketing. Use only actual endpoints inside the
+   named lookback; do not interpolate at its start or fabricate missing samples.
+7. Preserve signed corrections. Never clip negative increments, monotonize the
+   meter, or sum positive increments as if they were net consumption. A fresh
+   retrieval does not prove consumption was measured recently; unchanged rounded
+   readings do not establish true idleness.
 
-1. Match each live active bucket to its ongoing segment by limit ID, duration,
-   derived compatible plan identity, and observation membership. Slot is not
-   identity; reset timestamp jitter does not create a new identity. Do not use
-   an earlier segment or dollar-headline fallback for pace. If the match is
-   ambiguous, no forecast is available for that bucket.
-2. Anchor to that bucket's latest captured live observation. Ignore observations
-   after the anchor. Use only points within the same segment and lookback;
-   never fit across actual resets or explicit/ambiguous plan transitions.
-3. Recent pace uses the preceding 60 minutes with equal-weight regression.
-   Collapse observations into fixed UTC-aligned 5-minute buckets, taking median
-   observation time and median used percentage per occupied bucket. Give every
-   occupied bucket one sample. A burst of captures must not gain extra weight.
-4. Daily pace uses the preceding 24 hours with 15-minute buckets and a 6-hour
-   exponential half-life: weight = 2^(-age_hours / 6). Use the same median
-   sampling rule. Include observed idle periods and actual elapsed time; do not
-   calculate an active-work-only speed or manufacture samples in missing gaps.
-5. Fit used percentage against elapsed hours. For a positive supported slope,
-   time to exhaustion = (100 - captured used percentage) / slope. Absolute
-   exhaustion time = captured observation time + time to exhaustion. Compare
-   this with the latest captured reset timestamp, not a nominal seven-day end.
-6. If reset comes first, project the remaining percentage at reset from the
-   captured percentage and slope. Do not extrapolate from the fitted intercept,
-   fabricate a reset date, or carry unused allowance across windows.
+Released 2.9.5 already exposes accurate source labels. Forecasting must retain
+the underlying provenance enum/source association, not infer live eligibility
+from display text or the absence of a compressed timestamp blob.
 
-Absolute predictions remain anchored to the capture, so opening a report later
-must not slide exhaustion forward. Reset-relative gaps are also fixed at that
-capture. No continuously decrementing "time left" label is needed in this slice.
+## Estimator Comparison
 
-## Evidence And Availability
+Use one bounded offline comparison, with the same evidence and gates for each
+method. Our preferred starting references, not yet a demonstrated winner, are:
 
-These pace gates are separate from the dollar estimator's unchanged 10-point
-threshold. Initial, explicit acceptance rules are:
+- **Recent:** signed net percentage movement divided by observed wall-clock
+  hours. This measures the recent elapsed-time average directly and is invariant
+  to additional interior observations with the same endpoints.
+- **Daily:** directly exponentially weighted interval rates, with a provisional
+  six-hour half-life. Weight elapsed consumption intervals, not cumulative
+  percentage levels or individual captures. This implements the user's request
+  that more recent pace have more influence.
 
-- Recent fit: at least three occupied buckets spanning at least 30 minutes,
-  no adjacent-sample gap above 30 minutes, and at least two percentage points
-  of observed movement.
-- Daily fit: at least five occupied buckets spanning at least three hours,
-  no adjacent-sample gap above three hours, and at least two percentage points
-  of observed movement. A window younger than 24 hours uses only its available
-  current-cycle history; disclose the actual coverage, not a full day.
-- Both require a finite positive slope and a last fit sample within 20 minutes
-  of the live anchor. Missing spans are diagnostics, never assumed complete.
-- Forecast readings must be no more than 30 minutes old at rendering. Preserve
-  existing freshness labels. A failed latest probe or unavailable bucket
-  suppresses its actionable forecast. A partially refreshed probe may forecast
-  only buckets actually present in that successful live response.
-- If the captured reset has already passed, suppress that forecast until a new
-  capture establishes the current state. Missing reset time permits a pace
-  diagnostic but not a reset-relative forecast.
+For ordered observations `(t_i, u_i)`, using hours and percentage points:
 
-Insufficient movement, nonpositive slope, or sparse coverage shows the quiet
-row "Pace not yet measurable". Stale/failed readings show "Forecast awaiting
-fresh capture". Do not claim unchanged rounded readings prove no consumption
-or that a zero slope guarantees survival until reset. Retain specific reasons
-only in collapsed diagnostics. Do not silently substitute a different horizon.
+```text
+Recent rate = (u_last - u_first) / (t_last - t_first)
+Interval rate_i = (u_i - u_(i-1)) / (t_i - t_(i-1))
+k = ln(2) / 6
+Weight_i = integral exp(k * (t - t_anchor)) dt over that interval
+Daily rate = sum(Weight_i * Interval rate_i) / sum(Weight_i)
+```
 
-Before product wiring, reproduce both proposed fits on a read-only consistent
-ledger snapshot. Test 30-, 60-, and 90-minute sensitivity as calibration, not
-additional UI choices. Confirm the gates work with the existing approximately
-15-minute capture cadence and finer-grained parsed observations. If this exposes
-a material weakness in the chosen contract, return that evidence for review;
-do not silently relax the gates or change the user-facing forecast horizons.
+Daily weighting assumes each interval's increment is spread uniformly within
+that interval. Large gaps make that assumption consequential; do not discard a
+gap's duration and then describe the result as a wall-clock daily pace.
 
-## Architecture And Performance
+Compare both against the original cumulative-level OLS/WLS proposal; include
+an unweighted daily net rate as a transparent control. Test original median
+buckets and one actual paired observation per bucket. For viable bucketed
+variants preserve the oldest retained endpoint and replace the last bucket's
+representative with the exact live anchor, without double weighting it. A free
+regression intercept is allowed, but never projects the current balance.
 
-Add a cohesive pure forecast module, such as `allowance_pace.py`, for sampling,
-fits, evidence gates, and reset comparisons. Integrate through
-`allowance_queries.py` using the same segmented observations. Keep reporting
-formatting in a focused helper if needed so `report_allowance.py` stays cohesive.
-Reuse existing report CSS and status/observation provenance contracts.
+Keep the original baseline to expose its weaknesses, not to claim it satisfies
+the new contract. Bucket medians can erase the newest change; one observation
+per occupied bucket does not make cumulative regression density invariant.
+Regression can nevertheless reduce endpoint rounding noise. Do not select a
+method from these synthetic counterexamples alone. Theil-Sen is an optional
+diagnostic for demonstrated outlier problems, not a product default.
 
-Persist only disposable derived results through the existing
-`allowance_report_cache`; no ledger schema migration, new durable table, source
-scan, network call, capture schedule change, or second valuation pass is needed.
-Fit only active segments. Cached views must reuse fits across dates/projects/
-themes rather than repeating full-history processing.
+## Initial Gates And Projection
 
-Advance the analytical contract and HTML render cache revisions. The current
-analytical revision is coupled to cost-cache invalidation; measure and disclose
-any one-time rebuild rather than hiding it in warm timings. Do not broaden this
-feature into an unrelated cache redesign.
+Freeze these settings for the first comparison; they are hypotheses, not
+validated accuracy guarantees or settled release criteria:
 
-Re-evaluate age/expired-reset presentation from an injected current time at
-rendering, without refitting. Extend HTML cache identity/expiry narrowly so the
-30-minute forecast freshness boundary and reset-time crossing cannot reuse an
-actionable stale forecast. Rendering later must not imply a new capture.
+| Setting | Recent | Daily |
+| --- | --- | --- |
+| Maximum lookback | 60 minutes | 24 hours |
+| Minimum distinct observation times | 3 | 5 |
+| Minimum actual observed span | 30 minutes | 3 hours |
+| Maximum adjacent observed gap | 30 minutes | 3 hours |
+| Minimum signed endpoint movement | 2 percentage points | 2 percentage points |
+| Bucket width for bucketed contenders | 5 minutes | 15 minutes |
+| Reference weighting | None | Six-hour interval half-life |
 
-## Verification And Acceptance
+All viable forecasts require defensible current-suffix membership, the exact
+live endpoint, a finite positive rate, and the applicable successful live
+response. The endpoint makes the original "fit sample within 20 minutes"
+condition redundant. Do not satisfy movement with max-minus-min fluctuations.
+Test gate sensitivity separately, including 30/60/90-minute recent horizons,
+post-reset startup, and low remaining quota. Do not silently change the displayed
+horizon or accept a lower threshold simply to increase availability.
 
-1. Pure tests independently reproduce linear and recency-weighted slopes;
-   cover quantized/decimal readings, repeated captures, sampling-density changes,
-   observed idle periods, missing buckets, sparse/flat/negative fits, and gates.
-2. Test current-segment matching, missing plan metadata, explicit plan changes,
-   primary/secondary moves, multiple limits/durations, scheduled/banked/global
-   resets, meter corrections, and same-timestamp ambiguity. Forecasts must not
-   stitch cycles together or depend on the dollar estimator's qualification.
-3. Test before/near/after reset outcomes, exhausted quota, missing/past reset
-   time, local midnight, DST, date formatting, rounding, and unchanged anchor
-   time across later report renders. Check stale/failed/partial probe behavior
-   and HTML cache transitions with an injected clock.
-4. Compare indexed and full report paths; prove filters/themes reuse fits and
-   report requests open zero JSONLs and trigger zero capture/probe calls. Pricing
-   calls must not increase because of forecasting.
-5. Benchmark before/after on a disposable real-ledger copy: cold analytical
-   rebuild, first report, warm views, and after quota capture. Aim for under
-   20 ms additional active-segment fitting and no material warm-view regression;
-   investigate misses rather than relying on a flaky timing assertion in CI.
-6. Verify two-row readability and disclosures in Day/Night, wide/360px views
-   across Chromium, WebKit, and Firefox. Ensure no clipping, false precision,
-   inaccessible status, or new horizontal page overflow. Refresh canonical
-   synthetic screenshots because the shipped interface changes.
-7. Run focused tests, `uv run pytest -q`, `uvx ruff check .`, extension tests/
-   build, screenshot and allowance UI gates, and both platform package/smoke/
-   archive checks through established non-publishing CI.
+For live anchor `(t_A, u_A)`, captured reset `R`, and supported rate `r`:
 
-Keep real local corpus values out of committed fixtures. Use read-only access
-or disposable consistent backups for calibration; do not touch the live ledger,
-installed extension, tasks, credentials, or OS services during development.
+```text
+Remaining quota Q = 100 - u_A
+Exhaustion time E = t_A + Q / r
+Projected remaining at reset M = Q - r * (R - t_A)
+```
 
-## Delivery Order And Review
+Compare unrounded values with the captured deadline; do not assume seven actual
+days, substitute a later-known reset, carry allowance forward, or project from
+a fitted intercept. Opening the report later must not move `E` forward. A banked
+or global reset changes the conditions, not the correctness of the earlier
+conditional arithmetic.
 
-1. Capture calibration evidence for both horizons and verify the gate/cadence
-   assumptions; preserve useful conclusions, not private corpus values.
-2. Implement the pure forecast contract and focused tests.
-3. Integrate cached derived results, freshness-aware rendering, compact UI,
-   fixtures, and report/no-capture regression tests.
-4. Amend ADR 0044 with forecast semantics, evidence gates, conditional wording,
-   and cache/ledger-only guardrails. Update relevant product documentation.
-5. Run the verification matrix and commit a local candidate on retained `main`.
-   Preserve pre-existing `apps/` and unrelated changes. No PR is required.
-6. Director reviews implementation and evidence before any release. Version
-   bump, changelogs, push/tag, and Marketplace publication follow the established
-   release guide only after explicit release approval. Leave the worker intact
-   until review/release is complete, then archive and unregister its Relay route.
+Meter resolution and delay are not established by decimal support or the
+smallest observed increment. Test rounding scenarios and parameter sensitivity,
+but do not present an assumed one-point resolution as a repository fact or a
+calibrated interval. If reasonable declared perturbations flip reset outcomes,
+record that limitation; select any "outcome unclear" rule with calibration,
+rather than accumulating arbitrary new gates.
 
-After implementation approval, use updated Relay with one bounded serial
-worker; choose model/reasoning at dispatch. Planning creates no worker and
-changes no plugin implementation.
+## Freshness, Cache, And Architecture
+
+Keep forecast freshness separate from the meter's existing policy. Suppress
+actionability after a failed latest probe, a missing applicable bucket, or an
+anchor older than 30 minutes. A partial response may forecast only its present
+successful buckets. Missing reset time permits a rate diagnostic, not a
+reset-relative promise. Passed reset times require fresh capture.
+
+An exhaustion forecast can expire before the 30-minute freshness limit. If it
+projected exhaustion by reset, its presentation expires at the earliest of
+`anchor + 30 minutes`, `captured reset`, and `predicted exhaustion`. After that,
+show "Forecast awaiting fresh capture", not actual exhaustion or a slid-forward
+prediction. Reevaluate this at cache lookup/rendering using an injected clock.
+An already-open script-free page does not autonomously refresh; retain its
+visible observation timestamp.
+
+Add a cohesive pure module such as `allowance_pace.py` for evidence, rates, and
+projection; split responsibilities if it grows beyond repository limits. Reuse
+the quota-loading path in `allowance_queries.py` without another history query,
+source scan, capture, or valuation. Keep compact formatting in a focused helper
+so `report_allowance.py` remains cohesive. Compute only active suffixes.
+
+Reuse disposable `allowance_report_cache` results across date/project/theme
+views. Bump `ALLOWANCE_REPORT_REVISION` and the HTML render revision, not the
+event-cost index revision merely for presentation. Extend HTML expiry/identity
+narrowly for forecast boundaries, without refitting. The existing release-version
+coupling in `PRICING_REVISION` still causes a one-time cost rebuild on upgrade;
+measure it explicitly and leave a general pricing-cache redesign out of scope.
+
+## Validation Before Product Wiring
+
+1. Reproduce the supplied synthetic results and add evidence-prefix/reset
+   cases, steady burn, burst/idle transitions, quantization, delayed batches,
+   signed corrections, gaps, same-time conflicts, plan changes, slot moves,
+   boundary-phase shifts, density changes, and exact live-anchor retention.
+2. Run strict historical replay using live-read provenance only where its
+   availability is reconstructible. Filter available evidence before deriving
+   identities/segments at every origin. Parsed/recovered points lack a complete
+   first-available history; mixed-source final-ledger runs are explicitly
+   retrospective sensitivity analysis, not production-as-of backtests.
+3. Split chronologically by whole reset cycles, choosing settings on earlier
+   cycles and freezing them for later cycles. Do not randomly split overlapping
+   origins or tune on future outcomes. Use later readings only for outcome labels.
+4. Score exhaustion as an observation-supported crossing interval where exact
+   timing is unknown; a first recorded 100% is not a task-blocking timestamp.
+   No recorded 100% is not proof of survival. Censor banked/global resets or plan
+   interventions that invalidate the captured deadline; expose label coverage.
+5. Report timing error, false reassurance and false alarm separately, forecast
+   availability/reasons, and stability of absolute predicted timestamps and
+   reset balances. Compare matched available origins and overall availability;
+   show per-cycle results plus low-quota, gap, correction, partial-day, and
+   workload-change strata. Dense snapshots are not independent cycles.
+6. Select the simplest method with useful availability and defensible harmful-
+   error behavior. Return a compact calibration recommendation before product
+   wiring. If history cannot distinguish methods, say so; choose by transparent
+   conditional semantics without claiming validated predictive accuracy.
+
+Use read-only consistent access or disposable backups. Keep private corpus
+values out of committed fixtures. Do not touch the live ledger, installed
+extension, tasks, credentials, or OS services. Bound the comparison; no tuning
+project, ML, ensemble, workload classifier, or additional collection mechanism.
+
+## Implementation, Verification, And Delivery
+
+After calibration review and implementation approval:
+
+1. Implement the selected pure evidence/rate/projection contract with focused
+   tests. Prove no future metadata influence, no supported-reset crossing, no
+   false consumption from correction clipping, and fixed capture anchoring.
+2. Integrate cached results and freshness-aware rendering; test all failed,
+   partial, stale, passed-reset, and passed-prediction transitions. Compare indexed
+   and full paths. Prove report requests add zero JSONL opens, probes, captures,
+   and pricing calls; prove filtered/themed views reuse fitted rates.
+3. Amend ADR 0044 with forecast semantics, the explicit continuity policy,
+   evidence/availability limits, and expiry. Update product documentation and
+   synthetic screenshots. Keep historical dollar results unchanged.
+4. Benchmark first rebuild/upgrade, first report, warm views, and quota updates
+   on a disposable ledger. Target under 20 ms additional active-suffix fitting;
+   investigate misses rather than adding flaky CI timing assertions. Report
+   evidence loading and one-time repricing separately from fitting.
+5. Check Day/Night, wide/360px, Chromium/WebKit/Firefox, accessibility, local
+   midnight/DST, display rounding, and no new page overflow. Run focused/full
+   pytest, Ruff, extension tests/build, screenshot/allowance UI gates, and both
+   platform package/smoke/archive checks through non-publishing CI.
+6. Commit a reviewed candidate on retained `main`, preserving `apps/` and
+   unrelated work. No PR is required. Director reviews before release; version
+   bump/tag/publication follow explicit release approval and the release guide.
+
+Use updated Relay for one bounded serial worker after approval, choosing the
+model/reasoning at native dispatch. Keep the worker until review/release ends,
+then archive and unregister its route. This plan creates no worker and changes
+no plugin implementation.

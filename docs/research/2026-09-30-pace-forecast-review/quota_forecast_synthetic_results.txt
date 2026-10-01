@@ -1,0 +1,39 @@
+SYNTHETIC: quarter-hour readings; rates in percentage points/hour
+steady         OLS=10.000000; net=10.000000; OLS ETA=60.000 min; Theil-Sen=10.000000
+early burst    OLS=8.000000; net=10.000000; OLS ETA=75.000 min; Theil-Sen=0.000000
+middle burst   OLS=12.000000; net=10.000000; OLS ETA=50.000 min; Theil-Sen=11.666667
+late burst     OLS=8.000000; net=10.000000; OLS ETA=75.000 min; Theil-Sen=0.000000
+
+SYNTHETIC: same step at minute 30, different occupied buckets
+[0, 15, 30, 45, 60]: OLS=12.000000, net=10.000000
+[0, 5, 10, 15, 20, 25, 30, 45, 60]: OLS=13.000000, net=10.000000
+[0, 15, 30, 35, 40, 45, 50, 55, 60]: OLS=11.666667, net=10.000000
+[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]: OLS=13.846154, net=10.000000
+
+SYNTHETIC: 21h at 1 pp/h, then 3h at 8 pp/h
+level WLS, half-life 6h: rate=1.662078817; ETA=9.024843 h; balance at reset in 5h=6.689606 pp (negative means exhaustion)
+interval EW, half-life 6h: rate=3.186936034; ETA=4.706715 h; balance at reset in 5h=-0.934680 pp (negative means exhaustion)
+net 24h: rate=1.875000000; ETA=8.000000 h; balance at reset in 5h=5.625000 pp (negative means exhaustion)
+Level-WLS induced newest-3h rate weight=0.094582688
+Level-WLS induced mean age=9.704553234 h
+
+SYNTHETIC: last-bucket median hides a live jump
+Bucketed=[(0.0, 80.0), (0.25, 80.0), (0.5, 80.0), (0.75, 80.0), (0.9583333333333333, 80.0)]
+Bucket-level slope=0.000000; raw net rate=10.016694
+
+SYNTHETIC: alternating corrections must not become consumption
+Signed net rate=0.000000; positive-only rate=2.000000
+
+SYNTHETIC: low movement is not necessarily low decision relevance
+Net movement=1 pp; rate=1.000000; ETA=30.000000 min
+
+SYNTHETIC control favorable to level regression
+True constant rate=2.3 pp/h; 5 quarter-hour samples; integer rounding; 1000 equally spaced initial fractional phases
+OLS: slope RMSE=0.354964787
+net: slope RMSE=0.458257569
+
+Rounding-only sensitivity, not a confidence interval:
+For net pace with endpoint errors bounded by q/2, projection error at reset is bounded by q/2 + q*D/S.
+q=1 pp, observed span S=1h, reset horizon D=24h: bound=24.5 pp
+
+No historical forecast accuracy, availability, or latency was measured.
