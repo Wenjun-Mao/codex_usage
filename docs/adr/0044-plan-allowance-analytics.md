@@ -8,7 +8,7 @@ indexed report calculation on 2026-09-25, and visible reading freshness for
 and observation-source clarity for 2.9.5 on 2026-09-30; amended for
 conditional pace semantics on 2026-09-30 and accepted for release 2.10.0
 on 2026-10-01 after director review and human release approval; amended for
-observed-cycle pace in 2.10.1 on 2026-10-02.
+observed-cycle pace in 2.10.1 and compact pace presentation in 2.10.2 on 2026-10-02.
 
 ## Context
 
@@ -334,6 +334,28 @@ raw points, provenance, probes and capture scheduling remain unchanged. Report
 revision 4 and HTML revision 21 invalidate old two-row payloads; the event-cost
 index remains revision 2. Tests guard multi-day spans, signed endpoints, gaps,
 reset memory, conflicts, causal origins and endpoint-only reads on 52,000 points.
+
+## Compact Pace Presentation (2026-10-02)
+
+Repeated forecast prose and hour-only reset gaps impede scanning. Label rows
+Recent, Daily and Cycle average with their actual observed spans. Shorten the
+conditional outcome to "Estimated to run out" or the remaining percentage.
+Round displayed reset gaps to approximate whole hours (days/hours after 24h),
+retaining minutes below one hour. Comparisons still use unrounded predictions.
+
+Use today/tomorrow relative to the report render clock's local calendar date,
+not the captured anchor date. Later forecasts retain a calendar date. Preserve
+the existing 15-minute forecast display rounding, and keep full local dates and
+UTC offsets in semantic time metadata and hover text to disambiguate DST hours.
+Observed spans, methods and evidence remain available in collapsed diagnostics.
+
+Include the local render date in HTML cache identity when pace rows are present,
+so a fresh reading cannot reuse yesterday's relative-day label across midnight.
+Do not refit, reprice or recapture for this presentation transition. HTML revision
+22 invalidates old copy; allowance report revision 4 and cost index revision 2
+remain unchanged. Warm compact-cache behavior and all mathematical, causal and
+expiry contracts stay intact. Tests cover midnight caching, DST, escaping and
+unchanged forecast data.
 
 ## Rejected Alternatives
 

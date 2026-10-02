@@ -26,7 +26,7 @@ def test_views_reuse_rates_and_expiry_refreshes_html_without_reads_or_fit(tmp_pa
                                     timezone_name="America/Toronto", now=now, **options)
 
     first = render()
-    assert "would run out around" in first.html
+    assert "Estimated to run out" in first.html
 
     def forbidden(*args, **kwargs):
         raise AssertionError("warm view reconstructed, repriced, captured or probed")
@@ -48,10 +48,10 @@ def test_views_reuse_rates_and_expiry_refreshes_html_without_reads_or_fit(tmp_pa
     monkeypatch.setattr(Path, "open", guarded_open)
     assert render(anchor + timedelta(minutes=1)).cache_hit
     view = render(theme="night", range_name="today", project_keys=["other"])
-    assert not view.cache_hit and "would run out around" in view.html
+    assert not view.cache_hit and "Estimated to run out" in view.html
     expired = render(anchor + timedelta(minutes=8))
     assert not expired.cache_hit and "Forecast awaiting fresh capture" in expired.html
-    assert "would run out around" not in expired.html
+    assert "Estimated to run out" not in expired.html
     assert render(anchor + timedelta(minutes=9)).cache_hit
     assert not render(anchor + timedelta(minutes=30)).cache_hit  # Daily freshness boundary
     assert not render(anchor + timedelta(minutes=61)).cache_hit  # Existing meter boundary
@@ -161,3 +161,40 @@ def test_compact_cache_key_preserves_snapshot_pricing_and_coverage(tmp_path):
             assert cached_allowance_pace(connection, revision=revision, pricing_revision=pricing, coverage_complete=coverage) is None
         connection.execute("drop table allowance_report_cache")
         assert cached_allowance_pace(connection, revision=4, pricing_revision="p1", coverage_complete=True) is None
+
+
+def test_local_midnight_refreshes_relative_day_without_new_analysis(tmp_path, monkeypatch):
+    home = tmp_path / "codex"
+    (home / "sessions").mkdir(parents=True)
+    base = datetime(2026, 10, 3, 3, 20, tzinfo=UTC)
+    reset = int((base + timedelta(days=3)).timestamp())
+    for minutes, used in ((0, 78), (15, 79), (30, 80)):
+        stamp = (base + timedelta(minutes=minutes)).isoformat()
+        point = QuotaObservation(stamp, "codex", "primary", "pro", used, 10080, reset)
+        read = QuotaRead(stamp, "pro", (point,))
+        monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance", lambda _, read=read: read)
+        capture_once(home, request_kind="manual", max_workers=1)
+
+    def render(minutes):
+        return render_ledger_report(home, range_name="all", project_keys=[], theme="day",
+                                    timezone_name="America/Toronto", now=base+timedelta(minutes=minutes))
+
+    first = render(35)  # 23:55 EDT, fresh capture anchored at 23:50.
+    assert "tomorrow, 04:45 EDT" in first.html
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("local-date transition reconstructed, repriced, captured or probed")
+
+    monkeypatch.setattr(queries, "_build_from_costs", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_index._build_from_costs", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_index._price_missing_events", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_pace.fit_paces", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance", forbidden)
+    monkeypatch.setattr("codex_usage.agent_capture.capture_once", forbidden)
+    assert render(36).cache_hit
+    midnight = render(45)  # 00:05 EDT, same fit and freshness state.
+    assert not midnight.cache_hit and "today, 04:45 EDT" in midnight.html
+    assert "tomorrow, 04:45 EDT" not in midnight.html
+    exact_time = 'datetime="2026-10-03T04:45:00-04:00"'
+    assert exact_time in first.html and exact_time in midnight.html
+    assert render(46).cache_hit

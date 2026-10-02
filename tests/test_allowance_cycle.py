@@ -38,7 +38,7 @@ def test_cycle_uses_whole_observed_suffix_and_nonzero_first_capture():
     assert result["observed_start"] == points[0].timestamp
     assert result["gap_seconds"] == 24 * 3600
     html = pace_rows([result], "fresh", timezone=ZoneInfo("America/Toronto"), now=BASE+timedelta(hours=48))
-    assert "Cycle pace" in html and "2d observed" in html and "75% would remain at reset" in html
+    assert "Cycle average · 2d" in html and "75% would remain at reset" in html
     details = pace_details([[result]], "fresh", now=BASE+timedelta(hours=48))
     assert "reset instant may be unobserved" in details
     assert "weighted" not in details and "None" not in details

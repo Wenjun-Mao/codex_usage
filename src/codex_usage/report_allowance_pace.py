@@ -21,7 +21,23 @@ def cycle_span_label(seconds):
     return f"{days}d {span_label(minutes * 60)}" if minutes else f"{days}d"
 
 
+def reset_gap_label(seconds):
+    return cycle_span_label(round(seconds / 3600) * 3600) if seconds >= 3600 else span_label(seconds)
+
+
+def _runout_time(exhaustion, now, timezone):
+    local = datetime.fromtimestamp(round(exhaustion / 900) * 900, timezone)
+    days = (local.date() - datetime.fromtimestamp(now, timezone).date()).days
+    day = "today" if days == 0 else "tomorrow" if days == 1 else local.strftime("%Y-%m-%d")
+    stamp = f"{day}, {local:%H:%M %Z}"
+    offset = local.strftime("%z")
+    title = f"{local:%Y-%m-%d %H:%M %Z} (UTC{offset[:3]}:{offset[3:]})"
+    return (f'<time datetime="{escape(local.isoformat())}" title="{escape(title)}" '
+            f'aria-label="{escape(title)}">{escape(stamp)}</time>')
+
+
 def _message(pace, status, now, timezone):
+    """Return safe message markup, retaining exact date/offset on the time element."""
     state = pace_state(pace, status, now)
     if state == "awaiting":
         return "Forecast awaiting fresh capture"
@@ -33,26 +49,23 @@ def _message(pace, status, now, timezone):
         return "Forecast awaiting fresh capture"
     exhaustion, reset = pace["exhaustion"], pace["reset"]
     if abs(exhaustion - reset) <= 900:
-        return "At this pace, quota would run out near reset."
+        return "Estimated to run out near reset."
     if exhaustion < reset:
-        local = datetime.fromtimestamp(round(exhaustion / 900) * 900, timezone)
-        anchor_day = datetime.fromtimestamp(pace["anchor"], timezone).date()
-        stamp = local.strftime("%Y-%m-%d %H:%M" if local.date() != anchor_day else "%H:%M")
-        # Offset disambiguates repeated local times at the autumn DST transition.
-        stamp += f" {local.tzname() or ''} ({local:%z})"
-        return (f"At this pace, quota would run out around {stamp}, "
-                f"about {span_label(reset - exhaustion)} before reset.")
+        return (f"Estimated to run out {_runout_time(exhaustion, now, timezone)} · "
+                f"~{reset_gap_label(reset - exhaustion)} before reset.")
     balance = pace["reset_balance"]
     remaining = "less than 1%" if round(balance) == 0 else f"{round(balance)}%"
-    return f"At this pace, about {remaining} would remain at reset."
+    return f"About {remaining} would remain at reset."
 
 
 def pace_rows(paces, status, *, timezone, now=None):
     clock = (now or datetime.now(UTC)).timestamp()
     return ''.join(
         '<p class="allowance-pace">'
-        f'<strong>{escape(p["name"])} pace · {(cycle_span_label if p["name"] == "Cycle" else span_label)(p["span_seconds"])} observed:</strong> '
-        f'{escape(_message(p, status, clock, timezone))}</p>' for p in paces
+        f'<strong title="{escape(span_label(p["span_seconds"]))} observed">'
+        f'{escape("Cycle average" if p["name"] == "Cycle" else p["name"])} · '
+        f'{(cycle_span_label if p["name"] == "Cycle" else span_label)(p["span_seconds"])}:</strong> '
+        f'{_message(p, status, clock, timezone)}</p>' for p in paces
     )
 
 

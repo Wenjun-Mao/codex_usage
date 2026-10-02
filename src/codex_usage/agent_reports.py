@@ -42,7 +42,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}:gpt-6-sol-luna-6.1-sol-standard-credits-v1:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
-REPORT_RENDER_REVISION = 21
+REPORT_RENDER_REVISION = 22
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +126,7 @@ def render_ledger_report(
             auto_transitions,
             pace_report["status"]["probe_status"],
             presentation_identity(pace_report, now.timestamp()),
+            now.astimezone(timezone).date().isoformat() if pace_report.get("paces") else None,
         )
         cached = _load_cached_report(connection, cache_key)
         if cached is not None:
@@ -291,6 +292,7 @@ def _report_cache_key(
     auto_transitions: bool,
     probe_freshness: str = "unavailable",
     pace_identity: list | None = None,
+    pace_local_date: str | None = None,
 ) -> str:
     payload = json.dumps(
         {
@@ -299,6 +301,7 @@ def _report_cache_key(
             "report_render_revision": REPORT_RENDER_REVISION,
             "probe_freshness": probe_freshness,
             "pace_identity": pace_identity,
+            "pace_local_date": pace_local_date,
             "range": range_identity,
             "project_keys": project_keys,
             "theme": theme,

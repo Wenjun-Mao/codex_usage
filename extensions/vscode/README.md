@@ -27,7 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.10.1.
+Linux are not supported in 2.10.2.
 
 ## What You Can Do
 
@@ -62,6 +62,12 @@ closed. Quota snapshots missed while VS Code is closed cannot always be
 reconstructed later. The Plan Allowance meter marks each reading current,
 partially refreshed, or last known and shows its local observation time. The
 default interval is 15 minutes.
+
+Plan Allowance compares Recent, Daily and Cycle average forecasts with the
+captured reset. Each row shows its actual observed span, a local run-out date
+and approximate days/hours before reset, or the percentage that would remain.
+Full dates and timezone offsets are available on hover. These are conditional
+projections, not guarantees; their calculations and freshness limits are unchanged.
 
 ## Commands
 

@@ -119,14 +119,16 @@ def test_expiry_never_slides_capture_anchor_and_partial_succeeds():
 def test_local_midnight_dst_rounding_near_reset_and_small_balance():
     pace = fit([point(0, 95), point(.25, 97), point(.5, 99)])[0]
     timezone = ZoneInfo("America/Toronto")
-    # Exhaustion is exactly around the repeated autumn hour; include local offset.
+    # The repeated autumn hour retains its offset in hover/accessible metadata.
     anchor = datetime(2026, 11, 1, 5, 50, tzinfo=UTC).timestamp()
     changed = dict(pace, anchor=anchor, exhaustion=anchor+1200, reset=anchor+7200)
     html = pace_rows([changed], "fresh", timezone=timezone, now=datetime.fromtimestamp(anchor, UTC))
-    assert "01:15 EST (-0500)" in html
+    assert "today, 01:15 EST</time>" in html
+    assert 'title="2026-11-01 01:15 EST (UTC-05:00)"' in html
     midnight = datetime(2026, 10, 1, 3, 50, tzinfo=UTC).timestamp()
     changed.update(anchor=midnight, exhaustion=midnight+1200, reset=midnight+7200)
-    assert "2026-10-01" in pace_rows([changed], "fresh", timezone=timezone, now=datetime.fromtimestamp(midnight, UTC))
+    html = pace_rows([changed], "fresh", timezone=timezone, now=datetime.fromtimestamp(midnight, UTC))
+    assert "tomorrow, 00:15 EDT</time>" in html and "2026-10-01" in html
     changed.update(reset=changed["exhaustion"]+899)
     assert "near reset" in pace_rows([changed], "fresh", timezone=timezone, now=datetime.fromtimestamp(midnight, UTC))
     changed.update(exhaustion=changed["reset"]+1800, reset_balance=.2)

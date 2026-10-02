@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.10.2 - 2026-10-02
+
+- Shorten quota pace rows to Recent, Daily and Cycle average, keeping each actual
+  observed span. Show estimated exhaustion today, tomorrow or on its local date,
+  with an approximate day/hour gap before reset instead of long hour totals.
+- Keep full forecast dates and timezone offsets on hover and in accessible time
+  metadata; refresh relative-day wording on report requests across local midnight.
+- Preserve all pace calculations, evidence gates, expiry rules, dollar estimates
+  and capture scheduling. Warm views still reuse the compact pace cache.
+
 ## 2.10.1 - 2026-10-02
 
 - Add a third Cycle pace row using signed movement across the entire observed
