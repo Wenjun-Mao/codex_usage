@@ -109,3 +109,48 @@ Preparation is full-history work per materialized revision, and very dense data
 inside 24 hours still increases fitting work: no samples are silently discarded.
 No live ledger, installed extension, tasks or OS services were modified. Release metadata and publication follow the separately approved 2.10.0
 release workflow; these measurement limits remain unchanged.
+
+## Observed-Cycle Follow-Up (2.10.1, 2026-10-02)
+
+The third Cycle row uses unweighted signed endpoints across the current coherent
+suffix, including idle time, with an actual observed-span label. It does not
+claim the reset start was captured. The independent read-only review supported
+causal checkpoint endpoints, signed corrections and retaining long elapsed gaps;
+the release keeps the existing Recent minimum gates. Code review found no
+correctness defects; its suggested randomized summary coverage was added to
+the committed full-prefix regressions. See ADR 0044 for the
+boundary, left-censor and cache contract.
+
+Local verification passed: 1,383 Python tests and one existing Windows-only skip,
+28 extension tests/build, Ruff, screenshot generation/check, and 126 allowance
+state/theme/viewport plus 36 meter cases across Chromium, WebKit and Firefox.
+Day/Night wide and narrow screenshots and an isolated 360px allowance surface
+were visually inspected. A local macOS VSIX build, collector smoke and archive
+audit passed. Platform CI remains a separate pre-publication gate.
+
+The expanded disposable benchmark uses the same 10,000 events, 52,001 quota
+observations and two active buckets, plus a deliberately long coherent synthetic
+cycle to exercise endpoint cost, not a realistic reset history. One local run:
+
+| Stage | Milliseconds |
+| --- | ---: |
+| First allowance report, total | 733.5 |
+| Shared causal preparation | 161.6 |
+| Selection/fitting, both buckets and all three rows | 0.148 |
+| Warm HTML view, total | 12.5 |
+| Quota-update report, total | 797.2 |
+| Long-cycle preparation, 52,000 observations | 160.1 |
+| Prepared long-cycle fit, all three rows | 0.121 |
+
+Warm HTML hits retained zero historical cache decodes, quota loads, preparation,
+fits or allowance prices. Quota updates repriced zero events. Indexed/full
+windows, headline and monetary history matched exactly; the frozen two-row
+oracle guards unchanged Recent/Daily outputs. An endpoint-only access wrapper
+forbids full-cycle slicing/iteration. Compact cache state was 2,651 bytes versus
+12,541,761 bytes of historical payload in this fixture. Report/render revisions
+advance to 4/21; cost index and schema stay unchanged. The existing version-based
+pricing identity still causes one-time upgrade repricing.
+
+These are local Python timings, not end-to-end VS Code latency or accuracy
+claims. Hidden resets in observation gaps remain possible. No live ledger,
+installed extension, task or OS service was changed.

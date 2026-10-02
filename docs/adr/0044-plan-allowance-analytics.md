@@ -7,7 +7,8 @@ indexed report calculation on 2026-09-25, and visible reading freshness for
 2.9.3 on 2026-09-29; amended for unknown plan identity on 2026-09-29
 and observation-source clarity for 2.9.5 on 2026-09-30; amended for
 conditional pace semantics on 2026-09-30 and accepted for release 2.10.0
-on 2026-10-01 after director review and human release approval.
+on 2026-10-01 after director review and human release approval; amended for
+observed-cycle pace in 2.10.1 on 2026-10-02.
 
 ## Context
 
@@ -302,6 +303,37 @@ Guardrails compare prepared origins with the frozen full-prefix oracle, forbid
 prefix iteration/preparation during fits, and trace compact-only cache SQL plus
 small decoding on warm HTML hits. Large synthetic benchmarks cover two active
 buckets and full monetary equality. Keep raw private snapshot evidence ignored.
+
+## Observed-Cycle Pace (2026-10-02)
+
+Add one Cycle row after Recent and Daily. Its baseline is signed net percentage
+movement divided by actual elapsed time between the first and exact live last
+observation in the current coherent suffix. Include idle time and retain small
+negative corrections. Do not weight intervals, assume an initial 0%, subtract a
+nominal duration from the reset clock, or borrow a previous window. Show the
+actual span, including days. A left-censored suffix means the reset start was
+not observed; an unknown boundary remains unknown, not a claimed global reset.
+
+Reuse the existing causal continuity contract and exact live-anchor membership.
+After a supported reset, plan change or conflict, start at the actual first
+post-boundary observation, even if it already reports nonzero usage. Cycle uses
+the Recent minimum of three distinct observation times, 30 minutes and two
+signed endpoint percentage points. These are cautious availability settings,
+not accuracy guarantees. Unlike the interval-weighted Daily calculation, an
+endpoint baseline needs no assumption about movement within a gap: include the
+gap's elapsed time rather than rejecting it. Keep the maximum gap, corrections,
+boundary and uncertain reset origin in collapsed diagnostics. An unobserved
+reset within a gap can still make the baseline misleading.
+
+Preparation adds cumulative maximum-gap and correction summaries to each causal
+checkpoint in the existing pass. Cycle reads indexed endpoints and summaries;
+it never slices or walks the entire cycle during fitting. New revisions still
+prepare full history. Reuse the same disposable compact cache, capture anchoring,
+local-time projection and expiry contract. Recent/Daily outputs, dollar fits,
+raw points, provenance, probes and capture scheduling remain unchanged. Report
+revision 4 and HTML revision 21 invalidate old two-row payloads; the event-cost
+index remains revision 2. Tests guard multi-day spans, signed endpoints, gaps,
+reset memory, conflicts, causal origins and endpoint-only reads on 52,000 points.
 
 ## Rejected Alternatives
 

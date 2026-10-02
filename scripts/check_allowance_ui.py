@@ -115,11 +115,13 @@ def _check_report_content(page, report, state, theme, history_colors):
         assert "2026-08-29" not in summary_text
     assert page.get_by_role("meter").count() == len(report["status"]["active_buckets"])
     paces = page.locator(".allowance-pace")
-    assert paces.count() == 2 * len(report["status"]["active_buckets"])
+    assert paces.count() == 3 * len(report["status"]["active_buckets"])
     assert paces.evaluate_all("elements => elements.every(e => e.scrollWidth <= e.clientWidth)")
     if state not in {"stale", "unavailable"}:
         assert "would run out around" in paces.nth(0).inner_text()
         assert "would remain at reset" in paces.nth(1).inner_text()
+        assert "Cycle pace · 1d 8h observed" in paces.nth(2).inner_text()
+        assert "would remain at reset" in paces.nth(2).inner_text()
     if state == "stale":
         assert "Forecast awaiting fresh capture" in paces.first.inner_text()
     observations = page.locator(".allowance-observation")

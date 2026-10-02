@@ -9,7 +9,7 @@ from codex_usage.parser import parse_timestamp
 from codex_usage.pricing import estimate_cost
 
 ALLOWANCE_INDEX_REVISION = 2
-ALLOWANCE_REPORT_REVISION = 3
+ALLOWANCE_REPORT_REVISION = 4
 
 
 def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revision,

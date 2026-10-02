@@ -120,6 +120,16 @@ def main():
             for number, endpoint in enumerate(anchors):
                 measure(f"prepared_origin_fit_{number}", pace.fit_paces, prepared, endpoint)
             measure("prepared_earlier_origin_fit", pace.fit_paces, prepared, points[-5])
+            long_cycle = [replace(p, limit_id="long-cycle", duration_minutes=10080,
+                                  used_percent=10+i/2000, resets_at=None)
+                          for i, p in enumerate(points[:quota_count])]
+            cycle_prepared = measure("long_cycle_preparation", evidence.prepare_pace_evidence,
+                                     long_cycle, {long_cycle[-1]})
+            cycle_result = measure("long_cycle_origin_fit", pace.fit_paces,
+                                   cycle_prepared, long_cycle[-1])[2]
+            assert cycle_result["observations"] == quota_count
+            assert cycle_result["span_seconds"] > 86400
+            assert cycle_result["rate"] == cycle_result["movement"] / (cycle_result["span_seconds"] / 3600)
             with open_ledger(ledger, read_only=True) as connection:
                 connection.execute("begin")
                 oracle = queries.build_allowance_report(connection)

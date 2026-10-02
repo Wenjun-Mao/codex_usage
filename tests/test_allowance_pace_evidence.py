@@ -5,10 +5,29 @@ import random
 
 import pytest
 
-from allowance_pace_reference import fit_paces as reference_fit
+from allowance_pace_reference import active_evidence as reference_evidence, fit_paces as reference_fit
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_pace import fit_paces
 from codex_usage.allowance_pace_evidence import prepare_pace_evidence
+from codex_usage.allowance_windows import seconds
+
+
+def assert_cycle_matches_full_prefix(points, anchor, result):
+    sample, boundary, conflicts = reference_evidence(points, anchor, set(points))
+    times = [seconds(p) for p in sample]
+    span = times[-1] - times[0] if times else 0
+    movement = sample[-1].used_percent - sample[0].used_percent if sample else 0
+    reason = (boundary if not sample else "too few observations" if len(sample) < 3 else
+              "short observed span" if span < 1800 else
+              "insufficient signed movement" if movement < 2 else "")
+    assert result["boundary"] == boundary and result["conflicts"] == conflicts
+    assert result["observed_start"] == (sample[0].timestamp if sample else None)
+    assert result["observations"] == len(sample)
+    assert result["span_seconds"] == span and result["movement"] == movement
+    assert result["gap_seconds"] == max((b-a for a, b in zip(times, times[1:])), default=0)
+    assert result["corrections"] == sum(b.used_percent < a.used_percent for a, b in zip(sample, sample[1:]))
+    assert result["reason"] == reason
+    assert result["rate"] == (movement / (span/3600) if not reason else None)
 
 
 def test_prepared_origins_equal_full_prefix_with_future_metadata_and_bridges():
@@ -37,7 +56,9 @@ def test_prepared_origins_equal_full_prefix_with_future_metadata_and_bridges():
                 points.append(replace(point, used_percent=used+1))
         prepared = prepare_pace_evidence(points, points)
         for anchor in points[::5]:
-            assert fit_paces(prepared, anchor) == reference_fit(points, anchor, set(points)), (seed, anchor)
+            results = fit_paces(prepared, anchor)
+            assert results[:2] == reference_fit(points, anchor, set(points)), (seed, anchor)
+            assert_cycle_matches_full_prefix(points, anchor, results[2])
 
 
 def test_leading_unknown_plan_resolution_does_not_rewrite_earlier_origins():
@@ -48,7 +69,9 @@ def test_leading_unknown_plan_resolution_does_not_rewrite_earlier_origins():
                replace(points[-1], plan="pro")]
     prepared = prepare_pace_evidence(points, points)
     for anchor in points:
-        assert fit_paces(prepared, anchor) == reference_fit(points, anchor, set(points))
+        results = fit_paces(prepared, anchor)
+        assert results[:2] == reference_fit(points, anchor, set(points))
+        assert_cycle_matches_full_prefix(points, anchor, results[2])
 
 
 def test_selection_and_fit_do_not_iterate_or_prepare_the_historical_prefix(monkeypatch):
@@ -72,7 +95,7 @@ def test_selection_and_fit_do_not_iterate_or_prepare_the_historical_prefix(monke
             return original.groups[key]
 
     from codex_usage.allowance_pace_evidence import Series
-    prepared.series[("codex", 1440)] = Series(original.times, BoundedGroups(), original.checkpoints)
+    prepared.series[("codex", 1440)] = Series(original.times, BoundedGroups(), original.checkpoints, original.cycle_stats)
 
     def forbidden(*args, **kwargs):
         raise AssertionError("fitting must consume prepared checkpoints")
@@ -92,5 +115,5 @@ def test_active_series_preparation_keeps_other_duration_plan_events():
     change = replace(points[3], duration_minutes=10080, plan="plus")
     prepared = prepare_pace_evidence(points+[change], points, series_keys={("codex", 300)})
     assert set(prepared.series) == {("codex", 300)}
-    assert fit_paces(prepared, points[-1]) == reference_fit(points+[change], points[-1], set(points))
+    assert fit_paces(prepared, points[-1])[:2] == reference_fit(points+[change], points[-1], set(points))
     assert fit_paces(prepared, points[-1])[0]["boundary"] == "plan change"

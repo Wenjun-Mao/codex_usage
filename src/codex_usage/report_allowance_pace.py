@@ -13,6 +13,14 @@ def span_label(seconds):
     return f"{hours}h {minutes}m" if minutes else f"{hours}h"
 
 
+def cycle_span_label(seconds):
+    minutes = max(0, round(seconds / 60))
+    if minutes < 1440:
+        return span_label(seconds)
+    days, minutes = divmod(minutes, 1440)
+    return f"{days}d {span_label(minutes * 60)}" if minutes else f"{days}d"
+
+
 def _message(pace, status, now, timezone):
     state = pace_state(pace, status, now)
     if state == "awaiting":
@@ -43,7 +51,7 @@ def pace_rows(paces, status, *, timezone, now=None):
     clock = (now or datetime.now(UTC)).timestamp()
     return ''.join(
         '<p class="allowance-pace">'
-        f'<strong>{escape(p["name"])} pace · {span_label(p["span_seconds"])} observed:</strong> '
+        f'<strong>{escape(p["name"])} pace · {(cycle_span_label if p["name"] == "Cycle" else span_label)(p["span_seconds"])} observed:</strong> '
         f'{escape(_message(p, status, clock, timezone))}</p>' for p in paces
     )
 
@@ -53,12 +61,15 @@ def pace_details(paces, status, *, now=None):
     items = []
     for row in paces:
         for p in row:
-            method = "signed net elapsed-time rate" if p["name"] == "Recent" else "weighted signed intervals, six-hour half-life"
+            method = ("weighted signed intervals, six-hour half-life" if p["name"] == "Daily"
+                      else "signed net elapsed-time rate")
+            lookback = ("entire observed coherent suffix; reset instant may be unobserved"
+                        if p["name"] == "Cycle" else f'up to {span_label(p["horizon_seconds"])} lookback')
             rate = f'{p["rate"]:.3f} pp/hour' if p["rate"] is not None else "unavailable"
             state = pace_state(p, status, clock)
             reason = ("awaiting fresh capture" if state == "awaiting" else "") or p["reason"] or ("missing live reset" if p["reset"] is None else "eligible; conditional on captured reading")
             items.append(
-                f'<p>{escape(p["limit_id"])} · {p["duration_minutes"]} min · {escape(p["name"])}: {method}; up to {span_label(p["horizon_seconds"])} lookback; '
+                f'<p>{escape(p["limit_id"])} · {p["duration_minutes"]} min · {escape(p["name"])}: {method}; {lookback}; '
                 f'{span_label(p["span_seconds"])} observed; {p["observations"]} observations; '
                 f'{p["movement"]:g} signed percentage points; {rate}; '
                 f'maximum gap {span_label(p["gap_seconds"])}; {p["corrections"]} corrections; '

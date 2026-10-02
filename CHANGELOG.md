@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.10.1 - 2026-10-02
+
+- Add a third Cycle pace row using signed movement across the entire observed
+  coherent quota window, including idle time. Show its actual multi-day span and
+  compare it with the captured reset in the configured local timezone.
+- Restart the baseline at actual observations after supported boundaries; never
+  assume a zero-percent reset capture or a nominal seven-day cycle start.
+- Reuse prepared continuity checkpoints and endpoint summaries without scanning
+  the cycle during fitting. Keep Recent/Daily forecasts, dollar estimates,
+  capture scheduling and compact warm-cache behavior unchanged. Exhaustion
+  prediction accuracy remains unvalidated.
+
 ## 2.10.0 - 2026-10-01
 
 - Add independent Recent and Daily conditional pace rows beneath each active

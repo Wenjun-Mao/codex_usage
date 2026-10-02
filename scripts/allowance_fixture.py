@@ -40,7 +40,10 @@ def allowance_fixture() -> dict:
     active = dict(windows[-1]["points"][-1], timestamp="2026-09-02T16:00:00+00:00")
     anchor = QuotaObservation(**{key: active[key] for key in QuotaObservation.__dataclass_fields__})
     observed = datetime.fromisoformat(anchor.timestamp)
-    pace_points = [QuotaObservation((observed - timedelta(hours=h)).isoformat(),
+    pace_points = [QuotaObservation((observed - timedelta(hours=32)).isoformat(),
+                   anchor.limit_id, anchor.slot, anchor.plan, 17, anchor.duration_minutes,
+                   anchor.resets_at)]
+    pace_points += [QuotaObservation((observed - timedelta(hours=h)).isoformat(),
                    anchor.limit_id, anchor.slot, anchor.plan, 18, anchor.duration_minutes,
                    anchor.resets_at) for h in range(24, 0, -2)]
     pace_points += [QuotaObservation((observed - timedelta(minutes=m)).isoformat(),

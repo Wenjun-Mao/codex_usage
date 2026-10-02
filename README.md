@@ -44,7 +44,7 @@ from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
 packages each include the matching local collector; the native app, Python,
 `uv`, and this repository are not required.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.10.0 release.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.10.1 release.
 
 ## First Run And Legacy Service Handoff
 
@@ -283,9 +283,11 @@ checks and handoff acceptance are in [docs/release.md](docs/release.md).
 
 ## Plan Allowance
 
-Two compact conditional pace rows beneath each active meter show Recent (up to
-60 minutes) and Daily (up to 24 hours, with six-hour recency decay), including
-the actual observed span. Both compare signed percentage movement with the
+Three compact conditional pace rows beneath each active meter show Recent (up to
+60 minutes), Daily (up to 24 hours, with six-hour recency decay), and Cycle
+(the entire observed coherent window, including idle time). Each shows its
+actual observed span; Cycle does not assume the reset instant was captured or
+invent a zero-percent starting point. All compare signed movement with the
 captured reset in your configured timezone; they may disagree. They describe
 what would happen if the measured pace continued, without promising future
 usage. Sparse or conflicting evidence stays unmeasurable. Failed, stale or

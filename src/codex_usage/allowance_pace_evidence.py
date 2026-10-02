@@ -72,6 +72,9 @@ class Cursor:
     conflicts: int = 0
     pending_cut: bool = False
     plan_cursor: int = 0
+    previous_used: float | None = None
+    maximum_gap: float = 0
+    corrections: int = 0
 
     def push(self, index, group, plan_events):
         if group.conflict:
@@ -95,9 +98,15 @@ class Cursor:
             reason = self.continuity.push(group)
         if reason:
             self.start, self.boundary = index, reason
+            self.maximum_gap = 0
+            self.corrections = 0
+        elif self.previous_time is not None:
+            self.maximum_gap = max(self.maximum_gap, group.time - self.previous_time)
+            self.corrections += group.point.used_percent < self.previous_used
         if group.plan:
             self.known_plan = group.plan
         self.previous_time = group.time
+        self.previous_used = group.point.used_percent
         self.pending_cut = False
 
 
@@ -106,6 +115,7 @@ class Series:
     times: tuple
     groups: tuple
     checkpoints: tuple
+    cycle_stats: tuple
 
     @classmethod
     def prepare(cls, points, plan_events):
@@ -114,6 +124,7 @@ class Series:
         first_known = next((i for i, g in enumerate(groups) if g.plan and not g.conflict), None)
         cursor = Cursor()
         checkpoints = []
+        cycle_stats = []
         for index, group in enumerate(groups):
             if index == first_known:
                 # The prefix's leading unknown run now has its first known
@@ -124,7 +135,18 @@ class Series:
                     cursor.push(earlier, groups[earlier], plan_events)
             cursor.push(index, group, plan_events)
             checkpoints.append((cursor.start, cursor.boundary, cursor.conflicts))
-        return cls(tuple(g.time for g in groups), groups, tuple(checkpoints))
+            cycle_stats.append((cursor.maximum_gap, cursor.corrections))
+        return cls(tuple(g.time for g in groups), groups, tuple(checkpoints), tuple(cycle_stats))
+
+
+@dataclass(frozen=True, slots=True)
+class CycleEvidence:
+    first: QuotaObservation | None
+    observations: int
+    maximum_gap: float
+    corrections: int
+    boundary: str
+    conflicts: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,24 +154,40 @@ class PreparedPaceEvidence:
     series: dict
     live_points: frozenset
 
-    def select(self, anchor, *, horizon=86400):
+    def _origin(self, anchor):
         series = self.series.get((anchor.limit_id, anchor.duration_minutes))
         if series is None:
-            return [], "exact live anchor missing", 0
+            return None, 0, "exact live anchor missing", 0
         time = seconds(anchor)
         end = bisect_left(series.times, time)
         prior = bisect_right(series.times, time) - 1
         conflicts = series.checkpoints[prior][2] if prior >= 0 else 0
         if end < len(series.times) and series.times[end] == time and series.groups[end].conflict:
-            return [], "live anchor conflict", conflicts
+            return None, 0, "live anchor conflict", conflicts
         if (anchor not in self.live_points or end == len(series.times) or series.times[end] != time
                 or anchor not in series.groups[end].members):
-            return [], "exact live anchor missing", conflicts
+            return None, 0, "exact live anchor missing", conflicts
+        return series, end, "", conflicts
+
+    def select(self, anchor, *, horizon=86400):
+        series, end, error, conflicts = self._origin(anchor)
+        if error:
+            return [], error, conflicts
         start, boundary, conflicts = series.checkpoints[end]
-        start = max(start, bisect_left(series.times, time - horizon))
+        start = max(start, bisect_left(series.times, seconds(anchor) - horizon))
         sample = [group.point for group in series.groups[start:end + 1]]
         sample[-1] = anchor
         return sample, boundary, conflicts
+
+    def cycle(self, anchor):
+        """Read observed-cycle endpoints and summaries without scanning its points."""
+        series, end, error, conflicts = self._origin(anchor)
+        if error:
+            return CycleEvidence(None, 0, 0, 0, error, conflicts)
+        start, boundary, conflicts = series.checkpoints[end]
+        gap, corrections = series.cycle_stats[end]
+        first = anchor if start == end else series.groups[start].point
+        return CycleEvidence(first, end - start + 1, gap, corrections, boundary, conflicts)
 
 
 def prepare_pace_evidence(points, live_points, *, series_keys=None):

@@ -27,7 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.10.0.
+Linux are not supported in 2.10.1.
 
 ## What You Can Do
 
@@ -226,9 +226,11 @@ and redacted Codex Usage output. Never attach raw task JSONLs publicly.
 
 ## Plan Allowance
 
-Two compact conditional pace rows beneath each active meter show Recent (up to
-60 minutes) and Daily (up to 24 hours, with six-hour recency decay), including
-the actual observed span. Both compare signed percentage movement with the
+Three compact conditional pace rows beneath each active meter show Recent (up to
+60 minutes), Daily (up to 24 hours, with six-hour recency decay), and Cycle
+(the entire observed coherent window, including idle time). Each shows its
+actual observed span; Cycle does not assume the reset instant was captured or
+invent a zero-percent starting point. All compare signed movement with the
 captured reset in your configured timezone; they may disagree. They describe
 what would happen if the measured pace continued, without promising future
 usage. Sparse or conflicting evidence stays unmeasurable. Failed, stale or

@@ -57,7 +57,34 @@ def fit_paces(prepared, anchor):
                         "anchor": seconds(anchor), "reset": anchor.resets_at,
                         "used": anchor.used_percent, "exhaustion": exhaustion,
                         "reset_balance": reset_balance})
+    results.append(_cycle_pace(prepared, anchor))
     return results
+
+
+def _cycle_pace(prepared, anchor):
+    evidence = prepared.cycle(anchor)
+    span = seconds(anchor) - seconds(evidence.first) if evidence.first else 0
+    movement = anchor.used_percent - evidence.first.used_percent if evidence.first else 0
+    reason = (evidence.boundary if evidence.first is None else
+              "too few observations" if evidence.observations < 3 else
+              "short observed span" if span < 1800 else
+              "insufficient signed movement" if movement < 2 else "")
+    rate = movement / (span / 3600) if not reason else None
+    if rate is not None and (not isfinite(rate) or rate <= 0):
+        rate, reason = None, "nonpositive rate"
+    exhaustion = seconds(anchor) + (100 - anchor.used_percent) / rate * 3600 if rate else None
+    reset_balance = (100 - anchor.used_percent - rate * (anchor.resets_at - seconds(anchor)) / 3600
+                     if rate and anchor.resets_at is not None else None)
+    return {"limit_id": anchor.limit_id, "duration_minutes": anchor.duration_minutes,
+            "name": "Cycle", "horizon_seconds": None, "span_seconds": span,
+            "observations": evidence.observations, "movement": movement, "rate": rate,
+            "gap_seconds": evidence.maximum_gap, "reason": reason,
+            "boundary": evidence.boundary, "conflicts": evidence.conflicts,
+            "corrections": evidence.corrections,
+            "anchor": seconds(anchor), "reset": anchor.resets_at,
+            "used": anchor.used_percent, "exhaustion": exhaustion,
+            "reset_balance": reset_balance,
+            "observed_start": evidence.first.timestamp if evidence.first else None}
 
 
 def pace_state(pace, probe_status, now):

@@ -289,3 +289,24 @@ Use updated Relay for one bounded serial worker after approval, choosing the
 model/reasoning at native dispatch. Keep the worker until review/release ends,
 then archive and unregister its route. This plan creates no worker and changes
 no plugin implementation.
+
+## Cycle Follow-Up (2.10.1, 2026-10-02)
+
+Human implementation and release approval adds a third compact Cycle row after
+Recent and Daily. Use signed endpoint movement over the entire observed coherent
+suffix, including idle time, with no recency weighting or fixed horizon. Label
+the actual observed span. Do not infer the reset instant, a zero-percent first
+capture, or a nominal seven-day start; preserve left-censor and unknown-boundary
+diagnostics. Keep the Recent minimum of three distinct times, 30 minutes and two
+signed percentage points. Gaps count toward elapsed time, with their maximum
+reported in diagnostics rather than rejected. Unobserved resets remain a limit.
+
+Reuse exact live anchoring, causal boundaries, reset-relative outcomes, local
+times, expiry and compact cache. Add checkpoint summaries during preparation
+so fitting retrieves only endpoints, not the full cycle. Keep Recent/Daily
+outputs and dollar results identical. Bump report/render revisions, not the
+cost index or schema. Add boundary, multi-day, signed-correction, causal and
+endpoint-only regressions; inspect all themes and narrow layouts. Review the
+candidate before pushing/tagging, run both platform gates and verify public
+package hashes before declaring release. Predictive accuracy and end-to-end
+VS Code latency remain unvalidated. Preserve unrelated `apps/` and live data.
