@@ -27,7 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.10.2.
+Linux are not supported in 2.10.3.
 
 ## What You Can Do
 
@@ -252,6 +252,14 @@ show a dated **Previous window** estimate from the same limit, plan, and duratio
 series. It never borrows across series. Collapsed diagnostics list recent valid
 priced windows, including current and provisional fits. Project and date filters
 do not change this account-wide section.
+
+The heading also shows the latest observed account-wide credit balance when
+available, with exact precision on hover and older balances marked last known.
+Folded capture details show adjacent balance changes, not authenticated bills.
+These balances are separate from estimated token credits and banked resets;
+history starts prospectively with live captures. Allowance fits stop before the
+first reported-full quota reading, preserving raw evidence and ordinary costs
+without attributing later usage to a payment source.
 
 Captures use official Codex App Server metadata reads without a model turn.
 Unavailable probes do not fail ordinary capture. Historical recovery checks

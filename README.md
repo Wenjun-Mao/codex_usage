@@ -44,7 +44,7 @@ from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
 packages each include the matching local collector; the native app, Python,
 `uv`, and this repository are not required.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.10.2 release.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.10.3 release.
 
 ## First Run And Legacy Service Handoff
 
@@ -303,6 +303,14 @@ show a dated **Previous window** estimate from the same limit, plan, and duratio
 series. It never borrows across series. Collapsed diagnostics list recent valid
 priced windows, including current and provisional fits. Project and date filters
 do not change this account-wide section.
+
+The heading also shows the latest observed account-wide credit balance when
+available, with exact precision on hover and older balances marked last known.
+Folded capture details show adjacent balance changes, not authenticated bills.
+These balances are separate from estimated token credits and banked resets;
+history starts prospectively with live captures. Allowance fits stop before the
+first reported-full quota reading, preserving raw evidence and ordinary costs
+without attributing later usage to a payment source.
 
 Captures use official Codex App Server metadata reads without a model turn.
 Unavailable probes do not fail ordinary capture. Historical recovery checks

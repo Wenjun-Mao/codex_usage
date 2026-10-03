@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 2.10.3 - 2026-10-02
+
+- Capture exact account-wide credit balances from the existing quota probe,
+  separate from token-based credit estimates and banked resets. Show the balance
+  beside the Plan Allowance heading and keep net-change history in folded details.
+- Shorten the default allowance section by folding its caution paragraphs into
+  existing diagnostics; mark older balances last known without inferring spending.
+- Stop monetary allowance fits before the first reported-full quota reading so
+  continued usage cannot inflate the included-allowance estimate. Preserve raw
+  observations, reset boundaries, ordinary costs, and pace calculations.
+- Add backup-protected ledger schema 5 without increasing capture frequency or
+  quota RPCs. Missing credit metadata stays unknown; capture is prospective.
+
 ## 2.10.2 - 2026-10-02
 
 - Shorten quota pace rows to Recent, Daily and Cycle average, keeping each actual

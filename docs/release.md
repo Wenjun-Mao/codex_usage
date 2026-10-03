@@ -1,6 +1,6 @@
-# 2.10.2 VSIX Release Checklist
+# 2.10.3 VSIX Release Checklist
 
-Codex Usage 2.10.2 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.10.3 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
@@ -28,15 +28,33 @@ or a source checkout on the user's machine.
 `VSCE_PAT` with Manage permission for publisher `wenjun-mao` is the sole
 publication secret.
 
-## 2.10.2 Pace Limits
+## 2.10.3 Credit Balance Checks
+
+Verify the balance shares the Plan Allowance heading without a new standing
+paragraph, including at 360 px. Capture exact decimals with the existing RPC;
+show missing or conflicting metadata as unknown, stale balances as last known,
+and unlimited balances explicitly. Keep history and net changes folded, separate
+from token-based credit estimates and banked resets. A reset must not clear credit
+history, and increases must not be reported as spending.
+
+Verify a packaged collector migrates a disposable schema-4 ledger to schema 5,
+preserves events and quota evidence, and leaves a readable pre-migration backup.
+Allowance fits stop before the first raw full-meter reading, including conflicting
+same-timestamp evidence and later small corrections. Keep raw observations,
+ordinary costs, genuine reset boundaries, and quota pace unchanged. Historical
+estimates may change when saturated evidence is excluded. Credit history begins
+prospectively; exact billing attribution and credit-depletion pace are not shipped.
+
+## Pace Limits
 
 Recent, Daily and Cycle rows are conditional continuations of captured quota
 evidence. Cycle uses the entire observed coherent suffix, including idle time,
 not an inferred reset origin. Check multi-day labels and actual post-boundary
-starts; Recent/Daily and dollar outputs must remain unchanged.
+starts; Recent/Daily pace outputs must remain unchanged. Ordinary usage costs
+are unaffected by the saturated allowance-fit cutoff.
 Check the compact Recent, Daily and Cycle average labels, local today/tomorrow
 wording across midnight, full dates/offsets on hover, and approximate day/hour
-reset gaps. Only presentation and its HTML cache identity change in this patch.
+reset gaps. Credit balance capture must not change their calculation or scheduling.
 Selection/fitting is sub-millisecond after shared preparation on reviewed
 workloads. New ledger revisions still prepare history, and uncached views still
 load/render historical windows. Exhaustion accuracy and end-to-end VS Code
@@ -143,13 +161,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.10.2`, both
+Confirm Python and extension metadata and lockfiles all say `2.10.3`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.10.2`:
+Only after the non-publishing platform gate succeeds, create and push `v2.10.3`:
 
 ```bash
-git tag v2.10.2
-git push origin v2.10.2
+git tag v2.10.3
+git push origin v2.10.3
 ```
 
 The tag reruns all platform gates and publishes

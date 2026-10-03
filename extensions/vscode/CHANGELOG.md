@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 2.10.3 - 2026-10-02
+
+- Show captured credit balances beside the Plan Allowance heading without adding
+  a standing line. Keep exact values on hover and net-change history in details.
+- Fold existing caution text into diagnostics and label older balances last known;
+  distinguish observed balances from estimated token credits and banked resets.
+- Prevent usage after a full quota reading from inflating the included-allowance
+  estimate while retaining raw history, ordinary costs, resets, and quota pace.
+- Preserve existing data through a backup-protected schema-5 migration. Reuse the
+  current quota probe and capture schedule; credit history starts with new captures.
+
 ## 2.10.2 - 2026-10-02
 
 - Shorten quota pace rows to Recent, Daily and Cycle average, keeping each actual
