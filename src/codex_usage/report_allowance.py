@@ -3,6 +3,7 @@ from datetime import UTC, datetime, tzinfo
 from html import escape
 
 from codex_usage.report_allowance_pace import pace_details, pace_rows
+from codex_usage.report_allowance_credits import credit_details, credit_heading
 
 
 ALLOWANCE_HISTORY_LIMIT = 12
@@ -68,7 +69,7 @@ def economic_summary(window, *, latest, show_series, is_previous=False):
         f'<div class="allowance-economic"><h3>{label}</h3>'
         f'<p class="allowance-value">{money(estimate["value"])}</p>'
         f'{series}'
-        f'<p>Observed {text(window["start"][:10])}–{text(window["end"][:10])}{confidence}</p></div>'
+        f'<p>Observed {text(window["start"][:10])}–{text((window.get("fit_end") or window["end"])[:10])}{confidence}</p></div>'
     )
 
 
@@ -91,7 +92,7 @@ def _history_html(history):
             f'<li class="allowance-history-item allowance-history-{status_class}">'
             f'<div class="allowance-history-heading"><span class="allowance-history-series">{series_label(window)}</span>'
             f'<strong class="allowance-history-value">{money(estimate["value"])}</strong></div>'
-            f'<p class="allowance-history-meta">Observed {text(window["start"][:10])}–{text(window["end"][:10])} · '
+            f'<p class="allowance-history-meta">Observed {text(window["start"][:10])}–{text((window.get("fit_end") or window["end"])[:10])} · '
             f'{window_status} · {text(estimate["confidence"])} confidence · '
             f'{estimate["span"]:g} percentage points · {estimate["bins"]} bins · 100% priced · {ledger_coverage}</p>'
             '</li>'
@@ -193,6 +194,9 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
     if report is None:
         return ""
     status = report["status"]
+    credits = status.get("credits")
+    _, credit_observed = _local_observation(credits.get("observed_at") if credits else None, timezone)
+    credit_markup = credit_heading(credits, credit_observed)
     buckets = []
     for index, bucket in enumerate(status["active_buckets"]):
         remaining_percent = 100 - bucket["used_percent"]
@@ -243,6 +247,9 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
         shown_label = ("All" if len(shown_points) == len(window["points"])
                        else f'Most recent {len(shown_points)} of {len(window["points"])}')
         captures = ''.join(_observation_row(point, timezone) for point in shown_points)
+        excluded = window.get("excluded_observations", 0)
+        excluded_markup = (f'<p>Allowance fit excludes {excluded} observations from the first reported-full '
+                           'reading onward; raw quota observations remain below.</p>' if excluded else "")
         details.append(
             f'<details class="allowance-window{provisional}"><summary>{text(window["limit_id"])} · '
             f'{text(window["start"][:10])}–{text(window["end"][:10])} · {text(estimate["confidence"])}'
@@ -250,9 +257,10 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
             f'<p>{text(window["plan"] or "Unknown plan")} · {text(window["duration_minutes"])} min · '
             f'{estimate["span"]:g} percentage points · {estimate["bins"]} bins · '
             f'local cost span {money(estimate["cost_span"])} · {money(estimate["value"])}</p>'
-            f'<p>{"100% priced" if window.get("fully_priced", True) else "Unpriced usage: monetary estimate unavailable"} · {"Complete local ledger" if window.get("coverage_complete", True) else "Partial local ledger"}</p>'
+            f'<p>Allowance fit: {"100% priced" if window.get("fully_priced", True) else "Unpriced usage: monetary estimate unavailable"} · {"Complete local ledger" if window.get("coverage_complete", True) else "Partial local ledger"}</p>'
             f'<p>R² {estimate["r_squared"]:.3f} · sensitivity P90/P10 {text(estimate["sensitivity_ratio"])} · '
             f'{window["corrections"]} meter corrections</p>'
+            f'{excluded_markup}'
             f'<details><summary>Quota observations ({len(window["points"])})</summary>'
             f'<p>{shown_label} observations shown.</p>'
             f'<div class="table-scroll" tabindex="0" role="region" aria-label="Quota observations">'
@@ -280,15 +288,16 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
                          if older_qualified else '<p>No earlier qualified completed estimate.</p>')
     return (
         '<section class="card plan-allowance" id="plan-allowance" aria-labelledby="plan-allowance-title">'
-        '<h2 id="plan-allowance-title">Plan Allowance</h2>'
+        '<div class="allowance-heading"><h2 id="plan-allowance-title">Plan Allowance</h2>'
+        f'{credit_markup}</div>'
         '<p class="muted">Account-wide · unaffected by project and date filters.</p>'
         f'<div class="allowance-buckets">{"".join(buckets) or "<p>No current quota reading is available.</p>"}</div>'
         '<h3>Observed API-equivalent value per 100% allowance</h3>'
         f'<div class="allowance-economics">{economic_summary(headline, latest=latest, show_series=show_headline_series, is_previous=headline_previous)}</div>'
+        '<details><summary>Probe, coverage, and allowance history</summary>'
         '<p class="muted">Workload-specific local estimate, not cash or a contractual allowance. '
         'Other devices and missing history may change it.</p>'
         '<p class="muted">VS Code capture stops when VS Code closes. Quota snapshots missed during that time may not be reconstructable.</p>'
-        '<details><summary>Probe, coverage, and allowance history</summary>'
         f'{highlighted_evidence}{pace_details(report.get("paces", []), status.get("probe_status"), now=now)}'
         f'<p>Plan: {text(status["plan"] or "Unavailable")} · Probe: {text(status["probe_status"])} · '
         f'Last checked: {_observation_time(status["last_probe_at"], timezone)} · '
@@ -299,6 +308,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
         f'<p>Account lifetime tokens (coverage diagnostic only): {text(status["lifetime_tokens"] if status["lifetime_tokens"] is not None else "Unavailable")}</p>'
         f'{_history_html(history)}</details>'
         '<details><summary>Reset windows and capture details</summary>'
+        f'{credit_details(credits, report.get("credits", {}), lambda stamp: _observation_time(stamp, timezone))}'
         f'{qualified_context}'
         f'{"".join(details) or "<p>No observations captured yet.</p>"}</details></section>'
     )
@@ -307,6 +317,9 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
 def allowance_css():
     return """
 .plan-allowance { margin: 18px 0; padding: 20px; border: 1px solid var(--border, var(--line)); border-radius: 12px; overflow-wrap: anywhere; }
+.allowance-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
+.allowance-heading h2 { margin: 0; }
+.allowance-credit-balance { min-width: 0; font-size: .9rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .allowance-buckets { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(320px,100%),1fr)); gap: 10px 18px; }
 .allowance-bucket { min-width: 0; }
 .allowance-pace { margin: 4px 0; font-size: .9rem; overflow-wrap: anywhere; }
@@ -341,6 +354,7 @@ def allowance_css():
 .plan-allowance summary:focus-visible { outline: 2px solid var(--accent, var(--astra, #087ea4)); outline-offset: 2px; border-radius: 2px; }
 .plan-allowance .table-scroll { overflow-x: auto; }
 .allowance-observations { min-width: 760px; }
+.allowance-credit-observations { min-width: 530px; }
 .allowance-observations th, .allowance-observations td:first-child, .allowance-observations td:nth-child(2), .allowance-observations td:last-child { white-space: nowrap; }
 .plan-allowance .table-scroll:focus-visible { outline: 2px solid var(--accent, var(--astra, #087ea4)); outline-offset: 2px; }
 """

@@ -14,7 +14,7 @@ from codex_usage.agent_private_files import (
 )
 
 
-LEDGER_SCHEMA_VERSION = 4
+LEDGER_SCHEMA_VERSION = 5
 LEDGER_REVISION_KEY = "ledger_revision"
 
 
@@ -75,10 +75,11 @@ def ensure_ledger_schema(
             _migrate_v1_to_v2(connection)
         elif version == 1:
             _migrate_v1_to_v2(connection)
-        from codex_usage.allowance_schema import create_allowance_schema
+        from codex_usage.allowance_schema import create_allowance_schema, create_credit_schema
         if version < 3:
             create_allowance_schema(connection)
         _create_allowance_cost_schema(connection)
+        create_credit_schema(connection)
         connection.execute(
             "insert or replace into ledger_meta (key, value) values (?, ?)",
             ("schema_version", str(LEDGER_SCHEMA_VERSION)),

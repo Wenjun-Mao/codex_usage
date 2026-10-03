@@ -5,6 +5,7 @@ from pathlib import Path
 from time import monotonic
 
 from codex_usage.allowance_models import QuotaObservation, identifier, integer, quota_observations
+from codex_usage.allowance_credits import CreditBalance, credit_balance
 from codex_usage.app_server_rpc import AppServerRpc, RpcError
 from codex_usage.codex_registration import discover_codex_executables
 
@@ -16,6 +17,7 @@ class QuotaRead:
     observations: tuple[QuotaObservation, ...] = ()
     lifetime_tokens: int | None = None
     diagnostics: str = ""
+    credits: CreditBalance | None = None
 
 
 def probe_allowance(codex_home: Path, *, timeout: float = 8) -> QuotaRead:
@@ -40,12 +42,13 @@ def probe_allowance(codex_home: Path, *, timeout: float = 8) -> QuotaRead:
                         errors.append(f"{method}:{exc}")
                 account = results.get("account/read", {}).get("account")
                 plan = identifier(account.get("planType")) if isinstance(account, dict) else ""
-                observations = quota_observations(results.get("account/rateLimits/read"), stamp, plan=plan)
+                limits = results.get("account/rateLimits/read")
+                observations = quota_observations(limits, stamp, plan=plan)
                 summary = results.get("account/usage/read", {}).get("summary")
                 lifetime = integer(summary.get("lifetimeTokens")) if isinstance(summary, dict) else None
                 if not observations:
                     errors.append("quota_unavailable")
-                return QuotaRead(stamp, plan, observations, lifetime, ";".join(errors))
+                return QuotaRead(stamp, plan, observations, lifetime, ";".join(errors), credit_balance(limits))
         except (OSError, RpcError):
             continue
     return QuotaRead(stamp, diagnostics="probe_unavailable")

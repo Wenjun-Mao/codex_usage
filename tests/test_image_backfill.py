@@ -21,7 +21,7 @@ from codex_usage.image_backfill import (
     run_image_backfill_slice,
 )
 from codex_usage.image_capture_payloads import kind_from_mapping
-from codex_usage.ledger_schema import open_ledger
+from codex_usage.ledger_schema import LEDGER_SCHEMA_VERSION, open_ledger
 from codex_usage.image_capture_payloads import has_reference_inputs
 from codex_usage.image_models import ImageOperationKind
 
@@ -157,7 +157,7 @@ def test_image_ledger_migration_creates_a_pre_migration_backup(tmp_path: Path) -
         )
 
     backups = list(tmp_path.glob("usage-ledger.sqlite3.schema-1-backup-*"))
-    assert version == "4"
+    assert version == str(LEDGER_SCHEMA_VERSION)
     assert len(backups) == 1
     with sqlite3.connect(backups[0]) as connection:
         assert (

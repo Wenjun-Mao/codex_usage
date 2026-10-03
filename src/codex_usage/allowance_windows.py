@@ -12,6 +12,7 @@ class AllowanceWindow:
     corrections: int = 0
     ambiguous: bool = False
     identity_plan: str = ""
+    reported_full_at: str | None = None
 
     @property
     def completed(self):
@@ -98,6 +99,8 @@ def segment_windows(points):
                 if previous.timestamp == point.timestamp:
                     if previous.used_percent != point.used_percent:
                         window.ambiguous = True
+                    if point.used_percent >= 100 and window.reported_full_at is None:
+                        window.reported_full_at = point.timestamp
                     continue
                 kind = boundary(previous, point)
                 if kind == "correction":
@@ -109,6 +112,8 @@ def segment_windows(points):
                     window = AllowanceWindow(ambiguous=kind == "early/unknown", identity_plan=plan)
                     active[key] = window
                     results.append(window)
+            if point.used_percent >= 100 and window.reported_full_at is None:
+                window.reported_full_at = point.timestamp
             window.points.append(point)
     # Simultaneous material drops across independent buckets support a global
     # reset classification; they do not prove the server's reason.

@@ -35,6 +35,17 @@ def create_quota_cache(connection: sqlite3.Connection) -> None:
         primary key (file_key, observation_key))""")
 
 
+def create_credit_schema(connection: sqlite3.Connection) -> None:
+    connection.execute("""create table if not exists credit_observations (
+        read_id integer primary key references quota_reads(read_id),
+        balance text, has_credits integer check (has_credits in (0, 1)),
+        unlimited integer check (unlimited in (0, 1)), diagnostic text not null
+    )""")
+    connection.execute("""create index if not exists credit_known_balance_idx
+        on credit_observations(read_id)
+        where (balance is not null or unlimited = 1) and diagnostic = ''""")
+
+
 def backup_parser_cache(connection, prior_version):
     if prior_version not in {"8", "9"}:
         return

@@ -5,6 +5,7 @@ import zlib
 from dataclasses import asdict
 
 from codex_usage.allowance_models import QuotaObservation
+from codex_usage.allowance_credits import CreditBalance
 
 
 def observation_key(observation: QuotaObservation) -> str:
@@ -48,6 +49,10 @@ def store_read(connection, read, run_id):
         (run_id, read.timestamp, read.plan, read.lifetime_tokens, read.diagnostics),
     )
     store_observations(connection, read.observations, source_key=f"read:{cursor.lastrowid}", provenance="live")
+    credits = read.credits or CreditBalance(diagnostic="credits_unavailable")
+    connection.execute("insert into credit_observations values (?,?,?,?,?)",
+                       (cursor.lastrowid, credits.balance, credits.has_credits,
+                        credits.unlimited, credits.diagnostic))
 
 
 def cache_observations(connection, file_key, observations):

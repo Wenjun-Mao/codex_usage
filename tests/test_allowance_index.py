@@ -14,7 +14,7 @@ from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_probe import QuotaRead
 from codex_usage.allowance_queries import build_allowance_report
 from codex_usage.allowance_store import store_observations
-from codex_usage.ledger_schema import increment_ledger_revision, ledger_revision, open_ledger
+from codex_usage.ledger_schema import LEDGER_SCHEMA_VERSION, increment_ledger_revision, ledger_revision, open_ledger
 
 
 def _session(path, totals):
@@ -140,7 +140,7 @@ def test_read_only_pre_migration_report_uses_full_estimator(tmp_path):
         assert indexed_allowance_report(connection, ledger, revision=ledger_revision(connection),
                                         pricing_revision="p1", coverage_complete=True) == build_allowance_report(connection)
     with open_ledger(ledger) as connection:
-        assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == '4'
+        assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == str(LEDGER_SCHEMA_VERSION)
 
 
 def test_schema_3_migration_preserves_events_and_backs_up_prior_ledger(tmp_path):
@@ -165,7 +165,7 @@ def test_schema_3_migration_preserves_events_and_backs_up_prior_ledger(tmp_path)
     with open_ledger(ledger) as connection:
         assert connection.execute(
             "select value from ledger_meta where key = 'schema_version'"
-        ).fetchone()[0] == "4"
+        ).fetchone()[0] == str(LEDGER_SCHEMA_VERSION)
         assert connection.execute(
             "select count(*) from ledger_usage_events"
         ).fetchone()[0] == expected_events
@@ -269,7 +269,7 @@ def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_
     assert [p["plan"] for p in report["windows"][0]["points"]] == [p.plan for p in points]
     with open_ledger(ledger) as connection:
         assert {r[0] for r in connection.execute("select pricing_revision from allowance_report_cache")} == {
-            "p1:allowance-index-2:report-4", "p1:allowance-index-2:report-4:pace-state"}
+            "p1:allowance-index-2:report-5", "p1:allowance-index-2:report-5:pace-state"}
 
     # Use independent synthetic cumulative costs to exercise headline selection.
     from codex_usage.allowance_queries import _build_from_costs
@@ -320,7 +320,7 @@ def test_report_revision_refreshes_provenance_without_repricing_events(tmp_path,
     monkeypatch.setattr(allowance_index, "estimate_cost", forbidden)
     report = _compare(ledger)
     assert all(point["provenance"] == "Task snapshot" for point in report["windows"][0]["points"])
-    monkeypatch.setattr(allowance_index, "ALLOWANCE_REPORT_REVISION", 5)
+    monkeypatch.setattr(allowance_index, "ALLOWANCE_REPORT_REVISION", 6)
     _compare(ledger)
     with open_ledger(ledger, read_only=True) as connection:
         assert [tuple(row) for row in connection.execute("select * from allowance_event_costs")] == costs

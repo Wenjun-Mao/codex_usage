@@ -6,7 +6,8 @@ from bisect import bisect_right
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from codex_usage.allowance_estimation import estimate_window
+from codex_usage.allowance_estimation import allowance_fit_points, estimate_window
+from codex_usage.allowance_credits import credit_history, credit_status
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_windows import segment_windows
 
@@ -83,6 +84,7 @@ def allowance_status(connection, *, now=None):
                          "partial" if read["diagnostics"] else "fresh"),
         "diagnostics": read["diagnostics"] if read else "not_captured",
         "lifetime_tokens": read["lifetime_tokens"] if read else None,
+        "credits": credit_status(connection, latest_read_id=read["read_id"] if read else None, now=now),
         "recovery": {"total": recovered["total"], "complete": complete,
                      "unavailable": unavailable, "pending": max(0, recovered["total"] - complete - unavailable)},
     }
@@ -104,6 +106,7 @@ def build_allowance_report(connection, *, coverage_complete=True):
 def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     """Keep the full estimator and indexed estimator on the same window path."""
     status = allowance_status(connection)
+    credits = credit_history(connection)
     points, provenance, live_points = load_quota_evidence(connection)
     from codex_usage.allowance_pace import fit_paces
     from codex_usage.allowance_pace_evidence import prepare_pace_evidence
@@ -113,7 +116,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
         series_keys={(p.limit_id, p.duration_minutes) for p in anchors}) if anchors else None
     paces = [fit_paces(prepared, anchor) for anchor in anchors]
     if not points:
-        return {"status": status, "paces": paces, "windows": [], "qualified": [], "headline": None,
+        return {"status": status, "credits": credits, "paces": paces, "windows": [], "qualified": [], "headline": None,
                 "headline_previous": False, "history": []}
     times, costs, unpriced = [], [0.0], [0]
     for timestamp, cost, unpriced_tokens in priced_events:
@@ -124,7 +127,8 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     for window in segment_windows(points):
         indices = [bisect_right(times, datetime.fromisoformat(p.timestamp).timestamp()) for p in window.points]
         cumulative = [costs[i] - costs[indices[0]] for i in indices]
-        fully_priced = unpriced[indices[-1]] == unpriced[indices[0]]
+        fit_points = allowance_fit_points(window)
+        fully_priced = not fit_points or unpriced[indices[len(fit_points) - 1]] == unpriced[indices[0]]
         estimate = estimate_window(window, cumulative,
             fully_priced=fully_priced,
             coverage_complete=coverage_complete)
@@ -133,6 +137,9 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
             "limit_id": first.limit_id, "plan": window.identity_plan, "duration_minutes": first.duration_minutes,
             "start": first.timestamp, "end": window.points[-1].timestamp,
             "completed": window.completed, "closure": window.closure,
+            "fit_end": fit_points[-1].timestamp if fit_points else None,
+            "reported_full_at": window.reported_full_at,
+            "excluded_observations": len(window.points) - len(fit_points),
             "corrections": window.corrections, "estimate": estimate.to_dict(),
             "fully_priced": fully_priced, "coverage_complete": coverage_complete,
             "points": [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in window.points],
@@ -142,6 +149,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     latest = windows[-1] if windows else None
     return {
         "status": status,
+        "credits": credits,
         "paces": paces,
         "windows": windows,
         "qualified": qualified,

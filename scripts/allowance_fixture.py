@@ -63,9 +63,17 @@ def allowance_fixture() -> dict:
             ],
             "probe_status": "fresh", "last_probe_at": active["timestamp"],
             "lifetime_tokens": 900000000,
+            "credits": {"balance": "50000.125", "has_credits": True, "unlimited": False,
+                        "observed_at": active["timestamp"], "freshness": "fresh"},
             "recovery": {"total": 80, "complete": 72, "pending": 8, "unavailable": 0},
         },
         "paces": [paces, fit_paces(prepare_pace_evidence([extra_anchor], {extra_anchor}), extra_anchor)],
         "windows": windows, "qualified": qualified, "headline": headline,
         "headline_previous": False, "history": allowance_history(windows),
+        "credits": {"count": 2, "observations": [
+            {"timestamp": active["timestamp"], "balance": "50000.125", "unlimited": False,
+             "has_credits": True, "diagnostic": "", "change": "-125.25"},
+            {"timestamp": "2026-09-02T15:00:00+00:00", "balance": "50125.375", "unlimited": False,
+             "has_credits": True, "diagnostic": "", "change": None},
+        ]},
     }

@@ -1,5 +1,9 @@
 # ADR 0044: Observed Plan Allowance Analytics
 
+Credit observations and the monetary fit's reported-full cutoff are defined in
+[ADR 0049](0049-credit-balances-and-saturated-allowance-fits.md). Raw reset evidence
+and quota pace retain this ADR's contracts.
+
 ## Status
 
 Accepted for 2.8.0 on 2026-09-21; amended for 2.8.4 on 2026-09-24,

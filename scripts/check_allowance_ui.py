@@ -64,6 +64,13 @@ def _report_for_state(state):
         report["headline"] = None
         report["headline_previous"] = False
         report["history"] = []
+    if state == "credits-stale":
+        report["status"]["credits"]["freshness"] = "stale"
+    if state == "credits-unlimited":
+        report["status"]["credits"].update(balance=None, unlimited=True)
+    if state == "credits-missing":
+        report["status"]["credits"] = None
+        report["credits"] = {"count": 0, "observations": []}
     return report
 
 
@@ -78,6 +85,9 @@ def _check_report_matrix(page, browser_name):
         "partial",
         "multi-bucket",
         "insufficient",
+        "credits-stale",
+        "credits-unlimited",
+        "credits-missing",
     ):
         report = _report_for_state(state)
         for theme in ("day", "night"):
@@ -93,6 +103,22 @@ def _check_report_matrix(page, browser_name):
 def _check_report_content(page, report, state, theme, history_colors):
     assert page.locator("script").count() == 0
     assert page.get_by_role("heading", name="Plan Allowance", exact=True).is_visible()
+    credits = page.locator(".allowance-credit-balance")
+    assert credits.count() == (0 if state == "credits-missing" else 1)
+    if credits.count():
+        assert credits.is_visible()
+        expected_balance = ("Unlimited credits" if state == "credits-unlimited" else
+                            "50,000.12 credits · last known" if state == "credits-stale" else "50,000.12 credits")
+        assert credits.inner_text() == expected_balance
+        assert credits.locator("xpath=..").locator("h2").count() == 1
+        assert credits.get_attribute("title")
+    assert "again" not in page.locator(".plan-allowance").inner_text()
+    assert not page.get_by_text("Workload-specific local estimate", exact=False).is_visible()
+    assert not page.get_by_text("VS Code capture stops", exact=False).is_visible()
+    assert page.locator(".allowance-heading").evaluate(
+        "e => { const [a,b] = Array.from(e.children, c => c.getBoundingClientRect()); "
+        "return e.scrollWidth <= e.clientWidth && (!b || a.right <= b.left + 1 || a.bottom <= b.top + 1); }"
+    )
     headline = (
         "Latest window"
         if state == "insufficient"
@@ -208,6 +234,15 @@ def _check_report_content(page, report, state, theme, history_colors):
     summary.focus()
     summary.press("Enter")
     assert summary.evaluate("e => e.parentElement.open")
+    if state != "credits-missing":
+        credit_capture = page.locator("summary", has_text="Credit balance captures")
+        assert credit_capture.is_visible()
+        assert not page.locator(".allowance-credit-observations").is_visible()
+        credit_capture.focus()
+        credit_capture.press("Enter")
+        assert page.locator(".allowance-credit-observations").is_visible()
+        assert page.locator(".allowance-credit-observations tbody tr").count() == 2
+        assert "Decrease: 125.25" in page.locator(".allowance-credit-observations").inner_text()
     if report["windows"]:
         window = page.locator(".allowance-window summary").first
         window.focus()
