@@ -147,7 +147,7 @@ def main():
             for key in ("windows", "qualified", "headline", "headline_previous", "history"):
                 assert report[key] == old[key]
             with open_ledger(ledger) as connection:
-                latest = points[-1]
+                latest = anchors[1]
                 updated = QuotaObservation((anchor+timedelta(minutes=15)).isoformat(), latest.limit_id, latest.slot,
                                            latest.plan, 77, latest.duration_minutes, latest.resets_at)
                 store_read(connection, QuotaRead(updated.timestamp, "pro", (updated, replace(anchors[0], timestamp=updated.timestamp))), run_id)
