@@ -1,7 +1,7 @@
 """Frozen full-prefix oracle for prepared-index regression tests only."""
 from dataclasses import dataclass, replace
 from itertools import groupby
-from math import exp, isfinite, log
+from math import isfinite
 
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_windows import _identity_plans, seconds
@@ -107,15 +107,7 @@ def fit_paces(points, anchor, live_points):
                   "insufficient signed movement" if movement < 2 else "")
         rate = None
         if not reason:
-            if name == "Recent":
-                rate = movement / (coverage / 3600)
-            else:
-                decay = log(2) / (6 * 3600)
-                weights = [(exp(decay * (b - times[-1])) - exp(decay * (a - times[-1]))) / decay
-                           for a, b in zip(times, times[1:])]
-                rates = [(b.used_percent - a.used_percent) / (elapsed / 3600)
-                         for a, b, elapsed in zip(sample, sample[1:], gaps)]
-                rate = sum(w * r for w, r in zip(weights, rates)) / sum(weights)
+            rate = movement / (coverage / 3600)
             if not isfinite(rate) or rate <= 0:
                 rate, reason = None, "nonpositive rate"
         exhaustion = seconds(anchor) + (100 - anchor.used_percent) / rate * 3600 if rate else None

@@ -75,8 +75,11 @@ class Cursor:
     previous_used: float | None = None
     maximum_gap: float = 0
     corrections: int = 0
+    reported_full_at: float | None = None
 
     def push(self, index, group, plan_events):
+        if any(p.used_percent >= 100 for p in group.members) and self.reported_full_at is None:
+            self.reported_full_at = group.time
         if group.conflict:
             self.conflicts += 1
             self.pending_cut = True
@@ -90,13 +93,19 @@ class Cursor:
             if self.previous_time is not None and stamp > self.previous_time and plan != self.known_plan:
                 reason = "plan change"
             self.plan_cursor += 1
+        continuity_reason = ""
         if reason:
+            # Retain supported reset evidence across a conflict when deciding
+            # whether a raw full-meter cutoff belongs to the resumed cycle.
+            continuity_reason = self.continuity.push(group)
             # Consume the boundary point's raw metadata for its new suffix.
             self.continuity = Continuity()
             self.continuity.push(group)
         else:
             reason = self.continuity.push(group)
         if reason:
+            if reason != "observation conflict" or continuity_reason:
+                self.reported_full_at = group.time if any(p.used_percent >= 100 for p in group.members) else None
             self.start, self.boundary = index, reason
             self.maximum_gap = 0
             self.corrections = 0
@@ -135,7 +144,7 @@ class Series:
                     cursor.push(earlier, groups[earlier], plan_events)
             cursor.push(index, group, plan_events)
             checkpoints.append((cursor.start, cursor.boundary, cursor.conflicts))
-            cycle_stats.append((cursor.maximum_gap, cursor.corrections))
+            cycle_stats.append((cursor.maximum_gap, cursor.corrections, cursor.reported_full_at, cursor.known_plan))
         return cls(tuple(g.time for g in groups), groups, tuple(checkpoints), tuple(cycle_stats))
 
 
@@ -147,6 +156,8 @@ class CycleEvidence:
     corrections: int
     boundary: str
     conflicts: int
+    reported_full_at: float | None = None
+    plan: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,9 +196,9 @@ class PreparedPaceEvidence:
         if error:
             return CycleEvidence(None, 0, 0, 0, error, conflicts)
         start, boundary, conflicts = series.checkpoints[end]
-        gap, corrections = series.cycle_stats[end]
+        gap, corrections, full_at, plan = series.cycle_stats[end]
         first = anchor if start == end else series.groups[start].point
-        return CycleEvidence(first, end - start + 1, gap, corrections, boundary, conflicts)
+        return CycleEvidence(first, end - start + 1, gap, corrections, boundary, conflicts, full_at, plan)
 
 
 def prepare_pace_evidence(points, live_points, *, series_keys=None):

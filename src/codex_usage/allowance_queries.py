@@ -123,6 +123,35 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
         times.append(timestamp)
         costs.append(costs[-1] + cost)
         unpriced.append(unpriced[-1] + unpriced_tokens)
+    windows = _cost_windows(points, provenance, times, costs, unpriced, coverage_complete)
+    from codex_usage.allowance_cost_pace import CostPrefix, PaceReferences, calibrated_paces
+    prefix = CostPrefix(times, costs, unpriced)
+    references = {}
+    latest_evidence = max((datetime.fromisoformat(w["end"]).timestamp() for w in windows), default=0)
+    for index, anchor in enumerate(anchors):
+        origin = datetime.fromisoformat(anchor.timestamp).timestamp()
+        if origin not in references:
+            # Future recovered evidence must not resolve identities or fit a
+            # reference for this captured origin. Normal snapshots reuse fits.
+            available = windows
+            if latest_evidence > origin:
+                causal = [p for p in points if datetime.fromisoformat(p.timestamp).timestamp() <= origin]
+                available = _cost_windows(causal, provenance, times, costs, unpriced, coverage_complete)
+            references[origin] = PaceReferences(available)
+        paces[index] = calibrated_paces(prepared, anchor, paces[index], prefix, references[origin],
+                                        coverage_complete=coverage_complete)
+    qualified, headline = allowance_highlights(windows)
+    latest = windows[-1] if windows else None
+    return {
+        "status": status, "credits": credits, "paces": paces, "windows": windows,
+        "qualified": qualified, "headline": headline,
+        "headline_previous": headline is not None and headline is not latest,
+        "history": allowance_history(windows),
+    }
+
+
+def _cost_windows(points, provenance, times, costs, unpriced, coverage_complete):
+    """Preserve the monetary estimator; optionally prepare a causal prefix."""
     windows = []
     for window in segment_windows(points):
         indices = [bisect_right(times, datetime.fromisoformat(p.timestamp).timestamp()) for p in window.points]
@@ -145,18 +174,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
             "points": [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in window.points],
         })
     windows.sort(key=lambda w: w["end"])
-    qualified, headline = allowance_highlights(windows)
-    latest = windows[-1] if windows else None
-    return {
-        "status": status,
-        "credits": credits,
-        "paces": paces,
-        "windows": windows,
-        "qualified": qualified,
-        "headline": headline,
-        "headline_previous": headline is not None and headline is not latest,
-        "history": allowance_history(windows),
-    }
+    return windows
 
 
 def load_quota_evidence(connection):

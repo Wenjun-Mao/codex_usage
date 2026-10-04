@@ -4,7 +4,7 @@ Raw metadata is retained for continuity, never used to repair the live endpoint.
 Callers supply evidence already available in their ledger snapshot. Historical
 replay must additionally enforce first availability before calling this module.
 """
-from math import exp, isfinite, log
+from math import isfinite
 
 from codex_usage.allowance_pace_evidence import PreparedPaceEvidence
 from codex_usage.allowance_windows import seconds
@@ -34,15 +34,7 @@ def fit_paces(prepared, anchor):
                   "insufficient signed movement" if movement < 2 else "")
         rate = None
         if not reason:
-            if name == "Recent":
-                rate = movement / (coverage / 3600)
-            else:
-                decay = log(2) / (6 * 3600)
-                weights = [(exp(decay * (b - times[-1])) - exp(decay * (a - times[-1]))) / decay
-                           for a, b in zip(times, times[1:])]
-                rates = [(b.used_percent - a.used_percent) / (elapsed / 3600)
-                         for a, b, elapsed in zip(sample, sample[1:], gaps)]
-                rate = sum(w * r for w, r in zip(weights, rates)) / sum(weights)
+            rate = movement / (coverage / 3600)
             if not isfinite(rate) or rate <= 0:
                 rate, reason = None, "nonpositive rate"
         exhaustion = seconds(anchor) + (100 - anchor.used_percent) / rate * 3600 if rate else None
@@ -99,7 +91,7 @@ def pace_state(pace, probe_status, now):
         return "unmeasurable"
     if pace["reset"] is None:
         return "missing reset"
-    if pace["exhaustion"] <= pace["reset"] and now >= pace["exhaustion"]:
+    if pace["exhaustion"] is not None and pace["exhaustion"] <= pace["reset"] and now >= pace["exhaustion"]:
         return "awaiting"
     return "ready"
 

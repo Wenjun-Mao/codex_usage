@@ -1,4 +1,10 @@
-# Plan Allowance: Recent And Daily Pace Forecasts
+# Plan Allowance: Pace Forecasts
+
+The [calibrated-cost revision](#calibrated-cost-revision-proposed-2026-10-03)
+is the current implementation proposal against 2.10.3 (`f202b720`). It is
+planning only: no implementation, worker dispatch, or release is authorized by
+this document. The original delivery record below remains historical context;
+the revision explicitly identifies which earlier forecast rules it supersedes.
 
 ## Status And Goal
 
@@ -310,3 +316,160 @@ endpoint-only regressions; inspect all themes and narrow layouts. Review the
 candidate before pushing/tagging, run both platform gates and verify public
 package hashes before declaring release. Predictive accuracy and end-to-end
 VS Code latency remain unvalidated. Preserve unrelated `apps/` and live data.
+
+## Calibrated-Cost Revision (Proposed 2026-10-03)
+
+### Goal And Diagnosis
+
+Show useful best-effort Recent, Daily, and Cycle forecasts when captured language
+usage is increasing but the quota meter changes by fewer than two percentage
+points. Current `fit_paces` deliberately consumes quota observations only;
+`movement < 2` withholds the rate and the renderer says "Pace not yet measurable."
+This is an estimator-input limitation, not evidence that token capture stopped.
+
+Use the already available API-equivalent cost per full allowance as the reference
+and divide captured period cost by that reference and observed elapsed time.
+This revision supersedes the quota-only input restriction, the prohibition on
+borrowing an earlier monetary reference, and the calibrated rows' quota-movement
+gate. Daily becomes an unweighted elapsed-time average, not six-hour weighting.
+The direct-meter calculation remains a fallback with its existing evidence gates
+and signed corrections. Its Daily rate also becomes net movement divided by
+elapsed hours: switching inputs must not silently change the period's meaning.
+
+### Calculation And Reference Contract
+
+1. Match the active bucket using the existing compatible plan identity, limit
+   ID, and duration. Prefer its latest usable current-cycle estimate; otherwise
+   use its most recent compatible earlier estimate, including Low/provisional.
+   Reuse existing finite-positive, priced-estimate eligibility. Do not invent a
+   fixed plan value, require High/Medium qualification, or borrow another bucket.
+2. A reference is available only if its supporting evidence is available at the
+   captured origin. Exclude evidence after the live anchor before reference
+   selection; a future-completed estimate cannot supply a historical forecast.
+   Production uses evidence already in the ledger snapshot. Strict historical
+   replay additionally requires reconstructible first availability; otherwise
+   label the exercise retrospective, not a production-as-of accuracy backtest.
+3. Use the same effective-dated, trusted, language-only cost population as the
+   existing allowance calibration. Do not substitute raw total tokens, purchased
+   credit debits, token-based credit estimates, or separately accounted image
+   costs. A period containing unpriced events cannot produce a complete cost
+   rate by silently treating those events as zero; try the direct-meter fallback.
+4. Recent covers at most 60 minutes; Daily at most 24 hours; Cycle the entire
+   observed current coherent suffix. Bound every interval to that suffix and
+   the exact live anchor. Use actual observed coverage, including idle time;
+   do not invent a nominal seven-day start, a zero-percent reset reading, or an
+   unobserved lookback endpoint. Unknown/conflicting boundaries remain explicit.
+5. For interval `(start, anchor]`, take the difference of shared cumulative cost
+   checkpoints with deterministic timestamp ordering. Require positive elapsed
+   time, an exact coherent live anchor, and a usable cost/reference pair. The
+   calibrated calculation does not require two quota points of movement or
+   inherit quota-regression sample-count gates merely to perform arithmetic.
+
+```text
+A = reference API-equivalent dollars per 100% allowance
+C = captured API-equivalent period cost
+H = actual observed elapsed hours
+Pace r = 100 * C / (A * H), in percentage points/hour
+Remaining Q = 100 - latest captured used percentage
+Exhaustion E = captured time + (Q / r) hours, when r > 0
+Remaining at reset = Q - r * hours from capture to captured reset
+```
+
+Switch all three calibrated rows to the current reference together once usable,
+on normal report materialization. Store its dates and current/previous identity
+in diagnostics. Do not average references or freeze the previous one after a
+current estimate exists. Changing the reference may legitimately change rates.
+A known zero cost over a valid observed interval means zero observed local
+pace: project unchanged remaining quota at reset without dividing by zero.
+Missing/incomplete evidence is not that zero-cost case.
+
+### Preserved Safety And Presentation
+
+- Preserve causal plan/reset continuity, exact live anchoring, conflict handling,
+  and reset-clock jitter rules. Clip at banked/global resets and plan changes.
+  Do not carry preceding credit-funded usage into a resumed allowance cycle.
+- Preserve [ADR 0049](../adr/0049-credit-balances-and-saturated-allowance-fits.md):
+  the first raw reported-full point ends identifiable included-consumption
+  evidence. Do not count a post-full tail as included usage or interpret a later
+  small correction as a reset. Fresh 100% readings retain their existing state;
+  no credit-depletion forecast is introduced.
+- Keep failed/partial/stale probe handling, the 30-minute forecast expiry,
+  missing-reset restrictions, passed-reset/prediction expiry, local times,
+  near-reset wording, and display rounding. Forecasts do not slide with view time.
+- Keep the same three wrapping rows and meter, balance heading, reading time,
+  and large allowance-value headline. Mark cost-based rows "estimated"; put
+  cost, reference value/dates, interval, rate, method, coverage, and reasons in
+  existing folded diagnostics. Add no row, chart, control, or standing paragraph.
+- If cost-based estimation is unavailable, use an eligible direct-meter result.
+  If neither works, show the actual limiting reason compactly. For insufficient
+  meter movement, explain parenthetically that direct measurement needs at least
+  two net percentage points within that period; do not apply that requirement
+  to the calibrated calculation or blame it for a pricing/freshness failure.
+
+### Architecture And Ordered Delivery
+
+1. Add a cohesive pure cost-pace/reference helper beside `allowance_pace.py`.
+   Reuse `allowance_pace_evidence.py` for causal suffix selection and the existing
+   estimator/eligibility contracts for reference selection. Retain direct-meter
+   fitting as the fallback, updating Daily to plain net/elapsed semantics. Keep
+   released weighting only as an analysis baseline where needed; do not alter
+   monetary segmentation/results.
+2. Wire after cost checkpoints and window estimates are prepared in
+   `allowance_queries.py`. Build shared cost prefixes once, then answer three
+   bounded range queries per active bucket. Use the same path for full and
+   indexed reports; add no event repricing, quota reload, or per-row SQL scan.
+3. Extend the existing atomic full/compact materialization in
+   `allowance_index.py`; bump allowance-report revision 5 and HTML revision 23.
+   Keep schema 5 and event-cost index revision 2. Warm HTML hits must read/decode
+   only compact state: no historical payload, reference fitting, or cost scan.
+4. Update `report_allowance_pace.py`, focused fixtures/tests, and synthetic UI
+   evidence. Amend [ADR 0044](../adr/0044-plan-allowance-analytics.md) during
+   implementation to record the new input/reference contract, fallback semantics,
+   superseded Daily weighting, and limits. Preserve ADR 0049 and existing capture.
+5. Verify, review the candidate before release, then follow the
+   [release guide](../release.md) only after release approval. Default to one
+   serial worker on retained `main` through updated Relay after implementation
+   approval. No PR or additional worktree is required. Keep the worker available
+   for review fixes and release, then archive and unregister its route.
+
+### Observable Acceptance And Verification
+
+- Flat quota readings plus priced positive period cost and a compatible reference
+  produce calibrated rates in all supported periods, without a two-point gate.
+  Hand-computable fixtures establish exact rates and unrounded reset comparisons.
+- Previous/current reference selection, replacement, unknown/incompatible plans,
+  multiple buckets, slot moves, and future-reference rejection have regressions.
+  Current-cycle values take precedence without borrowing another series' value.
+- Test reset clipping, shortened Daily spans, multi-day Cycle averages, observed
+  rather than nominal starts, timestamp endpoints, raw full-meter cutoff and
+  corrections, genuine zero cost, missing/unpriced cost, and meter fallbacks,
+  including unweighted Daily semantics when the selected method changes.
+- Indexed/full forecasts agree. Existing monetary windows, headline, histories,
+  token totals, credit accounting, raw evidence, and capture behavior are unchanged.
+  Reference changes, quota/cost revisions, generation replacement, recovery,
+  pricing changes, and freshness transitions invalidate only appropriate caches.
+- Extend `tests/test_allowance_pace_cache.py` counters to prohibit warm historical
+  decoding, cost reads/fits/repricing, JSONL opens, capture, and probes. Extend
+  `scripts/benchmark_allowance_pace.py` for first materialization, warm views, and
+  quota/event updates. Retain the under-20-ms added calculation target, measured
+  separately from full-history preparation, upgrade repricing, and UI transport;
+  use counter assertions, not flaky elapsed-time CI gates.
+- Run focused then full pytest/Ruff, extension tests/build, screenshot checks,
+  `scripts/check_allowance_ui.py` across themes/viewports/browsers, and exact-commit
+  non-publishing macOS/Windows package/smoke/archive gates before publication.
+- A bounded read-only/disposable check against captured data compares arithmetic,
+  forecast availability, and later same-cycle meter movement where available.
+  Do not tune new thresholds or claim demonstrated exhaustion accuracy. Protect
+  the live ledger, installed extension, services, and unrelated `apps/`; private
+  values remain in ignored outputs, never committed fixtures.
+
+### Scope And Remaining Limits
+
+No new schema, service, collection frequency, pricing schedule, monetary fit,
+image forecast, purchased-credit forecast, estimator ensemble, or UI group.
+The reference is an empirical workload-specific conversion, not a contractual
+entitlement; transfers across workload/speed changes or unobserved account-wide
+usage remain imperfect. Local cost accuracy does not establish total account
+coverage. Those limits stay in diagnostics, not an extra qualification gate that
+hides otherwise calculable best-effort forecasts. End-to-end transport latency
+and predictive exhaustion accuracy remain separate, unvalidated claims.

@@ -35,6 +35,9 @@ def test_views_reuse_rates_and_expiry_refreshes_html_without_reads_or_fit(tmp_pa
     monkeypatch.setattr("codex_usage.allowance_index._build_from_costs", forbidden)
     monkeypatch.setattr("codex_usage.allowance_index._price_missing_events", forbidden)
     monkeypatch.setattr("codex_usage.allowance_pace.fit_paces", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_cost_pace.calibrated_paces", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_cost_pace.CostPrefix.period", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_cost_pace.PaceReferences.select", forbidden)
     monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance", forbidden)
     monkeypatch.setattr("codex_usage.agent_capture.capture_once", forbidden)
     # Also enforce no JSONL access, even in a newly selected date/project view.
@@ -130,6 +133,7 @@ def test_warm_html_hits_never_select_or_decode_historical_payload(tmp_path, monk
         warm = render(anchor + timedelta(minutes=1))
     assert warm.cache_hit and warm.html == first.html
     assert all(":pace-state" in sql for sql in queries_seen if "from allowance_report_cache" in sql.lower())
+    assert not any("allowance_event_costs" in sql for sql in queries_seen)
     # A presentation transition may render history once; the subsequent hit
     # still uses only compact clock state and preserves stale-meter labeling.
     expired = render(anchor + timedelta(minutes=31))
@@ -189,6 +193,9 @@ def test_local_midnight_refreshes_relative_day_without_new_analysis(tmp_path, mo
     monkeypatch.setattr("codex_usage.allowance_index._build_from_costs", forbidden)
     monkeypatch.setattr("codex_usage.allowance_index._price_missing_events", forbidden)
     monkeypatch.setattr("codex_usage.allowance_pace.fit_paces", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_cost_pace.calibrated_paces", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_cost_pace.CostPrefix.period", forbidden)
+    monkeypatch.setattr("codex_usage.allowance_cost_pace.PaceReferences.select", forbidden)
     monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance", forbidden)
     monkeypatch.setattr("codex_usage.agent_capture.capture_once", forbidden)
     assert render(36).cache_hit

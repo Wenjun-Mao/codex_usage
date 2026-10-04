@@ -44,10 +44,18 @@ def _message(pace, status, now, timezone):
     if state == "reported full":
         return "Meter reports 100% used"
     if state == "unmeasurable":
-        return "Pace not yet measurable"
+        reason = pace.get("calibrated_reason") or pace.get("reason", "")
+        if "insufficient signed movement" in pace.get("reason", ""):
+            reason += "; " if reason != "insufficient signed movement" else ""
+            if reason == "insufficient signed movement":
+                reason = ""
+            reason += "direct measurement needs at least two net percentage points within this period"
+        return "Pace not yet measurable" + (f" ({escape(reason)})" if reason else "")
     if state == "missing reset":
         return "Forecast awaiting fresh capture"
     exhaustion, reset = pace["exhaustion"], pace["reset"]
+    if exhaustion is None:
+        return f'About {round(pace["reset_balance"])}% would remain at reset.'
     if abs(exhaustion - reset) <= 900:
         return "Estimated to run out near reset."
     if exhaustion < reset:
@@ -64,7 +72,8 @@ def pace_rows(paces, status, *, timezone, now=None):
         '<p class="allowance-pace">'
         f'<strong title="{escape(span_label(p["span_seconds"]))} observed">'
         f'{escape("Cycle average" if p["name"] == "Cycle" else p["name"])} · '
-        f'{(cycle_span_label if p["name"] == "Cycle" else span_label)(p["span_seconds"])}:</strong> '
+        f'{(cycle_span_label if p["name"] == "Cycle" else span_label)(p["span_seconds"])}'
+        f'{" (estimated)" if p.get("method") == "calibrated cost" else ""}:</strong> '
         f'{_message(p, status, clock, timezone)}</p>' for p in paces
     )
 
@@ -74,8 +83,16 @@ def pace_details(paces, status, *, now=None):
     items = []
     for row in paces:
         for p in row:
-            method = ("weighted signed intervals, six-hour half-life" if p["name"] == "Daily"
+            method = ("captured cost / reference / observed elapsed hours" if p.get("method") == "calibrated cost"
                       else "signed net elapsed-time rate")
+            reference = p.get("reference")
+            calibration = (f'; reference ${reference["value"]:g}, {"previous" if reference["previous"] else "current"} cycle, '
+                           f'{reference["start"]} to {reference["end"]}, available {reference["available_at"]}, {reference["confidence"]}' if reference else "")
+            if "calibrated_reason" in p:
+                calibration += (f'; cost {p["cost"] if p["cost"] is not None else "unavailable"}, '
+                                f'interval {p["observed_start"] or "unavailable"} to captured anchor; '
+                                f'coverage complete: {p["coverage_complete"]}; {p["unpriced_tokens"]} unpriced tokens; '
+                                f'calibration: {p["calibrated_reason"] or "eligible"}')
             lookback = ("entire observed coherent suffix; reset instant may be unobserved"
                         if p["name"] == "Cycle" else f'up to {span_label(p["horizon_seconds"])} lookback')
             rate = f'{p["rate"]:.3f} pp/hour' if p["rate"] is not None else "unavailable"
@@ -86,6 +103,6 @@ def pace_details(paces, status, *, now=None):
                 f'{span_label(p["span_seconds"])} observed; {p["observations"]} observations; '
                 f'{p["movement"]:g} signed percentage points; {rate}; '
                 f'maximum gap {span_label(p["gap_seconds"])}; {p["corrections"]} corrections; '
-                f'{p["conflicts"]} conflicts; boundary: {escape(p["boundary"])}; {escape(reason)}.</p>'
+                f'{p["conflicts"]} conflicts; boundary: {escape(p["boundary"])}; {escape(reason)}{escape(calibration)}.</p>'
             )
     return ''.join(items)

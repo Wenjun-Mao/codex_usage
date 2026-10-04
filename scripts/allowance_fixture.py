@@ -1,6 +1,8 @@
 """Fixed synthetic quota observations for extension and report visual checks."""
 from datetime import UTC, datetime, timedelta
+from itertools import accumulate
 
+from codex_usage.allowance_cost_pace import CostPrefix, PaceReferences, calibrated_paces
 from codex_usage.allowance_estimation import estimate_window
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_pace import fit_paces
@@ -50,7 +52,12 @@ def allowance_fixture() -> dict:
                     anchor.limit_id, anchor.slot, anchor.plan, used, anchor.duration_minutes,
                     anchor.resets_at) for m, used in ((60, 18), (30, 18), (15, 19))]
     pace_points.append(anchor)
-    paces = fit_paces(prepare_pace_evidence(pace_points, {anchor}), anchor)
+    prepared = prepare_pace_evidence(pace_points, {anchor})
+    paces = calibrated_paces(prepared, anchor, fit_paces(prepared, anchor),
+        CostPrefix([datetime.fromisoformat(p.timestamp).timestamp() for p in pace_points],
+                   [0] + list(accumulate(10 if datetime.fromisoformat(p.timestamp) >= observed-timedelta(minutes=30) else 1.5
+                                         for p in pace_points)), [0] * (len(pace_points) + 1)),
+        PaceReferences(windows), coverage_complete=True)
     extra = dict(active, limit_id="extra-model", used_percent=8, duration_minutes=300)
     extra_anchor = QuotaObservation(**{key: extra[key] for key in QuotaObservation.__dataclass_fields__})
     qualified, headline = allowance_highlights(windows)

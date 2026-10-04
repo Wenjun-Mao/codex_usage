@@ -1,7 +1,6 @@
 """Forecast continuity is deliberately stronger than retrospective dollar history."""
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from math import exp, log
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -33,14 +32,13 @@ def fit(points):
     return fit_paces(points, points[-1], set(points))
 
 
-def test_recent_endpoint_invariance_and_direct_daily_integral():
+def test_recent_endpoint_invariance_and_direct_daily_elapsed_average():
     sparse = [point(0, 10), point(.5, 12), point(1, 20)]
     dense = sparse[:1] + [point(.1, 10), point(.2, 10), point(.3, 10)] + sparse[1:]
     assert fit(sparse)[0]["rate"] == fit(dense)[0]["rate"] == 10
     points = [point(h, 5 + h if h <= 21 else 26 + (h - 21) * 8) for h in range(25)]
     daily = fit(points)[1]
-    k = log(2) / 6
-    expected = ((exp(-3*k)-exp(-24*k)) + 8*(1-exp(-3*k))) / (1-exp(-24*k))
+    expected = (21 + 3 * 8) / 24
     assert daily["rate"] == pytest.approx(expected)
     assert daily["span_seconds"] == 86400
 
@@ -148,15 +146,13 @@ def test_no_drop_reset_and_jitter_and_exact_live_jump():
     assert fit(jumped)[0]["anchor"] == seconds(jumped[-1])
 
 
-def test_daily_signed_corrections_and_nonpositive_weighted_rate():
+def test_daily_signed_corrections_use_net_elapsed_rate():
     points = [point(i, used) for i, used in enumerate([10, 13, 12, 13, 14])]
     pace = fit(points)[1]
-    k = log(2)/6
-    weights = [exp(k*(i-3))-exp(k*(i-4)) for i in range(4)]
-    assert pace["rate"] == pytest.approx(sum(w*r for w, r in zip(weights, [3, -1, 1, 1]))/sum(weights))
-    # Positive endpoint movement cannot rescue a negative directly weighted pace.
+    assert pace["rate"] == 1
+    # Later corrections remain signed; capture density cannot weight the rate.
     points = [point(i*3, used) for i, used in enumerate([10, 14, 18, 16, 12])]
-    assert fit(points)[1]["reason"] == "nonpositive rate"
+    assert fit(points)[1]["rate"] == pytest.approx(2 / 12)
 
 
 def test_plan_change_in_other_duration_is_not_a_bridge_between_same_plan_points():

@@ -144,7 +144,7 @@ def _check_report_content(page, report, state, theme, history_colors):
     assert paces.count() == 3 * len(report["status"]["active_buckets"])
     assert paces.evaluate_all("elements => elements.every(e => e.scrollWidth <= e.clientWidth)")
     if state not in {"stale", "unavailable"}:
-        assert "Recent · 1h:" in paces.nth(0).inner_text()
+        assert "Recent · 1h (estimated):" in paces.nth(0).inner_text()
         assert "Estimated to run out" in paces.nth(0).inner_text()
         assert "At this pace" not in paces.nth(0).inner_text()
         forecast_time = paces.nth(0).locator("time")
@@ -152,7 +152,7 @@ def _check_report_content(page, report, state, theme, history_colors):
         assert "UTC-04:00" in forecast_time.get_attribute("title")
         assert "-0400" not in paces.nth(0).inner_text()
         assert "would remain at reset" in paces.nth(1).inner_text()
-        assert "Cycle average · 1d 8h:" in paces.nth(2).inner_text()
+        assert "Cycle average · 1d 8h (estimated):" in paces.nth(2).inner_text()
         assert "would remain at reset" in paces.nth(2).inner_text()
     if state == "stale":
         assert "Forecast awaiting fresh capture" in paces.first.inner_text()

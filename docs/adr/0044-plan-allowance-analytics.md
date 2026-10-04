@@ -12,7 +12,8 @@ indexed report calculation on 2026-09-25, and visible reading freshness for
 and observation-source clarity for 2.9.5 on 2026-09-30; amended for
 conditional pace semantics on 2026-09-30 and accepted for release 2.10.0
 on 2026-10-01 after director review and human release approval; amended for
-observed-cycle pace in 2.10.1 and compact pace presentation in 2.10.2 on 2026-10-02.
+observed-cycle pace in 2.10.1 and compact pace presentation in 2.10.2 on 2026-10-02; amended for
+calibrated-cost pace on 2026-10-03 (reviewed candidate, release pending).
 
 ## Context
 
@@ -360,6 +361,72 @@ Do not refit, reprice or recapture for this presentation transition. HTML revisi
 remain unchanged. Warm compact-cache behavior and all mathematical, causal and
 expiry contracts stay intact. Tests cover midnight caching, DST, escaping and
 unchanged forecast data.
+
+## Calibrated-Cost Pace (2026-10-03)
+
+Quota movement below two net percentage points made the direct-meter method
+unavailable even when captured priced consumption was increasing. The estimator
+input contract caused the missing rates; capture and pricing were functioning.
+The approved [calibrated-cost revision](../plans/plan-allowance-pace-forecasts.md#calibrated-cost-revision-proposed-2026-10-03)
+supersedes the earlier quota-only input restriction and Daily weighting above.
+
+Recent (up to one hour), Daily (up to 24 hours), and observed Cycle now prefer
+`100 * period API-equivalent cost / reference full-allowance value / observed hours`.
+Use the latest usable priced finite-positive current-cycle estimate, otherwise
+the latest compatible earlier estimate, including Low/provisional. Compatibility
+requires the causal known plan, limit ID and duration, never slot. All three
+periods select one reference together. Do not average values, freeze a previous
+reference after a current estimate exists, borrow another bucket, or require
+High/Medium qualification. Missing plan identity cannot borrow a known plan;
+a causally known plan may resolve missing live metadata.
+
+Reference fitting filters observations after the exact live anchor before
+identity resolution and segmentation. Production uses the current ledger
+snapshot; strict historical accuracy replay also needs reconstructible first
+availability. Without it, captured-data comparisons are retrospective. Monetary
+windows remain retrospective and unchanged. A cold historical origin may require
+a separate causal prefix fit; normal current snapshots reuse prepared windows.
+
+Use shared trusted language-cost prefixes, excluding the left endpoint and
+including the anchor timestamp. Every interval uses actual observed quota
+endpoints within the coherent suffix; idle time counts. Do not invent a reset
+origin or lookback endpoint. Cost arithmetic has no quota-movement, sample-count,
+minimum-span or gap gate beyond a positive observed interval and coherent exact
+anchor. Zero fully priced cost is a valid zero observed rate: there is no
+exhaustion time, and remaining quota stays unchanged at reset. Unpriced events,
+incomplete local capture coverage, unavailable references and invalid intervals
+try the direct-meter fallback; missing evidence is never zero consumption.
+
+Raw full-meter evidence cuts off calibrated consumption through subsequent small
+corrections and conflicts until a reset or plan boundary establishes a new
+suffix. Preserve ADR 0049's monetary cutoff, complete raw evidence and direct
+meter semantics. Do not include preceding credit-funded or post-full cost in a
+resumed cycle. Keep freshness, expiry, unrounded reset comparisons, local times
+and exact captured percentage/reset anchoring.
+
+The direct-meter fallback retains its existing evidence gates and signed
+corrections. Daily is now plain net movement divided by observed hours, matching
+the calibrated period's elapsed-average meaning. Six-hour weighting is rejected
+because method switching must not change what Daily means. Cost rows carry an
+estimated label; method, cost, reference identity/value/dates, coverage and
+limiting reasons remain in the existing folded diagnostics. No new UI group,
+collection schedule, pricing rate, credit or image forecast is introduced.
+
+Report revision 6 and HTML revision 24 replace derived payloads atomically;
+schema 5 and cost-index revision 2 stay unchanged. Warm HTML hits decode compact
+pace state only, without historical payloads, cost scans, fitting, source reads,
+repricing, capture or probes. Reference indexes are prepared once per origin;
+three bounded prefix differences supply each active bucket's periods.
+
+Guardrails cover hand arithmetic, flat meters, zero/unpriced/incomplete evidence,
+current/previous switching, multiple buckets and slots, causal future rejection,
+reset clipping, actual spans, saturation/corrections, fallback Daily semantics,
+full/indexed parity and exact monetary-output preservation. Counter assertions
+protect warm behavior; separate measured cold/warm/quota/event-update benchmarks
+avoid timing gates. This empirical conversion remains workload-specific and
+cannot establish contractual entitlement, complete account-wide coverage or
+validated exhaustion accuracy. These limits are diagnostics, not a confidence
+threshold that hides calculable rates.
 
 ## Rejected Alternatives
 
