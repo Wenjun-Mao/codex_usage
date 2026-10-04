@@ -54,11 +54,9 @@ def _message(pace, status, now, timezone):
     if state == "missing reset":
         return "Forecast awaiting fresh capture"
     exhaustion, reset = pace["exhaustion"], pace["reset"]
-    if exhaustion is None:
-        return f'About {round(pace["reset_balance"])}% would remain at reset.'
-    if abs(exhaustion - reset) <= 900:
+    if exhaustion is not None and abs(exhaustion - reset) <= 900:
         return "Estimated to run out near reset."
-    if exhaustion < reset:
+    if exhaustion is not None and exhaustion < reset:
         return (f"Estimated to run out {_runout_time(exhaustion, now, timezone)} · "
                 f"~{reset_gap_label(reset - exhaustion)} before reset.")
     balance = pace["reset_balance"]

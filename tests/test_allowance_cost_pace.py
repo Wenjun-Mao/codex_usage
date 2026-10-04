@@ -202,3 +202,11 @@ def test_missing_live_plan_uses_causal_limit_wide_plan_and_rejects_conflicting_i
     points.append(point(2))
     rows = fit(points, [(2, 5, 0)])
     assert all(r['reference'] is None for r in rows)
+
+
+def test_zero_cost_preserves_fractional_remaining_rounding():
+    rows = fit([point(0, 99.8), point(1, 99.8)], [])
+    assert all(r['rate'] == 0 and r['exhaustion'] is None for r in rows)
+    html = pace_rows(rows, 'fresh', timezone=ZoneInfo('UTC'), now=BASE+timedelta(hours=1))
+    assert 'less than 1% would remain at reset' in html
+    assert 'About 0%' not in html
