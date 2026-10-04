@@ -76,6 +76,7 @@ class Cursor:
     maximum_gap: float = 0
     corrections: int = 0
     reported_full_at: float | None = None
+    reference_plan: str = ""
 
     def push(self, index, group, plan_events):
         if any(p.used_percent >= 100 for p in group.members) and self.reported_full_at is None:
@@ -93,6 +94,10 @@ class Cursor:
             if self.previous_time is not None and stamp > self.previous_time and plan != self.known_plan:
                 reason = "plan change"
             self.plan_cursor += 1
+        if self.plan_cursor:
+            latest_time, latest_plan = plan_events[self.plan_cursor - 1]
+            conflicting_plan = (self.plan_cursor > 1 and plan_events[self.plan_cursor - 2][0] == latest_time)
+            self.reference_plan = "" if conflicting_plan else latest_plan
         continuity_reason = ""
         if reason:
             # Retain supported reset evidence across a conflict when deciding
@@ -144,7 +149,7 @@ class Series:
                     cursor.push(earlier, groups[earlier], plan_events)
             cursor.push(index, group, plan_events)
             checkpoints.append((cursor.start, cursor.boundary, cursor.conflicts))
-            cycle_stats.append((cursor.maximum_gap, cursor.corrections, cursor.reported_full_at, cursor.known_plan))
+            cycle_stats.append((cursor.maximum_gap, cursor.corrections, cursor.reported_full_at, cursor.reference_plan))
         return cls(tuple(g.time for g in groups), groups, tuple(checkpoints), tuple(cycle_stats))
 
 

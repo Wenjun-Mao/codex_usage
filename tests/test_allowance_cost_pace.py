@@ -188,3 +188,17 @@ def test_conflicting_full_read_then_supported_reset_restores_included_cost():
               point(0, 99, reset_credits=2), point(.5, 99, reset_credits=2), point(1, 99, reset_credits=2)]
     rows = fit(points, [(0, 1000, 0), (.5, 2, 0), (1, 3, 0)])
     assert all(r['rate'] == .5 and r['cost'] == 5 for r in rows)
+
+
+def test_missing_live_plan_uses_causal_limit_wide_plan_and_rejects_conflicting_identity():
+    points = [point(0), point(.5), point(.75, plan='plus', duration_minutes=300),
+              point(1, plan=''), point(1.5, plan=''), point(2, plan='')]
+    rows = fit(points, [(1, 1000, 0), (1.5, 2, 0), (2, 3, 0)],
+               [reference(value=100), reference(plan='plus', value=1000)])
+    assert all(r['reference']['plan'] == 'plus' and r['rate'] == .5 for r in rows)
+    # Contradictory known plans across durations at the origin cannot pick an
+    # arbitrary alphabetical identity, even when the own bucket names a plan.
+    points += [point(2, plan='plus', duration_minutes=300), point(2, plan='pro', duration_minutes=300)]
+    points.append(point(2))
+    rows = fit(points, [(2, 5, 0)])
+    assert all(r['reference'] is None for r in rows)

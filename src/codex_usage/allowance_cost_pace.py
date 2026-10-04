@@ -59,7 +59,7 @@ class PaceReferences:
 def calibrated_paces(prepared, anchor, direct, prefix, references, *, coverage_complete):
     """Choose one reference for all periods; retain eligible meter fallbacks."""
     evidence = prepared.cycle(anchor)
-    reference = references.select(anchor, anchor.plan or evidence.plan)
+    reference = references.select(anchor, evidence.plan)
     common_reason = (evidence.boundary if evidence.first is None else
                      "reported-full cost cutoff" if evidence.reported_full_at is not None else
                      "incomplete local coverage" if not coverage_complete else

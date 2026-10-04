@@ -378,7 +378,10 @@ requires the causal known plan, limit ID and duration, never slot. All three
 periods select one reference together. Do not average values, freeze a previous
 reference after a current estimate exists, borrow another bucket, or require
 High/Medium qualification. Missing plan identity cannot borrow a known plan;
-a causally known plan may resolve missing live metadata.
+the latest causal limit-wide plan event may resolve missing live metadata,
+including an event from another duration bucket. Conflicting known plans at the
+same latest timestamp leave calibrated identity unavailable. This reference
+identity does not change direct-meter continuity or monetary segmentation.
 
 Reference fitting filters observations after the exact live anchor before
 identity resolution and segmentation. Production uses the current ledger

@@ -150,21 +150,23 @@ def main():
                 latest = points[-1]
                 updated = QuotaObservation((anchor+timedelta(minutes=15)).isoformat(), latest.limit_id, latest.slot,
                                            latest.plan, 77, latest.duration_minutes, latest.resets_at)
-                store_read(connection, QuotaRead(updated.timestamp, "pro", (updated, replace(anchors[1], timestamp=updated.timestamp))), run_id)
+                store_read(connection, QuotaRead(updated.timestamp, "pro", (updated, replace(anchors[0], timestamp=updated.timestamp))), run_id)
                 increment_ledger_revision(connection)
                 connection.commit()
             before = counts["allowance_prices"]
-            measure("quota_update_report", build)
+            updated_report = measure("quota_update_report", build)
+            assert len({(r[0]["limit_id"], r[0]["duration_minutes"]) for r in updated_report["paces"]}) == 2
             assert counts["allowance_prices"] == before
             event = {"timestamp": (anchor+timedelta(minutes=15)).isoformat(), "type": "event_msg",
                      "payload": {"type": "token_count", "info": {"total_token_usage": {
                          "input_tokens": 1000100, "total_tokens": 1000100}}}}
             with (sessions / "rollout-fixture.jsonl").open("a") as handle:
                 handle.write(json.dumps(event)+'\n')
-            with patch("codex_usage.allowance_capture.probe_allowance", return_value=QuotaRead(updated.timestamp, "pro", (updated,))):
+            with patch("codex_usage.allowance_capture.probe_allowance", return_value=QuotaRead(updated.timestamp, "pro", (updated, replace(anchors[0], timestamp=updated.timestamp)))):
                 measure("synthetic_event_update_capture", capture_once, home, request_kind="manual", max_workers=1)
             before = counts["allowance_prices"]
-            measure("event_update_report", build)
+            event_report = measure("event_update_report", build)
+            assert len({(r[0]["limit_id"], r[0]["duration_minutes"]) for r in event_report["paces"]}) == 2
             assert counts["allowance_prices"] - before == 1
             before = counts["allowance_prices"]
             measure("simulated_upgrade_allowance_repricing_report", build, "synthetic-upgrade-pricing")
