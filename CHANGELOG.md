@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 2.10.4 - 2026-10-03
+
+- Estimate Recent, Daily and Cycle average allowance pace from captured
+  API-equivalent cost and a compatible current or previous allowance-value fit,
+  including provisional fits, when the quota meter moves too little to measure.
+- Use actual observed elapsed time for every period, including Daily's direct
+  meter fallback. Switch all three periods together when a current fit is usable.
+- Label cost-based rows estimated and retain method, reference, coverage and
+  limiting reasons in existing folded diagnostics. Known zero priced cost is
+  valid; missing or unpriced evidence falls back to direct measurement.
+- Preserve reset and plan boundaries, live anchoring, full-meter cutoff,
+  forecast expiry, monetary histories, credit accounting and capture scheduling.
+  Warm HTML hits reuse compact state without historical fitting or cost scans.
+- These workload-specific local estimates do not establish account-wide coverage
+  or validated exhaustion accuracy; VS Code transport latency remains unvalidated.
+
 ## 2.10.3 - 2026-10-02
 
 - Capture exact account-wide credit balances from the existing quota probe,

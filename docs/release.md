@@ -1,6 +1,6 @@
-# 2.10.3 VSIX Release Checklist
+# 2.10.4 VSIX Release Checklist
 
-Codex Usage 2.10.3 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.10.4 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
@@ -28,7 +28,7 @@ or a source checkout on the user's machine.
 `VSCE_PAT` with Manage permission for publisher `wenjun-mao` is the sole
 publication secret.
 
-## 2.10.3 Credit Balance Checks
+## Credit Balance Regression Checks
 
 Verify the balance shares the Plan Allowance heading without a new standing
 paragraph, including at 360 px. Capture exact decimals with the existing RPC;
@@ -41,25 +41,49 @@ Verify a packaged collector migrates a disposable schema-4 ledger to schema 5,
 preserves events and quota evidence, and leaves a readable pre-migration backup.
 Allowance fits stop before the first raw full-meter reading, including conflicting
 same-timestamp evidence and later small corrections. Keep raw observations,
-ordinary costs, genuine reset boundaries, and quota pace unchanged. Historical
+ordinary costs and genuine reset boundaries unchanged. Historical
 estimates may change when saturated evidence is excluded. Credit history begins
 prospectively; exact billing attribution and credit-depletion pace are not shipped.
 
 ## Pace Limits
 
-Recent, Daily and Cycle rows are conditional continuations of captured quota
-evidence. Cycle uses the entire observed coherent suffix, including idle time,
-not an inferred reset origin. Check multi-day labels and actual post-boundary
-starts; Recent/Daily pace outputs must remain unchanged. Ordinary usage costs
-are unaffected by the saturated allowance-fit cutoff.
-Check the compact Recent, Daily and Cycle average labels, local today/tomorrow
-wording across midnight, full dates/offsets on hover, and approximate day/hour
-reset gaps. Credit balance capture must not change their calculation or scheduling.
-Selection/fitting is sub-millisecond after shared preparation on reviewed
-workloads. New ledger revisions still prepare history, and uncached views still
-load/render historical windows. Exhaustion accuracy and end-to-end VS Code
-latency remain unvalidated. Keep those limits in release reporting; the feature
-adds no capture mechanism or pricing redesign.
+Recent, Daily and Cycle average rows prefer captured language API-equivalent
+cost divided by a compatible full-allowance reference and actual observed hours.
+Prefer the usable current-cycle value; otherwise use the latest compatible
+previous value, including Low/provisional. Check flat meters with positive cost,
+reference switching across all three rows, causal plan/limit/duration identity,
+future-reference rejection, true zero cost, and unpriced/incomplete fallback.
+
+Cycle uses the entire observed coherent suffix, including idle time, not an
+inferred reset origin. Recent covers up to one hour; Daily up to 24 hours.
+Daily's direct-meter fallback also uses plain signed net movement divided by
+elapsed hours, with the existing meter evidence gates. Preserve exact live
+anchoring, reset/plan/conflict rules, raw full-meter cutoff, local reset
+comparisons and forecast expiry. Monetary fits, histories, credit/image
+accounting, pricing rates and capture scheduling are unchanged.
+
+Check the same three wrapping rows with estimated labels on cost-based results,
+actual spans, local today/tomorrow wording, full dates/offsets on hover and
+approximate day/hour reset gaps. Keep cost, reference identity/value/dates,
+method, interval, coverage and reasons in existing folded diagnostics. Add no
+new UI group. Schema 5 and cost-index revision 2 remain unchanged; derived
+report revision 6 and HTML revision 24 invalidate old forecasts.
+
+The synthetic 10,000-event/52,001-point two-bucket benchmark measured rate and
+reference work below 1 ms after shared preparation; cold materialization still
+prepares history. Warm HTML hits use compact state with no historical decoding,
+cost scans, fitting, repricing, source reads, capture or probes. Run
+`uv run python scripts/benchmark_allowance_pace.py` to measure first
+materialization, warm views, quota updates and event updates separately.
+Counter assertions protect warm behavior; timing is evidence, not a CI gate.
+
+Disposable captured-data checks established arithmetic, full/indexed parity and
+exact monetary-output preservation at bounded retrospective origins. Strict
+historical accuracy replay additionally needs reconstructible first availability.
+The empirical reference is workload-specific and cannot establish complete
+account-wide coverage or contractual entitlement. Predictive exhaustion accuracy
+and end-to-end VS Code transport latency remain unvalidated. Keep these limits
+in release reporting; this release adds no capture mechanism or pricing redesign.
 
 ## Local Gates
 
@@ -161,13 +185,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.10.3`, both
+Confirm Python and extension metadata and lockfiles all say `2.10.4`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.10.3`:
+Only after the non-publishing platform gate succeeds, create and push `v2.10.4`:
 
 ```bash
-git tag v2.10.3
-git push origin v2.10.3
+git tag v2.10.4
+git push origin v2.10.4
 ```
 
 The tag reruns all platform gates and publishes
