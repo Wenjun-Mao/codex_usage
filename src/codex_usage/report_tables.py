@@ -19,15 +19,14 @@ def render_aggregate_table(
     if not rows:
         return _empty_table_section(title, section_id)
 
-    max_total = max(row.usage.total_tokens for row in rows) or 1
-    table_rows = "".join(_aggregate_row_html(row, max_total) for row in rows)
+    table_rows = "".join(_aggregate_row_html(row) for row in rows)
     return _table_section(
         title,
         section_id,
         '<th>Label</th><th class="num">Total</th><th class="num">Input</th>'
         '<th class="num">Cache Read</th><th class="num">Cache Write (reported)</th><th class="num">Output</th>'
         '<th class="num">API Cost</th><th class="num">Codex Credits</th><th class="num">API Excl.</th>'
-        '<th class="num">No Credit Rate</th><th>Share</th>',
+        '<th class="num">No Credit Rate</th>',
         table_rows,
     )
 
@@ -165,8 +164,7 @@ def render_project_details_table(
     if not points:
         return _empty_table_section(title, section_id)
 
-    max_total = max(point.total_tokens for point in points) or 1
-    table_rows = "".join(_project_row_html(point, max_total) for point in points)
+    table_rows = "".join(_project_row_html(point) for point in points)
     return _table_section(
         title,
         section_id,
@@ -174,7 +172,7 @@ def render_project_details_table(
         '<th class="num">Subagent Tokens</th><th class="num">Input</th><th class="num">Cache Read</th>'
         '<th class="num">Cache Write (reported)</th><th class="num">Output</th><th class="num">API Cost</th>'
         '<th class="num">Codex Credits</th><th class="num">API Excl.</th>'
-        '<th class="num">No Credit Rate</th><th>Share</th>',
+        '<th class="num">No Credit Rate</th>',
         table_rows,
     )
 
@@ -189,7 +187,7 @@ def format_credits(value: float) -> str:
     return f"{value:,.1f}"
 
 
-def _aggregate_row_html(row: AggregateRow, max_total: int) -> str:
+def _aggregate_row_html(row: AggregateRow) -> str:
     return _usage_cells(
         label=row.label,
         total_tokens=row.usage.total_tokens,
@@ -201,11 +199,10 @@ def _aggregate_row_html(row: AggregateRow, max_total: int) -> str:
         total_credits=row.credits.total_credits,
         unpriced_tokens=row.cost.unpriced_tokens,
         credit_unpriced_tokens=row.credits.unpriced_tokens,
-        max_total=max_total,
     )
 
 
-def _project_row_html(point: ProjectBreakdownPoint, max_total: int) -> str:
+def _project_row_html(point: ProjectBreakdownPoint) -> str:
     usage = point.usage
     return (
         "<tr>"
@@ -221,7 +218,6 @@ def _project_row_html(point: ProjectBreakdownPoint, max_total: int) -> str:
         f'<td class="num">{format_credits(point.credits.total_credits)}</td>'
         f'<td class="num">{format_int(point.cost.unpriced_tokens)}</td>'
         f'<td class="num">{format_int(point.credits.unpriced_tokens)}</td>'
-        f"<td>{_share_bar(usage.total_tokens, max_total)}</td>"
         "</tr>"
     )
 
@@ -238,7 +234,6 @@ def _usage_cells(
     total_credits: float,
     unpriced_tokens: int,
     credit_unpriced_tokens: int,
-    max_total: int,
 ) -> str:
     return (
         "<tr>"
@@ -252,14 +247,8 @@ def _usage_cells(
         f'<td class="num">{format_credits(total_credits)}</td>'
         f'<td class="num">{format_int(unpriced_tokens)}</td>'
         f'<td class="num">{format_int(credit_unpriced_tokens)}</td>'
-        f"<td>{_share_bar(total_tokens, max_total)}</td>"
         "</tr>"
     )
-
-
-def _share_bar(total_tokens: int, max_total: int) -> str:
-    width = total_tokens / max_total * 100
-    return f'<div class="bar-wrap"><div class="bar" style="width:{width:.4f}%"></div></div>'
 
 
 def _empty_table_section(title: str, section_id: str) -> str:

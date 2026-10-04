@@ -98,7 +98,7 @@ def test_categories_conserve_event_valuations_across_context_and_date() -> None:
     hourly_html = render_aggregate_table(
         "Hourly Details", rows, section_id="hourly-details"
     )
-    assert "Share" in hourly_html and 'class="bar"' in hourly_html
+    assert "Share" not in hourly_html and 'class="bar"' not in hourly_html
 
 
 def test_unknown_model_categories_do_not_display_price_zero() -> None:

@@ -52,10 +52,13 @@ earlier GPT-6 Sol usage keeps its own $0.20 and 5-credit cached-input rates.
 
 ## Consequences And Guardrails
 
-The shared HTML serves desktop and VS Code. Other aggregate tables keep their
-Share bars. Pricing and rendered-report cache revisions must advance with these
-semantics. Tests cover launch boundaries, category conservation, long-context
-events, missing rates, and the disclosure structure.
+The shared HTML serves the VS Code report. As of 2026-10-04, usage detail tables
+(Model, Project, Daily and Hourly) omit the ambiguous Share column; comparison
+charts retain their explicit token and cost scales. Task Storage's numeric
+corpus percentage and Project Economics' explicit token/cost shares are separate
+measures and remain unchanged. HTML revision 25 invalidates earlier table markup
+without changing pricing or accounting. Tests cover launch boundaries, category
+conservation, long-context events, missing rates, and the disclosure structure.
 
 Sources: [Codex credit rate card](https://learn.chatgpt.com/docs/pricing),
 [2026-09-22 launch announcement](https://learn.chatgpt.com/docs/changelog).

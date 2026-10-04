@@ -51,6 +51,24 @@ work can continue inheriting the large root context.
 Codex Usage keeps this workflow diagnostic-only. Task creation, forking,
 archiving, and deletion remain manual Codex-owned operations.
 
+## Missing Ancestors
+
+`Root missing` means that a recorded ancestor cannot be resolved in the present
+physical-file inventory. It does not prove that a user-visible root was deleted,
+that the surviving file is corrupt, or that usage was lost. The surviving bytes
+remain included as descendant storage.
+
+A read-only local audit on 2026-10-04 found both surviving subagent history and
+small guardian approval-audit files with unavailable ancestors. These are
+different kinds of retained data and should not be treated as equivalent broken
+conversations. Confirm bounded source metadata against the cached ownership,
+including guardian owner fields, and check active and archived files plus the
+local thread registry before diagnosing an ownership-parser failure.
+
+Absence from those local sources cannot establish a deletion time or exclude a
+move to another location or host. Do not automatically reparent, hide, or delete
+surviving files merely to remove the warning.
+
 ## Current Boundary
 
 This knowledge describes evidence observed in Codex's local JSONL format as of

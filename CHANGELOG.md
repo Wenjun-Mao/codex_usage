@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Remove the redundant Share column from Project, Daily and Hourly usage
+  details, matching Model Details. Comparison charts and Task Storage's
+  numeric corpus share are unchanged.
+
 ## 2.10.4 - 2026-10-03
 
 - Estimate Recent, Daily and Cycle average allowance pace from captured
