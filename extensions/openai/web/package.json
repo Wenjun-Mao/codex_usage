@@ -1,0 +1,12 @@
+{
+  "name": "codex-usage-private-probe-ui",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {"build": "node build.mjs"},
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "lucide": "1.52.0"
+  },
+  "devDependencies": {"esbuild": "0.28.2"}
+}

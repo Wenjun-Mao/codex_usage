@@ -63,3 +63,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0047: Extension-Only Distribution](0047-extension-only-distribution.md)
 - [0048: Transient Collector Launch Identity](0048-transient-collector-launch-identity.md)
 - [0049: Credit Balances And Saturated Allowance Fits](0049-credit-balances-and-saturated-allowance-fits.md)
+- [0050: Private Companion Integration Boundary](0050-private-companion-integration-boundary.md)

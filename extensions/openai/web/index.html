@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Codex Usage connection test</title>
+  <!-- STYLE -->
+</head>
+<body>
+<main>
+  <header>
+    <h1>Codex Usage</h1>
+    <span class="badge">Synthetic data</span>
+    <span id="connection" role="status">Connecting</span>
+  </header>
+  <form id="filters" aria-label="Usage filters">
+    <label>Period <select id="period"><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option></select></label>
+    <label>Project <select id="project"><option value="all">All projects</option><option value="demo-a">Demo Alpha</option><option value="demo-b">Demo Beta</option></select></label>
+    <label>Theme <select id="theme"><option value="auto">Auto</option><option value="day">Day</option><option value="night">Night</option></select></label>
+    <button type="button" id="reload" title="Reload" aria-label="Reload"><i data-lucide="refresh-cw"></i></button>
+    <button type="button" id="expand" title="Fullscreen" aria-label="Fullscreen" hidden><i data-lucide="maximize-2"></i></button>
+    <button type="button" id="ask" title="Ask about this selection" aria-label="Ask about this selection" hidden disabled><i data-lucide="message-square"></i></button>
+  </form>
+  <p id="error" role="alert" hidden></p>
+  <section aria-label="Usage totals" class="totals">
+    <div><span>API-equivalent cost</span><strong id="cost">--</strong></div>
+    <div><span>Tokens</span><strong id="tokens">--</strong></div>
+  </section>
+  <section>
+    <h2>Plan Allowance</h2>
+    <p id="allowance-label">--</p>
+    <meter id="allowance" min="0" max="100" value="0" aria-label="Remaining allowance"></meter>
+  </section>
+  <section>
+    <div class="section-heading"><h2>Projects</h2><fieldset><legend>Compare by</legend><label><input type="radio" name="metric" value="api_cost_usd" checked> API cost</label><label><input type="radio" name="metric" value="tokens"> Tokens</label></fieldset></div>
+    <div id="rows"></div>
+  </section>
+</main>
+<!-- SCRIPT -->
+</body>
+</html>
