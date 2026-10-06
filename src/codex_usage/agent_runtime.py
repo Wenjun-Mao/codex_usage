@@ -242,6 +242,7 @@ class CodexUsageAgent:
                     "agent-activity",
                     "image-generation-accounting",
                     "plan-allowance",
+                    "private-companion-v1",
                 ],
             }
         )
@@ -249,6 +250,11 @@ class CodexUsageAgent:
 
     def projects(self) -> list[dict[str, object]]:
         return self._features.projects()
+
+    def companion_query(self, payload: dict[str, object]) -> dict[str, object]:
+        return self._features.companion.query(
+            payload, capture=self.capture_now, runtime_status=self.status_payload,
+        )
 
     def tasks(self, project_key: str | None = None) -> list[dict[str, object]]:
         return self._features.tasks(project_key)

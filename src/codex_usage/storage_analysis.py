@@ -33,6 +33,9 @@ from codex_usage.storage_content_cache import (
     upsert_content_diagnostic,
 )
 from codex_usage.storage_context import StorageContext, load_storage_context
+from codex_usage.storage_insights import TaskStorageTree
+from codex_usage.storage_selection import tree_membership
+from codex_usage.storage_analysis_snapshot import selected_analysis_tree
 
 type AnalysisOutcome = Literal["unchanged", "append", "full", "full_fallback"]
 ProgressCallback = Callable[[dict[str, object]], None]
@@ -43,6 +46,10 @@ class StorageAnalysisError(RuntimeError):
 
 
 class StorageAnalysisCancelled(StorageAnalysisError):
+    pass
+
+
+class StorageSelectionChanged(StorageAnalysisError):
     pass
 
 
@@ -88,6 +95,7 @@ class StorageAnalysisSummary:
     source_bytes_read: int
     worker_count: int
     diagnostics: tuple[StorageContentDiagnostic, ...]
+    selected_tree: TaskStorageTree | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -112,6 +120,8 @@ def analyze_storage_tree(
     max_workers: int = DEFAULT_MAX_WORKERS,
     progress: ProgressCallback | None = None,
     cancelled: Callable[[], bool] | None = None,
+    expected_membership: str | None = None,
+    analysis_project_keys: list[str] | None = None,
 ) -> StorageAnalysisSummary:
     context = load_storage_context(
         session_dirs=session_dirs,
@@ -124,6 +134,8 @@ def analyze_storage_tree(
     )
     if tree is None:
         raise StorageAnalysisError(f"Task tree not found: {tree_id}")
+    if expected_membership is not None and tree_membership(tree) != expected_membership:
+        raise StorageSelectionChanged("Selected tree membership changed; refresh and select again")
     entries = _selected_inventory(context, {file.path for file in tree.storage_files})
     if cache_dir is not None and cache_database_path is not None:
         raise ValueError("cache_dir and cache_database_path are mutually exclusive")
@@ -190,6 +202,7 @@ def analyze_storage_tree(
         source_bytes_read=sum(result.bytes_read for result in results),
         worker_count=worker_count,
         diagnostics=diagnostics,
+        selected_tree=selected_analysis_tree(context, tree_id, results, analysis_project_keys),
     )
 
 

@@ -17,14 +17,12 @@ from codex_usage.aggregation import (
     resolve_report_range,
     resolve_timezone,
     summarize_valued_records,
-    value_records,
 )
 from codex_usage.allowance_index import cached_allowance_pace, indexed_allowance_report
 from codex_usage.agent_activity import agent_activity_csv, build_agent_activity
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.ledger_queries import (
     LedgerStatus,
-    query_ledger_image_operations,
     query_ledger_records,
     query_ledger_status,
     query_ledger_task_graph,
@@ -34,7 +32,7 @@ from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.parser import finalize_session_records
 from codex_usage.pricing import PRICING_AS_OF
 from codex_usage.image_pricing import IMAGE_PRICING_REVISION
-from codex_usage.image_reporting import ImageReportCoverage, build_image_report
+from codex_usage.ledger_materialization import materialize_ledger
 from codex_usage.project_economics import build_project_economics
 from codex_usage.project_transitions import apply_project_transitions
 from codex_usage.report_breakdown import build_report_breakdown_from_valued
@@ -99,6 +97,7 @@ def render_ledger_report(
         timezone,
         start_date=start_date,
         end_date=end_date,
+        now=now,
     )
     with open_ledger(ledger_path, read_only=True) as connection:
         connection.execute("begin")
@@ -145,29 +144,12 @@ def render_ledger_report(
                 pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
             )
         allowance_report["status"] = pace_report["status"]
-        records = finalize_session_records(
-            [query_ledger_records(connection, bounds=report_range.bounds)]
+        materialized = materialize_ledger(
+            connection, report_range, normalized_keys, timezone, status,
+            auto_transitions=auto_transitions,
         )
-        image_operations = query_ledger_image_operations(
-            connection,
-            bounds=report_range.bounds,
-            project_keys=normalized_keys,
-        )
-        task_graph = query_ledger_task_graph(connection)
-        transitions = query_ledger_transitions(connection) if auto_transitions else []
-        source_counts = connection.execute(
-            """
-            select count(*) total,
-                   sum(storage_state = 'archived') archived,
-                   sum(is_missing) missing
-            from ledger_sources
-            """
-        ).fetchone()
-    if transitions:
-        records = apply_project_transitions(records, transitions)
-    records = filter_records_by_project_keys(records, normalized_keys)
-    valued = value_records(records)
-    activity = build_agent_activity(records, task_graph, timezone)
+    valued = materialized.valued
+    source_counts = materialized.source_counts
     with tempfile.TemporaryDirectory(prefix="codex-usage-report-") as directory:
         output_path = Path(directory) / "report.html"
         render_html_report(
@@ -182,23 +164,14 @@ def render_ledger_report(
             breakdown=build_report_breakdown_from_valued(valued),
             project_economics=build_project_economics(valued),
             allowance_report=allowance_report,
-            image_report=build_image_report(
-                image_operations,
-                coverage=ImageReportCoverage(
-                    complete=status.image_backfill.complete,
-                    artifacts_total=status.image_backfill.artifacts_total,
-                    tasks_total=status.image_backfill.tasks_total,
-                    tasks_completed=status.image_backfill.tasks_completed,
-                    tasks_unavailable=status.image_backfill.tasks_unavailable,
-                ),
-            ),
+            image_report=materialized.images,
             sessions_dirs=[],
             files_scanned=int(source_counts["total"] or 0),
             files_archived=int(source_counts["archived"] or 0),
             files_retained_missing=int(source_counts["missing"] or 0),
             project_keys=normalized_keys,
-            project_transitions=[transition.to_dict() for transition in transitions],
-            agent_activity=activity,
+            project_transitions=[transition.to_dict() for transition in materialized.transitions],
+            agent_activity=materialized.activity,
             storage_snapshot=None,
             theme=theme,
             data_status_html=_status_banner(status),

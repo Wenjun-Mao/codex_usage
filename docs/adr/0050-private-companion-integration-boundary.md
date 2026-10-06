@@ -12,14 +12,18 @@ The user approved a private ChatGPT and Codex companion with dashboard UI,
 conversational queries, explicit capture, and selected-task storage analysis.
 The current HTML and storage exports contain filesystem paths and task metadata;
 HTML escaping does not establish a data-sharing boundary. Host transport and
-embedded UI capabilities also need actual-host verification before dependent
-implementation.
+embedded UI capabilities also need actual-host verification. The user deferred
+runtime credential setup on 2026-10-06 and authorized local implementation while
+keeping that acceptance gate open.
 
 ## Decision
 
 - Establish private connection and required dashboard entrypoints with a
   synthetic-only probe first. Local SDK tests are preparation, not actual-host
   acceptance. Do not silently replace the approved experience with headless tools.
+  With the approved credential deferral, dependent local implementation may use
+  synthetic/disposable fixtures; this does not authorize live connection or count
+  as actual-host acceptance.
 - Keep this probe isolated under `extensions/openai/`, with pinned SDKs and a
   typed synthetic result. It cannot attach a collector, read usage/tasks, capture,
   delete, migrate, or register a background service. Its browser UI has no external

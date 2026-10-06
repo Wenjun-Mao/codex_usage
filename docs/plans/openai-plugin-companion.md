@@ -11,8 +11,9 @@ product's potential. A tool-only demo is not the intended deliverable.
 
 The user selected a private ChatGPT plus Codex experience, including dashboard
 UI, explicit Capture Usage, and selected-task storage analysis. Deletion, task
-transfer, and settings changes remain excluded. Technical host and connection
-feasibility must be established before dependent implementation.
+transfer, and settings changes remain excluded. On 2026-10-06 the user deferred
+the ChatGPT runtime credential setup and authorized continuing local dependent
+implementation. Actual-host acceptance is still required for milestone completion.
 
 ## Outcome
 
@@ -216,8 +217,24 @@ Progress on 2026-10-06:
   1440/390/360 px. See ADR 0050 and the probe README.
 - Runtime credential creation/entry is handed to the user. The local secret
   configuration is ignored by Git; no credential is stored in tracked files.
-- Shared analytics, the complete dashboard, and private acceptance have not
-  started. Required sidebar/panel and Codex host checks remain outstanding.
+- ChatGPT credential setup is deferred at the user's request. Shared analytics
+  and local adapter work can proceed against disposable fixtures. Required
+  sidebar/panel, private access-scope, and Codex host checks remain outstanding.
+- Shared captured-ledger materialization and schema-1 companion API are locally
+  implemented with allowlisted projections, expiring pagination, snapshot
+  comparison, allowance/pace, and selected-tree jobs. The single collector owns
+  capture; blocked inventory work does not block polling/cancellation. ADR 0051
+  records the reviewed contracts and guardrails.
+- The isolated adapter exposes twelve tools and a Usage/Storage MCP Apps UI.
+  Local core/HTTP/protocol tests and the three-browser bridge harness validate
+  fixture behavior. This is a candidate, not actual-host acceptance. All live
+  sharing remains off; project/task labels are anonymized, so name-based querying
+  and private plugin connection/package wiring remain handoff work.
+- Disabled stdio setup and a conversational skill are prepared, not installed.
+  No VS Code version bump, plugin publication or live-data capture is part of
+  this checkpoint.
+- [Local checkpoint evidence](../../extensions/openai/VERIFICATION.md) records
+  tests, disposable timing, reviewed fixes and remaining actual-host gates.
 
 The read-only API/privacy review identified that current HTML and storage
 exports contain paths and task metadata. Reusing them directly is not safe:

@@ -17,6 +17,8 @@ from codex_usage.agent_reports import (
 )
 from codex_usage.agent_service import background_agent_status
 from codex_usage.agent_settings import AgentSettings
+from codex_usage.companion_service import CompanionService
+from codex_usage.companion_storage import CompanionStorage
 from codex_usage.agent_transfer import (
     TransferOperation,
     execute_task_transfer,
@@ -55,6 +57,8 @@ class AgentFeatures:
         self._operations = operations
         self._settings = settings
         self._on_import = on_import
+        self.companion = CompanionService(codex_home, settings,
+            storage=CompanionStorage(codex_home, lane, operations))
 
     def report(
         self,

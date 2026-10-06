@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "scripts": {"build": "node build.mjs"},
+  "scripts": {"build": "node build.mjs && node build-companion.mjs"},
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "2.0.3",
     "lucide": "1.52.0"

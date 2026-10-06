@@ -6,6 +6,7 @@ from pathlib import Path
 
 import codex_usage.agent_capture as capture_module
 import codex_usage.agent_reports as reports_module
+import codex_usage.ledger_materialization as materialization_module
 from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.agent_reports import render_ledger_report
@@ -235,7 +236,7 @@ def test_report_uses_one_ledger_snapshot_during_concurrent_capture(
     ledger = ledger_database_path(home)
     starting_revision = load_ledger_status(ledger).revision
     observed_totals: list[int] = []
-    original_query = reports_module.query_ledger_records
+    original_query = materialization_module.query_ledger_records
     original_render = reports_module.render_html_report
     advanced = False
 
@@ -272,7 +273,7 @@ def test_report_uses_one_ledger_snapshot_during_concurrent_capture(
         observed_totals.append(kwargs["total"].usage.total_tokens)
         return original_render(**kwargs)
 
-    monkeypatch.setattr(reports_module, "query_ledger_records", advance_then_query)
+    monkeypatch.setattr(materialization_module, "query_ledger_records", advance_then_query)
     monkeypatch.setattr(reports_module, "render_html_report", observe_render)
 
     first = render_ledger_report(

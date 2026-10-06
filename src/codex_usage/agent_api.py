@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from codex_usage.agent_protocol import AGENT_API_VERSION, MAX_API_REQUEST_BYTES
+from codex_usage.companion_contract import CompanionError
 
 
 class AgentHttpServer:
@@ -45,7 +46,9 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                 return
             path, query = self._path_and_query()
             try:
-                if path == "/v1/health":
+                if path == "/v1/companion/health":
+                    self._json(HTTPStatus.OK, agent.companion_query({"kind": "health"}))
+                elif path == "/v1/health":
                     status = agent.status_payload()
                     self._json(
                         HTTPStatus.OK,
@@ -110,7 +113,7 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                 else:
                     self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             except Exception as exc:
-                self._exception(exc)
+                self._companion_exception(exc) if path.startswith("/v1/companion/") else self._exception(exc)
 
         def do_POST(self) -> None:  # noqa: N802
             if not self._authorize():
@@ -118,7 +121,9 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
             path, _ = self._path_and_query()
             try:
                 payload = self._read_json_object()
-                if path == "/v1/capture":
+                if path == "/v1/companion/query":
+                    self._json(HTTPStatus.OK, agent.companion_query(payload))
+                elif path == "/v1/capture":
                     result = agent.capture_now().result()
                     status = (
                         HTTPStatus.OK
@@ -166,7 +171,12 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                 else:
                     self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             except Exception as exc:
-                self._exception(exc)
+                self._companion_exception(exc) if path.startswith("/v1/companion/") else self._exception(exc)
+
+        def _companion_exception(self, exc: Exception) -> None:
+            code = exc.code if isinstance(exc, CompanionError) else "query_failed"
+            self._json(HTTPStatus.BAD_REQUEST if isinstance(exc, CompanionError) else HTTPStatus.INTERNAL_SERVER_ERROR,
+                       {"schema_version": 1, "error_code": code})
 
         def log_message(self, format: str, *args: object) -> None:
             return
