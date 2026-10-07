@@ -76,8 +76,15 @@ def main():
             page.on("pageerror", lambda e: errors.append(str(e)))
             page.goto(sys.argv[1])
             ui = check(page)
+            page.locator("body").evaluate("e => e.style.background = '#0d0d0d'")
+            ui.locator("body").evaluate(
+                "e => e.style.setProperty('background', 'transparent', 'important')"
+            )
             for theme in ("day", "night"):
                 ui.locator("#theme").select_option(theme)
+                assert ui.locator("main").evaluate("e => getComputedStyle(e).backgroundColor") == (
+                    "rgb(255, 255, 255)" if theme == "day" else "rgb(16, 21, 24)"
+                )
                 for width in (1440, 390, 360):
                     page.set_viewport_size({"width": width, "height": 1400})
                     assert ui.locator("html").evaluate("e => e.scrollWidth <= e.clientWidth")

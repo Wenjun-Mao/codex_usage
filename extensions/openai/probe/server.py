@@ -8,7 +8,7 @@ from mcp.server.apps import Apps, ResourceCsp
 
 from probe.data import Period, ProbeUsage, Project, synthetic_usage
 
-UI_URI = "ui://codex-usage/probe-v1.html"
+UI_URI = "ui://codex-usage/probe-v2.html"
 ROOT = Path(__file__).resolve().parents[1]
 
 

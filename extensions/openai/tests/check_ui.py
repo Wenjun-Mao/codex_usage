@@ -68,8 +68,15 @@ def check_controls(page):
 def check_layout(page, ui, browser_name):
     ui.get_by_role("combobox", name="Project", exact=True).select_option("all")
     expect(ui.locator("#cost")).to_have_text("US$516.00")
+    page.locator("body").evaluate("el => el.style.background = '#0d0d0d'")
+    ui.locator("body").evaluate(
+        "el => el.style.setProperty('background', 'transparent', 'important')"
+    )
     for theme in ("day", "night"):
         ui.get_by_role("combobox", name="Theme", exact=True).select_option(theme)
+        assert ui.locator("main").evaluate("el => getComputedStyle(el).backgroundColor") == (
+            "rgb(255, 255, 255)" if theme == "day" else "rgb(16, 21, 24)"
+        )
         for width in (1440, 390, 360):
             page.set_viewport_size({"width": width, "height": 950})
             assert ui.locator("html").evaluate("el => el.scrollWidth <= el.clientWidth")

@@ -14,6 +14,8 @@ UI, explicit Capture Usage, and selected-task storage analysis. Deletion, task
 transfer, and settings changes remain excluded. On 2026-10-06 the user deferred
 the ChatGPT runtime credential setup and authorized continuing local dependent
 implementation. Actual-host acceptance is still required for milestone completion.
+The user supplied the runtime key locally later that day; synthetic actual-host
+testing resumed without enabling live sharing.
 
 ## Outcome
 
@@ -217,9 +219,13 @@ Progress on 2026-10-06:
   1440/390/360 px. See ADR 0050 and the probe README.
 - Runtime credential creation/entry is handed to the user. The local secret
   configuration is ignored by Git; no credential is stored in tracked files.
-- ChatGPT credential setup is deferred at the user's request. Shared analytics
-  and local adapter work can proceed against disposable fixtures. Required
-  sidebar/panel, private access-scope, and Codex host checks remain outstanding.
+- ChatGPT credential setup resumed after the user entered the runtime key locally.
+  The synthetic test plugin authenticated and connected in the Personal context;
+  global, inline, conversation-panel and host-fullscreen presentation work, as do
+  scoped queries and selection-aware conversations. Exact private access-scope,
+  enforced CSP and the full candidate's actual-host acceptance remain outstanding.
+  Codex can query the synthetic connection, but local stdio and embedded UI have
+  not been accepted. Foreground test processes are stopped at the checkpoint.
 - Shared captured-ledger materialization and schema-1 companion API are locally
   implemented with allowlisted projections, expiring pagination, snapshot
   comparison, allowance/pace, and selected-tree jobs. The single collector owns

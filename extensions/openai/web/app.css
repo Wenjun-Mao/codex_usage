@@ -4,7 +4,7 @@
 :root[data-theme="day"] { color-scheme: light; }
 * { box-sizing: border-box; letter-spacing: 0; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, sans-serif; }
-main { max-width: 1120px; margin: auto; padding: 20px; }
+main { max-width: 1120px; margin: auto; padding: 20px; background: var(--bg); }
 header, form, .section-heading { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 h1 { font-size: 24px; margin: 0; } h2 { font-size: 17px; margin: 0; }
 header { margin-bottom: 20px; } header #connection { margin-left: auto; color: var(--muted); font-size: 12px; }

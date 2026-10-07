@@ -42,6 +42,12 @@ keeping that acceptance gate open.
 - Comparison and pagination preserve snapshot identity; storage inventory has
   its own observation identity. Backend computations remain authoritative for
   pricing, coverage, allowance, and pace.
+- The component paints its themed content surface explicitly, independent of
+  the iframe body's background. Actual ChatGPT rendering made the body transparent
+  over a dark host; body-only Day styling produced unreadable dark text. Both UI
+  harnesses simulate this host condition and check the main surface in each theme.
+  UI resource revisions advance when changing the probe bundle, with visual
+  verification after tool refresh; host cache behavior is not assumed.
 
 ## Rejected Alternatives
 

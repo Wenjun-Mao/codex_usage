@@ -1,9 +1,11 @@
 # Private OpenAI Companion
 
-Local implementation candidate, **not an installed or accepted host integration**.
-The user deferred ChatGPT credential setup; real sidebar/panel/fullscreen,
-private workspace access, and Codex host acceptance remain pending. Nothing here
-publishes a plugin, changes the installed VS Code extension, or enables sharing.
+Local implementation candidate, **not an accepted live-data host integration**.
+The synthetic-only `Codex Usage Test` plugin is connected privately in ChatGPT;
+credential authentication, global/inline/panel/fullscreen rendering and scoped
+queries have been tested. The complete companion, live-data access boundaries
+and local Codex setup still need acceptance. Nothing here publicly publishes a
+plugin, changes the installed VS Code extension, or enables live sharing.
 See the [approved plan](../../docs/plans/openai-plugin-companion.md) and
 [structured observation contract](../../docs/adr/0051-private-companion-structured-observations.md).
 [Local verification and remaining acceptance](VERIFICATION.md) record this checkpoint.
@@ -88,15 +90,16 @@ or enable it during the deferred host gate. Before a future live test:
    Tool policy prompts for non-read-only capture/analysis/cancellation actions.
 4. Test status, scoped queries and disconnect before explicitly testing live actions.
 
-No local Codex configuration, skills, marketplace catalog or plugin has been
-installed by this work. Portable plugin/registered-server wiring is a later host
-handoff, not a fabricated mapping to an uncreated ChatGPT connection.
+No local Codex stdio configuration or skill has been installed by this work.
+The private synthetic ChatGPT connection also exposes its two read tools to this
+Codex chat; that is not acceptance of local stdio or embedded Codex UI. The full
+companion's plugin/registered-server wiring remains a later host handoff.
 
 To stop a future stdio integration, disable/remove its MCP configuration and
 restart the host connection. This does not stop the VS Code-owned collector,
 change the ledger/settings/services, or remove task files.
 
-## Deferred Private ChatGPT Tunnel
+## Private Synthetic ChatGPT Tunnel
 
 Use the official [OpenAI tunnel client](https://github.com/openai/tunnel-client/releases)
 and [Secure MCP Tunnels guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).
@@ -104,14 +107,17 @@ The prepared macOS ARM64 client is 0.0.15; ZIP SHA-256:
 `b2cae3aa9df45b4c2fe9b1d700ebacce39f9feb6a6b46b86e6499f9a51bf72ff`.
 It lives under ignored `output/openai-plugin/tunnel-client/v0.0.15/`.
 
-The empty private test tunnel exists, but its personal/private workspace mapping
-is unverified. **No runtime key exists and no tunnel is running.** The launcher
-still targets the synthetic probe only; it cannot expose live collector results.
-Credential setup is deferred at the user's request, not required for local work.
+The user configured the runtime key locally on 2026-10-06. The doctor checks and
+an authenticated tunnel run succeeded, and `Codex Usage Test` was connected in
+ChatGPT's Personal plugin context. Platform lists only the intended organization
+and its sole associated ChatGPT workspace. Exact access-scope and CSP enforcement
+still require review before live sharing; see [verification](VERIFICATION.md).
+The launcher targets the synthetic probe only and cannot expose collector results.
+The foreground test tunnel is stopped at the checkpoint; no service is installed.
 
-When resumed, create/enter the runtime credential locally, never in chat, Git or
-CLI arguments. `.env.example` contains field names; `.env` is ignored and should
-be restricted to the current user (`chmod 600 .env` on macOS). It is not encrypted.
+Keep the runtime credential local, never in chat, Git or CLI arguments.
+`.env.example` contains field names; `.env` is ignored and must be restricted to
+the current user (`chmod 600 .env` on macOS). It is not encrypted.
 
 ```sh
 uv run python -m probe.tunnel init
@@ -124,10 +130,13 @@ credential via environment, excludes unrelated tunnel/debug targets and runs in
 the foreground. Ctrl-C stops it; no service or startup hook is registered.
 The ignored `output/openai-plugin/health.url` identifies loopback `/readyz`.
 
-Verify private scope, synthetic tools, sidebar/global and thread/panel entrypoints,
-fullscreen/themes, conversation context, restart and disconnect in ChatGPT before
-live sharing. Remove the custom host plugin to disconnect it. Public directory,
-public HTTPS hosting, account setup and deployment remain excluded.
+Recheck private scope and host protections before live sharing. Tool discovery
+can retain an older UI bundle: advance the probe resource revision after bundle
+changes, restart the foreground server, refresh tools in plugin settings, reopen
+the component and verify it visually. A tool refresh alone did not update the
+Day-theme rendering during this test; this is an observation, not a documented
+host-cache guarantee. Disconnecting/removing the custom host plugin stops its
+host access. Public directory, public HTTPS hosting and deployment are excluded.
 
 ## Browser Harnesses
 
