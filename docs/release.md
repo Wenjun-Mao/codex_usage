@@ -1,6 +1,6 @@
-# 2.10.4 VSIX Release Checklist
+# 2.10.5 VSIX Release Checklist
 
-Codex Usage 2.10.4 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.10.5 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
@@ -27,6 +27,20 @@ or a source checkout on the user's machine.
 
 `VSCE_PAT` with Manage permission for publisher `wenjun-mao` is the sole
 publication secret.
+
+## Included Auto-review Regression Checks
+
+Use the conservative announcement boundary in ADR 0052, not a backdated free
+rate. Dedicated `codex-auto-review` events at or after that boundary have zero
+estimated Standard credits, remain API-excluded without a public USD rate, and
+contribute no unknown-cost tokens to allowance calibration or calibrated pace.
+Retain all tokens and source events; ordinary model-based reviews, earlier
+unknown prices and unknown review variants must remain unchanged. Check full
+and indexed parity, pace arithmetic, and invalidation of old derived costs.
+
+The accepted Share-column cleanup is also included. The separate private MCP
+adapter and its sharing-disabled setup are not Marketplace products, and this
+VSIX release must not configure a tunnel, enable sharing or expose credentials.
 
 ## Credit Balance Regression Checks
 
@@ -67,7 +81,7 @@ actual spans, local today/tomorrow wording, full dates/offsets on hover and
 approximate day/hour reset gaps. Keep cost, reference identity/value/dates,
 method, interval, coverage and reasons in existing folded diagnostics. Add no
 new UI group. Schema 5 and cost-index revision 2 remain unchanged; derived
-report revision 6 and HTML revision 24 invalidate old forecasts.
+report revision 6 and HTML revision 26 invalidate old forecasts.
 
 The synthetic 10,000-event/52,001-point two-bucket benchmark measured rate and
 reference work below 1 ms after shared preparation; cold materialization still
@@ -185,13 +199,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.10.4`, both
+Confirm Python and extension metadata and lockfiles all say `2.10.5`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.10.4`:
+Only after the non-publishing platform gate succeeds, create and push `v2.10.5`:
 
 ```bash
-git tag v2.10.4
-git push origin v2.10.4
+git tag v2.10.5
+git push origin v2.10.5
 ```
 
 The tag reruns all platform gates and publishes

@@ -2,9 +2,20 @@
 
 ## Unreleased
 
+## 2.10.5 - 2026-10-07
+
+- Treat dedicated Auto-review usage after the October 6 announcement as zero
+  estimated Standard credits for ChatGPT subscription accounting. Retain token
+  counts, ownership and earlier unknown pricing; do not invent a public API rate.
+- Exclude known included reviews from quota-cost uncertainty so they no longer
+  block allowance calibration or calibrated pace. Rebuild derived costs and
+  report caches without changing the live ledger's source events.
 - Remove the redundant Share column from Project, Daily and Hourly usage
   details, matching Model Details. Comparison charts and Task Storage's
   numeric corpus share are unchanged.
+- Add authenticated local structured-query support for the separate private
+  companion experiment. No public ChatGPT plugin, tunnel or data sharing is
+  enabled by installing this VS Code release.
 
 ## 2.10.4 - 2026-10-03
 

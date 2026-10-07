@@ -1,4 +1,4 @@
-# ADR 0051: Included Auto-review Accounting
+# ADR 0052: Included Auto-review Accounting
 
 Status: Accepted
 
