@@ -3,6 +3,7 @@ import json
 import sqlite3
 
 from codex_usage.allowance_queries import _build_from_costs, build_allowance_report
+from codex_usage.allowance_costs import allowance_cost_components
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.models import TokenUsage
 from codex_usage.parser import parse_timestamp
@@ -128,9 +129,11 @@ def _price_missing_events(connection, pricing_revision):
             cache_write_input_tokens=row[4], output_tokens=row[5],
             reasoning_output_tokens=row[6], total_tokens=row[7],
         )
-        cost = estimate_cost(usage, row[8], at=parse_timestamp(row[1]))
-        values.append((row[0], pricing_revision, cost.total_usd if cost else 0.0,
-                       cost.unpriced_tokens if cost else usage.total_tokens))
+        at = parse_timestamp(row[1])
+        cost = estimate_cost(usage, row[8], at=at)
+        values.append((row[0], pricing_revision, *allowance_cost_components(
+            cost, model=row[8], at=at, total_tokens=usage.total_tokens,
+        )))
         if len(values) >= 4096:
             connection.executemany("insert into allowance_event_costs values (?,?,?,?)", values)
             values.clear()

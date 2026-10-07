@@ -10,9 +10,17 @@ from codex_usage.bedrock_pricing import (
 )
 from codex_usage.models import TokenUsage
 from codex_usage.pricing_breakdowns import CostBreakdown, CreditBreakdown
+from codex_usage.pricing_models import (
+    LARGE_CONTEXT_API_PRICING,
+    STANDARD_REQUEST_PRICING,
+    ModelRate as ModelRate,
+    RequestLevelLongContextPricing as RequestLevelLongContextPricing,
+    RequestPricingContract as RequestPricingContract,
+)
+from codex_usage.subscription_usage import AUTO_REVIEW_FREE_FROM, AUTO_REVIEW_MODEL
 
 
-PRICING_AS_OF = "2026-09-29"
+PRICING_AS_OF = "2026-10-07"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
@@ -33,70 +41,6 @@ GPT_6_ASTRA_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
 GPT_6_SOL_LUNA_API_EFFECTIVE_FROM = datetime(2026, 9, 22, tzinfo=UTC)
 GPT_6_1_SOL_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 29, tzinfo=UTC)
 GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
-
-
-@dataclass(frozen=True)
-class ModelRate:
-    input_per_1m: float
-    cached_input_per_1m: float
-    output_per_1m: float
-    cache_write_input_per_1m: float | None = None
-
-    @property
-    def resolved_cache_write_input_per_1m(self) -> float:
-        return (
-            self.input_per_1m
-            if self.cache_write_input_per_1m is None
-            else self.cache_write_input_per_1m
-        )
-
-
-@dataclass(frozen=True)
-class RequestLevelLongContextPricing:
-    input_token_threshold: int
-    input_rate_multiplier: float
-    cached_input_rate_multiplier: float
-    output_rate_multiplier: float
-
-    def applies_to(self, usage: TokenUsage) -> bool:
-        return usage.input_tokens > self.input_token_threshold
-
-    def apply(self, rate: ModelRate) -> ModelRate:
-        return ModelRate(
-            input_per_1m=rate.input_per_1m * self.input_rate_multiplier,
-            cached_input_per_1m=rate.cached_input_per_1m
-            * self.cached_input_rate_multiplier,
-            output_per_1m=rate.output_per_1m * self.output_rate_multiplier,
-            cache_write_input_per_1m=(
-                None
-                if rate.cache_write_input_per_1m is None
-                else rate.cache_write_input_per_1m * self.input_rate_multiplier
-            ),
-        )
-
-
-@dataclass(frozen=True)
-class RequestPricingContract:
-    long_context_pricing: RequestLevelLongContextPricing | None = None
-
-    def rate_for_usage(self, base_rate: ModelRate, usage: TokenUsage) -> ModelRate:
-        if (
-            self.long_context_pricing is not None
-            and self.long_context_pricing.applies_to(usage)
-        ):
-            return self.long_context_pricing.apply(base_rate)
-        return base_rate
-
-
-STANDARD_REQUEST_PRICING = RequestPricingContract()
-LARGE_CONTEXT_API_PRICING = RequestPricingContract(
-    long_context_pricing=RequestLevelLongContextPricing(
-        input_token_threshold=272_000,
-        input_rate_multiplier=2.0,
-        cached_input_rate_multiplier=2.0,
-        output_rate_multiplier=1.5,
-    )
-)
 
 
 @dataclass(frozen=True)
@@ -268,6 +212,13 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = tuple(
 )
 
 CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate(
+        AUTO_REVIEW_MODEL,
+        input_per_1m=0.0,
+        cached_input_per_1m=0.0,
+        output_per_1m=0.0,
+        effective_from=AUTO_REVIEW_FREE_FROM,
+    ),
     _effective_rate(
         "gpt-6.1-sol",
         input_per_1m=50.0,

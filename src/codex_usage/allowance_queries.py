@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from codex_usage.allowance_estimation import allowance_fit_points, estimate_window
 from codex_usage.allowance_credits import credit_history, credit_status
+from codex_usage.allowance_costs import allowance_cost_components
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_windows import segment_windows
 
@@ -98,8 +99,10 @@ def build_allowance_report(connection, *, coverage_complete=True):
         return _build_from_costs(connection, (), coverage_complete=coverage_complete)
     valued = sorted(value_records(query_ledger_records(connection)), key=lambda v: v.record.timestamp)
     return _build_from_costs(connection, (
-        (item.record.timestamp.timestamp(), item.summary.cost.total_usd,
-         item.summary.cost.unpriced_tokens) for item in valued
+        (item.record.timestamp.timestamp(), *allowance_cost_components(
+            item.summary.cost, model=item.record.model, at=item.record.timestamp,
+            total_tokens=item.record.usage.total_tokens,
+        )) for item in valued
     ), coverage_complete=coverage_complete)
 
 
