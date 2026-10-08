@@ -32,6 +32,9 @@ def test_generator_uses_extension_renderer_and_public_synthetic_data() -> None:
         ("day", "wide"), ("day", "narrow"),
         ("night", "wide"), ("night", "narrow"),
     }
+    assert set(module.SPEED_SCREENSHOT_PATHS) == {"day", "night"}
+    assert "chart_home(home)" in source
+    assert "java_script_enabled=False" in source
     assert "render_html_report" in source
     assert "decorateUsageReport" in renderer
     assert "renderStorageReport" in renderer
@@ -48,14 +51,15 @@ def test_check_mode_keeps_tracked_images(monkeypatch) -> None:
     module = _load_module()
     originals = {
         path: path.read_bytes()
-        for path in (*module.USAGE_SCREENSHOT_PATHS.values(), module.STORAGE_SCREENSHOT_PATH)
+        for path in (*module.USAGE_SCREENSHOT_PATHS.values(), module.STORAGE_SCREENSHOT_PATH,
+                     *module.SPEED_SCREENSHOT_PATHS.values())
     }
     main_image = module.USAGE_SCREENSHOT_PATH.read_bytes()
     captured = []
 
-    def render(usage_paths, storage_path):
-        captured.append((usage_paths, storage_path))
-        for path in (*usage_paths.values(), storage_path):
+    def render(usage_paths, storage_path, speed_paths):
+        captured.append((usage_paths, storage_path, speed_paths))
+        for path in (*usage_paths.values(), storage_path, *speed_paths.values()):
             path.write_bytes(b"temporary")
 
     monkeypatch.setattr(module, "_render_capture_and_validate", render)
@@ -63,6 +67,7 @@ def test_check_mode_keeps_tracked_images(monkeypatch) -> None:
     assert len(captured) == 1
     assert all(path not in originals for path in captured[0][0].values())
     assert captured[0][1] not in originals
+    assert all(path not in originals for path in captured[0][2].values())
     assert all(path.read_bytes() == contents for path, contents in originals.items())
     assert module.USAGE_SCREENSHOT_PATH.read_bytes() == main_image
 
