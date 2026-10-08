@@ -5,6 +5,12 @@ const path = require("node:path");
 const Module = require("node:module");
 const vscode = require("vscode");
 
+function selectedNavigation(html) {
+  const modes = html.match(/<nav class="speed-modes"[^>]*>([\s\S]*?)<\/nav>/)[1];
+  const uri = modes.match(/href="command:codexUsage.navigateSpeed\?([^"<]+)" aria-current="true"/)[1];
+  return JSON.parse(decodeURIComponent(uri))[0];
+}
+
 exports.run = async function () {
   const root = process.env.CODEX_SPEED_ACCEPTANCE_ROOT;
   assert(root && process.env.CODEX_HOME.startsWith(root));
@@ -50,21 +56,26 @@ exports.run = async function () {
       const args = JSON.parse(decodeURIComponent(uri))[0];
       await vscode.commands.executeCommand("codexUsage.navigateSpeed", args);
     }
-    const deadline = Date.now() + 90000;
+    const deadline = Date.now() + 120000;
     while (!hostOnly && !fs.existsSync(path.join(root, "clicked.json"))) {
       assert(Date.now() < deadline, "native command-link click timed out");
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+    if (!hostOnly) {
+      const clicks = JSON.parse(fs.readFileSync(path.join(root, "clicked.json"), "utf8"));
+      assert.deepEqual(clicks.map(click => click.label), ["Hourly", "Previous", "Next", "Daily", "Hourly"]);
+      assert.notEqual(clicks[1].rendered.window_start, clicks[0].rendered.window_start);
+      assert.equal(clicks[2].rendered.window_start, clicks[0].rendered.window_start);
+      assert(clicks.every(click => click.rendered.scope === clicks[0].rendered.scope));
+      assert.deepEqual(selectedNavigation(panel.webview.html), clicks.at(-1).requested);
+      evidence.rendered_clicks = clicks;
+    }
     assert(panel.webview.html.includes('class="speed-window"'));
-    const selected = panel.webview.html.match(/command:codexUsage.navigateSpeed\?([^"<]+)/g);
-    const query = selected.map(uri => JSON.parse(decodeURIComponent(uri.split("?")[1]))[0]);
-    const hourly = query.find(value => value.granularity === "hourly");
-    assert(hourly);
+    const hourly = selectedNavigation(panel.webview.html);
+    assert.equal(hourly.granularity, "hourly");
     await vscode.commands.executeCommand("codexUsage.captureNow");
     assert(panel.webview.html.includes('class="speed-window"'));
-    const refreshed = panel.webview.html.match(/command:codexUsage.navigateSpeed\?([^"<]+)/g)
-      .map(uri => JSON.parse(decodeURIComponent(uri.split("?")[1]))[0]);
-    assert(refreshed.some(value => value.granularity === "hourly" && value.windowStart === hourly.windowStart));
+    assert.deepEqual(selectedNavigation(panel.webview.html), hourly);
     evidence.native_link_navigation = !hostOnly;
     evidence.native_host_command_navigation = true;
     evidence.capture_preserves_window = true;
