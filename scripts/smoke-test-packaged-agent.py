@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import json
 import subprocess
 import tempfile
@@ -104,7 +105,7 @@ def _verify_packaged_speed(descriptor, db, baseline, report):
     assert warm["cache_hit"]
     hourly = _request(descriptor, "GET", "/v1/report?range=all&theme=night&speed_granularity=hourly")
     assert hourly["speed_navigation"]["granularity"] == "hourly"
-    with sqlite3.connect(db) as connection:
+    with closing(sqlite3.connect(db)) as connection:
         assert connection.execute("select count(*), sum(total_tokens), sum(output_tokens) from ledger_usage_events").fetchone() == baseline
         assert connection.execute("select count(*) from ledger_speed_facts where reason='' ").fetchone()[0] == 20
         assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == "6"
