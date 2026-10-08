@@ -5,6 +5,10 @@ from codex_usage.models import UsageRecord
 from codex_usage.speed_models import METRIC_VERSION, MIN_ITEM_MS, SpeedFact, counts, milliseconds
 
 MAX_ITEMS = 128
+TOOL_ITEMS = {"ToolCall", "CommandExecution", "DynamicToolCall", "CollabAgentToolCall",
+              "McpToolCall", "WebSearch", "ImageGeneration", "ImageView", "FileChange"}
+NON_TOOL_ITEMS = {"Plan", "UserMessage", "HookPrompt", "SubAgentActivity",
+                  "EnteredReviewMode", "ExitedReviewMode"}
 
 
 def identity(value):
@@ -16,6 +20,7 @@ class SpeedParser:
         self.state = deepcopy(state) if state and state.get("version") == METRIC_VERSION else {}
         self.facts: list[SpeedFact] = []
         self.tools: list[tuple[float, float]] = []
+        self.uncertain_tools: set[str] = set()
         self.matched = None
 
     def dirty(self, reason: str = "incomplete_response_boundary") -> None:
@@ -23,12 +28,23 @@ class SpeedParser:
 
     def observe_prefix(self, prefix, model, turn):
         from codex_usage.speed_projection import project_prefix
-        projected = project_prefix(prefix)
+        projected, complete = project_prefix(prefix)
+        self.observe_projection(projected, complete, model, turn)
+
+    def observe_projection(self, projected, complete, model, turn):
         payload = projected.get("payload", {})
         if projected.get("type") != "response_item" or not payload.get("type"):
             self.dirty()
             return
         self.observe(projected, model, turn)
+        if not complete:
+            self.dirty("incomplete_output_projection")
+
+    def uncertain_tool(self, turn):
+        if turn:
+            self.uncertain_tools.add(turn)
+        if not turn or turn == self.state.get("turn"):
+            self.dirty("missing_tool_interval")
 
     def observe(self, obj: dict, model: str, turn: str) -> None:
         self.matched = None
@@ -73,19 +89,32 @@ class SpeedParser:
                     self.dirty("timing_state_limit")
                 else:
                     items.append([identity(payload.get("turn_id")), start, end, item_type, identity(item.get("id"))])
-            elif start is not None and end is not None and end >= start:
-                self.tools.append((start, end))
-            else:
-                self.tools.append((-1, -1))
-                self.dirty("missing_tool_interval")
+            elif isinstance(item_type, str) and item_type in TOOL_ITEMS:
+                if start is not None and end is not None and end >= start:
+                    self.tools.append((start, end))
+                else:
+                    self.uncertain_tool(identity(payload.get("turn_id") or turn))
+            elif item_type == "FunctionCallOutput" and at is not None:
+                self.tools.append((at, at))
+            elif not isinstance(item_type, str) or item_type not in NON_TOOL_ITEMS:
+                if start is not None and end is not None and end >= start:
+                    # Unknown items are uncertain only within their attributable
+                    # interval; their existence does not poison a whole source.
+                    self.tools.append((start, end))
+                else:
+                    self.uncertain_tool(identity(payload.get("turn_id") or turn))
         if outer == "response_item":
             generated = kind in {"reasoning", "function_call", "custom_tool_call"} or (
                 kind == "message" and payload.get("role") == "assistant"
             )
             if generated:
-                meta = payload.get("internal_chat_message_metadata_passthrough") or {}
+                meta = payload.get("internal_chat_message_metadata_passthrough")
+                if meta is None:
+                    meta = {}
                 if not isinstance(meta, dict):
                     meta = {}
+                    self.dirty("invalid_output_metadata")
+                if meta.get("turn_id") is not None and not identity(meta["turn_id"]):
                     self.dirty("invalid_output_metadata")
                 if at is None or (meta.get("turn_id") and meta["turn_id"] != self.state.get("turn")):
                     self.dirty("mixed_or_missing_output_timestamp")
@@ -97,7 +126,7 @@ class SpeedParser:
             elif kind in {"function_call_output", "custom_tool_call_output"} and at is not None:
                 self.tools.append((at, at))
             elif kind in {"function_call_output", "custom_tool_call_output"}:
-                self.tools.append((-1, -1))
+                self.uncertain_tool(identity(payload.get("turn_id") or turn))
         if outer == "token_usage_record":
             if self.state.get("pending") is not None:
                 self.dirty("ambiguous_response_records")
@@ -108,8 +137,11 @@ class SpeedParser:
                 "usage": counts(payload.get("usage")), "at": at,
             }
         if kind == "token_count":
+            info = payload.get("info")
+            if not isinstance(info, dict):
+                self.dirty("malformed_token_count")
+                return
             self.matched = deepcopy(self.state)
-            info = payload.get("info") or {}
             self.matched["last"] = counts(info.get("last_token_usage"))
             self.matched["count_at"] = at
             self.state = {"version": METRIC_VERSION, "safe": True, "turn": identity(turn),

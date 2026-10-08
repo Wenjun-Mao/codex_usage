@@ -29,6 +29,7 @@ _WORKSET_TABLES = (
     "parser_checkpoints",
     "speed_cache_facts",
     "speed_cache_tools",
+    "speed_cache_uncertain_tools",
     "speed_cache_dirty",
 )
 

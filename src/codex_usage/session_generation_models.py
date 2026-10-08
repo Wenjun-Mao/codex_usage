@@ -31,6 +31,7 @@ class ParsedSessionGeneration:
     quota_observations: tuple[QuotaObservation, ...] = ()
     speed_facts: tuple[SpeedFact, ...] = ()
     speed_tools: tuple[tuple[float, float], ...] = ()
+    speed_uncertain_tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,3 +47,4 @@ class ParsedSessionAppend:
     quota_observations: tuple[QuotaObservation, ...] = ()
     speed_facts: tuple[SpeedFact, ...] = ()
     speed_tools: tuple[tuple[float, float], ...] = ()
+    speed_uncertain_tools: tuple[str, ...] = ()

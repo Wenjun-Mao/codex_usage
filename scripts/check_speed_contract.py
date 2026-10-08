@@ -1,7 +1,9 @@
-"""Replay content-free frozen probe metadata through the production timing contract.
+"""Replay content-free frozen metadata through response pairing and thresholds.
 
 Optional private input is never a public fixture. Results contain aggregate
 counts and sensitivity only, not source/task/response identities.
+This reconstructs rows: it cannot validate original JSON layout, projection,
+length-dependent ingestion coverage, or raw-source checkpoint/recovery behavior.
 """
 import argparse
 from collections import Counter, defaultdict
@@ -60,8 +62,10 @@ def replay(snapshot):
         # Late tool evidence applies to every candidate, not just the next one.
         for fact in parser.facts:
             reason = fact.reason
-            if not reason and any(a == -1 or (a < fact.end_ms and b > fact.start_ms) or (a == b and fact.start_ms < a < fact.end_ms) for a, b in parser.tools):
+            if not reason and any((a < fact.end_ms and b > fact.start_ms) or (a == b and fact.start_ms < a < fact.end_ms) for a, b in parser.tools):
                 reason = "tool_execution_overlap"
+            if not reason and fact.turn_id in parser.uncertain_tools:
+                reason = "missing_tool_interval"
             facts.append(replace(fact, reason=reason))
     grouped = defaultdict(list)
     for fact in facts:
@@ -91,7 +95,8 @@ def replay(snapshot):
                 if fact.min_item_ms >= floor and fact.usage[TOKEN_FIELDS.index("output_tokens")] >= output:
                     by_model[fact.model].append(fact.usage[3] * 1000 / (fact.end_ms - fact.start_ms))
             sensitivity[f"{floor}ms/{output}tokens"] = {m: {"n": len(s), "median": round(median(s), 3)} for m, s in sorted(by_model.items())}
-    return {"accepted": len(unique), "rejections": dict(sorted(reasons.items())), "sensitivity": sensitivity}
+    return {"evidence_kind": "content_free_pairing_and_threshold_replay_not_ingestion_coverage",
+            "accepted": len(unique), "rejections": dict(sorted(reasons.items())), "sensitivity": sensitivity}
 
 
 def main():

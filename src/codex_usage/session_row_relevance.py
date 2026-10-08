@@ -38,6 +38,16 @@ type RowRelevance = Literal["relevant", "bounded", "irrelevant", "unclassified",
 
 def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
     inspected = prefix[:RELEVANT_PREFIX_BYTES]
+    # Header structure, not text inside content, decides whether a response row
+    # can be drained. Only message/reasoning bodies have no image invocation or
+    # repository argument evidence. Tool calls/results retain legacy precision.
+    from codex_usage.speed_projection import project_prefix
+    header, _ = project_prefix(inspected)
+    payload = header.get("payload", {})
+    if header.get("type") == "response_item" and payload.get("type") in {
+        "reasoning", "message",
+    }:
+        return "bounded"
     if (
         any(marker in inspected for marker in _USAGE_EVENT_MARKERS_BYTES)
         or b"\\u" in inspected

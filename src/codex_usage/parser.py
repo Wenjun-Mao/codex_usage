@@ -81,6 +81,7 @@ def parse_session_generation(
         quota_observations=chunk.quota_observations,
         speed_facts=chunk.speed_facts,
         speed_tools=chunk.speed_tools,
+        speed_uncertain_tools=chunk.speed_uncertain_tools,
     )
 
 
@@ -118,4 +119,5 @@ def parse_session_append(
         quota_observations=chunk.quota_observations,
         speed_facts=chunk.speed_facts,
         speed_tools=chunk.speed_tools,
+        speed_uncertain_tools=chunk.speed_uncertain_tools,
     )

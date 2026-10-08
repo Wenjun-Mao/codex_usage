@@ -14,6 +14,8 @@ def create_speed_cache(connection: sqlite3.Connection) -> None:
             file_key text not null, start_ms real not null, end_ms real not null,
             primary key(file_key, start_ms, end_ms))""",
         "create table if not exists speed_cache_dirty (file_key text primary key)",
+        """create table if not exists speed_cache_uncertain_tools (
+            file_key text not null, turn_id text not null, primary key(file_key, turn_id))""",
     ):
         connection.execute(statement)
 

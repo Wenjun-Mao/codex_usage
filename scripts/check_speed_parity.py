@@ -42,6 +42,10 @@ def snapshot(home):
         connection.execute("begin")
         status = query_ledger_status(connection)
         records = [record.to_dict() for record in query_ledger_records(connection)]
+        image_facts = [{k: row[k] for k in row.keys() if k not in {"image_event_id", "generation_id", "project_id"}}
+                       for row in connection.execute("select * from ledger_image_events order by task_id,tool_call_id")]
+        candidates = [dict(row) for row in connection.execute("""select candidate_index,timestamp,
+            timestamp_us,thread_id,raw_path,source from transition_candidates order by thread_id,candidate_index""")]
         for record in records:
             record.pop("file_path", None)
         monetary = {}
@@ -59,7 +63,8 @@ def snapshot(home):
         for report in (full, indexed):
             report["status"].pop("probe_age_seconds", None)
         assert indexed == full, "indexed/full monetary parity failed"
-    return {"records": records, "monetary": monetary, "allowance": full}
+    return {"records": records, "monetary": monetary, "allowance": full,
+            "image_facts": image_facts, "repo_candidates": candidates}
 
 
 def frozen_sources(home):
@@ -75,6 +80,15 @@ def frozen_sources(home):
         {"timestamp": stamp, "type": "response_item", "payload": {"type": "function_call", "name": "image_gen", "call_id": "synthetic-image", "arguments": json.dumps({"model": "gpt-image-2", "size": "1024x1024", "quality": "high", "prompt": "SYNTHETIC ONLY"})}},
         {"timestamp": stamp, "type": "response_item", "payload": {"type": "function_call_output", "call_id": "synthetic-image", "output": json.dumps({"model": "gpt-image-2", "data": [{}], "usage": {"text_input_tokens": 10, "cached_text_input_tokens": 0, "image_input_tokens": 0, "cached_image_input_tokens": 0, "image_output_tokens": 20, "total_tokens": 30}})}},
     ])
+    append_rows(image, [{"timestamp": stamp, "type": "response_item", "payload": {
+        "type": "function_call", "name": "image_gen", "call_id": "synthetic-unicode-image",
+        "arguments": json.dumps({"model": "gpt-image-2", "prompt": "\u4e2d" + "x" * 10000,
+                                 "size": "1024x1024", "quality": "high", "output_format": "png",
+                                 "referenced_image_paths": ["/synthetic/reference.png"]})}},
+        {"timestamp": stamp, "type": "response_item", "payload": {
+            "type": "function_call", "name": "exec_command", "call_id": "synthetic-unicode-repo",
+            "arguments": json.dumps({"command": "\u4e2d" + "x" * 10000,
+                                     "workdir": "/synthetic/\u4e2d-repo"})}}])
 
 
 def main():
@@ -111,6 +125,8 @@ def main():
         evidence = {"synthetic_only": True, "baseline": args.baseline_ref, "exact_parity": True,
             "language_records": len(results[0]["records"]), "range_project_cases": len(results[0]["monetary"]),
             "indexed_full_allowance_equal": True,
+            "exact_image_facts_equal": True,
+            "exact_repo_candidates_equal": True,
             "snapshot_sha256": hashlib.sha256(json.dumps(results[0], sort_keys=True).encode()).hexdigest()}
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(evidence, indent=2) + "\n")

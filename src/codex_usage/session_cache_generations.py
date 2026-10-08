@@ -103,6 +103,7 @@ def rekey_file_generation(
     for table in (
         "speed_cache_facts",
         "speed_cache_tools",
+        "speed_cache_uncertain_tools",
         "speed_cache_dirty",
         "usage_records",
         "session_metadata",
@@ -192,7 +193,7 @@ def generation_task_ids(generation: ParsedSessionGeneration) -> set[str]:
 
 
 def delete_file_generation(connection: sqlite3.Connection, file_key: str) -> None:
-    for table in ("speed_cache_facts", "speed_cache_tools", "speed_cache_dirty"):
+    for table in ("speed_cache_facts", "speed_cache_tools", "speed_cache_uncertain_tools", "speed_cache_dirty"):
         connection.execute(f"delete from {table} where file_key=?", (file_key,))
     connection.execute("delete from usage_records where file_key = ?", (file_key,))
     connection.execute(

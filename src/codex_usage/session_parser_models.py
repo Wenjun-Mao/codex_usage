@@ -29,6 +29,7 @@ class SessionParserState:
     current_mode: str
     image_capture: ImageCaptureState = ImageCaptureState()
     speed_state: dict = field(default_factory=dict)
+    row_drain: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +69,7 @@ def parser_state_to_json(state: SessionParserState) -> str:
             "current_mode": state.current_mode,
             "image_capture": image_capture_state_to_json(state.image_capture),
             "speed_state": state.speed_state,
+            "row_drain": state.row_drain,
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -104,6 +106,7 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
         current_mode=_text(parsed.get("current_mode")),
         image_capture=image_capture_state_from_json(parsed.get("image_capture")),
         speed_state=parsed.get("speed_state") or {},
+        row_drain=parsed.get("row_drain") or {},
     )
 
 

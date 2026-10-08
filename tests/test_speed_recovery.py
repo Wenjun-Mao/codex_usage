@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.ledger_schema import open_ledger
 from codex_usage.parser import parse_session_generation, parse_session_append
@@ -53,14 +51,66 @@ def test_bounded_fair_recovery_and_restart_without_language_insert(tmp_path, mon
     assert run_speed_recovery_slice(db).source_opens == 0
 
 
-def test_recovery_cannot_drain_an_unbounded_row(tmp_path):
+def test_recovery_resumes_known_large_payload_without_retaining_content(tmp_path):
+    from codex_usage.session_parser_models import parser_state_to_json, parser_state_from_json
+    from dataclasses import replace
+    from speed_test_support import append_rows, response
     path = write_source(tmp_path, count=0)
     with path.open("a") as stream:
         stream.write(json.dumps({"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": "x" * 10000}}) + "\n")
-    first = parse_session_generation(path, max_bytes=1000, strict_byte_budget=True)
-    with pytest.raises(OSError, match="bounded recovery budget"):
-        parse_session_append(path, first.checkpoint, stop_offset=path.stat().st_size,
-                             max_bytes=1000, strict_byte_budget=True)
+    append_rows(path, response())
+    chunk = parse_session_generation(path, max_bytes=1000, strict_byte_budget=True)
+    records = list(chunk.records)
+    for _ in range(30):
+        value = parser_state_to_json(chunk.checkpoint.state)
+        assert len(value) < 12000 and "x" * 100 not in value
+        checkpoint = replace(chunk.checkpoint, state=parser_state_from_json(value, path))
+        chunk = parse_session_append(path, checkpoint, stop_offset=path.stat().st_size,
+                                     max_bytes=1000, strict_byte_budget=True)
+        assert chunk.bytes_read <= 1000 + 4 * 64 * 1024 + 1
+        records.extend(chunk.records)
+        if chunk.checkpoint.byte_offset == path.stat().st_size:
+            break
+    assert len(records) == 1
+    assert chunk.checkpoint.byte_offset == path.stat().st_size
+
+
+def test_media_over_slice_budget_preserves_later_samples_and_accounting(tmp_path, monkeypatch):
+    from codex_usage.session_cache import refresh_cached_session_data
+    from codex_usage.ledger_sync import synchronize_parser_workset
+    from codex_usage.speed_recovery import SLICE_BYTES
+    from codex_usage.speed_parser import SpeedParser
+    from speed_test_support import append_rows, response
+    path = write_source(tmp_path, count=0)
+    append_rows(path, [{"type": "response_item", "payload": {"type": "message", "role": "user",
+        "content": [{"type": "input_image", "image_url": "data:image/png;base64," + "x" * (SLICE_BYTES + 100)}]}}])
+    for index in range(5):
+        append_rows(path, response(index))
+    full = parse_session_generation(path)
+    assert sum(not fact.reason for fact in full.speed_facts) == 5
+    db = ledger_database_path(tmp_path)
+    with open_ledger(db):
+        pass
+    with monkeypatch.context() as legacy:
+        legacy.setattr(SpeedParser, "observe", lambda *args: None)
+        refresh_cached_session_data([tmp_path / "sessions"], cache_database_path=db, max_workers=1)
+    synchronize_parser_workset(db)
+    downgrade_timing(db)
+    with open_ledger(db) as connection:
+        before = [tuple(r) for r in connection.execute("select * from ledger_usage_events order by event_id")]
+        revision = connection.execute("select value from ledger_meta where key='ledger_revision'").fetchone()[0]
+    first = run_speed_recovery_slice(db)
+    assert first.source_bytes <= SLICE_BYTES + 640 * 1024 and first.source_opens <= 4
+    with open_ledger(db) as connection:
+        row = connection.execute("select status,checkpoint_json from speed_recovery").fetchone()
+        assert row[0] == "pending" and len(row[1]) < 12000 and "x" * 100 not in row[1]
+    second = run_speed_recovery_slice(db)
+    assert second.source_bytes <= SLICE_BYTES + 640 * 1024 and second.source_opens <= 4
+    with open_ledger(db) as connection:
+        assert connection.execute("select status from speed_recovery").fetchone()[0] == "complete"
+        assert connection.execute("select count(*) from ledger_speed_facts where reason='' ").fetchone()[0] == 5
+        assert [tuple(r) for r in connection.execute("select * from ledger_usage_events order by event_id")] == before
+        assert connection.execute("select value from ledger_meta where key='ledger_revision'").fetchone()[0] == revision
 
 
 def test_shared_four_slot_budget_preserves_image_progress(monkeypatch):

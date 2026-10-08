@@ -19,7 +19,7 @@ def touch(connection: sqlite3.Connection) -> None:
 
 
 def cache_speed(connection, file_key, parsed) -> None:
-    if not parsed.speed_facts and not parsed.speed_tools:
+    if not parsed.speed_facts and not parsed.speed_tools and not parsed.speed_uncertain_tools:
         return
     for fact in parsed.speed_facts:
         connection.execute("""insert into speed_cache_facts values (?, ?, ?, ?, ?, 1)
@@ -30,11 +30,13 @@ def cache_speed(connection, file_key, parsed) -> None:
     for start, end in parsed.speed_tools:
         inserted = connection.execute("insert or ignore into speed_cache_tools values (?, ?, ?)", (file_key, start, end))
         if inserted.rowcount:
-            if start == -1:
-                connection.execute("update speed_cache_facts set dirty=1 where file_key=?", (file_key,))
-            else:
-                connection.execute("update speed_cache_facts set dirty=1 where file_key=? and end_ms>? and start_ms<?",
-                                   (file_key, start, end if end > start else start + .001))
+            connection.execute("update speed_cache_facts set dirty=1 where file_key=? and end_ms>? and start_ms<?",
+                               (file_key, start, end if end > start else start + .001))
+    for turn in parsed.speed_uncertain_tools:
+        inserted = connection.execute("insert or ignore into speed_cache_uncertain_tools values (?, ?)", (file_key, turn))
+        if inserted.rowcount:
+            connection.execute("""update speed_cache_facts set dirty=1 where file_key=?
+                and json_extract(evidence_json, '$.turn_id')=?""", (file_key, turn))
     connection.execute("insert or ignore into speed_cache_dirty values (?)", (file_key,))
 
 
@@ -62,8 +64,11 @@ def synchronize_speed(connection, *, usage_changed=False) -> bool:
                 trusted["model_key"] != fact.model or trusted["turn_id"] != fact.turn_id or
                 trusted["timestamp"] != fact.timestamp or trusted["task_id"] != fact.task_id):
                 fact = replace(fact, reason="trusted_event_mismatch")
+            elif not fact.reason and connection.execute("""select 1 from speed_cache_uncertain_tools
+                where file_key=? and turn_id=? limit 1""", (key, fact.turn_id)).fetchone():
+                fact = replace(fact, reason="missing_tool_interval")
             elif not fact.reason and connection.execute("""select 1 from speed_cache_tools
-                where file_key=? and (start_ms=-1 or (start_ms < ? and end_ms > ?) or
+                where file_key=? and ((start_ms < ? and end_ms > ?) or
                 (start_ms=end_ms and start_ms > ? and start_ms < ?)) limit 1""",
                 (key, fact.end_ms, fact.start_ms, fact.start_ms, fact.end_ms)).fetchone():
                 fact = replace(fact, reason="tool_execution_overlap")

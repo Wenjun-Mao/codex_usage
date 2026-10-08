@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -14,10 +15,10 @@ from urllib.error import URLError
 from urllib.parse import unquote
 from urllib.request import ProxyHandler, build_opener
 
-from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 from observed_speed_fixture import chart_home
+from speed_native_target import attach_speed_target, wait_native_state
 
 
 def main():
@@ -115,6 +116,14 @@ def main():
                     "root_cause": "A temporary HOME does not disable Electron native credential storage. "
                                   "The supported test-only flag bypasses the native encryption check.",
                 }
+                evidence["source_sha256"] = source_fingerprints(repo)
+                evidence["bundled_collector_sha256"] = hashlib.sha256(
+                    (extension / "bin" / "darwin-arm64" / "codex-usage-agent").read_bytes()
+                ).hexdigest() if os.name != "nt" else None
+                evidence["native_target_contract"] = (
+                    "Explicit vscode-webview iframe CDP target; DOM-derived real mouse input. "
+                    "No injected script, host-only substitute, or CSP change."
+                )
                 (args.output / "evidence.json").write_text(
                     json.dumps(evidence, indent=2) + "\n"
                 )
@@ -133,13 +142,26 @@ def disposable_command(code, root, extension, port):
             f"--remote-debugging-port={port}", "--disable-updates"]
 
 
+def source_fingerprints(repo):
+    paths = ("scripts/check_speed_webview.py", "scripts/speed_native_target.py",
+             "scripts/vscode_speed_acceptance.js", "extensions/vscode/src/speedNavigation.ts",
+             "extensions/vscode/src/reportHtml.ts", "src/codex_usage/speed_parser.py",
+             "src/codex_usage/speed_projection.py", "src/codex_usage/session_chunk_reader.py")
+    return {path: hashlib.sha256((repo / path).read_bytes()).hexdigest() for path in paths}
+
+
 def stop_owned_host(process):
     # POSIX hosts start in their own session; this group cannot contain regular Code.
+    group_permission_error = None
     if os.name != "nt":
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
+        except PermissionError as error:
+            group_permission_error = error
+            if process.poll() is None:
+                process.terminate()
     elif process.poll() is None:
         process.terminate()
     try:
@@ -149,10 +171,35 @@ def stop_owned_host(process):
         process.wait(timeout=10)
     finally:
         if os.name != "nt":
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            # Reap the parent before testing group retirement: an unreaped
+            # owned child is still listed by ps but cannot receive signals.
+            if group_permission_error is not None:
+                if not wait_owned_group_exit(process.pid):
+                    raise group_permission_error
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except PermissionError:
+                    if not wait_owned_group_exit(process.pid):
+                        raise
+
+
+def owned_group_exists(group):
+    # A completed VS Code host can retire its group while macOS rejects a stale
+    # signal with EPERM rather than ESRCH. Never suppress a live-group failure.
+    result = subprocess.run(["ps", "-axo", "pgid="], check=True, capture_output=True, text=True)
+    return str(group) in result.stdout.split()
+
+
+def wait_owned_group_exit(group):
+    deadline = time.monotonic() + 5
+    while owned_group_exists(group):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(.1)
+    return True
 
 
 def accept_native_link(root, port, deadline, output):
@@ -163,6 +210,7 @@ def accept_native_link(root, port, deadline, output):
         endpoint = wait_cdp_endpoint(port, deadline, diagnostics)
         diagnostics.update(stage="browser_attach", endpoint_available=True,
                            endpoint_seconds=time.monotonic() - started, browser=endpoint["Browser"])
+        diagnostics_path.write_text(json.dumps(diagnostics, indent=2) + "\n")
         with sync_playwright() as playwright:
             started = time.monotonic()
             browser = playwright.chromium.connect_over_cdp(
@@ -170,22 +218,20 @@ def accept_native_link(root, port, deadline, output):
             )
             diagnostics.update(stage="frame_target", browser_attached=True,
                                attach_seconds=time.monotonic() - started)
-            target, state = wait_speed_frame(browser, deadline)
+            diagnostics_path.write_text(json.dumps(diagnostics, indent=2) + "\n")
+            target, state = attach_speed_target(browser, deadline, navigation_args, diagnostics, diagnostics_path)
             assert state["granularity"] == "daily", state
             diagnostics["initial_state"] = state
             clicks = []
             # Each command replaces webview.html and therefore its content frame.
             for label in ("Hourly", "Previous", "Next", "Daily", "Hourly"):
-                link = target.get_by_role("link", name=label, exact=True)
-                args = navigation_args(link.get_attribute("href"))
-                link.click()
-                target, state = wait_speed_frame(browser, deadline, args)
+                args = target.click(label, navigation_args)
+                state = wait_native_state(target, args, navigation_args, matches_navigation)
                 clicks.append({"label": label, "requested": args, "rendered": state})
-                target.locator(".observed-speed").screenshot(
-                    path=str(output / f"native-{len(clicks)}-{label.lower()}.png")
-                )
+                target.screenshot(output / f"native-{len(clicks)}-{label.lower()}.png")
             diagnostics.update(stage="complete", rendered_clicks=clicks)
             (root / "clicked.json").write_text(json.dumps(clicks))
+            target.close()
             browser.close()
     except Exception as error:
         diagnostics["failure"] = f"{type(error).__name__}: {error}"
@@ -214,16 +260,6 @@ def navigation_args(uri):
     return json.loads(unquote(uri.split("?", 1)[1]))[0]
 
 
-def rendered_state(frame):
-    modes = frame.get_by_role("navigation", name="Speed granularity")
-    selected = modes.locator('[aria-current="true"]')
-    args = navigation_args(selected.get_attribute("href"))
-    window = frame.locator(".speed-window strong")
-    return {"granularity": args["granularity"], "scope": args["scope"],
-            "window_start": args["windowStart"],
-            "window_label": window.inner_text() if window.count() else None}
-
-
 def matches_navigation(state, expected):
     return (state["granularity"] == expected["granularity"] and
             state["scope"] == expected["scope"] and
@@ -231,24 +267,6 @@ def matches_navigation(state, expected):
             (isinstance(state["window_label"], str) and
              state["window_label"].startswith(expected["windowStart"] + " to ")
              if expected["granularity"] == "hourly" else state["window_label"] is None))
-
-
-def wait_speed_frame(browser, deadline, expected=None):
-    while time.monotonic() < deadline:
-        for context in browser.contexts:
-            for page in context.pages:
-                for frame in page.frames:
-                    try:
-                        if frame.is_detached() or not frame.locator(".observed-speed").count():
-                            continue
-                        state = rendered_state(frame)
-                        if expected is None or matches_navigation(state, expected):
-                            return frame, state
-                    except PlaywrightError:
-                        if not frame.is_detached():
-                            raise
-        time.sleep(.1)
-    raise TimeoutError(f"Rendered speed frame did not settle to {expected}")
 
 
 if __name__ == "__main__":

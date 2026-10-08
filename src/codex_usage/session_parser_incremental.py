@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from codex_usage.image_capture import (
-    bounded_invocation_from_prefix,
-    bounded_result_for_pending,
     direct_operation_from_payload,
     extension_result_for_pending,
     invocation_from_payload,
@@ -39,7 +37,6 @@ from codex_usage.session_parser_events import (
     extract_effort as _extract_effort,
     extract_model as _extract_model,
     extract_repo_path_candidates as _extract_repo_path_candidates,
-    extract_repo_path_candidates_from_bounded_prefix as _extract_bounded_repo_path_candidates,
     parse_json_line as _parse_json_line,
     parse_session_metadata as _parse_session_metadata,
     parse_timestamp,
@@ -55,13 +52,10 @@ from codex_usage.storage_content import (
 )
 from codex_usage.speed_parser import SpeedParser
 from codex_usage.speed_models import SpeedFact
-
-
-def _generated_artifact_directory(path: Path, task_id: str) -> Path | None:
-    for parent in path.parents:
-        if parent.name in {"sessions", "archived_sessions"}:
-            return parent.parent / "generated_images" / task_id
-    return None
+from codex_usage.session_parser_payloads import (
+    generated_artifact_directory as _generated_artifact_directory,
+    capture_bounded_payload,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +70,7 @@ class _ParsedChunk:
     quota_observations: tuple[QuotaObservation, ...]
     speed_facts: tuple[SpeedFact, ...]
     speed_tools: tuple[tuple[float, float], ...]
+    speed_uncertain_tools: tuple[str, ...]
 
 
 def _parse_session_chunk(
@@ -105,6 +100,7 @@ def _parse_session_chunk(
     current_mode = initial_state.current_mode
     image_capture = initial_state.image_capture
     speed = SpeedParser(initial_state.speed_state)
+    row_drain = initial_state.row_drain
     image_operations = []
     quota_points = []
     bytes_read = 0
@@ -138,9 +134,10 @@ def _parse_session_chunk(
             while handle.tell() < captured_stop and handle.tell() < target_stop:
                 line_start = handle.tell()
                 try:
-                    raw_line, complete_line, row_bytes, relevance = read_candidate_row(
+                    row = read_candidate_row(
                         handle, captured_stop,
                         max_row_bytes=target_stop - line_start if strict_byte_budget else None,
+                        drain_state=row_drain,
                     )
                 except RecoveryRowBudgetExceeded as error:
                     if line_start == start_offset:
@@ -148,10 +145,23 @@ def _parse_session_chunk(
                     bytes_read += error.bytes_read
                     handle.seek(line_start)
                     break
-                if not raw_line:
+                if not row.bytes_read:
                     break
+                raw_line, complete_line, row_bytes, relevance = row.raw, row.complete, row.bytes_read, row.relevance
                 bytes_read += row_bytes
                 line_end = handle.tell()
+                if row.drain_state or row.projection is not None:
+                    if relevance == "bounded" and not row_drain:
+                        image_capture, operations, found = capture_bounded_payload(
+                            raw_line, path, metadata, root_session_id, current_turn_id, image_capture,
+                        )
+                        image_operations.extend(operations)
+                        candidates.extend(found)
+                    row_drain = row.drain_state
+                    if row.projection is not None and relevance == "bounded":
+                        speed.observe_projection(*row.projection, current_model, current_turn_id)
+                    checkpoint_offset = line_end
+                    continue
                 unterminated_tail = line_end == captured_stop and not complete_line
                 # A definitively irrelevant row is safe to checkpoint even when the
                 # source has not written a trailing newline. Its discriminator cannot
@@ -161,52 +171,6 @@ def _parse_session_chunk(
                     continue
                 if relevance == "timing":
                     speed.observe_prefix(raw_line, current_model, current_turn_id)
-                    checkpoint_offset = line_end
-                    continue
-                if relevance == "bounded" and row_bytes > len(raw_line):
-                    speed.observe_prefix(raw_line, current_model, current_turn_id)
-                    event_timestamp = metadata.timestamp
-                    root_task_id = (
-                        metadata.parent_thread_id
-                        or root_session_id
-                        or metadata.session_id
-                    )
-                    invocation = bounded_invocation_from_prefix(
-                        raw_line,
-                        timestamp=event_timestamp,
-                        metadata=metadata,
-                        root_task_id=root_task_id,
-                        turn_id=current_turn_id,
-                    )
-                    if invocation is not None:
-                        image_capture = ImageCaptureState(
-                            replace_pending(image_capture.pending, invocation)
-                        )
-                        image_operations.append(invocation)
-                    else:
-                        candidates.extend(
-                            _extract_bounded_repo_path_candidates(
-                                raw_line,
-                                event_timestamp,
-                                metadata.session_id,
-                            )
-                        )
-                        resolved = bounded_result_for_pending(
-                            raw_line,
-                            image_capture.pending,
-                            artifact_directory=_generated_artifact_directory(
-                                path, metadata.session_id
-                            ),
-                        )
-                        if resolved is not None:
-                            image_operations.append(resolved)
-                            image_capture = ImageCaptureState(
-                                remove_pending(
-                                    image_capture.pending, resolved.tool_call_id
-                                )
-                                if resolved.outcome is not ImageOutcome.ATTEMPTED
-                                else replace_pending(image_capture.pending, resolved)
-                            )
                     checkpoint_offset = line_end
                     continue
                 try:
@@ -452,6 +416,7 @@ def _parse_session_chunk(
                 current_mode=current_mode,
                 image_capture=image_capture,
                 speed_state=speed.state,
+                row_drain=row_drain,
             )
             head_sha256, head_bytes = _digest_range(
                 handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint_offset)
@@ -493,4 +458,5 @@ def _parse_session_chunk(
         quota_observations=tuple(quota_points),
         speed_facts=tuple(speed.facts),
         speed_tools=tuple(speed.tools),
+        speed_uncertain_tools=tuple(sorted(speed.uncertain_tools)),
     )

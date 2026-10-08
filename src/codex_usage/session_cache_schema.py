@@ -472,6 +472,7 @@ def _drop_cache_schema(connection: sqlite3.Connection) -> None:
     for table in (
         "speed_cache_facts",
         "speed_cache_tools",
+        "speed_cache_uncertain_tools",
         "speed_cache_dirty",
         "quota_cache",
         "project_transitions",

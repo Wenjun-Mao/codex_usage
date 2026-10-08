@@ -21,8 +21,28 @@ aborted, mixed and ambiguous boundaries are excluded, never clipped or repaired.
 Legacy or mismatched-version timing checkpoints begin unsafe. Timing state is bounded and content-free;
 streamed payloads supply structural header metadata only.
 
+Complete bounded structural extraction crosses ignored output/media strings,
+including required metadata after content. A prefix alone is not evidence of
+absence. Known payload rows can checkpoint mid-row and resume within the shared
+byte budget; checkpoints contain lexer grammar position and headers, never text
+or media. Invalid UTF-8/JSON, duplicate required keys, excessive nesting (64), or
+oversized required headers (256 decoded characters) invalidate the affected
+response boundary rather than silently truncating evidence. Unknown/unclassified
+financial rows still require exact parsing and can be terminally unsupported at
+the recovery byte limit. Long valid output is not excluded by length alone.
+Structural-first draining applies only to message/reasoning bodies. Tool calls
+and results retain the existing Unicode/escape-sensitive full extraction route
+for precise image parameters, reference kind, result usage and repository-path
+evidence. Timing projects separately and never lowers accounting precision.
+
 Durable tool intervals and output instants can revoke already-promoted samples,
-including evidence arriving after token_count or a restart. Response identities
+including evidence arriving after token_count or a restart.
+Untimed actual tool/unknown-item evidence is attributed to its turn and excludes
+that turn only; item existence is not execution. Plan/UserMessage/HookPrompt,
+SubAgentActivity and review-mode bookkeeping are not tool intervals. Extension
+items can represent execution: valid intervals exclude overlap; untimed evidence
+excludes only its attributable turn, as for other unknown execution variants.
+There is no source-wide unknown-tool sentinel. Response identities
 settle as groups: equivalent copies contribute once, conflicting copies all
 exclude. Superseded source generations do not participate. No foreign key points
 to a normalized event ID; report joins use generation plus emitted ordinal so
@@ -68,6 +88,13 @@ effort-split defaults, inferred service tiers and permissive webview scripts.
 Host commands remain allowlisted with exact argument-shape, scope, calendar-date
 and neighbor validation. Mismatched collectors fail visibly.
 
+Native acceptance uses disposable profiles and the supported
+`--use-inmemory-secretstorage` flag: a temporary HOME alone does not isolate
+Electron's native credential backend on macOS. It explicitly attaches the
+separate webview iframe target, reads rendered DOM, and dispatches real mouse
+input; no product scripts/CSP change or host-only navigation substitutes for
+click acceptance. Evidence records harness/source and bundled-collector hashes.
+
 Synthetic replay covers checkpoint boundaries, late revocation, order-independent
 conflicts, additive migration, replacement, retention, transitions, DST, display
 gates and zero warm timing/monetary work. Packaged tests exercise migration and
@@ -78,3 +105,12 @@ candidate and release gates. This ADR complements [0002](0002-native-html-svg-da
 [0033](0033-persistent-collector-and-durable-ledger.md),
 [0043](0043-image-generation-accounting.md), and
 [0045](0045-guard-verified-ledger-generations.md), without replacing their policies.
+
+`scripts/check_speed_contract.py` is content-free pairing/threshold replay, not
+production ingestion coverage. `scripts/check_speed_ingestion.py` verifies only
+the original bounded, hash-matching frozen tails via whole-object, full, append
+and production-budget recovery paths, reconciles trusted deltas, and compares
+model/daily/hourly usability across thresholds. It reads the ledger query-only,
+keeps raw copies temporary and private output ignored, and reports unavailable
+or changed samples explicitly. This is selected-sample coverage, not a universal
+format or timing-quality guarantee.

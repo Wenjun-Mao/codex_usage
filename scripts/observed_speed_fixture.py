@@ -57,8 +57,9 @@ def legacy_speed_home(home):
         for row in connection.execute("select file_key, state_json from parser_checkpoints").fetchall():
             state = json.loads(row["state_json"])
             state.pop("speed_state", None)
+            state.pop("row_drain", None)
             connection.execute("update parser_checkpoints set state_json=? where file_key=?", (json.dumps(state), row["file_key"]))
-        for table in ("ledger_speed_identities", "ledger_speed_facts", "speed_recovery", "speed_report_cache", "speed_html_cache", "speed_cache_facts", "speed_cache_tools", "speed_cache_dirty"):
+        for table in ("ledger_speed_identities", "ledger_speed_facts", "speed_recovery", "speed_report_cache", "speed_html_cache", "speed_cache_facts", "speed_cache_tools", "speed_cache_uncertain_tools", "speed_cache_dirty"):
             connection.execute(f"drop table {table}")
         connection.execute("update ledger_meta set value='5' where key='schema_version'")
         connection.execute("update schema_meta set value='10' where key='schema_version'")
