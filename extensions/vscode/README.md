@@ -27,11 +27,13 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.10.5.
+Linux are not supported in 2.11.0.
 
 ## What You Can Do
 
 - Open the ledger-backed Usage dashboard without rescanning task JSONLs.
+- Compare observed model output-phase tok/s in Model Details and Daily/Hourly
+  trends, with median, middle 50% range, sample counts and seven-day hourly windows.
 - Run **Capture Usage** when you want current totals immediately.
 - Set `CODEX_HOME`, scheduled capture or **Manual only**, and migrate compatible
   legacy usage caches entirely inside VS Code.
@@ -124,11 +126,11 @@ separate from language accounting; prompts, paths, bytes, and image contents
 are not retained. Unknown or conflicting model evidence is shown as unpriced
 rather than estimated.
 
-Historical image recovery participates in startup, scheduled, and manual
-captures. One capture reads no more than four 16 MiB rollout slices (64 MiB
-total), serves new recent artifact owners first, and then rotates the least
-recently served owners fairly. Missing or ambiguous owners remain visibly
-unavailable without blocking a valid owner from using the bounded slice.
+Historical image and speed recovery participate in startup, scheduled, and manual
+captures, sharing no more than four 16 MiB rollout slices (64 MiB total). Recent
+sources are prioritized while older sources and image owners make fair progress.
+Missing or unmeasurable timing is explicit; captured language and image evidence
+remain unchanged. Deleted or untimed logs cannot supply missing timing evidence.
 
 Pricing is bundled and effective-dated. GPT-6 Astra, Sol, and Luna are recognized
 by exact model IDs, with cache-write and long-context API pricing. Sol and Luna
@@ -142,12 +144,36 @@ Fast-mode multipliers because task records do not identify them reliably.
 The collector normally checks every configured interval. Unchanged cycles may
 inspect filesystem metadata but open zero JSONLs; ordinary growth reads only
 guard windows and the new tail. **Capture Usage** coalesces with existing capture
-work and resets the next interval after success. The reload icon only re-queries
-the current view, so it does not scan task files or advance the ledger.
+work and resets the next interval after success. Usage refreshes automatically
+and has no separate reload icon. Task Storage retains its reload icon, and
+**Reload Current View** remains available in the Command Palette without capture.
 
 Deleted source tasks remain in historical totals only after their latest usage
 was captured. Run **Capture Usage** before deleting. Codex Usage cannot restore a
 deleted task.
+
+## Observed Output Speed
+
+Model Details summarizes the complete selected range and project filter.
+Daily trends use local calendar days; Hourly uses navigable seven-local-day
+windows without changing the global filters or summary. Repeated DST hours keep
+their distinct offsets. Capture refresh preserves granularity and window.
+**All Projects** includes future projects; all checked current projects remain
+an explicit fixed subset.
+
+Eligible responses contain at least 500 output tokens, counting reasoning once.
+Points require five responses; five through nineteen are marked small sample.
+Detail exposes the median, middle 50% range and task/source counts. Gaps are
+missing or insufficient evidence, not zero speed. Recovery and exclusions are
+available in folded diagnostics.
+
+This is client-observed output-phase speed, not pure server decode speed,
+first-token latency or end-to-end task throughput. Ambiguous, conflicting and
+tool-overlapping evidence is excluded. Workload mix, routing, client timing and
+missing logs limit comparisons; trends do not establish a rollout's causal or
+universal gain. Timing storage retains no prompts, answers or reasoning text.
+
+![Synthetic observed output-speed chart](https://raw.githubusercontent.com/Wenjun-Mao/codex_usage/main/docs/marketplace/extension-speed-night-synthetic.png)
 
 ## Task Storage
 

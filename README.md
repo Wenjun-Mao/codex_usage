@@ -22,6 +22,9 @@ OpenAI API.
   filters, theme changes, Agent Activity, and CSV export query the ledger
   without reopening task files. Long ranges retain a script-free **Week |
   Month** cost view inside the rendered report.
+- **Observed Output Speed:** compare model-level output-phase tok/s with daily
+  trends and seven-day hourly windows. Medians, middle 50% ranges and sample
+  counts distinguish observed variation from insufficient timing evidence.
 - **Agent Activity:** inspect daily token and response deltas plus the top 50
   agents in a collapsed detail table, then export every selected agent-day row
   to CSV; the Daily Summary stays visible.
@@ -44,7 +47,7 @@ from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
 packages each include the matching local collector; the native app, Python,
 `uv`, and this repository are not required.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.10.5 release.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.11.0 release.
 
 ## First Run And Legacy Service Handoff
 
@@ -79,11 +82,11 @@ interval. Filesystem notifications only mark paths as dirty; notification
 callbacks never read task content. Overdue work after startup, sleep/wake, or a
 watcher recovery produces one catch-up rather than replaying every missed tick.
 
-Historical image recovery participates in startup, scheduled, and manual
-captures. Each capture reads at most four 16 MiB rollout slices (64 MiB total),
-serving new recent artifact owners first and then rotating the least recently
-served owners. Missing or ambiguous owners are reported as unavailable without
-blocking a valid owner from using the bounded slice.
+Historical image and speed recovery participate in startup, scheduled, and manual
+captures, sharing at most four 16 MiB rollout slices (64 MiB total) per capture.
+Recent sources are prioritized while older sources and image owners make fair
+progress. Missing or unmeasurable timing is explicit; previously captured usage
+is unchanged. Deleted or untimed logs cannot supply missing timing evidence.
 
 The status header shows the last capture, next scheduled capture, pending files
 and bytes, baseline progress, and stale-source warnings. Use **Capture Usage**
@@ -142,9 +145,12 @@ not turn denominators; unpriced usage remains in token totals and coverage but
 not cost denominators. Detailed Token Accounting is collapsed by default, and
 **Cache Write (reported)** always means the value stored in the selected ledger,
 not a value inferred from cache reads or reconstructed while rendering.
-Date, Agent Activity, export, and project changes query SQLite; chart-only controls do not. The reload icon re-queries the ledger without
-capturing task files; **Capture Usage** is the separate action that updates the
-ledger. The report shows generation time and whether its rendered-result cache was used.
+Date, Agent Activity, export, and project changes query SQLite. The CSS-only
+Week/Month cost toggle stays local to the rendered report; speed Daily/Hourly
+and window navigation use validated host commands and cached ledger queries.
+**Capture Usage** updates the ledger and refreshes Usage. The Command Palette
+reload command remains available without capturing task files; the Usage toolbar
+has no separate reload icon. The report shows generation time and whether its rendered-result cache was used.
 Pricing is bundled and effective-dated; the app makes no live pricing request.
 Image pricing is similarly effective-dated and applies only when retained
 upstream usage and model evidence support it; image prompts, paths, bytes, and
@@ -163,6 +169,28 @@ Credit estimates use published Standard token rates; Codex Usage does not infer
 plan-specific or Fast-mode multipliers because task records do not identify
 them reliably. Estimates are not an OpenAI invoice and do not know the price of
 your plan.
+
+## Observed Output Speed
+
+Model Details shows output-phase tok/s for the complete selected range and
+project filter. Daily trends use local calendar days; Hourly uses navigable
+seven-local-day windows, preserving repeated DST hours. Capture refresh retains
+the selected granularity and window. **All Projects** includes newly discovered
+projects; selecting every current checkbox remains a fixed subset.
+
+Each point is the median of eligible responses, including reasoning output once.
+At least 500 output tokens and five responses are required; five through nineteen
+responses are marked small sample. Detail exposes the middle 50% range and task
+counts. Gaps are missing or insufficient evidence, not zero speed. Recovery and
+exclusion reasons stay in folded diagnostics.
+
+The measure is client-observed output-phase speed, not pure server decoding,
+first-token latency or whole-task throughput. Ambiguous, conflicting and
+tool-overlapping evidence is excluded. Workload mix, routing, client timing and
+missing logs limit comparisons; a trend cannot establish a rollout's cause or
+universal improvement. No prompts, answers or reasoning text are retained.
+
+![Synthetic observed output-speed chart](docs/marketplace/extension-speed-night-synthetic.png)
 
 ## Task Storage
 

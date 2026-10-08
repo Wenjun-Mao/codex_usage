@@ -1,6 +1,6 @@
-# 2.10.5 VSIX Release Checklist
+# 2.11.0 VSIX Release Checklist
 
-Codex Usage 2.10.5 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.11.0 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
@@ -28,6 +28,44 @@ or a source checkout on the user's machine.
 `VSCE_PAT` with Manage permission for publisher `wenjun-mao` is the sole
 publication secret.
 
+## Observed Output Speed Acceptance
+
+Implementation candidate `acc0ee56940327b689f7ba0a082fee8034ef5526` was independently
+accepted after exact nonpublishing [platform CI](https://github.com/Wenjun-Mao/codex_usage/actions/runs/37856763085).
+ADR 0053 defines the metric and guarded evidence contract. Preserve the accepted
+product behavior while preparing release metadata and synthetic images.
+
+Verify additive ledger schema 5 to 6 and parser cache 10 to 11 migrations before
+any fallback drop. Speed-only recovery must preserve language events, monetary
+revisions, image metadata and repository attribution. Known large media rows
+resume within strict byte budgets; generated messages use complete bounded
+structural projection, not a truncated content prefix. Ambiguous tool evidence
+is scoped to attributable turns or intervals, including execution-capable
+Extension items. Conflicting response identities exclude all copies.
+
+Check model-level medians/IQR and range/project filtering, five-response display
+gates, 500 output-token floor, Daily/Hourly windows and DST offsets. Capture
+retains chart state. Explicit All Projects must include future projects, unlike
+a fixed selected subset. Usage has no reload icon; Storage and palette reload
+remain available. Warm HTML performs no historical or monetary recomputation.
+
+The actual script-disabled isolated VS Code gate exercised five rendered mouse
+clicks and capture-state retention. Its accepted harness source SHA-256 is
+`74e083f194d1ae825c17401d0a7058d91e3db61959bb512720092bb1dffa0be9`;
+the explicit iframe-target helper is
+`5eae5a83f5857cd4fbfff8ee395dae62c1a26bf1b067e0e4b4706ca677148067`.
+No retry is needed for metadata-only release changes. Any future disposable host
+must retain `--use-inmemory-secretstorage`: temporary HOME alone does not prevent
+Electron's native credential storage. Never alter the user's Keychain or profile.
+
+Private captured-data evidence remains ignored, unpublished and bounded to a
+hash-matched selected cohort, with identical accepted and display-eligible
+observations across whole-object, full, append and recovery paths. The
+content-free replay only tests pairing/threshold sensitivity; it is
+not production ingestion coverage. These observations do not prove universal
+format coverage, server decode speed or a rollout's causal gain. Public fixtures,
+screenshots and CI contain synthetic evidence only.
+
 ## Included Auto-review Regression Checks
 
 Use the conservative announcement boundary in ADR 0052, not a backdated free
@@ -51,8 +89,9 @@ and unlimited balances explicitly. Keep history and net changes folded, separate
 from token-based credit estimates and banked resets. A reset must not clear credit
 history, and increases must not be reported as spending.
 
-Verify a packaged collector migrates a disposable schema-4 ledger to schema 5,
-preserves events and quota evidence, and leaves a readable pre-migration backup.
+Verify a packaged collector migrates a disposable schema-4 ledger through schema 5
+to schema 6, preserves events and quota evidence, and leaves a readable
+pre-migration backup.
 Allowance fits stop before the first raw full-meter reading, including conflicting
 same-timestamp evidence and later small corrections. Keep raw observations,
 ordinary costs and genuine reset boundaries unchanged. Historical
@@ -80,8 +119,8 @@ Check the same three wrapping rows with estimated labels on cost-based results,
 actual spans, local today/tomorrow wording, full dates/offsets on hover and
 approximate day/hour reset gaps. Keep cost, reference identity/value/dates,
 method, interval, coverage and reasons in existing folded diagnostics. Add no
-new UI group. Schema 5 and cost-index revision 2 remain unchanged; derived
-report revision 6 and HTML revision 26 invalidate old forecasts.
+new UI group. Cost-index revision 2 and existing pace arithmetic remain unchanged;
+the additive speed migration and timing revision invalidate relevant reports.
 
 The synthetic 10,000-event/52,001-point two-bucket benchmark measured rate and
 reference work below 1 ms after shared preparation; cold materialization still
@@ -150,12 +189,15 @@ uv run playwright install chromium firefox webkit
 uv run python scripts/generate_marketplace_screenshot.py
 uv run python scripts/generate_marketplace_screenshot.py --check
 uv run python scripts/check_allowance_ui.py
+uv run python scripts/check_speed_ui.py
 ```
 
 Canonical images are `docs/marketplace/extension-usage-synthetic.png` and
 `docs/marketplace/extension-storage-synthetic.png`. The Day/Night wide/narrow
 Usage matrix is retained beside them. Neither screenshots nor fixture data may
 contain personal paths, task content, or a local corpus.
+The generator also creates reproducible Day/Night observed-speed section images
+from the shared public synthetic timing fixture.
 
 ## Legacy Handoff Acceptance
 
@@ -199,13 +241,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.10.5`, both
+Confirm Python and extension metadata and lockfiles all say `2.11.0`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.10.5`:
+Only after the non-publishing platform gate succeeds, create and push `v2.11.0`:
 
 ```bash
-git tag v2.10.5
-git push origin v2.10.5
+git tag v2.11.0
+git push origin v2.11.0
 ```
 
 The tag reruns all platform gates and publishes
@@ -213,6 +255,12 @@ The tag reruns all platform gates and publishes
 `codex-usage-companion-win32-x64.vsix`. Record the tag commit, workflow URL,
 Marketplace versions, and package hashes. The workflow does not create a GitHub
 Release; VSCE uses `--skip-duplicate` on a rerun.
+
+Query the public Marketplace catalog for version 2.11.0 on both `darwin-arm64`
+and `win32-x64`, download each official versioned target VSIX, and require its
+SHA-256 to equal the corresponding artifact from the exact tag workflow. Retain
+run URLs, catalog metadata and public hashes under ignored release evidence;
+the pre-tag build's checksums need not equal the tag rebuild's ZIP bytes.
 
 Tell users with an older native preview to complete explicit service handoff
 before uninstalling it, and to preserve their shared `.codex-usage` data.

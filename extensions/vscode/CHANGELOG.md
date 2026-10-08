@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 2.11.0 - 2026-10-08
+
+- Add observed output-phase tok/s to Model Details and Daily/Hourly trends with
+  median, middle 50% range, response/task counts, and visible small-sample gaps.
+  Compare exact models across the selected range without splitting by effort;
+  navigate hourly detail in seven-local-day windows without changing filters.
+- Recover available historical timing in bounded, resumable batches shared
+  fairly with image recovery. Preserve language, monetary, image and repository
+  evidence through additive ledger/cache migrations and independent timing
+  revisions; reports remain ledger-only with script-disabled chart controls.
+- Reject ambiguous, conflicting, incomplete and tool-overlapping response
+  evidence. Long generated content is structurally projected without retaining
+  text; known large media rows resume safely without losing later responses.
+- Add an explicit All Projects action that includes future projects. Keep a
+  checked selection of all current projects as a fixed subset.
+- Remove the redundant Usage reload icon while retaining Capture Usage,
+  automatic refresh, Task Storage reload and Command Palette recovery.
+- These client-observed workload samples are not pure server decode speed,
+  end-to-end task throughput, or proof of a service rollout's causal gain.
+
 ## 2.10.5 - 2026-10-07
 
 - Treat dedicated Auto-review usage after the October 6 announcement as zero
