@@ -5,6 +5,34 @@ Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
 
+## Published Receipt
+
+Released on 2026-10-08 as `v2.11.0`, pointing to
+`559c18a2ff72feed9945b9d4773a613d2b5b72f5` on `main`.
+Exact [nonpublishing CI](https://github.com/Wenjun-Mao/codex_usage/actions/runs/37857968814)
+passed before the tag; the [tag publication workflow](https://github.com/Wenjun-Mao/codex_usage/actions/runs/37858471638)
+passed core, both platform jobs and publication. The first metadata preflight
+was superseded after aligning the runtime version constant and extending the
+screenshot check-mode non-mutation test; no product behavior was changed.
+
+The public Marketplace catalog lists validated 2.11.0 entries for both targets.
+Official versioned downloads were independently audited and their SHA-256 values
+equal both the exact tag-built artifacts and the catalog's declared hashes:
+
+- macOS Apple Silicon (`darwin-arm64`):
+  `71276a3e17cfce4134802668a39f48a81d128688284d52c79f30204727f14dee`
+- Windows x64 (`win32-x64`):
+  `d8b9bbc767e2c54b790295e344060a94cd6f6b661cc9c3e3163e506b0ab0af7c`
+
+Local gates passed: 1,631 Python tests with one expected skip, 33 extension tests
+and build, 37 focused release tests, Ruff, lock validation, and regenerated
+synthetic screenshots. The accepted native rendered-click gate remains valid
+for these metadata-only changes. Public catalog propagation required more than
+the initial six-minute window; no duplicate publication was attempted.
+Detailed workflow/catalog/download evidence remains ignored under
+`output/releases/2.11.0/`. No live data, installed extension, service or Keychain
+was modified for release verification; private corpus evidence is unpublished.
+
 ## Release Contract
 
 - Preserve the existing `CODEX_HOME/.codex-usage/usage-ledger.sqlite3`, settings,
