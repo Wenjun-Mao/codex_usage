@@ -68,6 +68,9 @@ class AgentFeatures:
         theme: str,
         start_date: str | None = None,
         end_date: str | None = None,
+        speed_granularity: str | None = None,
+        speed_window_start: str | None = None,
+        speed_window_scope: str | None = None,
     ) -> RenderedLedgerReport:
         settings = self._settings()
         return render_ledger_report(
@@ -79,6 +82,9 @@ class AgentFeatures:
             theme=theme,
             timezone_name=settings.timezone,
             auto_transitions=settings.auto_project_transitions,
+            speed_granularity=speed_granularity,
+            speed_window_start=speed_window_start,
+            speed_window_scope=speed_window_scope,
         )
 
     def export_agent_activity(

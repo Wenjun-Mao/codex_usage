@@ -8,12 +8,13 @@ from time import monotonic
 
 from codex_usage.allowance_capture import capture_quota_read, recover_captured_allowance
 from codex_usage.agent_paths import ledger_database_path
-from codex_usage.image_backfill import run_image_backfill
+from codex_usage.capture_recovery import run_historical_recovery
 from codex_usage.ledger_queries import LedgerStatus, load_ledger_status
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.ledger_sync import synchronize_parser_workset
 from codex_usage.session_cache import refresh_cached_session_data
 from codex_usage.session_cache_models import CacheStats
+from codex_usage.speed_recovery import SpeedRecoveryResult
 
 
 CAPTURE_SLICE_BYTES = 64 * 1024 * 1024
@@ -29,6 +30,7 @@ class CaptureResult:
     status: LedgerStatus
     stats: CacheStats
     error: str = ""
+    speed_recovery: SpeedRecoveryResult | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -39,6 +41,7 @@ class CaptureResult:
             "status": self.status.to_dict(),
             "stats": asdict(self.stats),
             "error": self.error,
+            "speed_recovery": asdict(self.speed_recovery) if self.speed_recovery is not None else None,
         }
 
 
@@ -95,11 +98,13 @@ def capture_once(
         # Every capture source (startup, scheduled, and explicit manual) makes
         # bounded historical-image progress.  The agent coalesces these calls
         # onto its one heavy-I/O lane before capture_once is entered.
-        backfill = run_image_backfill(codex_home, ledger_path)
+        synchronize_parser_workset(
+            ledger_path, force_normalized_ownership=bool(outcome.rebased_project_task_ids),
+        )
+        image_changed, speed_recovery = run_historical_recovery(codex_home, ledger_path)
         revision, _ = synchronize_parser_workset(
             ledger_path,
-            force_normalized_ownership=bool(outcome.rebased_project_task_ids),
-            force_image_events=backfill.changed,
+            force_image_events=image_changed,
         )
         revision = recover_captured_allowance(ledger_path)
         status = load_ledger_status(ledger_path)
@@ -119,6 +124,7 @@ def capture_once(
             elapsed_seconds=monotonic() - started,
             status=status,
             stats=stats,
+            speed_recovery=speed_recovery,
         )
     except BaseException as exc:
         error = f"{type(exc).__name__}: {exc}"

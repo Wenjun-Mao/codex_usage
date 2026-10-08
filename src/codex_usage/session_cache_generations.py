@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from codex_usage.allowance_store import cache_observations
-from codex_usage.image_capture_models import captured_operation_to_dict
+from codex_usage.session_cache_images import insert_image_operations
 from codex_usage.models import UsageRecord
 from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_cache_checkpoints import upsert_parser_checkpoint
@@ -17,6 +17,7 @@ from codex_usage.session_generation_models import (
     RawRepoPathCandidate,
 )
 from codex_usage.session_inventory import SessionFileInventoryEntry
+from codex_usage.speed_store import cache_speed
 
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
 
@@ -35,6 +36,7 @@ def replace_file_generation(
     delete_file_generation(connection, entry.file_key)
     insert_usage_records(connection, entry, generation.records)
     insert_image_operations(connection, entry.file_key, generation.image_operations)
+    cache_speed(connection, entry.file_key, generation)
     cache_observations(connection, entry.file_key, generation.quota_observations)
     insert_session_metadata(connection, session_dirs, entry, generation)
     insert_transition_candidates(
@@ -71,6 +73,7 @@ def append_file_generation(
         start_index=candidate_start,
     )
     insert_image_operations(connection, entry.file_key, appended.image_operations)
+    cache_speed(connection, entry.file_key, appended)
     cache_observations(connection, entry.file_key, appended.quota_observations)
     _update_session_metadata_after_append(
         connection,
@@ -98,6 +101,9 @@ def rekey_file_generation(
     delete_file_generation(connection, replacement.file_key)
     connection.execute("delete from files where file_key = ?", (replacement.file_key,))
     for table in (
+        "speed_cache_facts",
+        "speed_cache_tools",
+        "speed_cache_dirty",
         "usage_records",
         "session_metadata",
         "transition_candidates",
@@ -186,6 +192,8 @@ def generation_task_ids(generation: ParsedSessionGeneration) -> set[str]:
 
 
 def delete_file_generation(connection: sqlite3.Connection, file_key: str) -> None:
+    for table in ("speed_cache_facts", "speed_cache_tools", "speed_cache_dirty"):
+        connection.execute(f"delete from {table} where file_key=?", (file_key,))
     connection.execute("delete from usage_records where file_key = ?", (file_key,))
     connection.execute(
         "delete from session_metadata where file_key = ?", (file_key,)
@@ -321,64 +329,6 @@ def insert_transition_candidates(
         )
 
 
-def insert_image_operations(
-    connection: sqlite3.Connection,
-    file_key: str,
-    operations: tuple,
-) -> None:
-    """Persist normalized metadata only; tool payloads never reach SQLite."""
-    for operation in operations:
-        values = captured_operation_to_dict(operation)
-        timestamp = operation.timestamp
-        connection.execute(
-            """
-            insert into image_operations (
-                file_key, tool_call_id, timestamp, timestamp_us, task_id,
-                root_task_id, usage_role, turn_id, project_key, project_label,
-                kind, outcome, output_count, output_width, output_height,
-                output_format, quality, evidence_json, usage_json
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            on conflict(file_key, tool_call_id) do update set
-                timestamp = excluded.timestamp,
-                timestamp_us = excluded.timestamp_us,
-                task_id = excluded.task_id,
-                root_task_id = excluded.root_task_id,
-                usage_role = excluded.usage_role,
-                turn_id = excluded.turn_id,
-                project_key = excluded.project_key,
-                project_label = excluded.project_label,
-                kind = excluded.kind,
-                outcome = excluded.outcome,
-                output_count = excluded.output_count,
-                output_width = excluded.output_width,
-                output_height = excluded.output_height,
-                output_format = excluded.output_format,
-                quality = excluded.quality,
-                evidence_json = excluded.evidence_json,
-                usage_json = excluded.usage_json
-            """,
-            (
-                file_key,
-                operation.tool_call_id,
-                timestamp.isoformat(),
-                _timestamp_us(timestamp),
-                operation.task_id,
-                operation.root_task_id,
-                operation.usage_role,
-                operation.turn_id,
-                operation.project_key,
-                operation.project_label,
-                operation.kind.value,
-                operation.outcome.value,
-                operation.output_count,
-                operation.output_width,
-                operation.output_height,
-                operation.output_format,
-                operation.quality,
-                json.dumps(values["evidence"], separators=(",", ":"), sort_keys=True),
-                json.dumps(values["usage"], separators=(",", ":"), sort_keys=True),
-            ),
-        )
 
 
 def upsert_file_fingerprint(

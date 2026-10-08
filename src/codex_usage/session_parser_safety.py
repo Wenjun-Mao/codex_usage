@@ -19,10 +19,12 @@ class PartialSessionGenerationReadError(OSError):
         self,
         candidates: tuple[RawRepoPathCandidate, ...],
         cause: OSError | UnicodeDecodeError,
+        bytes_read: int = 0,
     ) -> None:
         super().__init__(str(cause))
         self.candidates = candidates
         self.cause = cause
+        self.bytes_read = bytes_read
 
 
 def validate_append_checkpoint(

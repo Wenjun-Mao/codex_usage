@@ -17,6 +17,10 @@ _USAGE_EVENT_MARKERS_BYTES = tuple(
         '"token_count"',
         '"task_started"',
         '"item_completed"',
+        '"token_usage_record"',
+        '"task_complete"',
+        '"turn_aborted"',
+        '"task_aborted"',
     )
 )
 _FUNCTION_CALL_MARKERS_BYTES = (b'"response_item"', b'"function_call"')
@@ -29,7 +33,7 @@ _TOP_LEVEL_TYPE = re.compile(
     re.DOTALL,
 )
 
-type RowRelevance = Literal["relevant", "bounded", "irrelevant", "unclassified"]
+type RowRelevance = Literal["relevant", "bounded", "irrelevant", "unclassified", "timing"]
 
 
 def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
@@ -49,6 +53,8 @@ def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
             b"function_call_output",
             b"custom_tool_call",
             b"custom_tool_call_output",
+            b"reasoning",
+            b"message",
         }:
             # Calls and results can contain data URLs or generated-image base64.
             # Keep only a prefix while streaming the rest to the newline.
@@ -75,12 +81,11 @@ def classify_row_prefix(prefix: bytes, *, complete: bool) -> RowRelevance:
             b"inter_agent_communication_metadata",
             b"response_item",
             b"event_msg",
+            b"token_usage_record",
         }:
             return "irrelevant"
     if complete:
-        return (
-            "relevant" if _legacy_line_bytes_may_affect_usage(prefix) else "irrelevant"
-        )
+        return "relevant" if _legacy_line_bytes_may_affect_usage(prefix) else "timing"
     return "unclassified"
 
 

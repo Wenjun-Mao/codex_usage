@@ -8,6 +8,9 @@ import time
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+import sqlite3
+
+from observed_speed_fixture import legacy_speed_home
 
 
 def main() -> int:
@@ -23,6 +26,7 @@ def main() -> int:
         session = sessions / f"rollout-2026-09-02T12-00-00-{task_id}.jsonl"
         session.write_text(_fixture_jsonl(task_id, root / "project"), encoding="utf-8")
         (root / "project").mkdir()
+        speed_db, speed_baseline = legacy_speed_home(home)
         settings = root / "settings.json"
         settings.write_text(
             json.dumps(
@@ -70,6 +74,7 @@ def main() -> int:
             report = _request(descriptor, "GET", "/v1/report?range=all&theme=night")
             if "Codex Usage Report" not in str(report.get("html", "")):
                 raise RuntimeError("packaged ledger report was not rendered")
+            _verify_packaged_speed(descriptor, speed_db, speed_baseline, report)
         finally:
             if process.poll() is None:
                 try:
@@ -88,6 +93,22 @@ def main() -> int:
             stderr = process.stderr.read() if process.stderr else ""
             raise RuntimeError(f"packaged agent exited with {process.returncode}: {stderr}")
     return 0
+
+
+def _verify_packaged_speed(descriptor, db, baseline, report):
+    status = _request(descriptor, "GET", "/v1/status")
+    assert "observed-output-speed-v1" in status["capabilities"]
+    assert status["speed"]["pending"] == 0
+    assert "Observed Output Speed" in report["html"] and "300.0" in report["html"]
+    warm = _request(descriptor, "GET", "/v1/report?range=all&theme=night")
+    assert warm["cache_hit"]
+    hourly = _request(descriptor, "GET", "/v1/report?range=all&theme=night&speed_granularity=hourly")
+    assert hourly["speed_navigation"]["granularity"] == "hourly"
+    with sqlite3.connect(db) as connection:
+        assert connection.execute("select count(*), sum(total_tokens), sum(output_tokens) from ledger_usage_events").fetchone() == baseline
+        assert connection.execute("select count(*) from ledger_speed_facts where reason='' ").fetchone()[0] == 20
+        assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == "6"
+    assert list(db.parent.glob("*.schema-5-backup-*"))
 
 
 def _wait_for_descriptor(path: Path) -> dict[str, object]:

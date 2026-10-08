@@ -44,7 +44,7 @@ from codex_usage.session_parser_events import (
     parse_session_metadata as _parse_session_metadata,
     parse_timestamp,
 )
-from codex_usage.session_chunk_reader import read_candidate_row
+from codex_usage.session_chunk_reader import read_candidate_row, RecoveryRowBudgetExceeded
 from codex_usage.session_row_relevance import (
     CHECKPOINT_DIGEST_BYTES,
     SESSION_READ_BUFFER_BYTES,
@@ -53,6 +53,8 @@ from codex_usage.allowance_models import QuotaObservation, quota_observations
 from codex_usage.storage_content import (
     StorageContentMetrics,
 )
+from codex_usage.speed_parser import SpeedParser
+from codex_usage.speed_models import SpeedFact
 
 
 def _generated_artifact_directory(path: Path, task_id: str) -> Path | None:
@@ -72,6 +74,8 @@ class _ParsedChunk:
     content_metrics: StorageContentMetrics
     image_operations: tuple[CapturedImageOperation, ...]
     quota_observations: tuple[QuotaObservation, ...]
+    speed_facts: tuple[SpeedFact, ...]
+    speed_tools: tuple[tuple[float, float], ...]
 
 
 def _parse_session_chunk(
@@ -84,6 +88,7 @@ def _parse_session_chunk(
     next_candidate_index: int,
     expected_checkpoint: SessionParseCheckpoint | None,
     max_bytes: int | None,
+    strict_byte_budget: bool = False,
 ) -> _ParsedChunk:
     metadata = initial_state.metadata
     root_metadata = initial_state.root_metadata
@@ -99,6 +104,7 @@ def _parse_session_chunk(
     current_effort = initial_state.current_effort
     current_mode = initial_state.current_mode
     image_capture = initial_state.image_capture
+    speed = SpeedParser(initial_state.speed_state)
     image_operations = []
     quota_points = []
     bytes_read = 0
@@ -131,10 +137,17 @@ def _parse_session_chunk(
             )
             while handle.tell() < captured_stop and handle.tell() < target_stop:
                 line_start = handle.tell()
-                raw_line, complete_line, row_bytes, relevance = read_candidate_row(
-                    handle,
-                    captured_stop,
-                )
+                try:
+                    raw_line, complete_line, row_bytes, relevance = read_candidate_row(
+                        handle, captured_stop,
+                        max_row_bytes=target_stop - line_start if strict_byte_budget else None,
+                    )
+                except RecoveryRowBudgetExceeded as error:
+                    if line_start == start_offset:
+                        raise
+                    bytes_read += error.bytes_read
+                    handle.seek(line_start)
+                    break
                 if not raw_line:
                     break
                 bytes_read += row_bytes
@@ -146,7 +159,12 @@ def _parse_session_chunk(
                 if relevance == "irrelevant":
                     checkpoint_offset = line_end
                     continue
+                if relevance == "timing":
+                    speed.observe_prefix(raw_line, current_model, current_turn_id)
+                    checkpoint_offset = line_end
+                    continue
                 if relevance == "bounded" and row_bytes > len(raw_line):
+                    speed.observe_prefix(raw_line, current_model, current_turn_id)
                     event_timestamp = metadata.timestamp
                     root_task_id = (
                         metadata.parent_thread_id
@@ -208,6 +226,7 @@ def _parse_session_chunk(
                         handle.seek(line_start)
                         break
                     checkpoint_offset = line_end
+                    speed.dirty()
                     continue
 
                 event_timestamp = parse_timestamp(obj.get("timestamp"))
@@ -215,6 +234,7 @@ def _parse_session_chunk(
                 payload = (
                     obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
                 )
+                speed.observe(obj, current_model, current_turn_id)
 
                 if event_type == "session_meta":
                     metadata = _parse_session_metadata(payload, path, event_timestamp)
@@ -336,6 +356,9 @@ def _parse_session_chunk(
                     continue
 
                 total_usage = TokenUsage.from_mapping(info.get("total_token_usage"))
+                if previous_usage and any(total_usage.to_dict()[k] < previous_usage.to_dict()[k] for k in ("input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens")):
+                    if speed.matched is not None:
+                        speed.matched["reason"] = "nonmonotonic_usage"
                 had_previous_usage = previous_usage is not None
                 delta = total_usage.positive_delta(previous_usage)
                 previous_usage = total_usage
@@ -405,6 +428,7 @@ def _parse_session_chunk(
                 )
                 if root_session_is_fork and is_root_session:
                     counted_root_fork_usage = True
+                speed.finish(records[-1], next_record_index + len(records) - 1, metadata.cli_version)
                 checkpoint_offset = line_end
 
             current_path_stat = path.stat()
@@ -427,6 +451,7 @@ def _parse_session_chunk(
                 current_effort=current_effort,
                 current_mode=current_mode,
                 image_capture=image_capture,
+                speed_state=speed.state,
             )
             head_sha256, head_bytes = _digest_range(
                 handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint_offset)
@@ -439,7 +464,8 @@ def _parse_session_chunk(
     except (OSError, UnicodeDecodeError) as error:
         from codex_usage.session_parser_safety import PartialSessionGenerationReadError
 
-        raise PartialSessionGenerationReadError(tuple(candidates), error) from error
+        raise PartialSessionGenerationReadError(tuple(candidates), error,
+            bytes_read + getattr(error, "bytes_read", 0)) from error
 
     selected_metadata = root_metadata or SessionMetadata(
         session_id=path.stem,
@@ -465,4 +491,6 @@ def _parse_session_chunk(
         content_metrics=content_metrics,
         image_operations=tuple(image_operations),
         quota_observations=tuple(quota_points),
+        speed_facts=tuple(speed.facts),
+        speed_tools=tuple(speed.tools),
     )

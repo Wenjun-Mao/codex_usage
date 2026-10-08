@@ -8,6 +8,7 @@ from codex_usage.image_capture_models import CapturedImageOperation
 from codex_usage.models import SessionMetadata, UsageRecord
 from codex_usage.session_parser_models import SessionParseCheckpoint
 from codex_usage.storage_content import StorageContentMetrics
+from codex_usage.speed_models import SpeedFact
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,8 @@ class ParsedSessionGeneration:
     content_metrics: StorageContentMetrics = StorageContentMetrics()
     image_operations: tuple[CapturedImageOperation, ...] = ()
     quota_observations: tuple[QuotaObservation, ...] = ()
+    speed_facts: tuple[SpeedFact, ...] = ()
+    speed_tools: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,3 +44,5 @@ class ParsedSessionAppend:
     start_offset: int = 0
     image_operations: tuple[CapturedImageOperation, ...] = ()
     quota_observations: tuple[QuotaObservation, ...] = ()
+    speed_facts: tuple[SpeedFact, ...] = ()
+    speed_tools: tuple[tuple[float, float], ...] = ()

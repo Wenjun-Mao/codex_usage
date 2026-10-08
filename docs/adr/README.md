@@ -66,3 +66,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0050: Private Companion Integration Boundary](0050-private-companion-integration-boundary.md)
 - [0051: Private Companion Structured Observations](0051-private-companion-structured-observations.md)
 - [0052: Included Auto-review Accounting](0052-included-auto-review-accounting.md)
+- [0053: Observed Output Speed](0053-observed-output-speed.md)

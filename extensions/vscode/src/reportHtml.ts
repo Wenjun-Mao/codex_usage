@@ -11,6 +11,7 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.openTaskTransfer",
   "codexUsage.analyzeTaskStorage",
   "codexUsage.refreshDashboard",
+  "codexUsage.navigateSpeed",
 ] as const;
 
 interface ControlState {
@@ -70,8 +71,8 @@ function reportViewHeader(state: ControlState): string {
   const description = usage
     ? "Captured token usage for the selected range and projects."
     : "Read-only inventory and amplification diagnostics. Analysis runs only when requested.";
-  const reloadLabel = usage ? "Reload usage from ledger" : "Reload storage inventory";
-  return `<header class="report-header"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p>${description}</p></div><a class="view-reload" title="${reloadLabel}" aria-label="${reloadLabel}" href="command:codexUsage.refreshDashboard">${refreshIcon()}</a></header>`;
+  const reload = usage ? "" : `<a class="view-reload" title="Reload storage inventory" aria-label="Reload storage inventory" href="command:codexUsage.refreshDashboard">${refreshIcon()}</a>`;
+  return `<header class="report-header"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p>${description}</p></div>${reload}</header>`;
 }
 
 function companionCsp(cspSource: string): string {

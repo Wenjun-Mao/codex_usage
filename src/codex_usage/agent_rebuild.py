@@ -27,6 +27,9 @@ _WORKSET_TABLES = (
     "transition_candidates",
     "image_operations",
     "parser_checkpoints",
+    "speed_cache_facts",
+    "speed_cache_tools",
+    "speed_cache_dirty",
 )
 
 

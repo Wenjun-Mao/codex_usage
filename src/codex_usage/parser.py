@@ -37,6 +37,7 @@ def parse_session_generation(
     stop_offset: int | None = None,
     max_bytes: int | None = None,
     _capture_partial_candidates: bool = False,
+    strict_byte_budget: bool = False,
 ) -> ParsedSessionGeneration:
     initial_metadata = SessionMetadata(session_id=path.stem, file_path=path)
     initial_state = SessionParserState(
@@ -63,6 +64,7 @@ def parse_session_generation(
             next_candidate_index=0,
             expected_checkpoint=None,
             max_bytes=max_bytes,
+            strict_byte_budget=strict_byte_budget,
         )
     except _PartialSessionGenerationReadError as error:
         if _capture_partial_candidates:
@@ -77,6 +79,8 @@ def parse_session_generation(
         content_metrics=chunk.content_metrics,
         image_operations=chunk.image_operations,
         quota_observations=chunk.quota_observations,
+        speed_facts=chunk.speed_facts,
+        speed_tools=chunk.speed_tools,
     )
 
 
@@ -86,6 +90,7 @@ def parse_session_append(
     *,
     stop_offset: int,
     max_bytes: int | None = None,
+    strict_byte_budget: bool = False,
 ) -> ParsedSessionAppend:
     try:
         chunk = _parse_session_chunk(
@@ -97,6 +102,7 @@ def parse_session_append(
             next_candidate_index=checkpoint.next_candidate_index,
             expected_checkpoint=checkpoint,
             max_bytes=max_bytes,
+            strict_byte_budget=strict_byte_budget,
         )
     except _PartialSessionGenerationReadError as error:
         raise error.cause from error
@@ -110,4 +116,6 @@ def parse_session_append(
         start_offset=checkpoint.byte_offset,
         image_operations=chunk.image_operations,
         quota_observations=chunk.quota_observations,
+        speed_facts=chunk.speed_facts,
+        speed_tools=chunk.speed_tools,
     )

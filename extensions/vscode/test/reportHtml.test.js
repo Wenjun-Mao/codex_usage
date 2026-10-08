@@ -6,6 +6,7 @@ const {
   renderError,
   renderLoading,
   renderStorageReport,
+  WEBVIEW_COMMANDS,
 } = require("../out/reportHtml");
 
 const controls = {
@@ -24,7 +25,8 @@ test("usage report receives companion controls and restrictive CSP", () => {
   assert.match(result, /Content-Security-Policy/);
   assert.match(result, /command:codexUsage\.captureNow/);
   assert.match(result, />Capture Usage</);
-  assert.match(result, /aria-label="Reload usage from ledger"/);
+  assert.doesNotMatch(result, /href="command:codexUsage\.refreshDashboard"/);
+  assert.doesNotMatch(result, /aria-label="Reload usage from ledger"/);
   assert.match(result, /Range: 30d/);
   assert.match(result, /Export Agent Activity CSV/);
   assert.match(result, /command:codexUsage\.exportAgentActivityCsv/);
@@ -59,10 +61,17 @@ test("storage report escapes task metadata and exposes only explicit analysis", 
   assert.match(result, /&lt;diagnostic&gt;/);
   assert.match(result, /command:codexUsage\.analyzeTaskStorage/);
   assert.match(result, /aria-label="Reload storage inventory"/);
+  assert.match(result, /href="command:codexUsage\.refreshDashboard"/);
   assert.match(result, /storage inventory/);
   assert.match(result, /data-codex-theme="night"/);
   assert.doesNotMatch(result, /Range: 30d/);
   assert.doesNotMatch(result, /Back Up|Rollover/);
+});
+
+test("view reload remains available for storage and command-based recovery", () => {
+  assert.ok(WEBVIEW_COMMANDS.includes("codexUsage.refreshDashboard"));
+  const { contributes } = require("../package.json");
+  assert.ok(contributes.commands.some(({ command }) => command === "codexUsage.refreshDashboard"));
 });
 
 test("loading and error documents honor the explicit report theme", () => {

@@ -5,6 +5,7 @@ import html
 import json
 import sqlite3
 import tempfile
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,7 +41,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}:gpt-6-sol-luna-6.1-sol-standard-credits-v1:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
-REPORT_RENDER_REVISION = 26
+REPORT_RENDER_REVISION = 27
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +51,7 @@ class RenderedLedgerReport:
     cache_hit: bool
     elapsed_seconds: float
     status: LedgerStatus
+    speed_navigation: dict | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -58,6 +60,7 @@ class RenderedLedgerReport:
             "cache_hit": self.cache_hit,
             "elapsed_seconds": self.elapsed_seconds,
             "status": self.status.to_dict(),
+            "speed_navigation": self.speed_navigation,
         }
 
 
@@ -75,7 +78,12 @@ class AgentActivityExport:
         }
 
 
-def render_ledger_report(
+def render_ledger_report(codex_home: Path, **kwargs) -> RenderedLedgerReport:
+    from codex_usage.speed_reports import render_speed_report
+    return render_speed_report(codex_home, **kwargs)
+
+
+def _render_base_ledger_report(
     codex_home: Path,
     *,
     range_name: str,
@@ -86,6 +94,7 @@ def render_ledger_report(
     timezone_name: str | None,
     auto_transitions: bool = True,
     now: datetime | None = None,
+    _snapshot: sqlite3.Connection | None = None,
 ) -> RenderedLedgerReport:
     started = monotonic()
     now = now or datetime.now(UTC)
@@ -99,8 +108,9 @@ def render_ledger_report(
         end_date=end_date,
         now=now,
     )
-    with open_ledger(ledger_path, read_only=True) as connection:
-        connection.execute("begin")
+    with (nullcontext(_snapshot) if _snapshot is not None else open_ledger(ledger_path, read_only=True)) as connection:
+        if _snapshot is None:
+            connection.execute("begin")
         status = query_ledger_status(connection)
         pace_report = cached_allowance_pace(
             connection, revision=status.revision, pricing_revision=PRICING_REVISION,

@@ -42,6 +42,7 @@ from codex_usage.report_tables import (
 )
 from codex_usage.report_temporal import render_temporal_chart
 from codex_usage.report_theme import normalize_report_theme, report_css
+from codex_usage.report_speed import speed_css
 from codex_usage.report_view import ReportViewModel, build_report_view_model
 from codex_usage.report_views import (
     STORAGE_REPORT_VIEW,
@@ -258,6 +259,7 @@ def render_html_report(
 {allowance_css()}
 {agent_activity_css()}
 {image_activity_css()}
+{speed_css()}
   </style>
 </head>
 <body>
@@ -320,7 +322,7 @@ def _render_usage_view(
         '<div class="comparison-charts">'
         f"{_chart_section('Project Breakdown', render_project_breakdown_chart(view_model.project_points, view_model.model_legend), render_project_details_table('Project Details', view_model.project_detail_points, section_id='project-details'), section_id='project-breakdown', scroll_class='tooltip-chart-scroll', help_text='Root task token usage includes side chats stored in the parent task.')}"
         f"{_chart_section('Model Mix', render_model_mix_chart(view_model.model_points), render_model_details_table(view_model.model_rows), section_id='model-mix', scroll_class='tooltip-chart-scroll')}"
-        "</div></section>"
+        "</div></section><!-- observed-speed -->"
     )
 
 

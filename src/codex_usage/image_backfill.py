@@ -23,6 +23,7 @@ IMAGE_BACKFILL_STATE_KEY = "image_backfill_state_v1"
 IMAGE_BACKFILL_CAPTURE_BYTES = 64 * 1024 * 1024
 IMAGE_BACKFILL_SLICE_COUNT = 4
 IMAGE_BACKFILL_SLICE_BYTES = IMAGE_BACKFILL_CAPTURE_BYTES // IMAGE_BACKFILL_SLICE_COUNT
+IMAGE_BACKFILL_CANDIDATE_LIMIT = 128
 _TASK_ID = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
@@ -124,7 +125,7 @@ def run_image_backfill_slice(
     # Discovering that a candidate cannot be safely attributed is not parser
     # work.  Keep checking candidates until one exact owner can consume the
     # single parser slice, so a missing rollout cannot starve valid history.
-    while True:
+    for _ in range(IMAGE_BACKFILL_CANDIDATE_LIMIT):
         candidates = known_tasks - completed - set(unavailable)
         if not candidates:
             break
@@ -148,12 +149,14 @@ def run_image_backfill_slice(
                     checkpoint,
                     stop_offset=path.stat().st_size,
                     max_bytes=IMAGE_BACKFILL_SLICE_BYTES,
+                    strict_byte_budget=True,
                 )
             else:
                 parsed = parse_session_generation(
                     path,
                     stop_offset=path.stat().st_size,
                     max_bytes=IMAGE_BACKFILL_SLICE_BYTES,
+                    strict_byte_budget=True,
                 )
         except (KeyError, OSError, TypeError, ValueError) as error:
             # An append checkpoint is validated by the parser before it is
@@ -161,6 +164,7 @@ def run_image_backfill_slice(
             # replaying past its guarded boundary.
             unavailable[task_id] = type(error).__name__
             checkpoints.pop(task_id, None)
+            break
         else:
             next_service_order += 1
             last_served[task_id] = next_service_order

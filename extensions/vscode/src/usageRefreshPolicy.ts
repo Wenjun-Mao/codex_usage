@@ -6,6 +6,8 @@ export function usageStatusFingerprint(status: UsageStatus): string {
   const { coverage } = status;
   return JSON.stringify([
     status.ledger_revision,
+    status.speed?.revision ?? null,
+    status.speed?.metric_version ?? null,
     coverage.complete,
     coverage.fraction,
     coverage.stale_sources,

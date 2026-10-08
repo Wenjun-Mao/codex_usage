@@ -14,6 +14,7 @@ from codex_usage.ledger_events import (
 from codex_usage.ledger_schema import increment_ledger_revision, open_ledger
 from codex_usage.session_parser_safety import digest_range
 from codex_usage.session_row_relevance import CHECKPOINT_DIGEST_BYTES
+from codex_usage.speed_store import synchronize_speed
 
 
 _NORMALIZED_OWNERSHIP_VERSION = 3
@@ -52,6 +53,7 @@ def synchronize_parser_workset(
                 if changed
                 else _current_revision(connection)
             )
+            synchronize_speed(connection, usage_changed=changed)
             connection.commit()
         except BaseException:
             connection.rollback()
@@ -323,6 +325,9 @@ def _sync_generation(
         start_record_index=start_record_index,
     )
     insert_generation_image_events(connection, generation_id, source_key)
+    if requires_replace:
+        connection.execute("update speed_cache_facts set dirty=1 where file_key=?", (source_key,))
+    connection.execute("insert or ignore into speed_cache_dirty values (?)", (source_key,))
     if not _event_index_is_complete(
         connection,
         generation_id,

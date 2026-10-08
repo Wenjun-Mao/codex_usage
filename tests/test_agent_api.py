@@ -82,6 +82,9 @@ def test_agent_api_omits_absent_calendar_bounds_for_preset_reports() -> None:
             "end_date": None,
             "project_keys": [],
             "theme": "night",
+            "speed_granularity": None,
+            "speed_window_start": None,
+            "speed_window_scope": None,
         }
     finally:
         server.stop()

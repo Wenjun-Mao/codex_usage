@@ -434,7 +434,7 @@ def test_interrupt_after_first_group_reuses_exactly_eight_files(
             ("parser_version", "8"),
             ("project_transition_version", "2"),
             ("project_transitions_dirty", "1"),
-            ("schema_version", "10"),
+            ("schema_version", "11"),
             ("storage_metadata_version", "2"),
         )
 

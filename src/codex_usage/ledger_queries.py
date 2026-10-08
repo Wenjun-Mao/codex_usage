@@ -23,6 +23,7 @@ from codex_usage.image_backfill import IMAGE_BACKFILL_STATE_KEY
 from codex_usage.models import TokenUsage, UsageRecord, parse_usage_role
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_transitions import ProjectTransition
+from codex_usage.speed_recovery import speed_status
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +100,7 @@ class LedgerStatus:
     coverage: LedgerCoverage
     image_backfill: ImageBackfillCoverage = ImageBackfillCoverage()
     plan_allowance: dict = field(default_factory=dict)
+    speed: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -109,6 +111,7 @@ class LedgerStatus:
             "coverage": self.coverage.to_dict(),
             "image_backfill": self.image_backfill.to_dict(),
             "plan_allowance": self.plan_allowance,
+            "speed": self.speed,
         }
 
 
@@ -243,6 +246,7 @@ def query_ledger_status(connection: sqlite3.Connection) -> LedgerStatus:
         coverage=coverage,
         image_backfill=_image_backfill_coverage(connection),
         plan_allowance=allowance_status(connection),
+        speed=speed_status(connection),
     )
 
 

@@ -19,6 +19,7 @@ export interface AgentStatus {
     pending_bytes: number;
   };
   plan_allowance?: PlanAllowanceStatus;
+  speed?: { revision: number; metric_version: number; complete: number; pending: number; unmeasurable: number; reasons?: Record<string, number> };
   image_backfill?: {
     status: string;
     complete: boolean;
@@ -64,7 +65,19 @@ export interface RenderedReport {
   ledger_revision: number;
   cache_hit: boolean;
   elapsed_seconds: number;
-  status: Pick<AgentStatus, "ledger_revision" | "last_capture_at" | "last_capture_outcome" | "last_capture_error" | "coverage" | "image_backfill">;
+  status: Pick<AgentStatus, "ledger_revision" | "last_capture_at" | "last_capture_outcome" | "last_capture_error" | "coverage" | "image_backfill" | "speed">;
+  speed_navigation?: SpeedNavigation;
+}
+
+export interface SpeedNavigation {
+  scope: string;
+  granularity: "daily" | "hourly";
+  min_date: string;
+  max_date: string;
+  window_start: string;
+  window_end: string;
+  previous: string | null;
+  next: string | null;
 }
 
 export interface StorageTree {

@@ -52,6 +52,7 @@ def render_model_details_table(rows: list[AggregateRow]) -> str:
         '<th scope="col" class="num">Est. Credits</th>'
         '<th scope="col" class="num">API Excl.</th>'
         '<th scope="col" class="num">No Credit Rate</th>'
+        '<th scope="col" class="num">Output tok/s</th>'
         f"</tr></thead><tbody>{table_rows}</tbody></table></div></section>"
     )
 
@@ -125,8 +126,9 @@ def _model_rows_html(row: AggregateRow) -> str:
         f'<td class="num">{_partial_amount(cost.total_usd, cost.unpriced_tokens, usage.total_tokens, "$")}</td>'
         f'<td class="num">{_partial_amount(credits.total_credits, credits.unpriced_tokens, usage.total_tokens, "", decimals=2)}</td>'
         f'<td class="num">{format_int(cost.unpriced_tokens)}</td>'
-        f'<td class="num">{format_int(credits.unpriced_tokens)}</td></tr>'
-        '<tr class="model-breakdown-row"><td colspan="6">'
+        f'<td class="num">{format_int(credits.unpriced_tokens)}</td>'
+        f'<td class="num"><span data-speed-model="{html.escape(row.key, quote=True)}">Unavailable</span></td></tr>'
+        '<tr class="model-breakdown-row"><td colspan="7">'
         '<details class="model-breakdown"><summary>'
         f"Token and price breakdown for {label}</summary>"
         '<div class="table-wrap"><table aria-label="Token and price categories for '

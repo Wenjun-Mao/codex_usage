@@ -6,10 +6,10 @@ EXPECTED_SCHEMA_META = (
     ("parser_version", "8"),
     ("project_transition_version", "2"),
     ("project_transitions_dirty", "1"),
-    ("schema_version", "10"),
+    ("schema_version", "11"),
     ("storage_metadata_version", "2"),
 )
-EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
+_LANGUAGE_SQLITE_MASTER: tuple[SchemaObject, ...] = (
     (
         "index",
         "image_operations_task_idx",
@@ -184,3 +184,14 @@ EXPECTED_SQLITE_MASTER: tuple[SchemaObject, ...] = (
         "primary key (file_key, record_index) )",
     ),
 )
+
+EXPECTED_SQLITE_MASTER = tuple(sorted((*_LANGUAGE_SQLITE_MASTER,
+    ("index", "speed_cache_dirty_idx", "speed_cache_facts", "CREATE INDEX speed_cache_dirty_idx on speed_cache_facts(file_key, dirty)"),
+    ("index", "speed_cache_bounds_idx", "speed_cache_facts", "CREATE INDEX speed_cache_bounds_idx on speed_cache_facts(file_key, end_ms, start_ms)"),
+    ("index", "sqlite_autoindex_speed_cache_dirty_1", "speed_cache_dirty", ""),
+    ("index", "sqlite_autoindex_speed_cache_facts_1", "speed_cache_facts", ""),
+    ("index", "sqlite_autoindex_speed_cache_tools_1", "speed_cache_tools", ""),
+    ("table", "speed_cache_dirty", "speed_cache_dirty", "CREATE TABLE speed_cache_dirty (file_key text primary key)"),
+    ("table", "speed_cache_facts", "speed_cache_facts", "CREATE TABLE speed_cache_facts ( file_key text not null, record_index integer not null, evidence_json text not null, start_ms real not null, end_ms real not null, dirty integer not null default 1, primary key(file_key, record_index))"),
+    ("table", "speed_cache_tools", "speed_cache_tools", "CREATE TABLE speed_cache_tools ( file_key text not null, start_ms real not null, end_ms real not null, primary key(file_key, start_ms, end_ms))"),
+)))

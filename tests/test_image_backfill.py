@@ -35,6 +35,39 @@ def test_null_reference_options_remain_fresh_generation() -> None:
     )
 
 
+def test_historical_image_unavailable_candidate_work_is_bounded(tmp_path, monkeypatch):
+    ledger = ledger_database_path(tmp_path)
+    with open_ledger(ledger):
+        pass
+    inventory = {f"task-{index}": image_backfill._ArtifactTask(1, index) for index in range(140)}
+    monkeypatch.setattr(image_backfill, "_artifact_inventory", lambda *_: inventory)
+    monkeypatch.setattr(image_backfill, "_has_valid_artifact", lambda *_: True)
+    monkeypatch.setattr(image_backfill, "_owning_rollouts", lambda *_: [])
+    result = run_image_backfill_slice(tmp_path, ledger)
+    assert result.tasks_unavailable == image_backfill.IMAGE_BACKFILL_CANDIDATE_LIMIT
+    assert result.pending_tasks == 12
+
+
+def test_historical_image_parse_failure_cannot_consume_multiple_sources(tmp_path, monkeypatch):
+    ledger = ledger_database_path(tmp_path)
+    with open_ledger(ledger):
+        pass
+    inventory = {f"task-{index}": image_backfill._ArtifactTask(1, index) for index in range(3)}
+    source = tmp_path / "source.jsonl"
+    source.write_text("synthetic")
+    monkeypatch.setattr(image_backfill, "_artifact_inventory", lambda *_: inventory)
+    monkeypatch.setattr(image_backfill, "_has_valid_artifact", lambda *_: True)
+    monkeypatch.setattr(image_backfill, "_owning_rollouts", lambda *_: [source])
+    calls = []
+    def fail(*args, **kwargs):
+        calls.append(kwargs)
+        raise OSError("synthetic read failure")
+    monkeypatch.setattr(image_backfill, "parse_session_generation", fail)
+    result = run_image_backfill_slice(tmp_path, ledger)
+    assert len(calls) == 1 and calls[0]["strict_byte_budget"] is True
+    assert result.tasks_unavailable == 1 and result.pending_tasks == 2
+
+
 def test_live_sample_shape_reconciles_six_fresh_and_four_reference_edits() -> None:
     fixture = [
         {},
@@ -348,11 +381,11 @@ def test_every_capture_kind_runs_the_bounded_backfill(
     (home / "sessions").mkdir(parents=True)
     calls: list[tuple[Path, Path]] = []
 
-    def observed_backfill(codex_home: Path, ledger_path: Path) -> ImageBackfillResult:
+    def observed_backfill(codex_home: Path, ledger_path: Path):
         calls.append((codex_home, ledger_path))
-        return ImageBackfillResult(False, "complete", 0, 0, 0, 0, 0)
+        return False, None
 
-    monkeypatch.setattr(agent_capture, "run_image_backfill", observed_backfill)
+    monkeypatch.setattr(agent_capture, "run_historical_recovery", observed_backfill)
 
     result = agent_capture.capture_once(
         home, request_kind=request_kind, max_workers=1

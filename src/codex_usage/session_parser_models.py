@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +28,7 @@ class SessionParserState:
     current_effort: str
     current_mode: str
     image_capture: ImageCaptureState = ImageCaptureState()
+    speed_state: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +67,7 @@ def parser_state_to_json(state: SessionParserState) -> str:
             "current_effort": state.current_effort,
             "current_mode": state.current_mode,
             "image_capture": image_capture_state_to_json(state.image_capture),
+            "speed_state": state.speed_state,
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -101,6 +103,7 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
         current_effort=_text(parsed.get("current_effort")),
         current_mode=_text(parsed.get("current_mode")),
         image_capture=image_capture_state_from_json(parsed.get("image_capture")),
+        speed_state=parsed.get("speed_state") or {},
     )
 
 

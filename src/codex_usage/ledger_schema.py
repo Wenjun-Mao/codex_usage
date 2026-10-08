@@ -14,7 +14,7 @@ from codex_usage.agent_private_files import (
 )
 
 
-LEDGER_SCHEMA_VERSION = 5
+LEDGER_SCHEMA_VERSION = 6
 LEDGER_REVISION_KEY = "ledger_revision"
 
 
@@ -80,6 +80,8 @@ def ensure_ledger_schema(
             create_allowance_schema(connection)
         _create_allowance_cost_schema(connection)
         create_credit_schema(connection)
+        from codex_usage.speed_schema import create_speed_ledger
+        create_speed_ledger(connection)
         connection.execute(
             "insert or replace into ledger_meta (key, value) values (?, ?)",
             ("schema_version", str(LEDGER_SCHEMA_VERSION)),

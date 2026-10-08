@@ -83,6 +83,9 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                         end_date=_optional(query, "end_date"),
                         project_keys=query.get("project_key", []),
                         theme=_first(query, "theme") or agent.settings.theme,
+                        speed_granularity=_optional(query, "speed_granularity"),
+                        speed_window_start=_optional(query, "speed_window_start"),
+                        speed_window_scope=_optional(query, "speed_window_scope"),
                     )
                     self._json(HTTPStatus.OK, report.to_dict())
                 elif path == "/v1/agent-activity":

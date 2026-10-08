@@ -78,6 +78,11 @@ jobs:
       - name: Run Ruff
         run: uv run ruff check .
 
+      - name: Verify frozen monetary parity and bounded timing work
+        run: |
+          uv run python scripts/check_speed_parity.py
+          uv run python scripts/check_speed_work.py
+
   macos-vsix:
     name: Build macOS Apple Silicon VSIX
     needs: validate
@@ -126,6 +131,17 @@ jobs:
         run: |
           uv run python scripts/generate_marketplace_screenshot.py --check
           uv run python scripts/check_allowance_ui.py
+          uv run python scripts/check_speed_ui.py
+
+      - name: Upload synthetic speed verification evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: observed-speed-synthetic-ui
+          path: |
+            output/playwright/observed-speed/*.json
+            output/playwright/observed-speed/*.png
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload macOS VSIX
         uses: actions/upload-artifact@v6

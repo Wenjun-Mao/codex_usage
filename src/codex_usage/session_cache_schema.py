@@ -4,7 +4,7 @@ import sqlite3
 from codex_usage.session_cache_image_schema import _create_image_operations_schema
 from dataclasses import dataclass
 
-CACHE_SCHEMA_VERSION = 10
+CACHE_SCHEMA_VERSION = 11
 PARSER_CACHE_VERSION = 8
 PROJECT_TRANSITION_CACHE_VERSION = 2
 STORAGE_METADATA_CACHE_VERSION = 2
@@ -50,6 +50,8 @@ class CacheSchemaState:
 
 def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
     if _schema_matches(connection):
+        from codex_usage.speed_schema import create_speed_cache
+        create_speed_cache(connection)
         return CacheSchemaState()
 
     from codex_usage.allowance_schema import backup_parser_cache
@@ -58,11 +60,14 @@ def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
     try:
         prior_tables = _existing_cache_tables(connection)
         prior_version = _prior_schema_version(connection)
-        if _can_migrate_v8_to_v9(connection) or _schema_matches(connection, predecessor=True):
+        if _can_migrate_v8_to_v9(connection) or _schema_matches(connection, predecessor=True) or _schema_matches(connection, timing_predecessor=True):
             if _prior_schema_version(connection) == "8":
                 _create_image_operations_schema(connection)
             from codex_usage.allowance_schema import create_quota_cache
-            create_quota_cache(connection)
+            if prior_version != "10":
+                create_quota_cache(connection)
+            from codex_usage.speed_schema import create_speed_cache
+            create_speed_cache(connection)
             connection.executemany(
                 "insert or replace into schema_meta (key, value) values (?, ?)",
                 (
@@ -267,6 +272,8 @@ def _create_cache_schema(connection: sqlite3.Connection) -> None:
     _create_image_operations_schema(connection)
     from codex_usage.allowance_schema import create_quota_cache
     create_quota_cache(connection)
+    from codex_usage.speed_schema import create_speed_cache
+    create_speed_cache(connection)
 
 
 def _can_migrate_v8_to_v9(connection: sqlite3.Connection) -> bool:
@@ -301,14 +308,14 @@ def _can_migrate_v8_to_v9(connection: sqlite3.Connection) -> bool:
     )
 
 
-def _schema_matches(connection: sqlite3.Connection, *, predecessor=False) -> bool:
+def _schema_matches(connection: sqlite3.Connection, *, predecessor=False, timing_predecessor=False) -> bool:
     try:
         rows = connection.execute("select key, value from schema_meta").fetchall()
     except sqlite3.Error:
         return False
     metadata = {str(row["key"]): str(row["value"]) for row in rows}
     expected_versions = {
-        "schema_version": "9" if predecessor else str(CACHE_SCHEMA_VERSION),
+        "schema_version": "9" if predecessor else "10" if timing_predecessor else str(CACHE_SCHEMA_VERSION),
         "parser_version": "7" if predecessor else str(PARSER_CACHE_VERSION),
         "project_transition_version": str(PROJECT_TRANSITION_CACHE_VERSION),
     }
@@ -463,6 +470,9 @@ def _drop_cache_schema(connection: sqlite3.Connection) -> None:
     for index in sorted(_KNOWN_CACHE_INDEXES):
         connection.execute(f"drop index if exists {index}")
     for table in (
+        "speed_cache_facts",
+        "speed_cache_tools",
+        "speed_cache_dirty",
         "quota_cache",
         "project_transitions",
         "dirty_transition_tasks",

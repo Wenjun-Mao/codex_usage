@@ -5,11 +5,17 @@ import { AgentClient, resolveCodexHome, settingsFilePath } from "./agentClient";
 import { AgentSupervisor } from "./agentSupervisor";
 import { resolveBundledAgent } from "./bundledAgent";
 import { decorateUsageReport, renderError, renderLoading, renderStorageReport, WEBVIEW_COMMANDS } from "./reportHtml";
-import { captureIntervalChoices, captureScheduleMessage, collectorSetupChoices, projectTransitionChoices, validateCaptureInterval } from "./setupPresentation";
+import { collectorSetupChoices, projectTransitionChoices } from "./setupPresentation";
+import { chooseCodexHome, configureCaptureInterval } from "./collectorConfiguration";
 import { StorageClient } from "./storageClient";
 import { TaskTransferClient } from "./taskTransferClient";
 import type { AgentActivityExport, AgentSettings, AgentStatus, CustomDateRange, ProjectSummary, RenderedReport, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
 import { usageReportNeedsRefresh, usageStatusFingerprint } from "./usageRefreshPolicy";
+import { chooseProjects } from "./projectSelection";
+import { selectCustomRange } from "./customRangeSelection";
+import { migrateLegacyUsage } from "./legacyMigration";
+import { chartQuery, validateSpeedNavigation, type SpeedChartState } from "./speedNavigation";
+import type { SpeedNavigation } from "./types";
 
 const RANGE_VALUES: readonly Exclude<ReportRange, "custom">[] = ["today", "yesterday", "7d", "30d", "month", "all"];
 const THEME_VALUES: readonly ReportTheme[] = ["auto", "day", "night"];
@@ -27,6 +33,9 @@ let refreshSerial = 0;
 let statusTimer: NodeJS.Timeout | undefined;
 let renderedUsageFingerprint: string | undefined;
 let latestStatus: AgentStatus | undefined;
+let speedNavigation: SpeedNavigation | undefined;
+let speedChartState: SpeedChartState | undefined;
+let speedFilterIdentity: string | undefined;
 
 const STATUS_REFRESH_INTERVAL_MS = 30_000;
 
@@ -54,6 +63,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.selectRange", selectRange),
     vscode.commands.registerCommand("codexUsage.exportAgentActivityCsv", exportAgentActivityCsv),
     vscode.commands.registerCommand("codexUsage.selectProjects", selectProjects),
+    vscode.commands.registerCommand("codexUsage.navigateSpeed", async (args: unknown) => {
+      const state = validateSpeedNavigation(args, speedNavigation);
+      if (!state) return;
+      speedChartState = state;
+      await refreshVisibleDashboard({ showLoading: false });
+    }),
     vscode.commands.registerCommand("codexUsage.selectTheme", selectTheme),
     vscode.commands.registerCommand("codexUsage.showUsageView", () => selectView("usage")),
     vscode.commands.registerCommand("codexUsage.showStorageView", () => selectView("storage")),
@@ -116,18 +131,27 @@ async function refreshVisibleDashboard(
     if (activeView === "usage") {
       const status = latestStatus ?? await client.get<AgentStatus>("/v1/status");
       latestStatus = status;
-      if (!supportsImageAccounting(status)) {
+      if (!(status.capabilities || []).includes("image-generation-accounting") || !(status.capabilities || []).includes("observed-output-speed-v1") || status.speed?.metric_version !== 1) {
         target.webview.html = renderError(
-          "Update the Codex Usage collector before loading this report. The current collector does not support image-generation accounting; reinstall the matching VSIX package.",
+          "Update the Codex Usage collector before loading this report. The current collector does not support matching image accounting and observed output speed; reinstall the matching VSIX package.",
           target.webview.cspSource,
           reportTheme(),
         );
         return;
       }
       const query = reportQuery(controls.theme);
+      const identity = reportQuery().toString();
+      if (identity !== speedFilterIdentity) {
+        speedChartState = undefined;
+        speedNavigation = undefined;
+        speedFilterIdentity = identity;
+      }
+      chartQuery(query, speedChartState, speedNavigation?.scope);
       const report = await client.get<RenderedReport>(`/v1/report?${query.toString()}`);
       if (panel === target && requestId === refreshSerial) {
         renderedUsageFingerprint = usageStatusFingerprint(report.status);
+        speedNavigation = report.speed_navigation;
+        if (speedChartState && speedNavigation) speedChartState.windowStart = speedNavigation.window_start;
         target.webview.html = decorateUsageReport(report.html, {
           ...controls,
           loadedSeconds: report.elapsed_seconds,
@@ -191,35 +215,13 @@ async function selectRange(): Promise<void> {
       void vscode.window.showErrorMessage("The current collector is out of date and does not support custom report ranges.");
       return;
     }
-    const selectedCustom = await selectCustomRange();
+    const selectedCustom = await selectCustomRange(customRange());
     if (!selectedCustom) return;
     await contextRef.globalState.update(CUSTOM_RANGE_STATE_KEY, selectedCustom);
   }
   await vscode.workspace.getConfiguration("codexUsage").update("range", selected.range, vscode.ConfigurationTarget.Global);
 }
 
-async function selectCustomRange(): Promise<CustomDateRange | undefined> {
-  const current = customRange() || latestSevenDays();
-  const today = localCalendarDate(new Date());
-  const startDate = await vscode.window.showInputBox({
-    title: "Custom usage range: start date",
-    prompt: "Enter an inclusive local calendar date (YYYY-MM-DD).",
-    value: current.startDate,
-    validateInput: (value) => validateCalendarDate(value, today),
-  });
-  if (startDate === undefined) return undefined;
-  const endDate = await vscode.window.showInputBox({
-    title: "Custom usage range: end date",
-    prompt: "Enter an inclusive local calendar date (YYYY-MM-DD).",
-    value: current.endDate,
-    validateInput: (value) => {
-      const validation = validateCalendarDate(value, today);
-      return validation || (value < startDate ? "End date must be on or after the start date." : undefined);
-    },
-  });
-  if (endDate === undefined) return undefined;
-  return { startDate, endDate };
-}
 
 async function exportAgentActivityCsv(): Promise<void> {
   const client = await acquireAgentClient(true);
@@ -256,15 +258,15 @@ async function selectProjects(): Promise<void> {
   const client = await acquireAgentClient(true);
   if (!client) return;
   const payload = await client.get<{ projects: ProjectSummary[] }>("/v1/projects");
-  const current = new Set(selectedProjects());
-  const picked = await vscode.window.showQuickPick(payload.projects.map((project) => ({
-    label: project.project_label,
-    description: `${project.task_count.toLocaleString()} tasks`,
-    key: project.project_key,
-    picked: current.has(project.project_key),
-  })), { canPickMany: true, placeHolder: "Select projects, or clear all for every project" });
-  if (!picked) return;
-  await contextRef.globalState.update(PROJECT_STATE_KEY, picked.map((item) => item.key));
+  const picked = await chooseProjects(payload.projects, selectedProjects(), async () => {
+    const selected = await vscode.window.showQuickPick([
+      { label: "All Projects", description: "Includes projects discovered later", mode: "all" as const },
+      { label: "Choose Projects", description: "Keep a fixed selection", mode: "subset" as const },
+    ], { placeHolder: "Choose project scope" });
+    return selected?.mode;
+  }, async (choices) => vscode.window.showQuickPick(choices, { canPickMany: true, placeHolder: "Select projects" }));
+  if (picked === undefined) return;
+  await contextRef.globalState.update(PROJECT_STATE_KEY, picked);
   await refreshVisibleDashboard();
 }
 
@@ -311,7 +313,7 @@ async function configureCollector(): Promise<void> {
   );
   if (!selected) return;
   if (selected.action === "home") {
-    await chooseCodexHome();
+    await chooseCodexHome(agentSupervisor, refreshStatus);
     return;
   }
   if (selected.action === "handoff") {
@@ -323,10 +325,15 @@ async function configureCollector(): Promise<void> {
     void vscode.window.showErrorMessage("Choose a valid CODEX_HOME folder before configuring the collector.");
     return;
   }
-  if (selected.action === "interval") await configureCaptureInterval(client);
+  if (selected.action === "interval") await configureCaptureInterval(client, refreshStatus);
   else if (selected.action === "transitions") await configureProjectTransitions(client);
   else if (selected.action === "transferFolder") await taskTransferClient.chooseFolder(client);
-  else if (selected.action === "migration") await migrateLegacyUsage(client);
+  else if (selected.action === "migration") {
+    if (await migrateLegacyUsage(client)) {
+      await refreshStatus(false, false);
+      await refreshVisibleDashboard();
+    }
+  }
   else await captureNow();
 }
 
@@ -343,88 +350,7 @@ async function configureProjectTransitions(client: AgentClient): Promise<void> {
   );
 }
 
-async function chooseCodexHome(): Promise<void> {
-  const selected = await vscode.window.showOpenDialog({
-    title: "Choose CODEX_HOME",
-    openLabel: "Use CODEX_HOME",
-    canSelectFiles: false,
-    canSelectFolders: true,
-    canSelectMany: false,
-  });
-  const codexHome = selected?.[0]?.fsPath;
-  if (!codexHome) return;
-  try {
-    await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "Starting the Codex Usage collector" },
-      () => agentSupervisor.configureCodexHome(codexHome),
-    );
-    await refreshStatus(false);
-    void vscode.window.showInformationMessage(
-      "Codex Usage is ready. Scheduled capture runs while VS Code is open; quota snapshots missed while it is closed may not be recoverable.",
-    );
-  } catch (error) {
-    void vscode.window.showErrorMessage(`Could not use that CODEX_HOME: ${errorMessage(error)}`);
-  }
-}
 
-async function configureCaptureInterval(client: AgentClient): Promise<void> {
-  const settings = await client.get<AgentSettings>("/v1/settings");
-  const selected = await vscode.window.showQuickPick(
-    captureIntervalChoices(settings.capture_interval_minutes),
-    { title: "Set Capture Interval", placeHolder: "Select how often to capture while VS Code is open" },
-  );
-  if (!selected) return;
-  let interval: number | null;
-  if (selected.value === "custom") {
-    const entered = await vscode.window.showInputBox({
-      title: "Custom Capture Interval",
-      prompt: "Enter a whole number of minutes from 1 to 1,440.",
-      validateInput: validateCaptureInterval,
-    });
-    if (entered === undefined) return;
-    interval = Number(entered);
-  } else {
-    interval = selected.value;
-  }
-  await client.post<AgentSettings>("/v1/settings", {
-    capture_interval_minutes: interval,
-    onboarding_complete: true,
-  });
-  await refreshStatus(false);
-  void vscode.window.showInformationMessage(captureScheduleMessage(interval));
-}
-
-async function migrateLegacyUsage(client: AgentClient): Promise<void> {
-  const plan = await client.get<LegacyMigrationPlan>("/v1/migration/plan");
-  if (!plan.candidates.length) {
-    void vscode.window.showInformationMessage("No compatible legacy Codex Usage caches were found for this CODEX_HOME.");
-    return;
-  }
-  const precedence: Record<string, string> = {};
-  for (const conflict of plan.conflicts) {
-    const selected = await vscode.window.showQuickPick(
-      conflict.sources.map((source) => ({ label: source, source })),
-      {
-        title: "Choose a migration source",
-        placeHolder: `Histories disagree for ${conflict.file_key}. Choose the source to retain.`,
-      },
-    );
-    if (!selected) return;
-    precedence[conflict.file_key] = selected.source;
-  }
-  const result = await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: `Migrating ${plan.candidates.length} legacy ${plan.candidates.length === 1 ? "cache" : "caches"}`,
-    },
-    () => client.post<LegacyMigrationResult>("/v1/migration/run", { precedence }),
-  );
-  await refreshStatus(false, false);
-  await refreshVisibleDashboard();
-  void vscode.window.showInformationMessage(
-    `Migration complete: ${result.imported_caches} imported, ${result.skipped_caches} already present.`,
-  );
-}
 
 async function handoffLegacyService(): Promise<void> {
   try {
@@ -494,7 +420,7 @@ function controlState(): Pick<Parameters<typeof decorateUsageReport>[1], "range"
     range: selectedRange === "custom" ? customRangeLabel() : rangeLabel(selectedRange),
     theme: reportTheme(),
     projectCount: selectedProjects().length,
-    version: String(contextRef.extension.packageJSON.version ?? "2.8.5"),
+    version: String(contextRef.extension.packageJSON.version),
     lastCaptureAt: latestStatus?.last_capture_at ?? "",
   };
 }
@@ -534,28 +460,7 @@ function supportsAgentActivity(status: AgentStatus): boolean {
   return capabilities.includes("custom-report-range") && capabilities.includes("agent-activity");
 }
 
-function supportsImageAccounting(status: AgentStatus): boolean {
-  return (status.capabilities || []).includes("image-generation-accounting");
-}
 
-function latestSevenDays(): CustomDateRange {
-  const end = new Date();
-  const start = new Date(end);
-  start.setDate(start.getDate() - 6);
-  return { startDate: localCalendarDate(start), endDate: localCalendarDate(end) };
-}
-
-function localCalendarDate(value: Date): string {
-  const offset = value.getTimezoneOffset() * 60_000;
-  return new Date(value.getTime() - offset).toISOString().slice(0, 10);
-}
-
-function validateCalendarDate(value: string, today: string): string | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
-    return "Enter a valid YYYY-MM-DD calendar date.";
-  }
-  return value > today ? "Custom ranges cannot include future dates." : undefined;
-}
 
 function rangeLabel(range: Exclude<ReportRange, "custom">): string {
   return ({ today: "Today", yesterday: "Yesterday", "7d": "Last 7 days", "30d": "Last 30 days", month: "This month", all: "All time" })[range];
@@ -588,22 +493,6 @@ function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-interface LegacyMigrationPlan {
-  candidates: Array<{ path: string; digest: string; source_kind: string }>;
-  conflicts: Array<{ file_key: string; sources: string[]; reason: string }>;
-  importable_generations: number;
-  identical_generations: number;
-  superseding_generations: number;
-  requires_precedence: boolean;
-}
-
-interface LegacyMigrationResult {
-  imported_caches: number;
-  skipped_caches: number;
-  ledger_revision: number;
-  ledger_changed: boolean;
-  plan: LegacyMigrationPlan;
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
