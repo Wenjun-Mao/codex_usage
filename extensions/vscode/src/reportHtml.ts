@@ -12,6 +12,7 @@ export const WEBVIEW_COMMANDS = [
   "codexUsage.analyzeTaskStorage",
   "codexUsage.refreshDashboard",
   "codexUsage.navigateSpeed",
+  "codexUsage.navigateBreakdown",
 ] as const;
 
 interface ControlState {

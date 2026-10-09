@@ -26,6 +26,7 @@ def node_text(node):
 
 
 class NativeSpeedTarget:
+    chart_class = "observed-speed"
     def __init__(self, browser, target_id, deadline):
         self.browser = browser
         self.page = browser.contexts[0].pages[0]
@@ -66,7 +67,7 @@ class NativeSpeedTarget:
 
     def chart(self):
         return next((n for n in nodes(self.document())
-                     if "observed-speed" in attributes(n).get("class", "").split()), None)
+                     if self.chart_class in attributes(n).get("class", "").split()), None)
 
     def state(self, decode_navigation):
         chart = self.chart()
@@ -82,7 +83,7 @@ class NativeSpeedTarget:
     def click(self, label, decode_navigation):
         document = self.document()
         chart = next(n for n in nodes(document)
-                     if "observed-speed" in attributes(n).get("class", "").split())
+                     if self.chart_class in attributes(n).get("class", "").split())
         link = next(n for n in nodes(chart) if n.get("nodeName") == "A" and node_text(n) == label)
         args = decode_navigation(attributes(link)["href"])
         self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": link["nodeId"]})
@@ -118,7 +119,7 @@ class NativeSpeedTarget:
         self.session.detach()
 
 
-def attach_speed_target(browser, deadline, decode_navigation, diagnostics, diagnostics_path):
+def attach_speed_target(browser, deadline, decode_navigation, diagnostics, diagnostics_path, target_type=NativeSpeedTarget):
     session = browser.new_browser_cdp_session()
     try:
         while time.monotonic() < deadline:
@@ -129,7 +130,7 @@ def attach_speed_target(browser, deadline, decode_navigation, diagnostics, diagn
                 if (info["type"] != "iframe" or not info["url"].startswith("vscode-webview://")
                     or "extensionId=wenjun-mao.codex-usage-dashboard" not in info["url"]):
                     continue
-                target = NativeSpeedTarget(browser, info["targetId"], deadline)
+                target = target_type(browser, info["targetId"], deadline)
                 state = target.state(decode_navigation)
                 if state is not None:
                     return target, state

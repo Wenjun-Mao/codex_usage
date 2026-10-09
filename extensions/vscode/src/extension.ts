@@ -14,8 +14,7 @@ import { usageReportNeedsRefresh, usageStatusFingerprint } from "./usageRefreshP
 import { chooseProjects } from "./projectSelection";
 import { selectCustomRange } from "./customRangeSelection";
 import { migrateLegacyUsage } from "./legacyMigration";
-import { chartQuery, validateSpeedNavigation, type SpeedChartState } from "./speedNavigation";
-import type { SpeedNavigation } from "./types";
+import { DashboardNavigation } from "./dashboardNavigation";
 
 const RANGE_VALUES: readonly Exclude<ReportRange, "custom">[] = ["today", "yesterday", "7d", "30d", "month", "all"];
 const THEME_VALUES: readonly ReportTheme[] = ["auto", "day", "night"];
@@ -33,9 +32,7 @@ let refreshSerial = 0;
 let statusTimer: NodeJS.Timeout | undefined;
 let renderedUsageFingerprint: string | undefined;
 let latestStatus: AgentStatus | undefined;
-let speedNavigation: SpeedNavigation | undefined;
-let speedChartState: SpeedChartState | undefined;
-let speedFilterIdentity: string | undefined;
+const dashboardNavigation = new DashboardNavigation();
 
 const STATUS_REFRESH_INTERVAL_MS = 30_000;
 
@@ -63,10 +60,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.selectRange", selectRange),
     vscode.commands.registerCommand("codexUsage.exportAgentActivityCsv", exportAgentActivityCsv),
     vscode.commands.registerCommand("codexUsage.selectProjects", selectProjects),
+    vscode.commands.registerCommand("codexUsage.navigateBreakdown", async (args: unknown) => {
+      if (!dashboardNavigation.breakdown(args)) return;
+      await refreshVisibleDashboard({ showLoading: false });
+    }),
     vscode.commands.registerCommand("codexUsage.navigateSpeed", async (args: unknown) => {
-      const state = validateSpeedNavigation(args, speedNavigation);
-      if (!state) return;
-      speedChartState = state;
+      if (!dashboardNavigation.speed(args)) return;
       await refreshVisibleDashboard({ showLoading: false });
     }),
     vscode.commands.registerCommand("codexUsage.selectTheme", selectTheme),
@@ -131,9 +130,9 @@ async function refreshVisibleDashboard(
     if (activeView === "usage") {
       const status = latestStatus ?? await client.get<AgentStatus>("/v1/status");
       latestStatus = status;
-      if (!(status.capabilities || []).includes("image-generation-accounting") || !(status.capabilities || []).includes("observed-output-speed-v1") || status.speed?.metric_version !== 1) {
+      if (!(status.capabilities || []).includes("image-generation-accounting") || !(status.capabilities || []).includes("observed-output-speed-v1") || !(status.capabilities || []).includes("usage-allowance-breakdown-v1") || status.speed?.metric_version !== 1) {
         target.webview.html = renderError(
-          "Update the Codex Usage collector before loading this report. The current collector does not support matching image accounting and observed output speed; reinstall the matching VSIX package.",
+          "Update the Codex Usage collector before loading this report. Matching image accounting, observed output speed and usage breakdown support are required; reinstall the matching VSIX package.",
           target.webview.cspSource,
           reportTheme(),
         );
@@ -141,17 +140,11 @@ async function refreshVisibleDashboard(
       }
       const query = reportQuery(controls.theme);
       const identity = reportQuery().toString();
-      if (identity !== speedFilterIdentity) {
-        speedChartState = undefined;
-        speedNavigation = undefined;
-        speedFilterIdentity = identity;
-      }
-      chartQuery(query, speedChartState, speedNavigation?.scope);
+      dashboardNavigation.query(query, identity, status);
       const report = await client.get<RenderedReport>(`/v1/report?${query.toString()}`);
       if (panel === target && requestId === refreshSerial) {
         renderedUsageFingerprint = usageStatusFingerprint(report.status);
-        speedNavigation = report.speed_navigation;
-        if (speedChartState && speedNavigation) speedChartState.windowStart = speedNavigation.window_start;
+        dashboardNavigation.accept(report);
         target.webview.html = decorateUsageReport(report.html, {
           ...controls,
           loadedSeconds: report.elapsed_seconds,

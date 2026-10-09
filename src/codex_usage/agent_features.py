@@ -71,6 +71,7 @@ class AgentFeatures:
         speed_granularity: str | None = None,
         speed_window_start: str | None = None,
         speed_window_scope: str | None = None,
+        breakdown_action: str | None = None,
     ) -> RenderedLedgerReport:
         settings = self._settings()
         return render_ledger_report(
@@ -85,6 +86,7 @@ class AgentFeatures:
             speed_granularity=speed_granularity,
             speed_window_start=speed_window_start,
             speed_window_scope=speed_window_scope,
+            breakdown_action=breakdown_action,
         )
 
     def export_agent_activity(

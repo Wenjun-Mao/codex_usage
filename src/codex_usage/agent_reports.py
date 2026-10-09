@@ -52,6 +52,7 @@ class RenderedLedgerReport:
     elapsed_seconds: float
     status: LedgerStatus
     speed_navigation: dict | None = None
+    breakdown_navigation: dict | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -61,6 +62,7 @@ class RenderedLedgerReport:
             "elapsed_seconds": self.elapsed_seconds,
             "status": self.status.to_dict(),
             "speed_navigation": self.speed_navigation,
+            "breakdown_navigation": self.breakdown_navigation,
         }
 
 
@@ -79,8 +81,8 @@ class AgentActivityExport:
 
 
 def render_ledger_report(codex_home: Path, **kwargs) -> RenderedLedgerReport:
-    from codex_usage.speed_reports import render_speed_report
-    return render_speed_report(codex_home, **kwargs)
+    from codex_usage.breakdown_reports import render_breakdown_report
+    return render_breakdown_report(codex_home, **kwargs)
 
 
 def _render_base_ledger_report(
@@ -95,6 +97,7 @@ def _render_base_ledger_report(
     auto_transitions: bool = True,
     now: datetime | None = None,
     _snapshot: sqlite3.Connection | None = None,
+    _prepared_sink: dict | None = None,
 ) -> RenderedLedgerReport:
     started = monotonic()
     now = now or datetime.now(UTC)
@@ -159,6 +162,8 @@ def _render_base_ledger_report(
             auto_transitions=auto_transitions,
         )
     valued = materialized.valued
+    if _prepared_sink is not None:
+        _prepared_sink.update(valued=valued, allowance=allowance_report)
     source_counts = materialized.source_counts
     with tempfile.TemporaryDirectory(prefix="codex-usage-report-") as directory:
         output_path = Path(directory) / "report.html"

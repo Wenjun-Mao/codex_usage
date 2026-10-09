@@ -46,3 +46,20 @@ test("an open usage report refreshes only after meaningful ledger status changes
     true,
   );
 });
+
+test("quota freshness and elapsed deadlines refresh without ledger mutations", () => {
+  const originalNow = Date.now;
+  try {
+    Date.now = () => 99_000;
+    const quota = { probe_status: "fresh", active_buckets: [{ limit_id: "codex", duration_minutes: 10080, resets_at: 100 }] };
+    const current = status({ plan_allowance: quota });
+    const fingerprint = usageStatusFingerprint(current);
+    assert.equal(usageReportNeedsRefresh(fingerprint, current), false);
+    Date.now = () => 101_000;
+    assert.equal(usageReportNeedsRefresh(fingerprint, current), true);
+    Date.now = () => 99_000;
+    assert.equal(usageReportNeedsRefresh(fingerprint, status({ plan_allowance: { ...quota, probe_status: "stale" } })), true);
+  } finally {
+    Date.now = originalNow;
+  }
+});

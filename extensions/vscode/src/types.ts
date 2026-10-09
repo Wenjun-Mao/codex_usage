@@ -60,13 +60,26 @@ export interface ProjectSummary {
   task_count: number;
 }
 
+export interface BreakdownState {
+  basis: "cycle" | "selected";
+  view: "hour" | "project";
+  metric: "cost" | "tokens";
+  group: "model" | "project";
+  day: string;
+  detail: string;
+}
+
+export interface BreakdownAction { scope: string; state: BreakdownState }
+export interface BreakdownNavigation { scope: string; state: BreakdownState; actions: BreakdownAction[] }
+
 export interface RenderedReport {
   html: string;
   ledger_revision: number;
   cache_hit: boolean;
   elapsed_seconds: number;
-  status: Pick<AgentStatus, "ledger_revision" | "last_capture_at" | "last_capture_outcome" | "last_capture_error" | "coverage" | "image_backfill" | "speed">;
+  status: Pick<AgentStatus, "ledger_revision" | "last_capture_at" | "last_capture_outcome" | "last_capture_error" | "coverage" | "image_backfill" | "speed" | "plan_allowance">;
   speed_navigation?: SpeedNavigation;
+  breakdown_navigation?: BreakdownNavigation;
 }
 
 export interface SpeedNavigation {

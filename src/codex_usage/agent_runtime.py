@@ -204,6 +204,7 @@ class CodexUsageAgent:
         speed_granularity: str | None = None,
         speed_window_start: str | None = None,
         speed_window_scope: str | None = None,
+        breakdown_action: str | None = None,
     ) -> RenderedLedgerReport:
         return self._features.report(
             range_name=range_name,
@@ -214,6 +215,7 @@ class CodexUsageAgent:
             speed_granularity=speed_granularity,
             speed_window_start=speed_window_start,
             speed_window_scope=speed_window_scope,
+            breakdown_action=breakdown_action,
         )
 
     def export_agent_activity(
@@ -248,6 +250,7 @@ class CodexUsageAgent:
                     "agent-activity",
                     "image-generation-accounting",
                     "observed-output-speed-v1",
+                    "usage-allowance-breakdown-v1",
                     "plan-allowance",
                     "private-companion-v1",
                 ],

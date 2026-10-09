@@ -86,6 +86,7 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                         speed_granularity=_optional(query, "speed_granularity"),
                         speed_window_start=_optional(query, "speed_window_start"),
                         speed_window_scope=_optional(query, "speed_window_scope"),
+                        breakdown_action=_optional(query, "breakdown_action"),
                     )
                     self._json(HTTPStatus.OK, report.to_dict())
                 elif path == "/v1/agent-activity":

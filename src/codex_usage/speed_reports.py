@@ -4,6 +4,7 @@ import html
 import json
 from datetime import UTC, datetime
 import re
+from contextlib import nullcontext
 from time import monotonic
 
 from codex_usage.aggregation import resolve_report_range, resolve_timezone
@@ -14,7 +15,7 @@ from codex_usage.speed_queries import chart_navigation, speed_aggregates, store_
 from codex_usage.speed_store import revision
 
 
-def render_speed_report(codex_home, *, speed_granularity=None, speed_window_start=None, speed_window_scope=None, **kwargs):
+def render_speed_report(codex_home, *, speed_granularity=None, speed_window_start=None, speed_window_scope=None, _snapshot=None, **kwargs):
     from codex_usage.agent_reports import _render_base_ledger_report, RenderedLedgerReport
     started = monotonic()
     kwargs["now"] = kwargs.get("now") or datetime.now(UTC)
@@ -23,8 +24,9 @@ def render_speed_report(codex_home, *, speed_granularity=None, speed_window_star
         start_date=kwargs.get("start_date"), end_date=kwargs.get("end_date"), now=kwargs["now"])
     keys = sorted({k for k in kwargs["project_keys"] or [] if k})
     path = ledger_database_path(codex_home)
-    with open_ledger(path, read_only=True) as connection:
-        connection.execute("begin")
+    with (nullcontext(_snapshot) if _snapshot is not None else open_ledger(path, read_only=True)) as connection:
+        if _snapshot is None:
+            connection.execute("begin")
         base = _render_base_ledger_report(codex_home, _snapshot=connection, **kwargs)
         speed_revision = revision(connection)
         nav = chart_navigation(connection, report_range, keys, timezone, kwargs["now"], speed_granularity, speed_window_start, speed_window_scope)
