@@ -9,7 +9,7 @@ import { collectorSetupChoices, projectTransitionChoices } from "./setupPresenta
 import { chooseCodexHome, configureCaptureInterval } from "./collectorConfiguration";
 import { StorageClient } from "./storageClient";
 import { TaskTransferClient } from "./taskTransferClient";
-import type { AgentActivityExport, AgentSettings, AgentStatus, CustomDateRange, ProjectSummary, RenderedReport, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
+import type { AgentActivityExport, AgentSettings, AgentStatus, CustomDateRange, ProjectSummary, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
 import { usageReportNeedsRefresh, usageStatusFingerprint } from "./usageRefreshPolicy";
 import { chooseProjects } from "./projectSelection";
 import { selectCustomRange } from "./customRangeSelection";
@@ -55,7 +55,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     statusItem,
     vscode.commands.registerCommand("codexUsage.openDashboard", openDashboard),
-    vscode.commands.registerCommand("codexUsage.refreshDashboard", () => refreshVisibleDashboard()),
+    vscode.commands.registerCommand("codexUsage.refreshDashboard", () => {
+      dashboardNavigation.reset();
+      return refreshVisibleDashboard();
+    }),
     vscode.commands.registerCommand("codexUsage.captureNow", captureNow),
     vscode.commands.registerCommand("codexUsage.selectRange", selectRange),
     vscode.commands.registerCommand("codexUsage.exportAgentActivityCsv", exportAgentActivityCsv),
@@ -141,7 +144,7 @@ async function refreshVisibleDashboard(
       const query = reportQuery(controls.theme);
       const identity = reportQuery().toString();
       dashboardNavigation.query(query, identity, status);
-      const report = await client.get<RenderedReport>(`/v1/report?${query.toString()}`);
+      const report = await dashboardNavigation.report(client, query);
       if (panel === target && requestId === refreshSerial) {
         renderedUsageFingerprint = usageStatusFingerprint(report.status);
         dashboardNavigation.accept(report);

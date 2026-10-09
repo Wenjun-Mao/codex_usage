@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from time import monotonic
 
 from codex_usage.aggregation import (
-    RangeBounds, filter_records_by_project_keys, resolve_report_range,
+    filter_records_by_project_keys, resolve_report_range,
     resolve_timezone, value_records,
 )
 from codex_usage.agent_paths import ledger_database_path
@@ -13,12 +13,14 @@ from codex_usage.allowance_index import indexed_allowance_report
 from codex_usage.allowance_queries import allowance_status
 from codex_usage.breakdown_aggregation import aggregate
 from codex_usage.breakdown_evidence import prepare_evidence, weekly_anchors
+from codex_usage.breakdown_intervals import BreakdownInterval
+from codex_usage.breakdown_commands import BreakdownScopeExpired, issued_action, receipt, prune_receipts, RECEIPT_PREFIX
 from codex_usage.ledger_queries import query_ledger_records, query_ledger_status, query_ledger_transitions
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.parser import finalize_session_records
 from codex_usage.project_transitions import apply_project_transitions
 
-BREAKDOWN_REVISION = 1
+BREAKDOWN_REVISION = 2
 
 
 def digest(value):
@@ -39,6 +41,7 @@ def store(path, revision, payloads):
         writer.executemany("insert or replace into rendered_reports values (?,?,?,?,?)",
             [(k, revision, PRICING_REVISION, datetime.now(UTC).isoformat(), json.dumps(v))
              for k, v in payloads.items()])
+        prune_receipts(writer)
         writer.commit()
 
 
@@ -64,9 +67,13 @@ def prepare(connection, path, report_range, keys, timezone, status, kwargs, sink
             continue
         if basis == "selected":
             bounds = report_range.bounds
+            start = bounds.start_us / 1e6 if bounds.start_us is not None else min(captured_times, default=kwargs["now"].timestamp())
+            end = bounds.end_us / 1e6 if bounds.end_us is not None else max(captured_times, default=start) + .000001
+            interval = BreakdownInterval(start, end)
         else:
-            bounds = RangeBounds(int(datetime.fromisoformat(cycle["start"]).timestamp() * 1e6),
-                                 int(datetime.fromisoformat(cycle["end"]).timestamp() * 1e6) + 1)
+            interval = BreakdownInterval(datetime.fromisoformat(cycle["start"]).timestamp(),
+                datetime.fromisoformat(cycle["end"]).timestamp(), causal=True)
+            bounds = interval.sql_bounds
         if basis == "selected" and "valued" in sink:
             valued = sink["valued"]
         else:
@@ -74,14 +81,14 @@ def prepare(connection, path, report_range, keys, timezone, status, kwargs, sink
             if transitions:
                 records = apply_project_transitions(records, transitions)
             valued = value_records(filter_records_by_project_keys(records, keys))
-        start = bounds.start_us / 1e6 if bounds.start_us is not None else min(captured_times, default=kwargs["now"].timestamp())
-        end = bounds.end_us / 1e6 if bounds.end_us is not None else max(captured_times, default=start) + .000001
+        start, end = interval.start, interval.end
         info, data = aggregate(valued, timezone, evidence, start=start, end=end,
-                               complete=status.coverage.complete)
+                               complete=status.coverage.complete, causal=interval.causal)
         info["min_date"] = datetime.fromtimestamp(start, timezone).date().isoformat()
         info["max_date"] = datetime.fromtimestamp(max(start, end - .000001), timezone).date().isoformat()
         observed = [d for d in info["daily"]]
-        observed.extend(datetime.fromtimestamp(at, timezone).date().isoformat() for at in captured_times if start <= at < end)
+        observed.extend(datetime.fromtimestamp(interval.occurrence_time(at), timezone).date().isoformat()
+            for at in captured_times if interval.contains(at))
         info["latest_day"] = max(observed, default=info["max_date"])
         metadata["ranges"][basis] = info
         partitions.update({basis + ":" + k: v for k, v in data.items()})
@@ -127,6 +134,17 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
                     keys, str(timezone), kwargs.get("auto_transitions", True), status.coverage.complete]
         prefix = "breakdown:" + digest(identity) + ":"
         metadata = load(connection, prefix + "metadata")
+        live = allowance_status(connection, now=kwargs["now"])
+        live["now"] = kwargs["now"].timestamp()
+        args = None
+        if breakdown_action is not None:
+            args = issued_action(connection, breakdown_action, load)
+            allowed = load(connection, prefix + "nav:" + args["scope"])
+            reason = initial_state(metadata, live)[1] if metadata else None
+            if not metadata or not allowed or allowed["reason"] != reason:
+                raise BreakdownScopeExpired("Issued breakdown scope expired; reload without chart commands")
+            if args not in allowed["actions"]:
+                raise ValueError("Unsupported breakdown command")
         base = render_speed_report(codex_home, _snapshot=connection, _prepared_sink=sink, **kwargs)
         cold_seconds = 0.0
         if metadata is None:
@@ -136,31 +154,23 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
             cold_seconds = monotonic() - cold_start
             metadata["cold_seconds"] = cold_seconds
             writes[prefix + "metadata"] = metadata
-        live = allowance_status(connection, now=kwargs["now"])
-        live["now"] = kwargs["now"].timestamp()
         state, reason = initial_state(metadata, live)
-        if breakdown_action is not None:
-            try:
-                args = json.loads(breakdown_action)
-            except (TypeError, ValueError) as error:
-                raise ValueError("Invalid breakdown action") from error
-            if not isinstance(args, dict) or set(args) != {"scope", "state"} or not isinstance(args["scope"], str):
-                raise ValueError("Invalid breakdown command fields")
-            allowed = load(connection, prefix + "nav:" + args["scope"])
-            if not allowed or allowed["reason"] != reason or args not in allowed["actions"]:
-                raise ValueError("Stale or unsupported breakdown command")
+        if args is not None:
             state = args["state"]
             if state["basis"] == "cycle" and reason:
-                raise ValueError("Weekly evidence expired; reload the dashboard")
+                raise BreakdownScopeExpired("Weekly evidence expired; reload the dashboard")
         def partition(name, default):
             key = prefix + name
             return writes[key] if key in writes else load(connection, key) or default
         info = metadata["ranges"][state["basis"]]
         scope = digest([identity, metadata["evidence"], reason, state])
-        nav = {"scope": scope, "state": state, "actions": []}
+        nav = {"scope": scope, "state": state, "actions": [], "evidence_state": {
+            "probe_status": live["probe_status"], "deadline_elapsed": any(
+                p.resets_at is not None and p.resets_at <= live["now"] for p in weekly_anchors(live))}}
         section = render_breakdown(metadata, info, state, nav, reason, timezone, partition,
                                    global_filtered=bool(keys))
         writes[prefix + "nav:" + scope] = {"reason": reason, "actions": nav["actions"]}
+        writes[RECEIPT_PREFIX + scope] = receipt(nav["actions"])
         rendered = base.html
         # The speed section replaces its placeholder; place breakdown after the
         # heatmap's enclosing section without changing monetary report markup.

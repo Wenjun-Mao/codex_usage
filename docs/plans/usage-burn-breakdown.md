@@ -2,8 +2,9 @@
 
 Status: Product direction approved 2026-10-08; implementation authorized and
 started 2026-10-09, after the released 2.11.1 observed-speed usability patch.
-Separate implementation candidate implemented and verification completed on
-2026-10-09; not shipped. Evidence below is proven only within its stated scope.
+Separate implementation candidate corrected and re-verified on 2026-10-09;
+not shipped. Initial verification missed the reviewed interval, missing-evidence,
+visual-axis and scope-recovery cases; corrected evidence is recorded below.
 Independent manager review, product acceptance and release approval remain gated.
 
 ## Goal
@@ -94,7 +95,11 @@ live ledger, installed extension, Keychain, services and unrelated `apps/`.
 Leave a reviewed implementation candidate for release approval; do not tag or
 publish Marketplace packages as part of this kickoff.
 
-## Implementation Progress (2026-10-09)
+## Initial Verification (62b72c29; Superseded By Review Fixes)
+
+These checks passed on the original candidate but missed the manager/reviewer
+reproductions below. Their historical observations are not acceptance of the
+corrected candidate or proof that its additional cold cost was pre-existing.
 
 - Implemented candidate: partitioned revision-bound valued composition,
   chronological local-hour occurrences, cycle/selected scope, fixed visible
@@ -163,3 +168,97 @@ Final local evidence: `output/playwright/usage-breakdown/review-ui/evidence.json
 `review-native/evidence.json` and `private-review-baseline.json` under that same
 directory. Browser PNGs are named by scenario/width; native PNGs by input number.
 Failed-attempt diagnostic directories are retained there for manager inspection.
+
+## Manager Review Corrections (2026-10-09)
+
+- Implemented: optional-duration evidence no longer enters a mixed int/None
+  tuple comparison. Weekly plots have explicit series/plan legends and weekly
+  unavailable states; missing-duration and nonweekly readings remain exact raw
+  evidence. Selected-range mixed/missing/5h full-report regressions pass.
+- Implemented: named capture-causal `(origin, capture]` composition excludes
+  opening events and includes closing events, including exact hour/day bounds.
+  SQL microsecond padding is separate from display/calibration endpoints.
+  Genuine valued-ledger/estimator cycle and one-hour renders now show compatible
+  contributions; unknown/full-meter cases remain unavailable. Selected-range
+  calendar membership retains baseline parity and does not borrow incompatible
+  right-closed calibration. Independent UTC sampling guards partial/repeated DST.
+- Implemented: fixed-font sparse HTML ticks align with actual chronological
+  daily/hourly/meter geometry, secondary ticks hide on narrow displays, and
+  hover/accessibility names carry dated project/model/value context. Complete
+  day/hour commands remain inspectable disclosures. Bounds no longer show SQL
+  microsecond padding; accounting prose is progressively disclosed.
+- Implemented: expiry binds issued evidence, not the command's target basis.
+  Authenticated HTTP distinguishes typed expired issued scopes (409) from
+  malformed/unissued inputs (400). Host permits one typed bare-report recovery
+  for midnight, timezone, transition, freshness and revision changes, preserving
+  global filters. Reload clears chart state; older cached status cannot discard
+  a newer rendered scope. Authenticated TypeScript transport regression passes.
+- Implemented: receipt hashes survive ordinary old-report pruning under their
+  own bounded 256-scope/24-hour policy. They never authorize stale composition
+  reuse. Post-pruning two-client HTTP regression and cap/TTL tests pass. No new
+  ledger schema or package version was introduced; see ADR 0054.
+- Proven after corrections: full suite 1,677 passed with one pre-existing
+  Windows-only junction skip; extension tests/build 47 passed; Ruff and diff
+  whitespace passed. Final hover-label change additionally passed 28 focused
+  domain/HTTP tests and the final browser/native repeats.
+- Proven after corrections: 360 script-disabled Chromium/WebKit/Firefox views
+  at 1440/760/360 widths, Day/Night, four modes/groups/drills, 30-day context,
+  Chatham partial-hour and Toronto repeated-hour days, empty filters, stale/
+  partial coverage, missing-duration/5h-only and multiple-weekly-series states.
+  Tick geometry, fixed fonts, collision-free labels, same hourly/meter domain,
+  dated hover/accessibility names and visible weekly legends were asserted.
+  Wide/narrow screenshots were inspected; exact rows and commands remain.
+- Proven after corrections: fresh macOS bundled-agent/isolated VS Code replay
+  passed 14 rendered inputs with strict OOPIF CDP DOM, real mouse/Enter, no
+  product scripts or CSP relaxation. Hour disclosure was opened with real
+  input before drill-down. Native Tab traversal and Windows remain unproven.
+- Proven after corrections: controlled `v2.11.1` comparison on one identical
+  disposable SQLite backup, fixed clock, timezone, selection and accounting
+  settings; both Today and all-time retained byte-identical base HTML. Each
+  copy discarded rendered/speed/allowance report caches but retained the same
+  pre-existing cost index. Release source came from tag commit
+  b2eb6f02542be2a1aab1952bcad5ea5cde062aa6, extracted into a temporary directory,
+  not a branch/worktree. Final trial ran without concurrent owned verification
+  jobs; existing real services/windows were not stopped or changed.
+- Observed paired performance, not benchmark/causal rollout evidence:
+
+  | Component (seconds unless bytes) | Today release | Today candidate | All release | All candidate |
+  | --- | ---: | ---: | ---: | ---: |
+  | Cold total | 6.288 | 8.389 | 38.276 | 41.123 |
+  | Base report, inclusive | 5.989 | 5.835 | 37.893 | 37.355 |
+  | Derived preparation | n/a | 1.956 | n/a | 2.906 |
+  | Quota evidence preparation, nested in derived | n/a | 1.828 | n/a | 2.159 |
+  | Composition, nested in derived | n/a | 0.010 | n/a | 0.578 |
+  | Final derived HTML rendering | n/a | 0.0033 | n/a | 0.0033 |
+  | Derived cache write | n/a | 0.401 | n/a | 0.416 |
+  | Warm report | 0.045 | 0.141 | 0.043 | 0.141 |
+  | HTML bytes | 3,638,343 | 3,807,405 | 5,240,689 | 5,409,751 |
+
+  Nested components overlap and must not be summed. Candidate warm controls
+  were 0.131-0.151 s (Today), 0.131-0.142 s (all-time). Additional cold work is
+  primarily the breakdown's second quota-history extraction/continuity
+  preparation, composition and cache serialization/write layer, not monetary
+  chart rendering. The base also has its own allowance preparation and full
+  materialization cost; timing differences in this pair do not prove invariant
+  baseline performance. This feature adds measurable cost; it is not dismissed
+  as pre-existing. Warm synthetic forbidden-work gates remain zero, including
+  navigation/drills. Further cold-history reuse is a potential optimization,
+  not an acceptance claim or a new pricing policy in this candidate.
+- Evidence for this corrected source is local and ignored under
+  `output/playwright/usage-breakdown/`: `review-fixes-accepted-ui/evidence.json`,
+  `review-fixes-accepted-native/evidence.json`, and
+  `review-fixes-serial-controlled-perf.json` (includes Python source fingerprint,
+  component timings and base-HTML parity hashes). Screenshot names retain
+  scenario/width and native input number. Prior failed attempts remain local.
+- Still gated: independent manager acceptance, native Windows proof, product
+  acceptance, version/release approval and publication. Sole worker writes;
+  manager/reviewer remain read-only. No live writes/capture/install/Keychain or
+  unrelated apps/ changes.
+
+Corrected verification scripts are the same UI/native entrypoints above with
+the corrected output paths. The controlled performance entrypoint is
+`scripts/compare_usage_breakdown_perf.py --ledger <explicit-ledger> --output
+<ignored-evidence-path>`; its only live ledger access is one read-only backup,
+and all reports/cache mutations run on temporary copies. It records nested
+components separately rather than subtracting derived time from a total to
+claim an unchanged base.

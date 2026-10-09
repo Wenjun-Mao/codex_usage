@@ -29,6 +29,13 @@ export class AgentUnavailableError extends Error {
   }
 }
 
+export class AgentRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
+    super(message);
+    this.name = "AgentRequestError";
+  }
+}
+
 export class AgentClient {
   private constructor(
     private descriptor: AgentDescriptor,
@@ -140,7 +147,8 @@ export class AgentClient {
             const payload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
             if ((response.statusCode ?? 500) >= 400) {
               const detail = isRecord(payload) && typeof payload.error === "string" ? payload.error : "Collector request failed.";
-              reject(new Error(detail));
+              const code = isRecord(payload) && typeof payload.code === "string" ? payload.code : undefined;
+              reject(new AgentRequestError(detail, response.statusCode ?? 500, code));
             } else {
               resolve(payload as T);
             }

@@ -83,6 +83,35 @@ def main():
             increment_ledger_revision(connection)
             connection.commit()
         reports.append(("partial-coverage", render()))
+        for label, now, timezone, days, duration, day in (
+            ("thirty-days", AT, "UTC", 30, 10080, None),
+            ("chatham-partial", AT, "Pacific/Chatham", 30, 10080, "2026-09-27"),
+            ("toronto-repeated", AT.replace(month=11, day=2), "America/Toronto", 4, 10080, "2026-11-01"),
+            ("five-hour-only", AT, "UTC", 4, 300, None),
+            ("missing-duration", AT, "UTC", 4, None, None),
+            ("multi-weekly", AT, "UTC", 4, 10080, None),
+        ):
+            edge_home = home / label
+            breakdown_home(edge_home, now=now, days=days, duration=duration)
+            if label == "multi-weekly":
+                from codex_usage.allowance_models import QuotaObservation
+                from codex_usage.allowance_probe import QuotaRead
+                from codex_usage.allowance_store import store_read
+                with open_ledger(edge_home / ".codex-usage/usage-ledger.sqlite3") as connection:
+                    point = QuotaObservation(now.isoformat(), "another-limit", "primary", "plus", 40,
+                        10080, int((now+timedelta(days=4)).timestamp()))
+                    store_read(connection, QuotaRead(now.isoformat(), "plus", (point,)), None)
+                    increment_ledger_revision(connection)
+                    connection.commit()
+            def edge_render(action=None):
+                return render_ledger_report(edge_home, range_name="all", project_keys=[], theme="day",
+                    timezone_name=timezone, now=now, breakdown_action=json.dumps(action) if action else None)
+            edge = edge_render()
+            selected = next(a for a in edge.breakdown_navigation["actions"] if a["state"]["basis"] == "selected")
+            edge = edge_render(selected)
+            if day:
+                edge = edge_render(next(a for a in edge.breakdown_navigation["actions"] if a["state"]["day"] == day))
+            reports.append((label, edge))
         with sync_playwright() as playwright:
             for engine in ("chromium", "webkit", "firefox"):
                 browser = getattr(playwright, engine).launch()
@@ -103,6 +132,24 @@ def main():
                                 for axis in section.locator(".ub-axis").all():
                                     assert axis.is_visible()
                                     assert axis.evaluate("e => getComputedStyle(e).fontSize") == "12px"
+                                axes = section.locator(".ub-time-axis")
+                                for marker in section.locator("svg rect, svg circle, svg path").all():
+                                    assert "2026-" in marker.locator("title").text_content(), (label, marker.inner_html())
+                                for link in section.locator("svg a").all():
+                                    assert "2026-" in link.get_attribute("aria-label")
+                                if label == "multi-weekly":
+                                    assert "another-limit · weekly · plus" in section.locator(".ub-meter-legend").inner_text()
+                                    assert "codex · weekly · pro" in section.locator(".ub-meter-legend").inner_text()
+                                if report.breakdown_navigation["state"]["view"] == "hour":
+                                    assert axes.count() == 3, (label, axes.count())
+                                    assert axes.nth(1).get_attribute("data-start") == axes.nth(2).get_attribute("data-start")
+                                    assert axes.nth(1).get_attribute("data-end") == axes.nth(2).get_attribute("data-end")
+                                else:
+                                    assert axes.count() == 0
+                                for axis in axes.all():
+                                    assert axis.evaluate("e => getComputedStyle(e).fontSize") == "12px"
+                                    assert axis.evaluate("e => {const r=e.getBoundingClientRect();const t=[...e.querySelectorAll('.ub-tick')].filter(x=>getComputedStyle(x).display!=='none');return t.every((x,i)=>{const b=x.querySelector('span').getBoundingClientRect();return b.left>=r.left-1 && b.right<=r.right+1 && (!i || t[i-1].querySelector('span').getBoundingClientRect().right<=b.left+1)})}"), (engine, label, width)
+                                    assert axis.evaluate("e => { const start=+e.dataset.start,end=+e.dataset.end,w=e.clientWidth,left=e.getBoundingClientRect().left; return [...e.querySelectorAll('.ub-tick')].filter(t=>getComputedStyle(t).display!=='none').every(t=>Math.abs(t.getBoundingClientRect().left-left-(+t.dataset.at-start)/Math.max(.000001,end-start)*w)<2) }")
                                 for group in section.locator(".ub-controls").all():
                                     assert group.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
                                 summary = section.locator("details > summary").last
@@ -115,7 +162,7 @@ def main():
                                     section.screenshot(path=str(args.output / f"{label}-{width}.png"))
                                 evidence["views"].append({"engine": engine, "scenario": label, "theme": theme,
                                     "width": width, "state": report.breakdown_navigation["state"], "script_disabled": True,
-                                    "exact_table_keyboard": True, "fixed_axes": True})
+                                    "exact_table_keyboard": True, "fixed_axes": True, "aligned_collision_free_time_ticks": True})
                 finally:
                     context.close()
                     browser.close()

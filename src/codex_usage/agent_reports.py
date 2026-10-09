@@ -348,6 +348,6 @@ def _store_cached_report(
             ),
         )
         connection.execute(
-            "delete from rendered_reports where ledger_revision < ?", (revision,)
+            "delete from rendered_reports where ledger_revision < ? and cache_key not like 'breakdown-issued:%'", (revision,)
         )
         connection.commit()

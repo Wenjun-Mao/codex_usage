@@ -55,6 +55,17 @@ class BreakdownTarget(NativeSpeedTarget):
             self.page.wait_for_timeout(100)
         self.page.screenshot(path=str(path), timeout=5000)
 
+    def disclose(self, label):
+        summary = next(n for n in nodes(self.chart()) if n.get("nodeName") == "SUMMARY" and node_text(n) == label)
+        self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": summary["nodeId"]})
+        quad = self.send("DOM.getContentQuads", {"nodeId": summary["nodeId"]})["quads"][0]
+        x, y = sum(quad[::2])/4, sum(quad[1::2])/4
+        hit = self.send("DOM.getNodeForLocation", {"x": round(x), "y": round(y)})
+        assert hit["backendNodeId"] in {n.get("backendNodeId") for n in nodes(summary)}
+        for event in ("mousePressed", "mouseReleased"):
+            self.send("Input.dispatchMouseEvent", {"type": event, "x": x, "y": y, "button": "left", "clickCount": 1})
+        self.page.wait_for_timeout(100)
+
     def keyboard(self, label):
         # CDP DOM focus sets the input origin in the script-disabled OOPIF;
         # real Enter input and a changed rendered state prove activation.
@@ -163,6 +174,8 @@ def main():
                         if prefix == "project:":
                             requested = target.click("Project", decode)
                             wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
+                        else:
+                            target.disclose("Inspect every hour occurrence")
                         label = target.label_for(lambda s: s["detail"].startswith(prefix))
                         requested = target.click(label, decode)
                         state = wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])

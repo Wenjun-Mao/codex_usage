@@ -14,15 +14,15 @@ from codex_usage.session_cache import refresh_cached_session_data
 AT = datetime(2026, 10, 9, 12, tzinfo=UTC)
 
 
-def breakdown_home(home, *, now=AT, projects=13):
+def breakdown_home(home, *, now=AT, projects=13, days=4, duration=10080):
     sessions = home / "sessions"
     sessions.mkdir(parents=True, exist_ok=True)
     models = ("gpt-6.1-sol", "gpt-6-luna", "codex-auto-review", "unknown-synthetic")
     for p in range(projects):
-        rows = [{"type": "session_meta", "timestamp": (now - timedelta(days=3)).isoformat(),
+        rows = [{"type": "session_meta", "timestamp": (now - timedelta(days=days-1)).isoformat(),
                  "payload": {"id": f"synthetic-{p}", "cwd": f"/synthetic/project-{p:02d}"}}]
         cumulative = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-        for day in reversed(range(4)):
+        for day in reversed(range(days)):
             for hour in (1, 6, 11):
                 for i, model in enumerate(models):
                     at = now.replace(hour=hour, minute=i + 1) - timedelta(days=day)
@@ -46,7 +46,7 @@ def breakdown_home(home, *, now=AT, projects=13):
             at = now - timedelta(hours=(6 - index) * 12)
             point = QuotaObservation(at.isoformat(), "codex", "secondary" if index % 2 else "primary",
                                      "pro", 21 if index == 4 else 10 + index * 4,
-                                     10080, int((now + timedelta(days=4)).timestamp()))
+                                     duration, int((now + timedelta(days=4)).timestamp()))
             store_read(connection, QuotaRead(at.isoformat(), "pro", (point,)), None)
         increment_ledger_revision(connection)
         connection.commit()

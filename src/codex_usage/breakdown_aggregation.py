@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from codex_usage.allowance_costs import allowance_cost_components
 from codex_usage.breakdown_evidence import interval_calibration
+from codex_usage.breakdown_intervals import BreakdownInterval
 from codex_usage.subscription_usage import is_included_subscription_usage
 
 
@@ -62,7 +63,8 @@ def local_hours(day, timezone):
     return result
 
 
-def aggregate(valued, timezone, evidence, *, start, end, complete):
+def aggregate(valued, timezone, evidence, *, start, end, complete, causal=False):
+    interval = BreakdownInterval(start, end, causal)
     days = defaultdict(list)
     projects, daily = {}, {}
     cells = {}
@@ -70,15 +72,16 @@ def aggregate(valued, timezone, evidence, *, start, end, complete):
     for item in valued:
         record, summary = item.record, item.summary
         at = record.timestamp.timestamp()
-        if not start <= at < end:
+        if not interval.contains(at):
             continue
-        local = record.timestamp.astimezone(timezone)
+        occurrence_at = interval.occurrence_time(at)
+        local = datetime.fromtimestamp(occurrence_at, timezone)
         day = local.date().isoformat()
         if day not in calendars:
             buckets = local_hours(day, timezone)
             calendars[day] = buckets, [h["start"] for h in buckets]
         buckets, starts = calendars[day]
-        hour = buckets[bisect_right(starts, at) - 1]["key"]
+        hour = buckets[bisect_right(starts, occurrence_at) - 1]["key"]
         key = (hour, record.project_key, record.model)
         if key not in cells:
             cells[key] = dict(empty(), hour=hour, project=record.project_key,
@@ -96,21 +99,24 @@ def aggregate(valued, timezone, evidence, *, start, end, complete):
         add(project["models"].setdefault(row["model"], empty()), row)
         add(daily.setdefault(row["day"], empty()), row)
     all_total = total(cells.values())
-    calibration = interval_calibration(evidence, start, end, all_total["allowance_cost"],
-                                       all_total["allowance_unknown"], complete)
+    def calibrate(bounds, values):
+        if not bounds.causal:
+            return {"value": None, "reason": "calendar membership differs from capture-causal (origin, capture] evidence"}
+        return interval_calibration(evidence, bounds.start, bounds.end,
+            values["allowance_cost"], values["allowance_unknown"], complete)
+    calibration = calibrate(interval, all_total)
     partitions = {}
     for day, rows in days.items():
         hour_calibrations = {}
         for hour in local_hours(day, timezone):
             values = total(r for r in rows if r["hour"] == hour["key"])
-            hour_calibrations[hour["key"]] = interval_calibration(evidence,
-                max(start, hour["start"]), min(end, hour["end"]), values["allowance_cost"],
-                values["allowance_unknown"], complete)
+            hour_calibrations[hour["key"]] = calibrate(interval.clip(hour["start"], hour["end"]), values)
         partitions["day:" + day] = {"rows": rows, "calibrations": hour_calibrations}
     for project in projects:
         partitions["project:" + project] = [r for r in cells.values() if r["project"] == project]
     return {"projects": projects, "daily": daily, "total": all_total,
-            "calibration": calibration, "start": start, "end": end}, partitions
+            "calibration": calibration, "start": start, "end": end,
+            "causal": causal, "interval_notation": interval.notation}, partitions
 
 
 def ranked_projects(projects, metric):

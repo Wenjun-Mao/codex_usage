@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from codex_usage.breakdown_aggregation import empty, add, local_hours, ranked_projects, total
 from codex_usage.report_usage_breakdown_chart import COLORS, css, meter, plot
+from codex_usage.report_breakdown_axis import timestamp_label
 
 
 def command(nav, state, label, **changes):
@@ -62,11 +63,11 @@ def render_breakdown(metadata, info, state, nav, reason, timezone, partition, *,
     cycle = metadata["evidence"]["cycle"]
     notice = (f'Observed weekly portion; opening not assumed. Continuity boundary: {cycle["boundary"]}; {cycle["corrections"]} reported corrections.'
               if basis == "cycle" else 'Dashboard selected range.' + (f' Current cycle unavailable: {reason}.' if reason else ""))
-    notice += ' Usage follows global project selection.' if global_filtered else ' Captured local usage; not proof of complete account workload.'
-    notice += ' Language tokens include cached input and included reviews; API-equivalent dollars are not subscription charges. Images remain separate.'
-    start_label = datetime.fromtimestamp(info["start"], timezone).isoformat()
-    end_label = datetime.fromtimestamp(info["end"], timezone).isoformat()
-    content = f'<p class="ub-note">{html.escape(notice)}</p><p class="ub-note">[{start_label}, {end_label}) · {"Complete local baseline" if metadata["complete"] else "Partial local baseline"}</p>'
+    accounting = 'Usage follows global project selection.' if global_filtered else 'Captured local usage; not proof of complete account workload.'
+    accounting += ' Language tokens include cached input and included reviews; API-equivalent dollars are not subscription charges. Images remain separate.'
+    start_label = timestamp_label(info["start"], timezone)
+    end_label = timestamp_label(info["end"], timezone)
+    content = f'<p class="ub-note">{start_label} to {end_label} · {"Complete local baseline" if metadata["complete"] else "Partial local baseline"}</p><details><summary>Scope and accounting evidence</summary><p class="ub-note">{html.escape(notice + " " + accounting)} Membership {info["interval_notation"]}.</p></details>'
     model_names = sorted({m for p in info["projects"].values() for m in p["models"]})
     ranking = ranked_projects(info["projects"], state["metric"])
     if state["view"] == "project":
@@ -75,7 +76,7 @@ def render_breakdown(metadata, info, state, nav, reason, timezone, partition, *,
         content += f'<p class="ub-note">Ranked interval totals · visible scale 0 to {observed_maximum:.9g} {"tokens" if state["metric"] == "tokens" else "known USD"}</p>'
         for key, project in ranking:
             value = total(project["models"].values())
-            segments = ''.join(f'<span style="width:{v[state["metric"]] / maximum * 100:.6f}%;background:{COLORS[model_names.index(m) % len(COLORS)]}" title="{html.escape(m)}: {v[state["metric"]]:.9g}"></span>' for m, v in project["models"].items())
+            segments = ''.join(f'<span style="width:{v[state["metric"]] / maximum * 100:.6f}%;background:{COLORS[model_names.index(m) % len(COLORS)]}" title="{html.escape(start_label + " to " + end_label + " | " + project["label"] + " | " + m)}: {v[state["metric"]]:.9g} {state["metric"]}"></span>' for m, v in project["models"].items())
             below = any(0 < v[state["metric"]] / maximum < .001 for v in project["models"].values())
             label = command(nav, state, project["label"], detail="other" if key is None else "project:" + key, view="hour" if key is not None else "project")
             content += f'<div class="ub-rank">{label}<div class="ub-stack">{segments}</div><strong>{value[state["metric"]]:,.9g}{" *" if below else ""}{" + unknown" if state["metric"] == "cost" and value["unknown"] else ""}{" + excluded" if state["metric"] == "cost" and value["api_excluded"] else ""}</strong></div>'
@@ -114,10 +115,15 @@ def hour_view(metadata, info, state, nav, timezone, partition, ranking):
     while at <= last:
         dates.append(at.isoformat())
         at += timedelta(days=1)
+    daily_intervals = [(max(info["start"], datetime.fromisoformat(d).replace(tzinfo=timezone).timestamp()),
+        min(info["end"], (datetime.fromisoformat(d).replace(tzinfo=timezone) + timedelta(days=1)).timestamp())) for d in dates]
+    project_context = info["projects"][selected_project]["label"] if selected_project else "All selected projects"
     content += plot([{ "Captured": daily.get(d, empty())[state["metric"]]} for d in dates],
                     metric=state["metric"], labels=["Captured"], title="Daily context",
+                    intervals=daily_intervals, timezone=timezone, daily=True,
+                    bucket_labels=dates, bucket_details=[project_context + " / All models"] * len(dates),
                     links=[uri(command(nav, state, d, day=d, detail="project:" + selected_project if selected_project else "")) for d in dates])
-    content += f'<div class="ub-bounds"><span>{dates[0]}</span><span>{dates[-1]}</span></div>'
+    content += '<details><summary>Inspect every day</summary><div class="ub-hour-labels">' + ''.join(command(nav, state, d, day=d, detail="project:" + selected_project if selected_project else "") for d in dates) + '</div></details>'
     content += f'<div class="ub-window"><strong>{day} · one local day</strong>'
     for delta, label in ((-1, "Previous"), (1, "Next"), (0, "Latest day")):
         target = (datetime.fromisoformat(day).date() + timedelta(days=delta)).isoformat() if delta else info["latest_day"]
@@ -127,7 +133,7 @@ def hour_view(metadata, info, state, nav, timezone, partition, ranking):
     buckets = [h for h in local_hours(day, timezone) if h["end"] > info["start"] and h["start"] < info["end"]]
     group_labels = {(key if key is not None else "__other_projects__"): p["label"] for key, p in ranking}
     top = {key for key, _ in ranking if key is not None}
-    bars, labels, links, incomplete = [], set(), [], []
+    bars, labels, links, incomplete, bucket_details = [], set(), [], [], []
     for hour in buckets:
         values = defaultdict(float)
         for row in rows:
@@ -138,22 +144,28 @@ def hour_view(metadata, info, state, nav, timezone, partition, ranking):
         incomplete.append(state["metric"] == "cost" and any(r["unknown"] or r["api_excluded"] for r in rows if r["hour"] == hour["key"]))
         labels.update(values)
         links.append(uri(command(nav, state, hour["label"], detail="hour:" + hour["key"])))
+        bucket_details.append("; ".join(f'{r["label"]} / {r["model"]}: {r[state["metric"]]:.9g} {state["metric"]}' for r in rows if r["hour"] == hour["key"]) or project_context + " / All models: 0 known")
     color_order = sorted({m for p in info["projects"].values() for m in p["models"]}) if state["group"] == "model" else list(group_labels)
     content += plot(bars, metric=state["metric"], labels=color_order, links=links, incomplete=incomplete,
                     display_names=group_labels if state["group"] == "project" else None,
+                    bucket_labels=[day + " " + h["label"] for h in buckets], bucket_details=bucket_details, timezone=timezone,
                     intervals=[(max(info["start"], h["start"]), min(info["end"], h["end"])) for h in buckets],
                     title="Chronological local hour occurrences")
     if any(incomplete):
         content += '<small>Open diamonds: unknown or API-excluded costs, not zero API usage.</small>'
-    content += '<div class="ub-hour-labels">' + ''.join(command(nav, state, h["label"], detail="hour:" + h["key"]) for h in buckets) + '</div>'
+    content += '<details><summary>Inspect every hour occurrence</summary><div class="ub-hour-labels">' + ''.join(command(nav, state, h["label"], detail="hour:" + h["key"]) for h in buckets) + '</div></details>'
     first = max(info["start"], buckets[0]["start"]) if buckets else info["start"]
     end = min(info["end"], buckets[-1]["end"]) if buckets else info["end"]
-    content += f'<div class="ub-bounds"><span>{datetime.fromtimestamp(first, timezone).isoformat()}</span><span>{datetime.fromtimestamp(end, timezone).isoformat()}</span></div>'
     points = [p for p in partition("meter:" + day, []) if first <= datetime.fromisoformat(p["timestamp"]).timestamp() <= end]
+    end_day = datetime.fromtimestamp(end, timezone).date().isoformat()
+    if end_day != day:
+        points.extend(p for p in partition("meter:" + end_day, [])
+            if first <= datetime.fromisoformat(p["timestamp"]).timestamp() <= end)
+    weekly_identity = None
     if state["basis"] == "cycle":
         cycle = metadata["evidence"]["cycle"]
-        points = [p for p in points if p["limit_id"] == cycle["limit_id"] and p["duration_minutes"] == cycle["duration_minutes"]]
-    content += meter(points, first, end, timezone)
+        weekly_identity = (cycle["limit_id"], cycle["plan"])
+    content += meter(points, first, end, timezone, weekly_identity=weekly_identity)
     calibration = {"value": None, "reason": "no exact-interval calibration for this local day"}
     if state["detail"].startswith("hour:"):
         key = state["detail"][5:]

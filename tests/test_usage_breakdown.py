@@ -126,7 +126,7 @@ def test_command_shape_scope_stale_generation_and_no_resurrection(tmp_path):
         connection.execute("update ledger_generations set status='superseded' where status='trusted'")
         increment_ledger_revision(connection)
         connection.commit()
-    with pytest.raises(ValueError, match="Stale"):
+    with pytest.raises(ValueError, match="scope expired"):
         render(tmp_path, breakdown_action=json.dumps(requested))
     fresh = render(tmp_path)
     assert "Interval totals: 0 tokens" in fresh.html
@@ -212,7 +212,7 @@ def test_positive_exact_hour_estimates_survive_composition_without_api_review_pr
     reference = {"value": 100, "confidence": "Low/provisional", "available_at": AT.isoformat(), "plan": "pro", "end": AT.isoformat()}
     evidence = {"cycle": {"start": datetime.fromtimestamp(start, UTC).isoformat(), "end": AT.isoformat(), "plan": "pro", "full_at": None, "limit_id": "codex", "duration_minutes": 10080},
                 "paces": [[{"method": "calibrated cost", "reference": reference, "anchor": end, "span_seconds": 3600, "cost": cost, "limit_id": "codex", "duration_minutes": 10080}]]}
-    _, partitions = aggregate(valued, UTC, evidence, start=start, end=end, complete=True)
+    _, partitions = aggregate(valued, UTC, evidence, start=start, end=end, complete=True, causal=True)
     calibration = partitions["day:2026-10-09"]["calibrations"][datetime.fromtimestamp(start, UTC).isoformat()]
     assert calibration["value"] == 100 and "retrospective" in calibration["reference_kind"]
 

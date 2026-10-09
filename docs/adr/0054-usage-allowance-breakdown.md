@@ -24,6 +24,29 @@ Daily full-range context and one local calendar day of detail share actual
 UTC bounds; repeated hours retain offsets and skipped hours remain absent.
 Captured meter points are not interpolated or connected across boundaries.
 
+`BreakdownInterval` names two distinct membership contracts. Selected range
+retains dashboard calendar `[start, end)` accounting. Current cycle and its
+hour/day partitions use allowance's capture-causal `(origin, capture]`: exclude
+the opening event, include the captured endpoint, and assign an exact hour/day
+boundary event to the interval it closes. Integer-microsecond SQL inclusion
+padding is private to query bounds, never the displayed/calibration endpoints.
+Calendar rows cannot borrow a right-closed calibration merely because their
+scalar costs happen to match. They disclose this incompatibility explicitly.
+
+Sparse fixed-font HTML time ticks share the actual UTC geometry of daily,
+hourly and meter charts; narrow displays hide secondary ticks, not axes.
+Repeated/partial hours retain chronological keys and visible offsets. Complete
+day/hour command lists are disclosures, not substitutes for aligned axes.
+Bucket hover/accessibility names include date/time, project/model context and
+value. Visible bounds omit implementation microsecond padding; exact raw rows
+remain inspectable. Scope/accounting explanations are progressive disclosures.
+
+The meter is weekly and account-wide: current cycle plots the exact active
+limit/plan; Selected range plots historical known-weekly readings, with a
+visible limit/plan legend. Nonweekly and missing-duration evidence stays in
+the exact-reading disclosure, never silently presented as weekly. A domain
+without weekly readings explicitly marks weekly allowance unavailable.
+
 Prepare both range scopes once. Store compact metadata, per-day composition
 and project-hour partitions in the existing disposable rendered report cache,
 with distinct namespaced keys. No new ledger schema or raw valuation index.
@@ -42,6 +65,24 @@ bound to the same trusted snapshot and live evidence state. Both reject extra
 fields and unsupported dates, hours and projects; revision/expiry changes
 invalidate issued actions. Top ten projects plus
 Other preserve every underlying model total and inspectable detail row.
+
+The server separately records issued actions, validating their exact shape
+before any expiry recovery. A genuinely issued but expired snapshot/evidence
+scope returns HTTP 409 `breakdown_scope_expired`; malformed, altered and
+unissued inputs remain HTTP 400. Host invalidation compares issued evidence
+state independently of the target basis. For backend-resolved calendar,
+timezone, transition or evidence expiry, only this typed response permits one
+bare-report retry, clearing both chart scopes while retaining global filters.
+There is no retry for arbitrary 400s or unrelated conflicts. Older cached
+status must not invalidate a newer rendered revision.
+
+Receipt hashes have their own bounded disposable policy in the existing
+rendered-report table: the `breakdown-issued:` namespace survives ordinary
+older-generation report pruning, but retains at most 256 scopes for 24 hours.
+Only exact canonical action hashes are retained, not report bodies or bearer
+credentials. Receipts authorize only typed-expiry classification, never stale
+data resurrection. Expired/evicted receipts are hard rejected; explicit Reload
+clears chart commands and works without any receipt. No schema migration.
 
 Percentage-point estimates are detail-only: require an existing calibrated
 pace for the exact interval, a reference available no later than its captured

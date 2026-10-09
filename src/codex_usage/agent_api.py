@@ -231,6 +231,10 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
             return payload
 
         def _exception(self, exc: Exception) -> None:
+            from codex_usage.breakdown_commands import BreakdownScopeExpired
+            if isinstance(exc, BreakdownScopeExpired):
+                self._json(HTTPStatus.CONFLICT, {"error": str(exc), "code": "breakdown_scope_expired"})
+                return
             status = (
                 HTTPStatus.BAD_REQUEST
                 if isinstance(exc, (ValueError, KeyError, json.JSONDecodeError))

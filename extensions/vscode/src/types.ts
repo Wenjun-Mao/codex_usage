@@ -70,7 +70,12 @@ export interface BreakdownState {
 }
 
 export interface BreakdownAction { scope: string; state: BreakdownState }
-export interface BreakdownNavigation { scope: string; state: BreakdownState; actions: BreakdownAction[] }
+export interface BreakdownNavigation {
+  scope: string;
+  state: BreakdownState;
+  actions: BreakdownAction[];
+  evidence_state?: { probe_status: string; deadline_elapsed: boolean };
+}
 
 export interface RenderedReport {
   html: string;
