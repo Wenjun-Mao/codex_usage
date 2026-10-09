@@ -5,7 +5,8 @@ started 2026-10-09, after the released 2.11.1 observed-speed usability patch.
 Separate implementation candidate corrected and re-verified on 2026-10-09;
 not shipped. Initial verification missed the reviewed interval, missing-evidence,
 visual-axis and scope-recovery cases; corrected evidence is recorded below.
-Independent manager review, product acceptance and release approval remain gated.
+Manager implementation review accepted the corrected candidate on 2026-10-09.
+Human product acceptance, version/release approval and publication remain gated.
 
 ## Goal
 
@@ -250,7 +251,7 @@ Failed-attempt diagnostic directories are retained there for manager inspection.
   `review-fixes-serial-controlled-perf.json` (includes Python source fingerprint,
   component timings and base-HTML parity hashes). Screenshot names retain
   scenario/width and native input number. Prior failed attempts remain local.
-- Still gated: independent manager acceptance, native Windows proof, product
+- At worker handoff, still gated: independent manager acceptance, native Windows proof, product
   acceptance, version/release approval and publication. Sole worker writes;
   manager/reviewer remain read-only. No live writes/capture/install/Keychain or
   unrelated apps/ changes.
@@ -262,3 +263,25 @@ the corrected output paths. The controlled performance entrypoint is
 and all reports/cache mutations run on temporary copies. It records nested
 components separately rather than subtracting derived time from a total to
 claim an unchanged base.
+
+## Manager Acceptance (2026-10-09)
+
+Reviewed candidate `c40df6c63a14a5af8f4a23292cdfda55cc79cece` is accepted for
+the next release stage. The missing-duration, causal-interval, visual-axis and
+scope-recovery findings, including post-pruning issued commands, are addressed.
+The committed Python source matches the controlled-comparison fingerprint.
+
+Manager verification: 28 focused domain/HTTP regressions; full Python suite
+1,677 passed with one expected Windows-only junction skip; 47 extension
+tests/build; Ruff and whitespace checks. The nine-case synthetic comparison
+against v2.11.1 retained exact monetary, image, repository and full/indexed
+allowance parity. Inspected corrected chart evidence includes 30-day context,
+repeated-hour days and explicit multiple-weekly-series legends. The worker's
+360 browser cases and 14 native inputs retain their stated evidence boundaries.
+
+Measured added cold preparation and cache-write cost is accepted as a disclosed
+candidate limitation, not as an invariant baseline or performance improvement.
+Native Windows and native Tab traversal remain unproven. No version bump,
+release CI, tag, publication or installation was performed for this candidate.
+The worker completed, was archived, and its Relay route was removed after
+review. Retained main and unrelated apps/ are preserved.
