@@ -5,14 +5,28 @@ Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
 
-## 2.11.1 Candidate
+## 2.11.1 Published Receipt
 
 This patch changes only observed-speed presentation/navigation and derived
 offset-aware hour buckets. ADR 0053 records the root cause and new renderer
 contract. The separate [usage/allowance breakdown](plans/usage-burn-breakdown.md)
-is approved product direction, not an included feature. Publication remains
-gated on the reviewed exact candidate, both platform packages, native
-script-disabled navigation and public catalog/download verification.
+is approved product direction, not an included feature.
+
+Released on 2026-10-08 as `v2.11.1`, pointing to
+`b2eb6f02542be2a1aab1952bcad5ea5cde062aa6` on `main`.
+Exact [nonpublishing CI](https://github.com/Wenjun-Mao/codex_usage/actions/runs/37879337301)
+and the [tag publication workflow](https://github.com/Wenjun-Mao/codex_usage/actions/runs/37879776501)
+passed core, both platform package/smoke/archive/handoff gates, visual checks
+and the applicable publication gate.
+
+The public Marketplace catalog lists validated 2.11.1 entries for both targets.
+Official downloads passed independent archive audits and exactly match the
+tag-built artifacts and catalog SHA-256 declarations:
+
+- macOS Apple Silicon (`darwin-arm64`):
+  `ebb1520c39dc21c9f40a3154ee86178af69ce10b3cc365f3fef99ed6f7f2f43e`
+- Windows x64 (`win32-x64`):
+  `64b3a99f804126f7279fe603f0d4d1e6ad80cdb44f5e835f3d50d61697ce0e8f`
 
 Local candidate gates passed: 1,649 Python tests with one expected Windows-only
 skip, 34 extension tests/build, Ruff, lock validation, exact monetary parity,
@@ -31,7 +45,12 @@ oracle exposed tied nominal UTC labels reversing Chatham's partial-hour DST
 buckets. The unpublished tag was withdrawn; ordering now uses valid observed
 UTC instants, with query/render cache invalidation and chronology regressions.
 Fresh local Python, browser, native, packaging and parity gates passed after the
-correction. Only the corrected exact candidate may be tagged and published.
+correction; only the corrected exact candidate was published. Public catalog
+propagation took several minutes, without a duplicate publication attempt.
+Detailed workflow, catalog, hash-bound native and public-download evidence is
+ignored under `output/releases/2.11.1/`. Speed remains client-observed, not pure
+decode speed or causal evidence of a subscription rollout. No live data,
+installed extension, service or Keychain was changed for release verification.
 
 ## 2.11.0 Published Receipt
 
