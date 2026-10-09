@@ -14,7 +14,7 @@ is approved product direction, not an included feature. Publication remains
 gated on the reviewed exact candidate, both platform packages, native
 script-disabled navigation and public catalog/download verification.
 
-Local candidate gates passed: 1,648 Python tests with one expected Windows-only
+Local candidate gates passed: 1,649 Python tests with one expected Windows-only
 skip, 34 extension tests/build, Ruff, lock validation, exact monetary parity,
 bounded-work counters, regenerated synthetic screenshots, 144 script-disabled
 speed browser cases and 180 allowance plus 36 meter cases. The rebuilt macOS
@@ -24,6 +24,14 @@ rejection and capture-window retention with in-memory credentials. The initial
 native run exposed sticky-toolbar interception in the harness; the corrected
 helper uses one coherent DOM snapshot, real wheel input and link hit-testing.
 All native profiles and data were disposable; no live installation was changed.
+
+The first preflight (`37878028095`) passed, but its tag run (`37878542486`) was
+cancelled before any publication step executed. A late independent calendar
+oracle exposed tied nominal UTC labels reversing Chatham's partial-hour DST
+buckets. The unpublished tag was withdrawn; ordering now uses valid observed
+UTC instants, with query/render cache invalidation and chronology regressions.
+Fresh local Python, browser, native, packaging and parity gates passed after the
+correction. Only the corrected exact candidate may be tagged and published.
 
 ## 2.11.0 Published Receipt
 

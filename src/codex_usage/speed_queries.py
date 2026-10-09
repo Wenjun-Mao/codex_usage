@@ -12,7 +12,7 @@ from codex_usage.project_transitions import apply_project_transitions
 from codex_usage.speed_models import METRIC_VERSION, MIN_OUTPUT_TOKENS
 from codex_usage.speed_store import revision
 
-QUERY_REVISION = 2
+QUERY_REVISION = 3
 
 
 def hour_bucket(local):
@@ -137,7 +137,7 @@ def calendar_buckets(navigation, timezone):
     end = date.fromisoformat(navigation["window_end"] if navigation["granularity"] == "hourly" else navigation["max_date"])
     if navigation["granularity"] == "daily":
         return [(start + timedelta(days=i)).isoformat() for i in range((end - start).days + 1)]
-    result = set()
+    observed_at = {}
     for day in (start + timedelta(days=i) for i in range((end - start).days + 1)):
         for hour in range(24):
             # Both ends and folds include partial/repeated wall-clock hours,
@@ -148,5 +148,9 @@ def calendar_buckets(navigation, timezone):
                         hour=hour, minute=minute, second=second, fold=fold)
                     actual = wall.astimezone(UTC).astimezone(timezone)
                     if start <= actual.date() <= end:
-                        result.add(hour_bucket(actual))
-    return sorted(result, key=lambda bucket: datetime.fromisoformat(bucket).timestamp())
+                        bucket = hour_bucket(actual)
+                        instant = actual.timestamp()
+                        observed_at[bucket] = min(observed_at.get(bucket, instant), instant)
+    # Nominal labels can alias in UTC across a partial-hour transition. Order
+    # by valid observed instants, not the rounded labels' nominal timestamps.
+    return sorted(observed_at, key=lambda bucket: (observed_at[bucket], bucket))

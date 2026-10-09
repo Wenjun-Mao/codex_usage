@@ -70,13 +70,22 @@ def test_hour_calendar_contains_observed_wall_clock_bins(zone_name, day):
     first = datetime.fromisoformat(day).replace(tzinfo=zone)
     stop = (first + timedelta(days=1)).astimezone(UTC)
     instant = first.astimezone(UTC)
-    observed = set()
+    observed = {}
     while instant < stop:
-        observed.add(hour_bucket(instant.astimezone(zone)))
+        observed.setdefault(hour_bucket(instant.astimezone(zone)), instant.timestamp())
         instant += timedelta(minutes=5)
     calendar = calendar_buckets({"granularity": "hourly", "window_start": day, "window_end": day}, zone)
-    assert set(calendar) == observed
-    assert calendar == sorted(calendar, key=lambda bucket: datetime.fromisoformat(bucket).timestamp())
+    assert set(calendar) == set(observed)
+    assert calendar == list(observed), "Buckets must follow actual observed UTC chronology"
+
+
+def test_partial_hour_nominal_timestamp_alias_does_not_define_calendar_order():
+    day = "2026-09-27"
+    before, after = f"{day}T02:00:00+12:45", f"{day}T03:00:00+13:45"
+    assert datetime.fromisoformat(before).timestamp() == datetime.fromisoformat(after).timestamp()
+    buckets = calendar_buckets({"granularity": "hourly", "window_start": day,
+                                "window_end": day}, ZoneInfo("Pacific/Chatham"))
+    assert buckets.index(before) < buckets.index(after)
 
 
 def test_fact_level_oracle_and_project_transition_filter(tmp_path):

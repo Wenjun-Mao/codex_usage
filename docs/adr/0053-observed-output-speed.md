@@ -91,7 +91,7 @@ SVG positions remain proportional while marks and interval strokes keep fixed
 dimensions. Fixed plot padding and visible SVG overflow keep endpoint markers
 and their keyboard-focus strokes inside the parent at narrow widths.
 Preserve medians, middle-50% intervals, small samples, missing gaps,
-exact keyboard-accessible details and script-disabled CSP. Rendering revision 28
+exact keyboard-accessible details and script-disabled CSP. Rendering revision 29
 invalidates old HTML; no new scripts or dependencies are introduced.
 
 Hourly aggregation and calendar enumeration share a nominal local-clock-hour
@@ -99,7 +99,12 @@ identity with the observed fixed UTC offset. Rounding with a ZoneInfo object can
 re-resolve the offset inside a partially skipped/repeated hour; stepping UTC
 hours from midnight can instead produce half-hour-shifted labels. Enumerate valid
 local hour boundaries/folds, including partial hours, preserve their actual
-offsets, and order by UTC instant. Timing-query revision 2 invalidates old
+offsets, and order by the earliest valid sampled UTC instant for each bucket.
+Nominal labels can alias to the same UTC timestamp across partial-hour changes
+(Chatham's spring transition); set iteration and nominal timestamp sorting can
+then reverse actual chronology. Independent UTC-sampled calendar oracles verify
+both membership and ordering, including repeated partial hours.
+Timing-query revision 3 invalidates old
 aggregates without changing accepted facts, accounting, recovery or schemas.
 Guardrails cover Toronto, Lord Howe and Chatham transition calendars and actual
 aggregate/calendar joins, plus rendered tick bounds, embedded narrow containers,

@@ -146,7 +146,9 @@ def source_fingerprints(repo):
     paths = ("scripts/check_speed_webview.py", "scripts/speed_native_target.py",
              "scripts/vscode_speed_acceptance.js", "extensions/vscode/src/speedNavigation.ts",
              "extensions/vscode/src/reportHtml.ts", "src/codex_usage/speed_parser.py",
-             "src/codex_usage/speed_projection.py", "src/codex_usage/session_chunk_reader.py")
+             "src/codex_usage/speed_projection.py", "src/codex_usage/session_chunk_reader.py",
+             "src/codex_usage/speed_queries.py", "src/codex_usage/report_speed.py",
+             "src/codex_usage/report_speed_chart.py", "src/codex_usage/agent_reports.py")
     return {path: hashlib.sha256((repo / path).read_bytes()).hexdigest() for path in paths}
 
 
