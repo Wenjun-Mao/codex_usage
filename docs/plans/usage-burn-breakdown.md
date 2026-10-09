@@ -401,3 +401,30 @@ Pending: manager acceptance retests, human product acceptance, native Windows/Ta
 proof and separately approved release/publication. No version/tag/release/install,
 live service/tunnel/Keychain mutation, historical credit backfill or apps/ changes.
 Worker remains available for review fixes; manager owns archival/Relay cleanup.
+
+## Extension Manager Acceptance (2026-10-09)
+
+Candidate `60da7daf991f738c29912c697da333f69527cc75` is accepted for the
+next release stage. Historical observed portions, estimated Standard credits,
+account-wide captured balances and original net-change intervals preserve their
+separate evidence contracts. The independent review's Selected-month navigation
+finding and the manager's numeric-gutter finding are corrected with regressions.
+
+Manager repeated the full Python suite: 1,723 passed, one expected Windows-only
+junction skip; Ruff, 48 extension tests/build and whitespace checks passed.
+Nine synthetic range/project cases retained exact v2.11.1 monetary, language,
+image, repository and full/indexed allowance parity. An independent 36-view
+Chromium/WebKit/Firefox check at 360/760/1440 verified actual numeric text-range
+containment and distinct offset ticks for extreme balances, with scripts disabled.
+Final narrow screenshots for large balances and realistic large-token scales
+were inspected. The committed Python source matches the scaled-comparison
+fingerprint above. The worker's 612 browser checks and 17 native inputs were
+reviewed with their stated synthetic and native-input boundaries.
+
+Disclosed cold preparation/cache-write cost remains an accepted limitation,
+not a speedup claim. Dense multi-year capture performance, live-account behavior,
+native Windows and native Tab traversal remain unproven. No version bump,
+release CI, tag, publication, installation or live-state mutation was performed.
+The implementation worker and read-only reviewer completed, were archived, and
+their Relay routes were removed after review. Retained main and unrelated apps/
+remain unchanged outside this assignment.
