@@ -100,7 +100,7 @@ def main():
         home = root / "codex"
         (root / "home").mkdir()
         now = datetime.now(UTC).replace(microsecond=0)
-        breakdown_home(home, now=now)
+        breakdown_home(home, now=now, extended=True, days=12)
         save_agent_settings(AgentSettings(str(home), capture_interval_minutes=None,
             onboarding_complete=True, timezone="UTC"), root / "settings" / "settings.json")
         rpc = root / "synthetic-codex"
@@ -111,7 +111,8 @@ def main():
             "account/read": {"account": {"planType": "pro"}},
             "account/rateLimits/read": {"rateLimitsByLimitId": {"codex": {
                 "limitId": "codex", "planType": "pro", "secondary": {"usedPercent": 34,
-                "windowDurationMins": 10080, "resetsAt": int((now + timedelta(days=4)).timestamp())}}}},
+                "windowDurationMins": 10080, "resetsAt": int((now + timedelta(days=4)).timestamp())},
+                "credits": {"balance": "58.000000000000000001", "hasCredits": True, "unlimited": False}}}},
             "account/usage/read": {"summary": {"lifetimeTokens": 0}}}))
         extension = root / "extension"
         extension.mkdir()
@@ -153,7 +154,7 @@ def main():
                     (args.output / "initial-state.json").write_text(json.dumps(state, indent=2))
                     assert state["state"]["basis"] == "cycle", state
                     clicks = []
-                    labels = ["Tokens", "By project", "API cost", "Project", "Tokens", "Other", "Hour", "Previous", "Next", "Latest day", "Selected range"]
+                    labels = ["Tokens", "By project", "Estimated credits", "API cost", "Project", "Estimated credits", "Tokens", "Other", "Hour", "Previous", "Next", "Latest day", "Selected range"]
                     for label in labels:
                         diagnostics["stage"] = "rendered click: " + label
                         diagnostics["before"] = target.state(decode)
@@ -162,6 +163,8 @@ def main():
                             for _ in range(2):
                                 previous = target.click("Previous", decode)
                                 wait_native_state(target, previous, decode, lambda s, a: s["state"] == a["state"])
+                        if label == "Selected range":
+                            target.disclose("Current observed window")
                         requested = target.click(label, decode)
                         target.deadline = min(deadline, time.monotonic() + 15)
                         state = wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
@@ -170,6 +173,12 @@ def main():
                         diagnostics["rendered_clicks"] = clicks
                         diagnostics_path.write_text(json.dumps(diagnostics, indent=2))
                         target.screenshot(args.output / f"native-{len(clicks)}.png")
+                    target.disclose("Selected range")
+                    label = target.label_for(lambda s: s["basis"].startswith("window:") and s["day"] < (now-timedelta(days=7)).date().isoformat())
+                    requested = target.click(label, decode)
+                    state = wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
+                    clicks.append({"label": label, "requested": requested, "rendered": state})
+                    target.screenshot(args.output / f"native-{len(clicks)}.png")
                     for prefix in ("project:", "hour:"):
                         if prefix == "project:":
                             requested = target.click("Project", decode)

@@ -21,8 +21,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("output/playwright/usage-breakdown/private-baseline.json"))
+    parser.add_argument("--synthetic", action="store_true")
     args = parser.parse_args()
-    evidence = {"private_baseline": True, "live_access": "SQLite mode=ro backup only; no report/capture on live home"}
+    evidence = {"private_baseline": not args.synthetic, "synthetic_only": args.synthetic,
+        "live_access": "none; supplied synthetic ledger only" if args.synthetic else "SQLite mode=ro backup only; no report/capture on live home"}
     with TemporaryDirectory(prefix="breakdown-baseline-") as raw:
         home = Path(raw)
         copy = ledger_database_path(home)
@@ -52,7 +54,7 @@ def main():
             status = query_ledger_status(connection)
             materialized = materialize_ledger(connection, resolve_report_range("all", UTC, now=now), [], UTC, status, auto_transitions=True)
             oracle = summarize_valued_records(materialized.valued)
-            actual = metadata["ranges"]["selected"]["total"]
+            actual = load(connection, key[:-len("metadata")] + "selected:summary")["total"]
             assert abs(actual["cost"] - oracle.cost.total_usd) <= max(1e-9, abs(oracle.cost.total_usd) * 1e-12)
             assert actual["tokens"] == oracle.usage.total_tokens
             assert actual["unknown"] + actual["api_excluded"] == oracle.cost.unpriced_tokens
@@ -69,12 +71,16 @@ def main():
             assert render().html == first.html
             evidence["warm_all_report_seconds"] = perf_counter() - started
             current = first
-            for changes in ({"metric": "tokens"}, {"view": "project"}, {"metric": "cost"}, {"view": "hour"}, {"group": "project"}):
+            for changes in ({"metric": "tokens"}, {"view": "project"}, {"metric": "credits"}, {"metric": "cost"}, {"view": "hour"}, {"group": "project"}):
                 desired = {**current.breakdown_navigation["state"], **changes}
                 action = next(a for a in current.breakdown_navigation["actions"] if a["state"] == desired)
                 started = perf_counter()
                 current = render(action)
                 times.append(perf_counter() - started)
+            for action in (a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")):
+                started = perf_counter()
+                render(action)
+                times.append(perf_counter()-started)
         evidence["warm_navigation_seconds"] = times
         evidence["warm_history_fits_repricing_materializations"] = 0
         evidence["html_bytes"] = len(first.html.encode())

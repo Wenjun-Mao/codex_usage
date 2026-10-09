@@ -93,3 +93,9 @@ It must use observed net decreases, not token credit estimates, and must not
 continue projecting an old credit-spending period after allowance resumes.
 Historical balance recovery and exact response-level billing attribution remain
 unimplemented; this decision does not establish either capability.
+
+ADR 0054's approved unpublished extension separately exposes full retained
+prospective balance evidence in Usage & Allowance Breakdown, with original
+intervals, unknown continuity and account-wide scope. This extends inspection,
+not capture/backfill, funding attribution or this section's compact Plan
+Allowance heading/disclosure policy.

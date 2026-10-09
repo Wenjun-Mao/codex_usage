@@ -39,11 +39,12 @@ def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=N
                 parts.append(f'<rect x="{x:.3f}" y="{bottom - size:.3f}" width="{local_step * .7:.3f}" height="{size:.6f}" fill="{slots[label]}"><title>{exact}</title></rect>')
             bottom -= size
         if incomplete and incomplete[index]:
-            parts.append(f'<path d="M{x + local_step * .35:.3f},{height - 5} l4,5 l-4,5 l-4,-5 z" fill="none" stroke="var(--text)" vector-effect="non-scaling-stroke"><title>{html.escape(context + " | " + details)} | Unknown or API-excluded cost; not zero</title></path>')
+            unknown_label = "Unknown estimated credits; not known zero" if metric == "credits" else "Unknown or API-excluded cost; not zero"
+            parts.append(f'<path d="M{x + local_step * .35:.3f},{height - 5} l4,5 l-4,5 l-4,-5 z" fill="none" stroke="var(--text)" vector-effect="non-scaling-stroke"><title>{html.escape(context + " | " + details)} | {unknown_label}</title></path>')
         inspection = html.escape(f'Inspect {context} | total {sum(values.values()):.9g} {metric} | {details}', quote=True)
         marks.append((f'<a href="{html.escape(links[index], quote=True)}" aria-label="{inspection}"><title>{inspection}</title>' if links else "") + "".join(parts) + ("</a>" if links else ""))
     grid = ''.join(f'<line x1="0" x2="{width}" y1="{height * f}" y2="{height * f}" stroke="var(--border)"/>' for f in (0, .5, 1))
-    unit = "Tokens" if metric == "tokens" else "Known API-equivalent USD"
+    unit = {"tokens": "Tokens", "cost": "Known API-equivalent USD", "credits": "Estimated Standard credits"}[metric]
     scale = (f'<span>{maximum:,.6g}</span><span>{maximum / 2:,.6g}</span><span>0</span>'
              if observed_maximum else '<span>No known values</span><span></span><span>0 known</span>')
     return (f'<div class="ub-unit">{html.escape(title)} &middot; {unit}</div><div class="ub-chart">'
@@ -85,6 +86,9 @@ def css():
     .usage-breakdown h2 {font-size:18px}.usage-breakdown h3 {font-size:14px;margin:14px 0 8px}
     .ub-controls,.ub-window {display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0}
     .ub-segment {display:inline-flex;border:1px solid var(--border);border-radius:4px}
+    .ub-window-picker {font-size:12px;max-width:100%;margin:0!important}
+    .ub-window-picker>div {display:grid;max-height:240px;overflow:auto;max-width:100%;border-left:2px solid var(--border)}
+    .ub-window-picker a {overflow-wrap:anywhere}
     .ub-controls a,.ub-window a {padding:5px 8px;color:var(--accent);font-size:12px;text-decoration:none}
     .usage-breakdown a:focus-visible {outline:2px solid var(--accent)}
     .usage-breakdown a[aria-current=true] {background:var(--surface-soft);color:var(--text);font-weight:650}
@@ -92,6 +96,7 @@ def css():
     .ub-chart {display:grid;grid-template-columns:70px minmax(0,1fr);margin:8px 0 4px}
     .ub-axis {height:180px;display:flex;flex-direction:column;justify-content:space-between;padding-right:8px;text-align:right;font-size:12px;line-height:14px}
     .ub-meter .ub-axis {height:140px}.ub-scroll {overflow:auto;padding:3px 0;min-width:0}
+    .ub-credit-changes .ub-axis {height:100px}
     .ub-scroll svg {display:block;overflow:visible}.ub-bounds {display:flex;justify-content:space-between;gap:16px;font-size:12px;margin:6px 0 14px;overflow-wrap:anywhere}.ub-bounds span {min-width:0;max-width:48%}
     .ub-time-axis {position:relative;height:38px;margin-top:5px;font-size:12px;line-height:15px}
     .ub-tick {position:absolute;top:0;width:0;height:5px;border-left:1px solid var(--muted)}

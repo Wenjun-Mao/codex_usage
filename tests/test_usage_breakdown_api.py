@@ -147,3 +147,27 @@ def test_api_recent_issued_action_survives_new_client_report_pruning(tmp_path):
         assert request(server)[0] == 200
     finally:
         server.stop()
+
+
+def test_historical_credit_scope_commands_and_recovery_without_current_anchor(tmp_path):
+    breakdown_home(tmp_path, extended=True, days=12)
+    agent = SyntheticReports(tmp_path)
+    server = AgentHttpServer(agent, token="x"*40)
+    server.start()
+    try:
+        first = request(server)[1]
+        historical = next(a for a in first["breakdown_navigation"]["actions"] if a["state"]["basis"].startswith("window:"))
+        code, report = request(server, historical)
+        assert code == 200
+        credits = next(a for a in report["breakdown_navigation"]["actions"] if a["state"]["metric"] == "credits")
+        assert request(server, credits)[0] == 200
+        assert request(server, {**credits, "state": {**credits["state"], "basis": "window:"+"f"*64}})[0] == 400
+        agent.now += timedelta(hours=2)
+        code, expired = request(server, credits)
+        assert (code, expired["code"]) == (409, "breakdown_scope_expired")
+        stale = request(server)[1]
+        reissued = next(a for a in stale["breakdown_navigation"]["actions"] if a["state"]["basis"] == historical["state"]["basis"])
+        assert request(server, reissued)[0] == 200
+        assert stale["breakdown_navigation"]["state"]["basis"] == "selected"
+    finally:
+        server.stop()

@@ -23,12 +23,16 @@ def measure(args):
     import codex_usage.agent_reports as reports
     import codex_usage.speed_reports as speed
     components = {}
+    work_counts = {}
     def timed(module, name, label, stack):
         original = getattr(module, name)
         def run(*values, **kwargs):
             started = perf_counter()
             try:
-                return original(*values, **kwargs)
+                result = original(*values, **kwargs)
+                if name in {"query_ledger_records", "value_records"}:
+                    work_counts[label] = work_counts.get(label, 0)+len(result)
+                return result
             finally:
                 components[label] = components.get(label, 0) + perf_counter() - started
         stack.enter_context(patch.object(module, name, run))
@@ -49,6 +53,10 @@ def measure(args):
                 timed(breakdown, name, "derived_" + name, stack)
             timed(renderer, "render_breakdown", "derived_final_render", stack)
             timed(breakdown, "store", "derived_cache_write", stack)
+            import codex_usage.breakdown_evidence as evidence_module
+            for name in ("prepare_balances", "observed_windows"):
+                if hasattr(evidence_module, name):
+                    timed(evidence_module, name, "derived_"+name, stack)
         def render(action=None):
             kwargs = {"range_name": args.range, "project_keys": [], "theme": "day",
                 "timezone_name": "UTC", "now": datetime.fromisoformat(args.now)}
@@ -58,12 +66,14 @@ def measure(args):
         started = perf_counter()
         cold = render()
         result = {"cold_seconds": perf_counter()-started, "cold_components_seconds": dict(components),
-            "html_bytes": len(cold.html.encode()), "revision": cold.ledger_revision}
+            "cold_component_record_counts": dict(work_counts), "html_bytes": len(cold.html.encode()), "revision": cold.ledger_revision}
         components.clear()
+        work_counts.clear()
         started = perf_counter()
         warm = render()
         result["warm_seconds"] = perf_counter()-started
         result["warm_components_seconds"] = dict(components)
+        result["warm_component_record_counts"] = dict(work_counts)
         assert warm.html == cold.html
         if args.candidate:
             current = cold
@@ -75,6 +85,13 @@ def measure(args):
                 current = render(action)
                 times.append(perf_counter()-started)
             result["warm_control_seconds"] = times
+            window_times = []
+            for action in (a for a in cold.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")):
+                started = perf_counter()
+                render(action)
+                window_times.append(perf_counter()-started)
+            result["warm_window_seconds"] = window_times
+            result["warm_derived_prepare_calls"] = components.get("derived_preparation", 0)
         # Monetary markup before/after insertion must be byte-identical against
         # the actual release, not a candidate's own accounting implementation.
         html = cold.html
@@ -91,6 +108,8 @@ def main():
     parser.add_argument("--ledger", type=Path)
     parser.add_argument("--output", type=Path, default=Path("output/playwright/usage-breakdown/controlled-perf.json"))
     parser.add_argument("--release", default="v2.11.1")
+    parser.add_argument("--accepted", help="Optional accepted candidate ref for a third paired observation")
+    parser.add_argument("--synthetic", action="store_true", help="Label a supplied synthetic ledger explicitly")
     parser.add_argument("--measure", action="store_true")
     parser.add_argument("--candidate", action="store_true")
     parser.add_argument("--home", type=Path)
@@ -105,7 +124,8 @@ def main():
     repo = Path(__file__).resolve().parents[1]
     release = subprocess.check_output(["git", "rev-parse", args.release], cwd=repo, text=True).strip()
     evidence = {"release": release, "candidate_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
-        "candidate_working_tree": True, "live_access": "one SQLite mode=ro backup; no live report or capture",
+        "candidate_working_tree": True, "synthetic_only": args.synthetic,
+        "live_access": "none; supplied synthetic ledger only" if args.synthetic else "one SQLite mode=ro backup; no live report or capture",
         "cache_protocol": "identical pre-existing cost index; discard rendered/speed/allowance report caches on each copy",
         "component_contract": "inclusive nested times; do not sum overlapping base subcomponents",
         "observations_only": True, "results": {}}
@@ -118,15 +138,27 @@ def main():
         with sqlite3.connect(args.ledger.resolve().as_uri()+"?mode=ro", uri=True) as source, sqlite3.connect(snapshot) as target:
             source.backup(target)
         snapshot.chmod(0o600)
-        authority = root / "release"
-        authority.mkdir()
-        archive = subprocess.check_output(["git", "archive", release, "src"], cwd=repo)
-        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
-            tar.extractall(authority, filter="data")
+        with sqlite3.connect(snapshot) as connection:
+            count, first, last = connection.execute("select count(*),min(timestamp_us),max(timestamp_us) from ledger_usage_events").fetchone()
+            evidence["source_shape"] = {"usage_events": count, "usage_span_days": (last-first)/86400e6 if count else 0,
+                "projects": connection.execute("select count(*) from ledger_projects").fetchone()[0],
+                "weekly_observations": connection.execute("select count(*) from quota_observations where duration_minutes=10080").fetchone()[0]}
+        authorities = {"candidate": repo}
+        refs = {"release": release}
+        if args.accepted:
+            refs["accepted"] = subprocess.check_output(["git", "rev-parse", args.accepted], cwd=repo, text=True).strip()
+            evidence["accepted"] = refs["accepted"]
+        for name, ref in refs.items():
+            authority = root / name
+            authority.mkdir()
+            archive = subprocess.check_output(["git", "archive", ref, "src"], cwd=repo)
+            with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+                tar.extractall(authority, filter="data")
+            authorities[name] = authority
         now = datetime.now(UTC).isoformat()
         for report_range in ("today", "all"):
             observations = {}
-            for name in ("release", "candidate"):
+            for name in ("release", *( ["accepted"] if args.accepted else []), "candidate"):
                 home = root / f"{report_range}-{name}"
                 copy = home / ".codex-usage/usage-ledger.sqlite3"
                 copy.parent.mkdir(parents=True, mode=0o700)
@@ -134,13 +166,15 @@ def main():
                     source.backup(target)
                 copy.chmod(0o600)
                 command = [sys.executable, str(Path(__file__).resolve()), "--measure", "--home", str(home), "--range", report_range, "--now", now]
-                if name == "candidate":
+                if name != "release":
                     command.append("--candidate")
-                env = dict(os.environ, PYTHONPATH=str((repo if name == "candidate" else authority) / "src"),
+                env = dict(os.environ, PYTHONPATH=str(authorities[name] / "src"),
                     HOME=str(root / "isolated-home"), CODEX_HOME=str(home))
                 observations[name] = json.loads(subprocess.check_output(command, env=env, cwd=root, text=True))
             assert observations["release"]["revision"] == observations["candidate"]["revision"]
             assert observations["release"]["base_html_sha256"] == observations["candidate"]["base_html_sha256"], report_range
+            if args.accepted:
+                assert observations["release"]["base_html_sha256"] == observations["accepted"]["base_html_sha256"], report_range
             observations["base_html_parity"] = True
             evidence["results"][report_range] = observations
     args.output.parent.mkdir(parents=True, exist_ok=True)

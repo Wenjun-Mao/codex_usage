@@ -3,6 +3,8 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from time import monotonic
+from bisect import bisect_right
+from itertools import chain
 
 from codex_usage.aggregation import (
     filter_records_by_project_keys, resolve_report_range,
@@ -14,13 +16,15 @@ from codex_usage.allowance_queries import allowance_status
 from codex_usage.breakdown_aggregation import aggregate
 from codex_usage.breakdown_evidence import prepare_evidence, weekly_anchors
 from codex_usage.breakdown_intervals import BreakdownInterval
+from codex_usage.breakdown_balances import balance_partitions
 from codex_usage.breakdown_commands import BreakdownScopeExpired, issued_action, receipt, prune_receipts, RECEIPT_PREFIX
 from codex_usage.ledger_queries import query_ledger_records, query_ledger_status, query_ledger_transitions
 from codex_usage.ledger_schema import ledger_revision, open_ledger
+from codex_usage.ledger_usage_ranges import subtract_bounds
 from codex_usage.parser import finalize_session_records
 from codex_usage.project_transitions import apply_project_transitions
 
-BREAKDOWN_REVISION = 2
+BREAKDOWN_REVISION = 3
 
 
 def digest(value):
@@ -54,48 +58,84 @@ def prepare(connection, path, report_range, keys, timezone, status, kwargs, sink
     evidence = prepare_evidence(connection, report, kwargs["now"])
     extent = connection.execute("""select min(e.timestamp_us), max(e.timestamp_us)
         from ledger_usage_events e join ledger_generations g using(generation_id)
-        where g.status='trusted'""").fetchone()
+        where g.status='trusted'""").fetchone() if report_range.bounds.start_us is None or report_range.bounds.end_us is None else ()
     # All-time bounds belong to captured account context, not a project subset.
-    captured_times = [datetime.fromisoformat(p["timestamp"]).timestamp() for p in evidence["points"]]
+    account_times = [datetime.fromisoformat(p["timestamp"]).timestamp() for p in evidence["points"]]
+    account_times.extend(datetime.fromisoformat(p["timestamp"]).timestamp() for p in evidence["balances"])
+    captured_times = list(account_times)
     captured_times.extend(v / 1e6 for v in extent if v is not None)
     cycle = evidence["cycle"]
     metadata = {"evidence": evidence, "ranges": {}, "complete": status.coverage.complete}
     partitions = {}
     transitions = query_ledger_transitions(connection) if kwargs.get("auto_transitions", True) else []
-    for basis in ("selected", "cycle"):
-        if basis == "cycle" and not cycle:
-            continue
+    def valued_query(**query):
+        records = finalize_session_records([query_ledger_records(connection, **query)])
+        if transitions:
+            records = apply_project_transitions(records, transitions)
+        return value_records(filter_records_by_project_keys(records, keys))
+    # Reuse calendar valuation and seek only the missing observed-window union.
+    # Today must not decode/value years before the first weekly observation.
+    selected = sink["valued"] if "valued" in sink else valued_query(bounds=report_range.bounds)
+    scopes = {"selected": None, **evidence["windows"]}
+    if cycle:
+        scopes["cycle"] = cycle
+    required = [BreakdownInterval(datetime.fromisoformat(window["start"]).timestamp(),
+        datetime.fromisoformat(window["end"]).timestamp(), causal=True).sql_bounds
+        for window in scopes.values() if window]
+    missing = subtract_bounds(required, report_range.bounds)
+    history = sorted(chain(selected, valued_query(bounds_union=missing) if missing else ()),
+        key=lambda item: item.record.timestamp)
+    times = [item.record.timestamp.timestamp() for item in history]
+    for basis, window in scopes.items():
+        if basis == "cycle":
+            alias = next((key for key, candidate in evidence["windows"].items()
+                if all(candidate[field] == cycle[field] for field in
+                    ("start", "end", "limit_id", "plan", "boundary", "full_at"))), None)
+            if alias:
+                metadata["ranges"][basis] = {**metadata["ranges"][alias], "partition_basis": alias}
+                continue
         if basis == "selected":
             bounds = report_range.bounds
             start = bounds.start_us / 1e6 if bounds.start_us is not None else min(captured_times, default=kwargs["now"].timestamp())
             end = bounds.end_us / 1e6 if bounds.end_us is not None else max(captured_times, default=start) + .000001
             interval = BreakdownInterval(start, end)
         else:
-            interval = BreakdownInterval(datetime.fromisoformat(cycle["start"]).timestamp(),
-                datetime.fromisoformat(cycle["end"]).timestamp(), causal=True)
-            bounds = interval.sql_bounds
-        if basis == "selected" and "valued" in sink:
-            valued = sink["valued"]
+            interval = BreakdownInterval(datetime.fromisoformat(window["start"]).timestamp(),
+                datetime.fromisoformat(window["end"]).timestamp(), causal=True)
+        if basis == "selected":
+            valued = selected
         else:
-            records = finalize_session_records([query_ledger_records(connection, bounds=bounds)])
-            if transitions:
-                records = apply_project_transitions(records, transitions)
-            valued = value_records(filter_records_by_project_keys(records, keys))
+            if interval.causal:
+                valued = history[bisect_right(times, interval.start):bisect_right(times, interval.end)]
+            else:
+                valued = history
         start, end = interval.start, interval.end
-        info, data = aggregate(valued, timezone, evidence, start=start, end=end,
+        scoped_evidence = {**evidence, "cycle": window} if basis != "selected" else evidence
+        info, data = aggregate(valued, timezone, scoped_evidence, start=start, end=end,
                                complete=status.coverage.complete, causal=interval.causal)
         info["min_date"] = datetime.fromtimestamp(start, timezone).date().isoformat()
         info["max_date"] = datetime.fromtimestamp(max(start, end - .000001), timezone).date().isoformat()
         observed = [d for d in info["daily"]]
-        observed.extend(datetime.fromtimestamp(interval.occurrence_time(at), timezone).date().isoformat()
-            for at in captured_times if interval.contains(at))
-        info["latest_day"] = max(observed, default=info["max_date"])
-        metadata["ranges"][basis] = info
+        if interval.causal:
+            # Historical endpoints are actual captures, unlike calendar ends.
+            latest_at = interval.occurrence_time(end) if end > start else start
+            observed.append(datetime.fromtimestamp(latest_at, timezone).date().isoformat())
+        else:
+            observed.extend(datetime.fromtimestamp(at, timezone).date().isoformat()
+                for at in account_times if interval.contains(at))
+        fallback = kwargs["now"].astimezone(timezone).date().isoformat()
+        info["latest_day"] = min(info["max_date"], max(info["min_date"], max(observed, default=fallback)))
+        # Metadata is a scope directory, never an all-history composition body.
+        metadata["ranges"][basis] = {key: info[key] for key in
+            ("min_date", "max_date", "latest_day", "start", "end")}
+        metadata["ranges"][basis]["partition_basis"] = basis
+        partitions[basis + ":summary"] = info
         partitions.update({basis + ":" + k: v for k, v in data.items()})
     # Raw history is partitioned by local day; warm navigation never decodes it.
     for point in evidence.pop("points"):
         day = datetime.fromisoformat(point["timestamp"]).astimezone(timezone).date().isoformat()
         partitions.setdefault("meter:" + day, []).append(point)
+    partitions.update(balance_partitions(evidence.pop("balances"), timezone))
     return metadata, partitions
 
 
@@ -160,9 +200,11 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
             if state["basis"] == "cycle" and reason:
                 raise BreakdownScopeExpired("Weekly evidence expired; reload the dashboard")
         def partition(name, default):
+            if name.startswith(state["basis"] + ":"):
+                name = metadata["ranges"][state["basis"]]["partition_basis"] + name[len(state["basis"]):]
             key = prefix + name
             return writes[key] if key in writes else load(connection, key) or default
-        info = metadata["ranges"][state["basis"]]
+        info = partition(state["basis"] + ":summary", {})
         scope = digest([identity, metadata["evidence"], reason, state])
         nav = {"scope": scope, "state": state, "actions": [], "evidence_state": {
             "probe_status": live["probe_status"], "deadline_elapsed": any(

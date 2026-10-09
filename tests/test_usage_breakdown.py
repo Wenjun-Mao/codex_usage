@@ -80,7 +80,7 @@ def test_free_review_unknown_pricing_and_exact_additive_other():
     review = next(r for r in partitions["day:2026-10-09"]["rows"] if r["model"] == "codex-auto-review")
     assert review["tokens"] == 120 and review["api_excluded"] == 120 and review["unknown"] == 0
     assert review["allowance_cost"] == review["allowance_unknown"] == review["credits"] == review["credit_unknown"] == 0
-    for metric in ("tokens", "cost"):
+    for metric in ("tokens", "cost", "credits"):
         ranked = ranked_projects(info["projects"], metric)
         assert len(ranked) == 11 and len(ranked[-1][1]["members"]) == 3
         assert total(v for _, p in ranked for v in p["models"].values()) == pytest.approx(info["total"])

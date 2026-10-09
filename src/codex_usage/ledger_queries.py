@@ -24,6 +24,7 @@ from codex_usage.models import TokenUsage, UsageRecord, parse_usage_role
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_transitions import ProjectTransition
 from codex_usage.speed_recovery import speed_status
+from codex_usage.ledger_usage_ranges import usage_union_clause
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +135,7 @@ def query_ledger_records(
     *,
     bounds: RangeBounds | None = None,
     project_keys: list[str] | None = None,
+    bounds_union: list[RangeBounds] | None = None,
 ) -> list[UsageRecord]:
     clauses = ["ledger_generations.status = 'trusted'"]
     parameters: list[object] = []
@@ -143,6 +145,10 @@ def query_ledger_records(
     if bounds is not None and bounds.end_us is not None:
         clauses.append("ledger_usage_events.timestamp_us < ?")
         parameters.append(bounds.end_us)
+    if bounds_union is not None:
+        union_clause, union_parameters = usage_union_clause(bounds_union)
+        clauses.append(union_clause)
+        parameters.extend(union_parameters)
     query = f"""
         select ledger_usage_events.*, ledger_models.model_key,
                ledger_projects.project_key, ledger_projects.label as project_label,

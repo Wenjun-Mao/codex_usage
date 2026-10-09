@@ -32,6 +32,10 @@ boundary event to the interval it closes. Integer-microsecond SQL inclusion
 padding is private to query bounds, never the displayed/calibration endpoints.
 Calendar rows cannot borrow a right-closed calibration merely because their
 scalar costs happen to match. They disclose this incompatibility explicitly.
+Calendar navigation retains full range bounds but initially opens the latest
+in-range usage or raw account-wide quota/balance capture day, not the calendar
+endpoint. Empty ranges use the clock day clamped to their bounds. Historical
+endpoints are actual captures; a singleton at midnight stays on its capture day.
 
 Sparse fixed-font HTML time ticks share the actual UTC geometry of daily,
 hourly and meter charts; narrow displays hide secondary ticks, not axes.
@@ -47,7 +51,7 @@ visible limit/plan legend. Nonweekly and missing-duration evidence stays in
 the exact-reading disclosure, never silently presented as weekly. A domain
 without weekly readings explicitly marks weekly allowance unavailable.
 
-Prepare both range scopes once. Store compact metadata, per-day composition
+Prepare selected range and all retained observed weekly scopes once. Store compact metadata, per-day composition
 and project-hour partitions in the existing disposable rendered report cache,
 with distinct namespaced keys. No new ledger schema or raw valuation index.
 Identity binds ledger/pricing/renderer/evidence revisions, timezone, transitions,
@@ -96,6 +100,52 @@ fit available at the origin; a previous-window reference is labeled separately.
 Future recovered evidence cannot calibrate an earlier origin. Raw reported
 movement corrections are retained, never replaced with running maxima. Credit
 balance changes may include purchases and never prove individual event debits.
+
+## Unpublished Extension Contract (2026-10-09)
+
+Reuse the prepared capture-causal continuity checkpoints to enumerate every
+retained weekly portion, including ambiguous/unknown-plan portions. Stable IDs
+bind limit, observed opening and boundary identity, never labels or array order.
+Dated entries carry plan/limit/boundary context. Current freshness controls only
+the current alias/default, not historical access. Bounds are observed endpoints,
+not nominal openings or a claim of whole-window coverage. Preserve raw conflicts.
+
+Estimated credits use already-valued Standard credits in all composition paths;
+included usage has an estimate too. Known free zero and unknown values remain
+distinct. This is neither observed billing nor per-project funding attribution.
+
+Prepare account-wide balance evidence from the entire retained quota-read
+sequence, not the bounded heading-history disclosure. Missing-read placeholders,
+invalid metadata, unlimited balances, nonchronological timestamps and unknown or
+changed plans interrupt adjacent delta continuity. Use exact Decimal text and
+original endpoint timestamps. Quota resets do not interrupt balance continuity.
+Net decreases and possible reload/grant/refund/adjustment increases are separate
+labels; neither proves event-level funding. Intervals crossing selected day or
+window boundaries stay visible with exact original endpoints and an unallocatable
+boundary-crossing label, never prorated or assigned to a bucket. No historical
+credit backfill, source capture, extra Plan Allowance line or depletion forecast.
+
+Cold preparation reuses calendar selection valuation, then queries/values only
+the missing union of observed weekly intervals through the ledger timestamp
+index. Each required event is valued at most once; years before the first weekly
+evidence and inter-window gaps are not decoded/repriced merely for Today.
+Selected all-time may reuse its complete already-valued baseline. The finite
+`bounds_union` query contract intersects existing bounds and preserves canonical
+trusted-record decoding/order, project aliases and transitions. Timestamp
+slicing prevents window x records valuation. Partition balances by
+intersecting local day once, so warm windows/metrics/groups/days/drills never
+load historical reports or prepare continuity/deltas/fits/prices.
+The scope directory stores bounds and partition identities only; warm rendering
+reads one active-window composition summary, not every historical composition.
+The current alias reuses its matching observed-window composition partition.
+Revision and issued-scope expiry/recovery rules remain unchanged. Reject silent date-only
+identities, reset-zeroed balances and inferred credit deductions.
+
+Balance plots label their observed-range (not zero-based) scale; a separate
+compact signed net-change axis places each original interval at its exact delta
+magnitude. Neither connects balance points nor divides an interval into hours.
+Missing in-domain captures and spanning evidence are distinct states. Chronology
+compares parsed instants, not ISO text, retaining original offsets in exact rows.
 
 ## Alternatives And Consequences
 

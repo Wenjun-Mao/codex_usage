@@ -61,9 +61,9 @@ export interface ProjectSummary {
 }
 
 export interface BreakdownState {
-  basis: "cycle" | "selected";
+  basis: "cycle" | "selected" | `window:${string}`;
   view: "hour" | "project";
-  metric: "cost" | "tokens";
+  metric: "cost" | "tokens" | "credits";
   group: "model" | "project";
   day: string;
   detail: string;

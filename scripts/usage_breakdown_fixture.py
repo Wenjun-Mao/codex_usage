@@ -4,6 +4,7 @@ import json
 
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.allowance_models import QuotaObservation
+from codex_usage.allowance_credits import CreditBalance
 from codex_usage.allowance_probe import QuotaRead
 from codex_usage.allowance_store import store_read
 from codex_usage.ledger_schema import increment_ledger_revision, open_ledger
@@ -14,7 +15,7 @@ from codex_usage.session_cache import refresh_cached_session_data
 AT = datetime(2026, 10, 9, 12, tzinfo=UTC)
 
 
-def breakdown_home(home, *, now=AT, projects=13, days=4, duration=10080):
+def breakdown_home(home, *, now=AT, projects=13, days=4, duration=10080, extended=False, credit_base=100):
     sessions = home / "sessions"
     sessions.mkdir(parents=True, exist_ok=True)
     models = ("gpt-6.1-sol", "gpt-6-luna", "codex-auto-review", "unknown-synthetic")
@@ -42,12 +43,20 @@ def breakdown_home(home, *, now=AT, projects=13, days=4, duration=10080):
     refresh_cached_session_data([sessions], cache_database_path=path, max_workers=1)
     synchronize_parser_workset(path)
     with open_ledger(path) as connection:
+        if extended:
+            for index in range(3):
+                at = now - timedelta(days=10-index)
+                point = QuotaObservation(at.isoformat(), "codex", "primary", "pro",
+                    90+index*5, duration, int((now-timedelta(days=4)).timestamp()))
+                store_read(connection, QuotaRead(at.isoformat(), "pro", (point,),
+                    credits=CreditBalance(str(credit_base-index*10)+".000000000000000001", True, False)), None)
         for index in range(7):
             at = now - timedelta(hours=(6 - index) * 12)
             point = QuotaObservation(at.isoformat(), "codex", "secondary" if index % 2 else "primary",
                                      "pro", 21 if index == 4 else 10 + index * 4,
                                      duration, int((now + timedelta(days=4)).timestamp()))
-            store_read(connection, QuotaRead(at.isoformat(), "pro", (point,)), None)
+            credit = CreditBalance(str(credit_base-30-index*2)+".000000000000000001", True, False) if extended else None
+            store_read(connection, QuotaRead(at.isoformat(), "pro", (point,), credits=credit), None)
         increment_ledger_revision(connection)
         connection.commit()
     return path

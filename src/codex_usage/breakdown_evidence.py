@@ -5,6 +5,8 @@ from math import isclose
 from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_pace_evidence import prepare_pace_evidence
 from codex_usage.allowance_queries import load_quota_evidence
+from codex_usage.breakdown_windows import observed_windows
+from codex_usage.breakdown_balances import prepare_balances
 
 
 def weekly_anchors(status):
@@ -38,6 +40,7 @@ def prepare_evidence(connection, report, now):
     # Preserve every reading, identity and source, including conflicting points.
     captured = [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in points]
     return {"cycle": cycle, "reason": reason, "points": captured,
+            "windows": observed_windows(prepared), "balances": prepare_balances(connection),
             "paces": report.get("paces", [])}
 
 
@@ -46,6 +49,7 @@ def interval_calibration(evidence, start, end, allowance_cost, unpriced, complet
     cycle = evidence["cycle"]
     reason = ("incomplete local coverage" if not complete else
               "no compatible continuous weekly evidence" if not cycle else
+              "ambiguous weekly portion" if cycle.get("ambiguous") else
               "unknown interval cost" if unpriced else
               "interval outside observed cycle" if start < datetime.fromisoformat(cycle["start"]).timestamp()
               or end > datetime.fromisoformat(cycle["end"]).timestamp() else

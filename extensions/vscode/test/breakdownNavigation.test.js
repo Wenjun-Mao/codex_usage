@@ -13,3 +13,13 @@ test("breakdown accepts only exact server-issued current-scope states", () => {
     assert.equal(validateBreakdownNavigation(value, nav), undefined);
   }
 });
+
+test("dated windows and estimated credits require an exact issued action", () => {
+  const state = { basis: `window:${"b".repeat(64)}`, view: "hour", metric: "credits", group: "project", day: "2026-10-01", detail: "" };
+  const action = { scope: "a".repeat(64), state };
+  const nav = { scope: action.scope, state, actions: [action] };
+  assert.deepEqual(validateBreakdownNavigation(action, nav), action);
+  for (const fields of [{ basis: `window:${"c".repeat(64)}` }, { metric: "billing" }, { extra: "value" }]) {
+    assert.equal(validateBreakdownNavigation({ ...action, state: { ...state, ...fields } }, nav), undefined);
+  }
+});

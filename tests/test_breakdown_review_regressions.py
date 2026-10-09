@@ -88,15 +88,17 @@ def test_real_calibrated_cycle_and_hour_render_with_exact_endpoints(tmp_path):
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
         metadata = load(connection, key)
-        cycle = metadata["ranges"]["cycle"]
+        cycle_basis = metadata["ranges"]["cycle"]["partition_basis"]
+        cycle = load(connection, key[:-len("metadata")] + cycle_basis + ":summary")
         assert cycle["end"] == AT.timestamp()
         assert cycle["calibration"]["value"] is not None
         evidence = metadata["evidence"]
         pace = next(p for series in evidence["paces"] for p in series if p["name"] == "Cycle" and p["method"] == "calibrated cost")
         assert cycle["total"]["allowance_cost"] == pytest.approx(pace["cost"])
         excluded_tokens = connection.execute("select sum(total_tokens) from ledger_usage_events where timestamp_us<=?", (round(cycle["start"]*1e6),)).fetchone()[0]
-        assert metadata["ranges"]["selected"]["total"]["tokens"] - cycle["total"]["tokens"] == excluded_tokens
-        day = load(connection, key[:-len("metadata")] + "cycle:day:2026-10-09")
+        selected = load(connection, key[:-len("metadata")] + "selected:summary")
+        assert selected["total"]["tokens"] - cycle["total"]["tokens"] == excluded_tokens
+        day = load(connection, key[:-len("metadata")] + cycle_basis + ":day:2026-10-09")
         hour_key = (AT-timedelta(hours=1)).isoformat()
         assert day["calibrations"][hour_key]["value"] is not None
         assert any(r["hour"] == hour_key for r in day["rows"])
@@ -115,7 +117,8 @@ def test_real_cycle_unknown_or_full_stays_unavailable(tmp_path, kwargs):
     report = render(tmp_path)
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
-        assert load(connection, key)["ranges"]["cycle"]["calibration"]["value"] is None
+        basis = load(connection, key)["ranges"]["cycle"]["partition_basis"]
+        assert load(connection, key[:-len("metadata")] + basis + ":summary")["calibration"]["value"] is None
     assert "pp estimated" not in report.html.split('<section class="section usage-breakdown"', 1)[1]
 
 

@@ -22,10 +22,10 @@ def main():
     with TemporaryDirectory(prefix="breakdown-ui-") as raw:
         home = Path(raw)
         started = perf_counter()
-        ledger = breakdown_home(home)
+        ledger = breakdown_home(home, extended=True, days=12)
         evidence["performance"]["fixture_preparation_seconds"] = perf_counter() - started
-        def render(action=None, theme="day", projects=None, now=AT):
-            return render_ledger_report(home, range_name="all", project_keys=projects or [],
+        def render(action=None, theme="day", projects=None, now=AT, range_name="all"):
+            return render_ledger_report(home, range_name=range_name, project_keys=projects or [],
                 theme=theme, timezone_name="UTC", now=now,
                 breakdown_action=json.dumps(action) if action else None)
         started = perf_counter()
@@ -35,7 +35,7 @@ def main():
             raise AssertionError("warm navigation did historical work")
         reports = [("hour-cost-model", first)]
         current = first
-        with patch("codex_usage.breakdown_reports.prepare", forbidden), patch("codex_usage.allowance_index._decode_cached_report", forbidden), patch("codex_usage.breakdown_reports.query_ledger_records", forbidden), patch("codex_usage.agent_reports.materialize_ledger", forbidden):
+        with patch("codex_usage.breakdown_reports.prepare", forbidden), patch("codex_usage.allowance_index._decode_cached_report", forbidden), patch("codex_usage.breakdown_reports.query_ledger_records", forbidden), patch("codex_usage.agent_reports.materialize_ledger", forbidden), patch("codex_usage.breakdown_evidence.prepare_balances", forbidden), patch("codex_usage.breakdown_reports.value_records", forbidden):
             started = perf_counter()
             assert render().html == first.html
             evidence["performance"]["warm_report_seconds"] = perf_counter() - started
@@ -44,7 +44,10 @@ def main():
                 ("hour-tokens-model", {"metric": "tokens"}),
                 ("hour-tokens-project", {"group": "project"}),
                 ("hour-cost-project", {"metric": "cost"}),
-                ("project-cost", {"view": "project"}),
+                ("hour-credits-model", {"metric": "credits", "group": "model"}),
+                ("hour-credits-project", {"group": "project"}),
+                ("project-credits", {"view": "project"}),
+                ("project-cost", {"metric": "cost"}),
                 ("project-tokens", {"metric": "tokens"}),
                 ("other", {"detail": "other"}),
                 ("previous", {"view": "hour", "detail": "", "day": "2026-10-08"}),
@@ -73,9 +76,20 @@ def main():
             reports.append(("project-drill", current))
             action = next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"].startswith("hour:"))
             reports.append(("hour-drill", render(action)))
+            for index, action in enumerate(a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")):
+                started = perf_counter()
+                historical = render(action)
+                times.append(perf_counter()-started)
+                reports.append((f"dated-window-{index}", historical))
             evidence["performance"]["warm_navigation_seconds"] = times
             evidence["performance"]["warm_history_materializations_fits_reprices"] = 0
         reports.append(("empty-filter", render(projects=["nonexistent-synthetic"])))
+        for label, projects in (("month-selected", []), ("month-empty-filter", ["nonexistent-synthetic"])):
+            month = render(projects=projects, range_name="month")
+            selected = next(a for a in month.breakdown_navigation["actions"] if a["state"]["basis"] == "selected")
+            month = render(selected, projects=projects, range_name="month")
+            assert month.breakdown_navigation["state"]["day"] == "2026-10-09"
+            reports.append((label, month))
         from datetime import timedelta
         reports.append(("expired-anchor", render(now=AT + timedelta(hours=2))))
         with open_ledger(ledger) as connection:
@@ -90,9 +104,18 @@ def main():
             ("five-hour-only", AT, "UTC", 4, 300, None),
             ("missing-duration", AT, "UTC", 4, None, None),
             ("multi-weekly", AT, "UTC", 4, 10080, None),
+            ("large-balance-small-decrease", AT, "UTC", 12, 10080, None),
+            ("unknown-balances", AT, "UTC", 4, 10080, None),
+            ("unlimited-balances", AT, "UTC", 4, 10080, None),
         ):
             edge_home = home / label
-            breakdown_home(edge_home, now=now, days=days, duration=duration)
+            breakdown_home(edge_home, now=now, days=days, duration=duration,
+                extended=label == "large-balance-small-decrease", credit_base=62500)
+            if label == "unlimited-balances":
+                with open_ledger(edge_home / ".codex-usage/usage-ledger.sqlite3") as connection:
+                    connection.execute("update credit_observations set unlimited=1, diagnostic=''")
+                    increment_ledger_revision(connection)
+                    connection.commit()
             if label == "multi-weekly":
                 from codex_usage.allowance_models import QuotaObservation
                 from codex_usage.allowance_probe import QuotaRead
@@ -140,10 +163,16 @@ def main():
                                 if label == "multi-weekly":
                                     assert "another-limit · weekly · plus" in section.locator(".ub-meter-legend").inner_text()
                                     assert "codex · weekly · pro" in section.locator(".ub-meter-legend").inner_text()
+                                if label in ("unknown-balances", "unlimited-balances"):
+                                    assert section.locator(".ub-balances .ub-axis").inner_text().strip() == "Unknown"
+                                    assert section.locator(".ub-credit-changes .ub-axis").inner_text().strip() == "Unknown"
+                                    assert "No finite valid balances among in-domain captures" in section.inner_text()
+                                    assert "No in-domain balance captures" not in section.inner_text()
                                 if report.breakdown_navigation["state"]["view"] == "hour":
-                                    assert axes.count() == 3, (label, axes.count())
-                                    assert axes.nth(1).get_attribute("data-start") == axes.nth(2).get_attribute("data-start")
-                                    assert axes.nth(1).get_attribute("data-end") == axes.nth(2).get_attribute("data-end")
+                                    assert axes.count() == 5, (label, axes.count())
+                                    for i in (2, 3, 4):
+                                        assert axes.nth(1).get_attribute("data-start") == axes.nth(i).get_attribute("data-start")
+                                        assert axes.nth(1).get_attribute("data-end") == axes.nth(i).get_attribute("data-end")
                                 else:
                                     assert axes.count() == 0
                                 for axis in axes.all():
@@ -158,8 +187,8 @@ def main():
                                 summary.press("Enter")
                                 assert section.locator("details").last.get_attribute("open") != before, (engine, label, width)
                                 summary.press("Enter")
-                                if engine == "chromium" and width in (1440, 360) and theme == "day":
-                                    section.screenshot(path=str(args.output / f"{label}-{width}.png"))
+                                if engine == "chromium" and width in (1440, 360):
+                                    section.screenshot(path=str(args.output / f"{label}-{theme}-{width}.png"))
                                 evidence["views"].append({"engine": engine, "scenario": label, "theme": theme,
                                     "width": width, "state": report.breakdown_navigation["state"], "script_disabled": True,
                                     "exact_table_keyboard": True, "fixed_axes": True, "aligned_collision_free_time_ticks": True})
