@@ -146,6 +146,12 @@ compact signed net-change axis places each original interval at its exact delta
 magnitude. Neither connects balance points nor divides an interval into hours.
 Missing in-domain captures and spanning evidence are distinct states. Chronology
 compares parsed instants, not ISO text, retaining original offsets in exact rows.
+Shared numeric usage/balance/change ticks strip insignificant fractional zeros and compact
+long/tiny values scientifically within the fixed gutter. If compact absolute
+ticks collapse distinct observed balances, use an explicitly labeled common
+balance offset, not identical misleading ticks or a changed domain. Exact
+Decimal tick values remain in titles and original captures in inspection rows.
+Browser guards measure actual text ranges against spans and gutter padding.
 
 ## Alternatives And Consequences
 

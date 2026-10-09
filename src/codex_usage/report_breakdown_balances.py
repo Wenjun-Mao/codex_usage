@@ -1,9 +1,21 @@
 """Captured balances and original net-change intervals, never hourly debits."""
 import html
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 from codex_usage.report_breakdown_axis import time_axis, timestamp_label
+from codex_usage.report_breakdown_numbers import compact_decimal, numeric_axis
+
+
+def balance_ticks(minimum, maximum):
+    with localcontext() as context:
+        context.prec = 40
+        actual = [maximum, (maximum + minimum) / 2, minimum]
+        labels = [compact_decimal(value) for value in actual]
+        # Use a named offset only when compact absolute ticks lose movement.
+        offset = minimum if len(set(labels)) < len(set(actual)) else None
+        values = [value - minimum for value in actual] if offset is not None else actual
+    return numeric_axis(values, actual=actual), offset
 
 
 def balances(points, start, end, timezone):
@@ -19,7 +31,7 @@ def balances(points, start, end, timezone):
     minimum = min((Decimal(p["balance"]) for p in valid), default=Decimal(0))
     scale = maximum-minimum or Decimal(1)
     known_changes = [Decimal(p["change"]) for p in selected if p["change"] is not None]
-    change_maximum = max((abs(change) for change in known_changes), default=Decimal(0))
+    change_maximum = max((change.copy_abs() for change in known_changes), default=Decimal(0))
     change_scale = change_maximum or Decimal(1)
     marks, changes, rows = [], [], []
     def x(at):
@@ -48,8 +60,9 @@ def balances(points, start, end, timezone):
             changes.append(f'<line x1="{x(max(start, origin)):.3f}" x2="{x(min(end, at)):.3f}" y1="{y:.3f}" y2="{y:.3f}" stroke="{color}" stroke-dasharray="3 3" stroke-width="3" vector-effect="non-scaling-stroke" role="img" aria-label="{html.escape(interval + " | " + movement, quote=True)}"><title>{title}</title></line>')
         rows.append(f'<tr><td>{html.escape(label)}<br>{html.escape(point["timestamp"])}</td><td>{html.escape(interval)}</td><td>{html.escape(movement)}</td></tr>')
     grid = ''.join(f'<line x1="0" x2="{width}" y1="{height*f}" y2="{height*f}" stroke="var(--border)"/>' for f in (0, .5, 1))
-    balance_axis = f'<span>{maximum:.9g}</span><span>{(maximum+minimum)/2:.9g}</span><span>{minimum:.9g}</span>' if valid else '<span>Unknown</span><span></span><span></span>'
-    change_axis = f'<span>+{change_maximum:.6g}</span><span>0</span><span>−{change_maximum:.6g}</span>' if known_changes else '<span>Unknown</span><span></span><span></span>'
+    balance_axis, offset = balance_ticks(minimum, maximum) if valid else ('<span>Unknown</span><span></span><span></span>', None)
+    change_axis = numeric_axis([change_maximum, Decimal(0), change_maximum.copy_negate()], signed=True) if known_changes else '<span>Unknown</span><span></span><span></span>'
+    offset_label = f' Axis offset: +{format(offset, "f")} credits; ticks show credits above this balance.' if offset is not None else ''
     balance_name = f'Captured account-wide credit balances, observed range {minimum} to {maximum}' if valid else 'No finite valid captured credit balances'
     change_name = 'Signed net credit changes over original intervals' if known_changes else 'No known net credit changes'
     availability = ('' if in_domain else
@@ -57,7 +70,7 @@ def balances(points, start, end, timezone):
         '<p class="ub-note">No in-domain balance captures; boundary-spanning evidence remains inspectable below.</p>' if selected else
         '<p class="ub-note">Credit balance unavailable: no captures or spanning evidence on this time domain.</p>')
     return ('<h3>Captured credit balance · account-wide</h3>'
-        '<small>Credits · observed balance range, not zero-based; captured points only.</small>'
+        f'<small>Credits · observed balance range, not zero-based; captured points only.{offset_label}</small>'
         f'<div class="ub-chart ub-meter ub-balances"><div class="ub-axis">{balance_axis}</div><div class="ub-scroll"><svg width="100%" height="{height}" viewBox="0 0 {width} {height}" preserveAspectRatio="none" role="img" aria-label="{balance_name}">{grid}{"".join(marks)}</svg>{time_axis(start, end, timezone)}</div></div>'
         + availability
         + '<div class="ub-unit">Account-wide net change · credits per original capture interval</div>'

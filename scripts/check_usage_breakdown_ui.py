@@ -1,6 +1,7 @@
 """Script-disabled cross-browser composition acceptance and measured warm work."""
 import argparse
 import json
+from decimal import Decimal, localcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
@@ -105,12 +106,28 @@ def main():
             ("missing-duration", AT, "UTC", 4, None, None),
             ("multi-weekly", AT, "UTC", 4, 10080, None),
             ("large-balance-small-decrease", AT, "UTC", 12, 10080, None),
+            ("extreme-balances", AT, "UTC", 12, 10080, None),
+            ("tiny-balances", AT, "UTC", 12, 10080, None),
+            ("signed-credit-changes", AT, "UTC", 12, 10080, None),
+            ("large-token-scale", AT, "UTC", 12, 10080, None),
             ("unknown-balances", AT, "UTC", 4, 10080, None),
             ("unlimited-balances", AT, "UTC", 4, 10080, None),
         ):
             edge_home = home / label
             breakdown_home(edge_home, now=now, days=days, duration=duration,
-                extended=label == "large-balance-small-decrease", credit_base=62500)
+                extended=label in {"large-balance-small-decrease", "extreme-balances", "tiny-balances", "signed-credit-changes"}, credit_base=62500,
+                token_multiplier=1000 if label == "large-token-scale" else 1)
+            if label in {"extreme-balances", "tiny-balances", "signed-credit-changes"}:
+                with open_ledger(edge_home / ".codex-usage/usage-ledger.sqlite3") as connection, localcontext() as context:
+                    context.prec = 40
+                    reads = connection.execute("select read_id from credit_observations order by read_id").fetchall()
+                    for index, row in enumerate(reads):
+                        value = (Decimal("1e18") - index*Decimal("1e-18") if label == "extreme-balances" else
+                            (len(reads)-index)*Decimal("1e-18") if label == "tiny-balances" else
+                            Decimal("1e18") if index % 2 else Decimal(0))
+                        connection.execute("update credit_observations set balance=? where read_id=?", (format(value, "f"), row[0]))
+                    increment_ledger_revision(connection)
+                    connection.commit()
             if label == "unlimited-balances":
                 with open_ledger(edge_home / ".codex-usage/usage-ledger.sqlite3") as connection:
                     connection.execute("update credit_observations set unlimited=1, diagnostic=''")
@@ -134,6 +151,8 @@ def main():
             edge = edge_render(selected)
             if day:
                 edge = edge_render(next(a for a in edge.breakdown_navigation["actions"] if a["state"]["day"] == day))
+            if label == "large-token-scale":
+                edge = edge_render(next(a for a in edge.breakdown_navigation["actions"] if a["state"]["metric"] == "tokens"))
             reports.append((label, edge))
         with sync_playwright() as playwright:
             for engine in ("chromium", "webkit", "firefox"):
@@ -155,6 +174,10 @@ def main():
                                 for axis in section.locator(".ub-axis").all():
                                     assert axis.is_visible()
                                     assert axis.evaluate("e => getComputedStyle(e).fontSize") == "12px"
+                                for axis in section.locator(".ub-axis").all():
+                                    # A span box fits even when its glyphs extend into the plot.
+                                    boxes = axis.evaluate("e => {const gutter=e.getBoundingClientRect(),right=gutter.right-parseFloat(getComputedStyle(e).paddingRight);return [...e.children].filter(s=>s.textContent.trim()).map(s=>{const range=document.createRange();range.selectNodeContents(s);const text=range.getBoundingClientRect(),span=s.getBoundingClientRect();return {label:s.textContent,textLeft:text.left,textRight:text.right,spanLeft:span.left,spanRight:span.right,gutterLeft:gutter.left,gutterRight:right}})}")
+                                    assert all(b["textLeft"] >= max(b["spanLeft"], b["gutterLeft"])-1 and b["textRight"] <= min(b["spanRight"], b["gutterRight"])+1 for b in boxes), (engine, label, width, boxes)
                                 axes = section.locator(".ub-time-axis")
                                 for marker in section.locator("svg rect, svg circle, svg path").all():
                                     assert "2026-" in marker.locator("title").text_content(), (label, marker.inner_html())
@@ -168,6 +191,10 @@ def main():
                                     assert section.locator(".ub-credit-changes .ub-axis").inner_text().strip() == "Unknown"
                                     assert "No finite valid balances among in-domain captures" in section.inner_text()
                                     assert "No in-domain balance captures" not in section.inner_text()
+                                if label == "extreme-balances":
+                                    assert "Axis offset:" in section.inner_text()
+                                    tick_labels = section.locator(".ub-balances .ub-axis span").all_text_contents()
+                                    assert len(set(tick_labels)) == 3, tick_labels
                                 if report.breakdown_navigation["state"]["view"] == "hour":
                                     assert axes.count() == 5, (label, axes.count())
                                     for i in (2, 3, 4):
@@ -191,7 +218,7 @@ def main():
                                     section.screenshot(path=str(args.output / f"{label}-{theme}-{width}.png"))
                                 evidence["views"].append({"engine": engine, "scenario": label, "theme": theme,
                                     "width": width, "state": report.breakdown_navigation["state"], "script_disabled": True,
-                                    "exact_table_keyboard": True, "fixed_axes": True, "aligned_collision_free_time_ticks": True})
+                                    "exact_table_keyboard": True, "fixed_axes": True, "axis_text_contained": True, "aligned_collision_free_time_ticks": True})
                 finally:
                     context.close()
                     browser.close()

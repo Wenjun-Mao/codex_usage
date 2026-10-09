@@ -15,7 +15,7 @@ from codex_usage.session_cache import refresh_cached_session_data
 AT = datetime(2026, 10, 9, 12, tzinfo=UTC)
 
 
-def breakdown_home(home, *, now=AT, projects=13, days=4, duration=10080, extended=False, credit_base=100):
+def breakdown_home(home, *, now=AT, projects=13, days=4, duration=10080, extended=False, credit_base=100, token_multiplier=1):
     sessions = home / "sessions"
     sessions.mkdir(parents=True, exist_ok=True)
     models = ("gpt-6.1-sol", "gpt-6-luna", "codex-auto-review", "unknown-synthetic")
@@ -28,7 +28,7 @@ def breakdown_home(home, *, now=AT, projects=13, days=4, duration=10080, extende
                 for i, model in enumerate(models):
                     at = now.replace(hour=hour, minute=i + 1) - timedelta(days=day)
                     rows.append({"type": "turn_context", "timestamp": at.isoformat(), "payload": {"model": model}})
-                    tokens = (projects - p) * (i + 1) * 100
+                    tokens = (projects - p) * (i + 1) * 100 * token_multiplier
                     usage = {"input_tokens": tokens, "cached_input_tokens": tokens // 2,
                              "output_tokens": tokens, "total_tokens": tokens * 2}
                     for key, value in usage.items():

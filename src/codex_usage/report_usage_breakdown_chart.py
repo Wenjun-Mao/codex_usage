@@ -2,6 +2,7 @@
 import html
 from datetime import datetime
 from codex_usage.report_breakdown_axis import time_axis, timestamp_label
+from codex_usage.report_breakdown_numbers import numeric_axis
 
 
 COLORS = ("#087ea4", "#bf4565", "#24896e", "#a57515", "#7855b6", "#df6c32", "#56859c")
@@ -45,7 +46,7 @@ def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=N
         marks.append((f'<a href="{html.escape(links[index], quote=True)}" aria-label="{inspection}"><title>{inspection}</title>' if links else "") + "".join(parts) + ("</a>" if links else ""))
     grid = ''.join(f'<line x1="0" x2="{width}" y1="{height * f}" y2="{height * f}" stroke="var(--border)"/>' for f in (0, .5, 1))
     unit = {"tokens": "Tokens", "cost": "Known API-equivalent USD", "credits": "Estimated Standard credits"}[metric]
-    scale = (f'<span>{maximum:,.6g}</span><span>{maximum / 2:,.6g}</span><span>0</span>'
+    scale = (numeric_axis([maximum, maximum / 2, 0], unit=metric)
              if observed_maximum else '<span>No known values</span><span></span><span>0 known</span>')
     return (f'<div class="ub-unit">{html.escape(title)} &middot; {unit}</div><div class="ub-chart">'
             f'<div class="ub-axis">{scale}</div>'

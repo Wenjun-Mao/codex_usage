@@ -340,18 +340,24 @@ on its observed day. Mixed-offset chronology and backwards-origin raw membership
 regressions preserve points while prohibiting invalid deltas. Missing/unlimited
 states expose Unknown axes, not false zero; small movement on large balances is
 visible without interpolation. No live ledger or private backup was used.
+Manager found Decimal general-format trailing zeros clipping the fixed axis
+gutter, also affecting large-token general-format ticks. Shared compact numeric
+formatting now covers usage/balance/change axes, with explicit common offsets
+for collapsed large/small ranges and exact titles. Refreshed evidence below uses
+real text-range containment guards, without widening or hiding axes.
 
 Final Python fingerprint (sorted `src/codex_usage/*.py`, filename + NUL + bytes):
-`08ba2a6f071f502f5cfcbbc2411b882521b35c13ec34216cead12c5285817a9a`.
+`7e0461b92a5d8706f195d3489bdc410d68d1e5c0cff57119e47b92a0c817204f`.
 
-- Focused domain/HTTP/indexed-union tests: 58 passed. Full Python: 1,707 passed,
+- Focused numeric/domain/HTTP/indexed-union tests: 74 passed. Full Python: 1,723 passed,
   one expected Windows-only junction skip. Ruff and whitespace checks passed.
 - Extension build and 48 host tests passed, including strict issued/forged/expired
   commands, one recovery and stale cached-status behavior. macOS agent rebuilt.
-- Script-disabled Chromium/WebKit/Firefox: 540 checks, Day/Night, 1440/760/360,
+- Script-disabled Chromium/WebKit/Firefox: 612 checks, Day/Night, 1440/760/360,
   six metric/view combinations, groups/drills, dated windows, Month, DST,
-  unknown/unlimited and large-balance cases. Shared fixed visible time axes and
-  keyboard disclosures passed. Wide/narrow screenshots inspected.
+  unknown/unlimited, large/tiny/max-valid balances, signed changes and 182M/546M
+  token scales. Actual text-range bounds fit every numeric span and padded gutter;
+  fixed shared time axes and keyboard disclosures passed. Screenshots inspected.
 - Disposable native VS Code replay: 17 real mouse/Enter inputs, including dated
   prior window and credits, restrictive script-disabled CSP, synthetic RPC only,
   in-memory secretstorage and isolated profiles. Native Tab/Windows are unproven.
@@ -369,24 +375,26 @@ Serial paired observations against released v2.11.1 and accepted `c9a7be13`:
 
 | Seconds | Today release | Today accepted | Today extension | All release | All accepted | All extension |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Cold total | 0.2331 | 0.2825 | 0.2878 | 15.7072 | 19.1099 | 19.1665 |
-| Derived preparation | n/a | 0.0295 | 0.0348 | n/a | 2.0840 | 2.0875 |
-| Derived cache write | n/a | 0.0219 | 0.0239 | n/a | 0.6380 | 0.7475 |
-| Warm report | 0.0012 | 0.0239 | 0.0243 | 0.0084 | 0.0353 | 0.0361 |
+| Cold total | 0.3186 | 0.3065 | 0.3018 | 17.8565 | 21.6385 | 21.0399 |
+| Derived preparation | n/a | 0.0305 | 0.0348 | n/a | 2.3572 | 2.1677 |
+| Derived cache write | n/a | 0.0231 | 0.0250 | n/a | 0.7615 | 0.7933 |
+| Warm report | 0.0030 | 0.0246 | 0.0258 | 0.0090 | 0.0366 | 0.0364 |
 
 Today extension queried/valued 1,152 additional union records versus accepted
 864, not all 210,240 events. All-time reused selected valuation with no additional
 record query/value work. Warm derived record/preparation work was zero; dated
-switches took 0.0245-0.0248 s Today and 0.0352 s all-time. Nested times overlap;
+switches took 0.0368-0.0440 s Today and 0.0347-0.0353 s all-time; warm controls
+took 0.0336-0.0544 s Today and 0.0299-0.0350 s all-time. Nested times overlap;
 do not sum them or infer causal speedups from these single observations. Added
 cold preparation/cache-write cost remains real, especially all-time cache writes.
 This is scaled synthetic evidence, not live-account or dense multi-year capture
 validation; the smaller synthetic fixture is reported separately.
 
 Final-source ignored evidence under `output/playwright/usage-breakdown/`:
-`extension-final-ui/evidence.json`, `extension-final-native/evidence.json`,
-`extension-final-released-parity.json`, `extension-final-synthetic-parity.json`,
-`extension-final-scaled-perf.json`, `extension-final-small-perf.json`.
+`axis-format-accepted-ui/evidence.json`, `axis-format-accepted-native/evidence.json`,
+`axis-format-released-parity.json`, `axis-format-synthetic-parity.json`,
+`axis-format-scaled-perf.json`, `axis-format-small-perf.json`. Earlier
+`extension-final-*` evidence remains retained but precedes the axis correction.
 Use the existing UI/native/parity/performance entrypoints; comparison adds
 `--accepted c9a7be13 --synthetic` to explicitly distinguish synthetic evidence.
 Pending: manager acceptance retests, human product acceptance, native Windows/Tab
