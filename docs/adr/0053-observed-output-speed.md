@@ -73,6 +73,38 @@ explicit selection of all existing keys remains a fixed subset.
 Saved windows carry their prior range scope: a local-midnight rollover clamps
 them to the new range, while direct out-of-range and stale host commands reject.
 
+### Responsive Calendar Presentation (2026-10-08)
+
+The original fixed-width SVG scrolled its y axis out of view and appended a
+final date beside an already adjacent tick. Hourly's remembered seven-day window
+also lacked context for the full selected range. Replace this geometry at the
+renderer, not by shrinking fonts or changing range/metric semantics. Daily fits
+the entire selection. Hourly retains seven local dates, a full-range daily
+overview with calendar-date selection shading, explicit detail/total-day counts,
+and an allowlisted Latest week command. Empty detail retains a populated overview
+when other dates have evidence. Account-wide recovery progress is visibly scoped
+as such; it is not filtered-project coverage.
+
+Axes stay within the container without horizontal scrolling. Constant-size HTML
+labels use container-width tick sets, mandatory endpoints and collision spacing;
+SVG positions remain proportional while marks and interval strokes keep fixed
+dimensions. Fixed plot padding and visible SVG overflow keep endpoint markers
+and their keyboard-focus strokes inside the parent at narrow widths.
+Preserve medians, middle-50% intervals, small samples, missing gaps,
+exact keyboard-accessible details and script-disabled CSP. Rendering revision 28
+invalidates old HTML; no new scripts or dependencies are introduced.
+
+Hourly aggregation and calendar enumeration share a nominal local-clock-hour
+identity with the observed fixed UTC offset. Rounding with a ZoneInfo object can
+re-resolve the offset inside a partially skipped/repeated hour; stepping UTC
+hours from midnight can instead produce half-hour-shifted labels. Enumerate valid
+local hour boundaries/folds, including partial hours, preserve their actual
+offsets, and order by UTC instant. Timing-query revision 2 invalidates old
+aggregates without changing accepted facts, accounting, recovery or schemas.
+Guardrails cover Toronto, Lord Howe and Chatham transition calendars and actual
+aggregate/calendar joins, plus rendered tick bounds, embedded narrow containers,
+single days, empty historical windows and native Latest week navigation.
+
 The initial usability defaults are 10 ms minimum model-item duration and 500
 output tokens, with sensitivity checked at 50/100 ms and 100/2,000 tokens. Fewer
 than five responses shows no number; 5-19 is marked small sample. Median, middle
@@ -86,7 +118,7 @@ Rejected: report-triggered JSONL scans, another collector/budget, global parser
 cache resets, event-ID binding, first-wins deduplication, interpolated gaps,
 effort-split defaults, inferred service tiers and permissive webview scripts.
 Host commands remain allowlisted with exact argument-shape, scope, calendar-date
-and neighbor validation. Mismatched collectors fail visibly.
+and neighbor/latest-window validation. Mismatched collectors fail visibly.
 
 Native acceptance uses disposable profiles and the supported
 `--use-inmemory-secretstorage` flag: a temporary HOME alone does not isolate
@@ -94,6 +126,9 @@ Electron's native credential backend on macOS. It explicitly attaches the
 separate webview iframe target, reads rendered DOM, and dispatches real mouse
 input; no product scripts/CSP change or host-only navigation substitutes for
 click acceptance. Evidence records harness/source and bundled-collector hashes.
+Rendered-click acceptance must clear the variable-height sticky toolbar with
+real scrolling and hit-test the target link before dispatch; a DOM-visible
+quad alone does not prove an unoccluded clickable control.
 
 Synthetic replay covers checkpoint boundaries, late revocation, order-independent
 conflicts, additive migration, replacement, retention, transitions, DST, display

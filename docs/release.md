@@ -1,11 +1,31 @@
-# 2.11.0 VSIX Release Checklist
+# 2.11.1 VSIX Release Checklist
 
-Codex Usage 2.11.0 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.11.1 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
 
-## Published Receipt
+## 2.11.1 Candidate
+
+This patch changes only observed-speed presentation/navigation and derived
+offset-aware hour buckets. ADR 0053 records the root cause and new renderer
+contract. The separate [usage/allowance breakdown](plans/usage-burn-breakdown.md)
+is approved product direction, not an included feature. Publication remains
+gated on the reviewed exact candidate, both platform packages, native
+script-disabled navigation and public catalog/download verification.
+
+Local candidate gates passed: 1,648 Python tests with one expected Windows-only
+skip, 34 extension tests/build, Ruff, lock validation, exact monetary parity,
+bounded-work counters, regenerated synthetic screenshots, 144 script-disabled
+speed browser cases and 180 allowance plus 36 meter cases. The rebuilt macOS
+package passed smoke/archive checks. Native acceptance exercised eight real
+rendered clicks, including a non-neighbor Latest week jump, stale-command
+rejection and capture-window retention with in-memory credentials. The initial
+native run exposed sticky-toolbar interception in the harness; the corrected
+helper uses one coherent DOM snapshot, real wheel input and link hit-testing.
+All native profiles and data were disposable; no live installation was changed.
+
+## 2.11.0 Published Receipt
 
 Released on 2026-10-08 as `v2.11.0`, pointing to
 `559c18a2ff72feed9945b9d4773a613d2b5b72f5` on `main`.
@@ -269,13 +289,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.11.0`, both
+Confirm Python and extension metadata and lockfiles all say `2.11.1`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.11.0`:
+Only after the non-publishing platform gate succeeds, create and push `v2.11.1`:
 
 ```bash
-git tag v2.11.0
-git push origin v2.11.0
+git tag v2.11.1
+git push origin v2.11.1
 ```
 
 The tag reruns all platform gates and publishes
@@ -284,7 +304,7 @@ The tag reruns all platform gates and publishes
 Marketplace versions, and package hashes. The workflow does not create a GitHub
 Release; VSCE uses `--skip-duplicate` on a rerun.
 
-Query the public Marketplace catalog for version 2.11.0 on both `darwin-arm64`
+Query the public Marketplace catalog for version 2.11.1 on both `darwin-arm64`
 and `win32-x64`, download each official versioned target VSIX, and require its
 SHA-256 to equal the corresponding artifact from the exact tag workflow. Retain
 run URLs, catalog metadata and public hashes under ignored release evidence;

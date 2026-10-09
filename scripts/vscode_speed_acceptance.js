@@ -63,9 +63,11 @@ exports.run = async function () {
     }
     if (!hostOnly) {
       const clicks = JSON.parse(fs.readFileSync(path.join(root, "clicked.json"), "utf8"));
-      assert.deepEqual(clicks.map(click => click.label), ["Hourly", "Previous", "Next", "Daily", "Hourly"]);
+      assert.deepEqual(clicks.map(click => click.label), ["Hourly", "Previous", "Previous", "Latest week", "Previous", "Next", "Daily", "Hourly"]);
       assert.notEqual(clicks[1].rendered.window_start, clicks[0].rendered.window_start);
-      assert.equal(clicks[2].rendered.window_start, clicks[0].rendered.window_start);
+      assert.notEqual(clicks[2].rendered.window_start, clicks[1].rendered.window_start);
+      assert.equal(clicks[3].rendered.window_start, clicks[0].rendered.window_start);
+      assert.equal(clicks[5].rendered.window_start, clicks[0].rendered.window_start);
       assert(clicks.every(click => click.rendered.scope === clicks[0].rendered.scope));
       assert.deepEqual(selectedNavigation(panel.webview.html), clicks.at(-1).requested);
       evidence.rendered_clicks = clicks;

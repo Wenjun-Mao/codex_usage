@@ -1,6 +1,7 @@
 """Fact-level medians, offset-aware calendars and revision-keyed ledger-only cache."""
 from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta
+from datetime import timezone as fixed_timezone
 import hashlib
 import json
 from statistics import median, quantiles
@@ -10,6 +11,14 @@ from codex_usage.ledger_queries import _row_to_usage_record, query_ledger_transi
 from codex_usage.project_transitions import apply_project_transitions
 from codex_usage.speed_models import METRIC_VERSION, MIN_OUTPUT_TOKENS
 from codex_usage.speed_store import revision
+
+QUERY_REVISION = 2
+
+
+def hour_bucket(local):
+    # Keep the offset actually observed at the response. Resolving a rounded
+    # wall time through ZoneInfo can choose a different offset in a partial hour.
+    return local.replace(tzinfo=fixed_timezone(local.utcoffset()), minute=0, second=0, microsecond=0).isoformat()
 
 
 def describe(samples: list[dict]) -> dict:
@@ -26,7 +35,7 @@ def describe(samples: list[dict]) -> dict:
 
 def cache_key(connection, report_range, project_keys, timezone, auto_transitions) -> str:
     from codex_usage.ledger_schema import ledger_revision
-    identity = [revision(connection), ledger_revision(connection), METRIC_VERSION,
+    identity = [revision(connection), ledger_revision(connection), METRIC_VERSION, QUERY_REVISION,
                 report_range.cache_identity, sorted(project_keys), str(timezone), auto_transitions]
     return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
 
@@ -79,7 +88,7 @@ def speed_aggregates(connection, report_range, project_keys, timezone, *, auto_t
                   "task": record.session_id, "source": row["source_id"]}
         local = record.timestamp.astimezone(timezone)
         day = local.date().isoformat()
-        hour = local.replace(minute=0, second=0, microsecond=0).isoformat()
+        hour = hour_bucket(local)
         groups[record.model].append(sample)
         daily[(record.model, day)].append(sample)
         hourly[(record.model, hour)].append(sample)
@@ -128,10 +137,16 @@ def calendar_buckets(navigation, timezone):
     end = date.fromisoformat(navigation["window_end"] if navigation["granularity"] == "hourly" else navigation["max_date"])
     if navigation["granularity"] == "daily":
         return [(start + timedelta(days=i)).isoformat() for i in range((end - start).days + 1)]
-    first = datetime.combine(start, datetime.min.time(), timezone).astimezone(UTC)
-    stop = datetime.combine(end + timedelta(days=1), datetime.min.time(), timezone).astimezone(UTC)
-    result = []
-    while first < stop:
-        result.append(first.astimezone(timezone).isoformat())
-        first += timedelta(hours=1)
-    return result
+    result = set()
+    for day in (start + timedelta(days=i) for i in range((end - start).days + 1)):
+        for hour in range(24):
+            # Both ends and folds include partial/repeated wall-clock hours,
+            # without inventing a bin for a wholly skipped clock hour.
+            for minute, second in ((0, 0), (59, 59)):
+                for fold in (0, 1):
+                    wall = datetime.combine(day, datetime.min.time(), timezone).replace(
+                        hour=hour, minute=minute, second=second, fold=fold)
+                    actual = wall.astimezone(UTC).astimezone(timezone)
+                    if start <= actual.date() <= end:
+                        result.add(hour_bucket(actual))
+    return sorted(result, key=lambda bucket: datetime.fromisoformat(bucket).timestamp())

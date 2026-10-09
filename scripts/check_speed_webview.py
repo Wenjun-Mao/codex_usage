@@ -62,7 +62,7 @@ def main():
         (user / "settings.json").write_text(
             json.dumps(
                 {
-                    "codexUsage.range": "all",
+                    "codexUsage.range": "30d",
                     "codexUsage.theme": "day",
                     "telemetry.telemetryLevel": "off",
                     "update.mode": "none",
@@ -224,7 +224,7 @@ def accept_native_link(root, port, deadline, output):
             diagnostics["initial_state"] = state
             clicks = []
             # Each command replaces webview.html and therefore its content frame.
-            for label in ("Hourly", "Previous", "Next", "Daily", "Hourly"):
+            for label in ("Hourly", "Previous", "Previous", "Latest week", "Previous", "Next", "Daily", "Hourly"):
                 args = target.click(label, navigation_args)
                 state = wait_native_state(target, args, navigation_args, matches_navigation)
                 clicks.append({"label": label, "requested": args, "rendered": state})

@@ -18,7 +18,11 @@ export function validateSpeedNavigation(value: unknown, current: SpeedNavigation
   if (args.scope !== current.scope || !/^[a-f0-9]{64}$/u.test(current.scope)) return undefined;
   if (args.granularity !== "daily" && args.granularity !== "hourly") return undefined;
   if (!calendarDate(args.windowStart) || args.windowStart < current.min_date || args.windowStart > current.max_date) return undefined;
-  if (args.windowStart !== current.window_start && args.windowStart !== current.previous && args.windowStart !== current.next) return undefined;
+  if (!calendarDate(current.min_date) || !calendarDate(current.max_date)) return undefined;
+  const latest = new Date(`${current.max_date}T00:00:00Z`);
+  latest.setUTCDate(latest.getUTCDate() - 6);
+  const latestStart = latest.toISOString().slice(0, 10) < current.min_date ? current.min_date : latest.toISOString().slice(0, 10);
+  if (args.windowStart !== current.window_start && args.windowStart !== current.previous && args.windowStart !== current.next && args.windowStart !== latestStart) return undefined;
   return { granularity: args.granularity, windowStart: args.windowStart };
 }
 

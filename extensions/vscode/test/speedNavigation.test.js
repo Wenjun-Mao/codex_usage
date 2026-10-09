@@ -24,6 +24,18 @@ test("chart query carries state without changing global filters", () => {
   assert.equal(query.get("speed_window_scope"), nav.scope);
 });
 
+test("latest week is an explicit validated jump, not arbitrary in-range navigation", () => {
+  const older = { ...nav, granularity: "hourly", window_start: "2026-09-18", previous: "2026-09-11", next: "2026-09-25" };
+  const latest = { scope: nav.scope, granularity: "hourly", windowStart: "2026-10-02" };
+  assert.deepEqual(validateSpeedNavigation(latest, older), { granularity: "hourly", windowStart: "2026-10-02" });
+  for (const args of [{ ...latest, windowStart: "2026-10-01" }, { ...latest, scope: "b".repeat(64) }, { ...latest, extra: true }]) {
+    assert.equal(validateSpeedNavigation(args, older), undefined);
+  }
+  assert.equal(validateSpeedNavigation({ ...latest, windowStart: older.previous }, nav), undefined);
+  const short = { ...nav, min_date: "2026-10-06", window_start: "2026-10-07", previous: null };
+  assert.deepEqual(validateSpeedNavigation({ ...latest, windowStart: "2026-10-06" }, short), { granularity: "hourly", windowStart: "2026-10-06" });
+});
+
 test("explicit All Projects stays unfiltered while selected-all remains fixed", async () => {
   const projects = [{ project_key: "a", project_label: "Same", task_count: 1 }, { project_key: "b", project_label: "Same", task_count: 2 }];
   assert.deepEqual(await chooseProjects(projects, ["a"], async () => "all", async () => { throw Error("unexpected subset"); }), []);

@@ -54,25 +54,52 @@ def test_rendered_state_requires_exact_navigation_and_visible_window(harness):
     assert not harness.matches_navigation(dict(state, window_label=None), args)
 
 
-def test_explicit_native_target_click_uses_rendered_dom_and_input_not_scripts(harness):
+@pytest.mark.parametrize("covered", [False, True])
+def test_explicit_native_target_click_uses_rendered_dom_and_input_not_scripts(harness, covered):
     from speed_native_target import NativeSpeedTarget
     from urllib.parse import quote
     import json
     args = {"scope": "synthetic", "granularity": "hourly", "windowStart": "2026-10-02"}
     uri = "command:codexUsage.navigateSpeed?" + quote(json.dumps([args]))
-    chart = {"nodeId": 1, "children": [{"nodeId": 2, "nodeName": "A", "attributes": ["href", uri],
+    chart = {"nodeId": 1, "attributes": ["class", "observed-speed"], "children": [{"nodeId": 2, "backendNodeId": 2, "nodeName": "A", "attributes": ["href", uri],
         "children": [{"nodeType": 3, "nodeValue": "Hourly"}]}]}
+    toolbar = {"nodeId": 4, "attributes": ["class", "companion-actions"]}
     target = object.__new__(NativeSpeedTarget)
     target.chart = lambda: chart
+    documents = []
+    def document():
+        documents.append(True)
+        return {"children": [chart, toolbar]}
+    target.document = document
+    target.page = SimpleNamespace(wait_for_timeout=lambda delay: None)
     calls = []
+    scrolled = False
     def send(method, params):
+        nonlocal scrolled
         calls.append((method, params))
-        return {"quads": [[10, 20, 30, 20, 30, 40, 10, 40]]} if method == "DOM.getContentQuads" else {}
+        if method == "DOM.getContentQuads":
+            if params["nodeId"] == 4:
+                bottom = 40 if covered else 10
+                return {"quads": [[0, 0, 100, 0, 100, bottom, 0, bottom]]}
+            top = 50 if scrolled else 20
+            return {"quads": [[10, top, 30, top, 30, top + 20, 10, top + 20]]}
+        if method == "Input.dispatchMouseEvent" and params["type"] == "mouseWheel":
+            scrolled = True
+        return {"backendNodeId": 2} if method == "DOM.getNodeForLocation" else {}
     target.send = send
     assert target.click("Hourly", harness.navigation_args) == args
-    assert [method for method, _ in calls] == ["DOM.scrollIntoViewIfNeeded", "DOM.getContentQuads",
-        "Input.dispatchMouseEvent", "Input.dispatchMouseEvent", "Input.dispatchMouseEvent"]
-    assert calls[-1][1] == {"type": "mouseReleased", "x": 20, "y": 30, "button": "left", "clickCount": 1}
+    assert len(documents) == 1, "DOM frontend IDs must come from one coherent document"
+    assert scrolled == covered
+    assert calls[-4][0] == "DOM.getNodeForLocation"
+    assert calls[-1][1] == {"type": "mouseReleased", "x": 20, "y": 60 if covered else 30, "button": "left", "clickCount": 1}
+    assert not any(method.startswith("Runtime.") for method, _ in calls)
+    def obstructed(method, params):
+        return {"backendNodeId": 4} if method == "DOM.getNodeForLocation" else send(method, params)
+    target.send = obstructed
+    pressed = sum(params.get("type") == "mousePressed" for _, params in calls)
+    with pytest.raises(AssertionError, match="Occluded native link"):
+        target.click("Hourly", harness.navigation_args)
+    assert sum(params.get("type") == "mousePressed" for _, params in calls) == pressed
 
 
 def test_cleanup_tolerates_only_an_already_retired_owned_group(harness, monkeypatch):

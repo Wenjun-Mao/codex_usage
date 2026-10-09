@@ -9,7 +9,7 @@ from codex_usage.agent_paths import ledger_database_path
 from codex_usage.agent_reports import render_ledger_report
 from codex_usage.aggregation import resolve_report_range
 from codex_usage.ledger_schema import open_ledger
-from codex_usage.speed_queries import calendar_buckets, chart_navigation, describe, speed_aggregates
+from codex_usage.speed_queries import calendar_buckets, chart_navigation, describe, hour_bucket, speed_aggregates
 from codex_usage.speed_store import touch
 from speed_test_support import AT, append_rows, response, write_source
 
@@ -38,6 +38,45 @@ def test_hourly_calendar_preserves_dst_offsets(tmp_path, day, hours):
     assert len(buckets) == hours and len(set(buckets)) == hours
     if hours == 25:
         assert len([b for b in buckets if "T01:00:00" in b]) == 2
+
+
+@pytest.mark.parametrize("zone_name,day,hour,minute", [
+    ("Australia/Lord_Howe", "2026-10-04", 3, 0),
+    ("Australia/Lord_Howe", "2026-04-05", 2, 0),
+    ("Pacific/Chatham", "2026-09-27", 3, 50),
+])
+def test_partial_hour_dst_calendar_contains_actual_aggregate_keys(tmp_path, zone_name, day, hour, minute):
+    zone = ZoneInfo(zone_name)
+    local = datetime.fromisoformat(day).replace(hour=hour, minute=minute, tzinfo=zone)
+    write_source(tmp_path, count=5, at=local)
+    capture_once(tmp_path, request_kind="manual", max_workers=1)
+    selected = resolve_report_range("today", zone, now=local.replace(hour=12))
+    with open_ledger(ledger_database_path(tmp_path), read_only=True) as connection:
+        result, _ = speed_aggregates(connection, selected, [], zone)
+    calendar = set(calendar_buckets({"granularity": "hourly", "window_start": day, "window_end": day}, zone))
+    assert result["hourly"] and result["hourly"][0]["n"] == 5
+    assert {point["bucket"] for point in result["hourly"]} <= calendar
+    assert result["hourly"][0]["bucket"].endswith(local.strftime("%z")[:3] + ":" + local.strftime("%z")[3:])
+
+
+@pytest.mark.parametrize("zone_name,day", [
+    ("America/Toronto", "2026-03-08"), ("America/Toronto", "2026-11-01"),
+    ("Australia/Lord_Howe", "2026-10-04"), ("Australia/Lord_Howe", "2026-04-05"),
+    ("Pacific/Chatham", "2026-09-27"), ("Pacific/Chatham", "2026-04-05"),
+])
+def test_hour_calendar_contains_observed_wall_clock_bins(zone_name, day):
+    from datetime import timedelta
+    zone = ZoneInfo(zone_name)
+    first = datetime.fromisoformat(day).replace(tzinfo=zone)
+    stop = (first + timedelta(days=1)).astimezone(UTC)
+    instant = first.astimezone(UTC)
+    observed = set()
+    while instant < stop:
+        observed.add(hour_bucket(instant.astimezone(zone)))
+        instant += timedelta(minutes=5)
+    calendar = calendar_buckets({"granularity": "hourly", "window_start": day, "window_end": day}, zone)
+    assert set(calendar) == observed
+    assert calendar == sorted(calendar, key=lambda bucket: datetime.fromisoformat(bucket).timestamp())
 
 
 def test_fact_level_oracle_and_project_transition_filter(tmp_path):

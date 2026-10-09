@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.11.1 - 2026-10-08
+
+- Fit observed-speed plots to their container with readable, collision-spaced
+  date ticks and a permanently visible tok/s axis; remove horizontal scrolling.
+- Keep Daily on the full selected range. Show Hourly's seven-day detail within
+  a full-range daily overview, with explicit window counts and Latest week.
+- Show account-wide historical timing recovery progress and a compact empty
+  detail state without implying that the full selected range has no evidence.
+- Preserve hourly observations across partial-hour DST changes by sharing
+  observed-offset calendar buckets. Speed metrics, pricing and capture remain
+  unchanged. The usage/allowance breakdown is a separate planned feature.
+
 ## 2.11.0 - 2026-10-08
 
 - Add observed output-phase tok/s to Model Details and Daily/Hourly trends with

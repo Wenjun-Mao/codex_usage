@@ -80,12 +80,28 @@ class NativeSpeedTarget:
                 "window_start": args["windowStart"], "window_label": node_text(label) if label else None}
 
     def click(self, label, decode_navigation):
-        chart = self.chart()
+        document = self.document()
+        chart = next(n for n in nodes(document)
+                     if "observed-speed" in attributes(n).get("class", "").split())
         link = next(n for n in nodes(chart) if n.get("nodeName") == "A" and node_text(n) == label)
         args = decode_navigation(attributes(link)["href"])
         self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": link["nodeId"]})
         quad = self.send("DOM.getContentQuads", {"nodeId": link["nodeId"]})["quads"][0]
         x, y = sum(quad[::2]) / 4, sum(quad[1::2]) / 4
+        toolbar = next(n for n in nodes(document)
+                       if "companion-actions" in attributes(n).get("class", "").split())
+        toolbar_quad = self.send("DOM.getContentQuads", {"nodeId": toolbar["nodeId"]})["quads"][0]
+        bottom = max(toolbar_quad[1::2])
+        if y <= bottom + 12:
+            # scrollIntoView does not account for the variable-height sticky
+            # toolbar. Real wheel input clears it before hit-testing the link.
+            self.send("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": x,
+                      "y": bottom + 20, "deltaX": 0, "deltaY": y - bottom - 12})
+            self.page.wait_for_timeout(100)
+            quad = self.send("DOM.getContentQuads", {"nodeId": link["nodeId"]})["quads"][0]
+            x, y = sum(quad[::2]) / 4, sum(quad[1::2]) / 4
+        hit = self.send("DOM.getNodeForLocation", {"x": round(x), "y": round(y)})
+        assert hit["backendNodeId"] in {n.get("backendNodeId") for n in nodes(link)}, f"Occluded native link: {label}"
         self.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
         for event in ("mousePressed", "mouseReleased"):
             self.send("Input.dispatchMouseEvent", {
