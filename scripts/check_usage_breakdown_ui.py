@@ -34,61 +34,41 @@ def main():
         evidence["performance"]["cold_report_seconds"] = perf_counter() - started
         def forbidden(*args, **kwargs):
             raise AssertionError("warm navigation did historical work")
-        reports = [("hour-cost-model", first)]
+        reports = [("daily-cost-model", first)]
         current = first
         with patch("codex_usage.breakdown_reports.prepare", forbidden), patch("codex_usage.allowance_index._decode_cached_report", forbidden), patch("codex_usage.breakdown_reports.query_ledger_records", forbidden), patch("codex_usage.agent_reports.materialize_ledger", forbidden), patch("codex_usage.breakdown_evidence.prepare_balances", forbidden), patch("codex_usage.breakdown_reports.value_records", forbidden):
             started = perf_counter()
             assert render().html == first.html
             evidence["performance"]["warm_report_seconds"] = perf_counter() - started
             times = []
-            for label, changes in (
-                ("hour-tokens-model", {"metric": "tokens"}),
-                ("hour-tokens-project", {"group": "project"}),
-                ("hour-cost-project", {"metric": "cost"}),
-                ("hour-credits-model", {"metric": "credits", "group": "model"}),
-                ("hour-credits-project", {"group": "project"}),
-                ("project-credits", {"view": "project"}),
-                ("project-cost", {"metric": "cost"}),
-                ("project-tokens", {"metric": "tokens"}),
-                ("other", {"detail": "other"}),
-                ("previous", {"view": "hour", "detail": "", "day": "2026-10-08"}),
-                ("selected", {"basis": "selected", "day": "2026-10-09", "detail": ""}),
-            ):
-                desired = {**current.breakdown_navigation["state"], **changes}
-                # View and day are independent visible commands, never hidden
-                # API shortcuts. Exercise each issued state transition.
-                for key in changes:
-                    target = {**current.breakdown_navigation["state"], key: desired[key]}
-                    action = next((a for a in current.breakdown_navigation["actions"] if a["state"] == target), None)
-                    if action is None and key == "basis":
-                        action = next(a for a in current.breakdown_navigation["actions"]
-                            if a["state"][key] == desired[key] and all(a["state"][k] == current.breakdown_navigation["state"][k] for k in ("view", "metric", "group")))
-                    if action:
-                        started = perf_counter()
-                        current = render(action)
-                        times.append(perf_counter() - started)
-                if label == "other":
-                    action = next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"] == "other")
-                    current = render(action)
-                reports.append((label, current))
-                assert all(current.breakdown_navigation["state"][key] == value for key, value in changes.items()), (label, current.breakdown_navigation["state"])
-            action = next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"].startswith("project:"))
-            current = render(action)
-            reports.append(("project-drill", current))
-            action = next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"].startswith("hour:"))
-            reports.append(("hour-drill", render(action)))
-            for index, action in enumerate(a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")):
+            for key, value in (("metric", "tokens"), ("group", "project"), ("metric", "credits"),
+                ("overlay", "balance"), ("overlay", "none"), ("grain", "hourly"),
+                ("overlay", "weekly"), ("metric", "cost"), ("group", "model"),
+                ("view", "project"), ("metric", "tokens"), ("metric", "credits"),
+                ("view", "time"), ("grain", "daily")):
+                desired = {**current.breakdown_navigation["state"], key: value}
+                if key == "grain":
+                    desired["detail"] = ""
+                action = next(a for a in current.breakdown_navigation["actions"] if a["state"] == desired)
                 started = perf_counter()
-                historical = render(action)
+                current = render(action)
                 times.append(perf_counter()-started)
-                reports.append((f"dated-window-{index}", historical))
+                reports.append((f"control-{key}-{value}-{len(reports)}", current))
+            day = next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"] == "day:2026-10-08")
+            current = render(day)
+            reports.append(("daily-drill", current))
+            for label, predicate in (
+                ("previous", lambda s: s["day"] < current.breakdown_navigation["state"]["day"] and not s["detail"]),
+                ("hour-drill", lambda s: s["detail"].startswith("hour:")),
+                ("project-drill", lambda s: bool(s["project"])),
+                ("return-daily", lambda s: s == {**current.breakdown_navigation["state"], "grain": "daily", "detail": ""})):
+                current = render(next(a for a in current.breakdown_navigation["actions"] if predicate(a["state"])))
+                reports.append((label, current))
             evidence["performance"]["warm_navigation_seconds"] = times
             evidence["performance"]["warm_history_materializations_fits_reprices"] = 0
         reports.append(("empty-filter", render(projects=["nonexistent-synthetic"])))
         for label, projects in (("month-selected", []), ("month-empty-filter", ["nonexistent-synthetic"])):
             month = render(projects=projects, range_name="month")
-            selected = next(a for a in month.breakdown_navigation["actions"] if a["state"]["basis"] == "selected")
-            month = render(selected, projects=projects, range_name="month")
             assert month.breakdown_navigation["state"]["day"] == "2026-10-09"
             reports.append((label, month))
         from datetime import timedelta
@@ -100,6 +80,8 @@ def main():
         reports.append(("partial-coverage", render()))
         for label, now, timezone, days, duration, day in (
             ("thirty-days", AT, "UTC", 30, 10080, None),
+            ("lord-howe-partial", AT.replace(day=5), "Australia/Lord_Howe", 30, 10080, "2026-10-04"),
+            ("dense-history", AT, "UTC", 180, 10080, None),
             ("chatham-partial", AT, "Pacific/Chatham", 30, 10080, "2026-09-27"),
             ("toronto-repeated", AT.replace(month=11, day=2), "America/Toronto", 4, 10080, "2026-11-01"),
             ("five-hour-only", AT, "UTC", 4, 300, None),
@@ -147,12 +129,14 @@ def main():
                 return render_ledger_report(edge_home, range_name="all", project_keys=[], theme="day",
                     timezone_name=timezone, now=now, breakdown_action=json.dumps(action) if action else None)
             edge = edge_render()
-            selected = next(a for a in edge.breakdown_navigation["actions"] if a["state"]["basis"] == "selected")
-            edge = edge_render(selected)
             if day:
-                edge = edge_render(next(a for a in edge.breakdown_navigation["actions"] if a["state"]["day"] == day))
+                edge = edge_render(next(a for a in edge.breakdown_navigation["actions"] if a["state"]["detail"] == "day:" + day))
             if label == "large-token-scale":
                 edge = edge_render(next(a for a in edge.breakdown_navigation["actions"] if a["state"]["metric"] == "tokens"))
+            if "balance" in label or label == "signed-credit-changes":
+                edge = edge_render(next(a for a in edge.breakdown_navigation["actions"] if a["state"]["overlay"] == "balance"))
+            if "balance" in label or label in {"unknown-balances", "unlimited-balances", "missing-duration", "five-hour-only", "multi-weekly"}:
+                edge = edge_render(next(a for a in edge.breakdown_navigation["actions"] if a["state"]["detail"] == "readings:" + edge.breakdown_navigation["state"]["day"]))
             reports.append((label, edge))
         with sync_playwright() as playwright:
             for engine in ("chromium", "webkit", "firefox"):
@@ -165,6 +149,7 @@ def main():
                             document = args.output / f"{label}-{theme}.html"
                             contents = report.html.replace('data-codex-theme="day"', f'data-codex-theme="{theme}"')
                             document.write_text(contents)
+                            evidence["performance"].setdefault("html_bytes", {})[label] = len(contents.encode())
                             for width in (1440, 760, 360):
                                 page.set_viewport_size({"width": width, "height": 900})
                                 page.goto(document.resolve().as_uri())
@@ -179,30 +164,35 @@ def main():
                                     boxes = axis.evaluate("e => {const gutter=e.getBoundingClientRect(),right=gutter.right-parseFloat(getComputedStyle(e).paddingRight);return [...e.children].filter(s=>s.textContent.trim()).map(s=>{const range=document.createRange();range.selectNodeContents(s);const text=range.getBoundingClientRect(),span=s.getBoundingClientRect();return {label:s.textContent,textLeft:text.left,textRight:text.right,spanLeft:span.left,spanRight:span.right,gutterLeft:gutter.left,gutterRight:right}})}")
                                     assert all(b["textLeft"] >= max(b["spanLeft"], b["gutterLeft"])-1 and b["textRight"] <= min(b["spanRight"], b["gutterRight"])+1 for b in boxes), (engine, label, width, boxes)
                                 axes = section.locator(".ub-time-axis")
-                                for marker in section.locator("svg rect, svg circle, svg path").all():
-                                    assert "2026-" in marker.locator("title").text_content(), (label, marker.inner_html())
-                                for link in section.locator("svg a").all():
-                                    assert "2026-" in link.get_attribute("aria-label")
+                                # Dense history has many marks; batch DOM reads without
+                                # dropping per-mark assertions or adding product scripts.
+                                mark_titles = section.locator("svg rect, svg circle, svg path, svg .ub-tiny-segment").evaluate_all(
+                                    "marks => marks.map(m => m.querySelector('title')?.textContent ?? '')")
+                                assert all("2026-" in title for title in mark_titles), (label, mark_titles)
+                                link_labels = section.locator("svg a").evaluate_all(
+                                    "links => links.map(a => a.getAttribute('aria-label') ?? '')")
+                                assert all("2026-" in text for text in link_labels), (label, link_labels)
                                 if label == "multi-weekly":
                                     assert "another-limit · weekly · plus" in section.locator(".ub-meter-legend").inner_text()
                                     assert "codex · weekly · pro" in section.locator(".ub-meter-legend").inner_text()
                                 if label in ("unknown-balances", "unlimited-balances"):
-                                    assert section.locator(".ub-balances .ub-axis").inner_text().strip() == "Unknown"
-                                    assert section.locator(".ub-credit-changes .ub-axis").inner_text().strip() == "Unknown"
+                                    assert section.locator(".ub-right-axis").inner_text().strip() == "Unknown"
                                     assert "No finite valid balances among in-domain captures" in section.inner_text()
                                     assert "No in-domain balance captures" not in section.inner_text()
                                 if label == "extreme-balances":
                                     assert "Axis offset:" in section.inner_text()
-                                    tick_labels = section.locator(".ub-balances .ub-axis span").all_text_contents()
+                                    tick_labels = section.locator(".ub-right-axis span").all_text_contents()
                                     assert len(set(tick_labels)) == 3, tick_labels
-                                if report.breakdown_navigation["state"]["view"] == "hour":
-                                    assert axes.count() == 5, (label, axes.count())
-                                    for i in (2, 3, 4):
-                                        assert axes.nth(1).get_attribute("data-start") == axes.nth(i).get_attribute("data-start")
-                                        assert axes.nth(1).get_attribute("data-end") == axes.nth(i).get_attribute("data-end")
+                                if report.breakdown_navigation["state"]["view"] == "time":
+                                    assert axes.count() == 1, (label, axes.count())
+                                    assert section.locator("svg").count() == 1
+                                    assert section.locator(".ub-axis").count() == (1 if report.breakdown_navigation["state"]["overlay"] == "none" else 2)
+                                    assert section.locator(".ub-window-picker").count() == 1
                                 else:
-                                    assert axes.count() == 0
+                                    assert axes.count() == 0 and section.locator(".ub-right-axis").count() == 0
+                                assert "Full-range daily context" not in section.inner_text()
                                 for axis in axes.all():
+                                    assert axis.evaluate("e => {const r=e.getBoundingClientRect();const t=[...e.querySelectorAll(\'.ub-tick\')].filter(x=>getComputedStyle(x).display!==\'none\');const boxes=t.map(x=>{const q=document.createRange();q.selectNodeContents(x.querySelector(\'span\'));return q.getBoundingClientRect()});return boxes.every((b,i)=>b.left>=r.left-1 && b.right<=r.right+1 && (!i || boxes[i-1].right<=b.left+1))}"), (engine, label, width, "actual time glyph collision")
                                     assert axis.evaluate("e => getComputedStyle(e).fontSize") == "12px"
                                     assert axis.evaluate("e => {const r=e.getBoundingClientRect();const t=[...e.querySelectorAll('.ub-tick')].filter(x=>getComputedStyle(x).display!=='none');return t.every((x,i)=>{const b=x.querySelector('span').getBoundingClientRect();return b.left>=r.left-1 && b.right<=r.right+1 && (!i || t[i-1].querySelector('span').getBoundingClientRect().right<=b.left+1)})}"), (engine, label, width)
                                     assert axis.evaluate("e => { const start=+e.dataset.start,end=+e.dataset.end,w=e.clientWidth,left=e.getBoundingClientRect().left; return [...e.querySelectorAll('.ub-tick')].filter(t=>getComputedStyle(t).display!=='none').every(t=>Math.abs(t.getBoundingClientRect().left-left-(+t.dataset.at-start)/Math.max(.000001,end-start)*w)<2) }")

@@ -1,63 +1,45 @@
-"""Compact fixed-gutter ticks without losing exact balance evidence."""
-from datetime import UTC, datetime, timedelta
+"""Human labels and exact extreme-balance inspection on the shared layer."""
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
 
-from codex_usage.report_breakdown_balances import balance_ticks, balances
-from codex_usage.report_breakdown_numbers import compact_decimal
-from codex_usage.report_usage_breakdown_chart import plot
+from codex_usage.report_breakdown_balances import balance_ticks
+from codex_usage.report_breakdown_numbers import compact_decimal, tick_ceiling
+from codex_usage.report_breakdown_overlay import overlay
+from codex_usage.report_usage_breakdown_chart import COLORS, plot
 
 
-@pytest.mark.parametrize("value,signed,expected", [
-    ("62460.000000000000000001", False, "62460"),
-    ("62459.0000", False, "62459"),
-    ("2.000000000000000000", True, "+2"),
-    ("-2.000000000000000000", True, "-2"),
-    ("0.123456", False, "0.123456"),
-    ("0.000001", False, "0.000001"),
-    ("0.000000000000000001", True, "+1e-18"),
-    ("-0.000000000000000001", True, "-1e-18"),
-    ("1000000000000000000", True, "+1e18"),
-    ("-1000000000000000000", True, "-1e18"),
-    ("-0.000000000000000000", True, "0"),
-])
-def test_compact_credit_ticks(value, signed, expected):
-    label = compact_decimal(Decimal(value), signed=signed)
-    assert label == expected and len(label) <= 8
+@pytest.mark.parametrize("value,unit,expected", [
+    (139030000, "tokens", "139.03 M"), (278050000, "tokens", "278.05 M"),
+    (28.61067, "cost", "$28.61"), (57.22134, "cost", "$57.22"),
+    (1230, "credits", "1.23 K"), ("0.000001", "cost", "$0.000001"),
+    (0, "credits", "0"), ("-0.0", "credits", "0")])
+def test_human_units(value, unit, expected):
+    assert compact_decimal(value, unit=unit) == expected
 
 
-def test_offset_distinguishes_tiny_movement_near_maximum_valid_balance():
-    minimum = Decimal("999999999999999999.999999999999999998")
-    maximum = Decimal("1000000000000000000")
+def test_offset_distinguishes_extreme_finite_movement():
+    minimum = Decimal("999999999999999999.999999999999999999")
+    maximum = Decimal("1000000000000000000.000000000000000001")
     axis, offset = balance_ticks(minimum, maximum)
     assert offset == minimum
-    for text in ("2e-18", "1e-18", "0"):
-        assert f'>{text}</span>' in axis
-    assert 'title="999999999999999999.999999999999999999 credits"' in axis
-    assert 'title="1000000000000000000 credits"' in axis
-    at = datetime(2026, 10, 9, 12, tzinfo=UTC)
-    points = [{"timestamp": (at+timedelta(hours=i)).isoformat(),
-        "origin": at.isoformat() if i else None, "balance": format(value, "f"),
-        "change": "0.000000000000000002" if i else None,
-        "plan": "pro", "unlimited": False, "diagnostic": "", "reason": "first capture"}
-        for i, value in enumerate((minimum, maximum))]
-    document = balances(points, at.timestamp(), at.timestamp()+3600, UTC)
-    assert f'Axis offset: +{minimum} credits' in document
-    assert 'cy="140.000"' in document and 'cy="0.000"' in document
-    assert "Increase +0.000000000000000002 credits" in document
-    assert f'balance {minimum} credits' in document
+    assert len(set(axis.split("<span")[1:])) == 3
+    assert "e-" not in axis
+    at = datetime(2026, 10, 9, tzinfo=UTC)
+    points = [{"timestamp": at.isoformat(), "origin": None, "balance": str(value),
+        "change": None, "plan": "pro", "unlimited": False, "diagnostic": "", "reason": "first capture"}
+        for value in (minimum, maximum)]
+    marks, _, name, table = overlay(points, "balance", at.timestamp(), at.timestamp()+3600, UTC, COLORS, inspection=True)
+    assert "Axis offset:" in name and f'balance {minimum} credits' in table
+    assert '<circle class="ub-account-point"' in marks and "<svg" not in table
 
 
-def test_plain_range_keeps_absolute_ticks_and_no_offset():
-    axis, offset = balance_ticks(Decimal("62458.000000000000000001"), Decimal("62460.000000000000000001"))
-    assert offset is None
-    assert all(f'>{value}</span>' in axis for value in ("62460", "62459", "62458"))
-
-
-@pytest.mark.parametrize("value", [100_000_000, 171_858_000, 1_000_000_000])
-def test_realistic_token_scale_uses_shared_compact_ticks(value):
-    document = plot([{"model": value}], metric="tokens", labels=["model"])
-    assert f'title="{value} tokens"' in document
-    assert f'>{compact_decimal(value)}</span>' in document
-    assert len(compact_decimal(value)) <= 8
+@pytest.mark.parametrize("value", [139030000, 278050000, 28.61067, 57.22134, .000001])
+def test_tick_ceiling_contains_unmodified_values(value):
+    maximum = tick_ceiling(value)
+    assert maximum >= value
+    metric = "tokens" if value > 1000 else "cost"
+    document = plot([{"model": value}], metric=metric, labels=["model"])
+    assert f'model: {value!r}' in document
+    assert compact_decimal(maximum, unit=metric) in document

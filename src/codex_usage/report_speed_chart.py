@@ -3,6 +3,8 @@ import html
 from datetime import date
 from math import ceil, floor, log10
 
+from codex_usage.report_speed_marks import marker, series_labels
+
 PLOT_HEIGHT = 224
 PLOT_TOP = 10
 PLOT_SPAN = 200
@@ -45,7 +47,7 @@ def tick_indices(buckets, granularity, budget):
 
 def tick_html(buckets, granularity):
     groups = []
-    for name, budget in (("wide", 550), ("medium", 350), ("compact", 220)):
+    for name, budget in (("wide", 550), ("medium", 350), ("compact", 150)):
         ticks = []
         for index in tick_indices(buckets, granularity, budget):
             bucket = buckets[index]
@@ -89,7 +91,7 @@ def render_plot(points, buckets, models, slots, detail, *, overview=False, highl
     selected = [point for point in points if point["bucket"] in bucket_set]
     ceiling, ticks = nice_scale(selected)
     height, top, span = (54, 6, 42) if overview else (PLOT_HEIGHT, PLOT_TOP, PLOT_SPAN)
-    marks, rows = [], []
+    marks, rows, endpoints = [], [], []
     if highlight:
         marks.append(selection_band(buckets, *highlight))
     if not overview:
@@ -99,6 +101,7 @@ def render_plot(points, buckets, models, slots, detail, *, overview=False, highl
     for model in models:
         color = f"var(--model-{slots[model]})"
         previous = None
+        latest = None
         for index, bucket in enumerate(buckets):
             point = lookup.get((model, bucket))
             if not point or point["median"] is None:
@@ -107,27 +110,30 @@ def render_plot(points, buckets, models, slots, detail, *, overview=False, highl
             x = x_position(index, len(buckets))
             y = top + span * (1 - point["median"] / ceiling)
             if previous:
-                marks.append(f'<line x1="{previous[0]:.4f}%" y1="{previous[1]:.2f}" '
+                marks.append(f'<line class="speed-trend" x1="{previous[0]:.4f}%" y1="{previous[1]:.2f}" '
                              f'x2="{x:.4f}%" y2="{y:.2f}" stroke="{color}" stroke-width="2"/>')
             previous = (x, y)
+            latest = point
             label = html.escape(f"{model}, {bucket}: {detail(point)}", quote=True)
-            dash = ' stroke-dasharray="2 2"' if point["small"] else ""
             if overview:
                 marks.append(f'<circle cx="{x:.4f}%" cy="{y:.2f}" r="2.5" fill="{color}" '
                              f'role="img" aria-label="{label}"><title>{label}</title></circle>')
                 continue
             target = f"speed-detail-{len(rows)}"
-            marks.append(f'<line x1="{x:.4f}%" x2="{x:.4f}%" '
+            small = ' speed-point-small' if point["small"] else ''
+            marks.append(f'<a class="speed-point{small}" href="#{target}" tabindex="0" '
+                         f'aria-label="{label}" style="color:{color}"><title>{label}</title>'
+                         f'<line class="speed-interval" x1="{x:.4f}%" x2="{x:.4f}%" '
                          f'y1="{top + span * (1 - point["p25"] / ceiling):.2f}" '
                          f'y2="{top + span * (1 - point["p75"] / ceiling):.2f}" '
-                         f'stroke="{color}" opacity=".45" stroke-width="4"/>')
-            marks.append(f'<a href="#{target}" tabindex="0" aria-label="{label}">'
-                         f'<circle cx="{x:.4f}%" cy="{y:.2f}" r="4" fill="var(--surface)" '
-                         f'stroke="{color}" stroke-width="2"{dash}><title>{label}</title></circle></a>')
+                         '/>' + marker(slots[model], x, y) + '</a>')
             rows.append(f'<tr id="{target}" tabindex="0"><th scope="row">{html.escape(model)}</th>'
                         f'<td>{html.escape(bucket)}</td><td>{point["median"]:.1f}</td>'
                         f'<td>{point["p25"]:.1f}-{point["p75"]:.1f}</td><td>{point["n"]}</td>'
                         f'<td>{point["tasks"]}</td><td>{point["sources"]}</td></tr>')
+        if not overview and latest:
+            endpoints.append({"model": model, "y": top + span * (1 - latest["median"] / ceiling),
+                              "median": latest["median"], "bucket": latest["bucket"]})
     label = "Daily overview of the selected range" if overview else "Median observed output tokens per second"
     svg = (f'<svg width="100%" height="{height}" role="group" aria-label="{label}">'
            f'{"".join(marks)}</svg>')
@@ -137,4 +143,5 @@ def render_plot(points, buckets, models, slots, detail, *, overview=False, highl
     granularity = "hourly" if buckets and "T" in buckets[0] else "daily"
     return (f'<div class="speed-chart"><div class="speed-unit">tok/s</div>'
             f'<div class="speed-chart-grid"><div class="speed-y-axis" aria-hidden="true">{axis}</div>'
-            f'<div class="speed-plot">{svg}{tick_html(buckets, granularity)}</div></div></div>'), rows
+            f'<div class="speed-plot">{svg}{tick_html(buckets, granularity)}</div>'
+            f'{series_labels(endpoints, slots, top=top, span=span)}</div></div>'), rows

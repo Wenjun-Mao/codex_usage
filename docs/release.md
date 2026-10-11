@@ -1,9 +1,27 @@
-# 2.11.1 VSIX Release Checklist
+# 2.12.0 VSIX Release Checklist
 
-Codex Usage 2.11.1 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.12.0 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
+
+## 2.12.0 Candidate
+
+Owner accepted the full isolated dashboard preview and authorized release on
+2026-10-10. This candidate includes the unified Usage & Allowance Breakdown,
+axis-linked scales, compact latest account readings, slimmer bars, human-unit
+numbers, and distinguishable observed-speed models. ADRs 0053/0054 define the
+presentation and evidence contracts. Exact accounting and raw history remain
+unchanged; dedicated auto-review keeps ADR 0052's effective-dated zero estimated
+credit rule and separate API-excluded tokens. Its free subscription status is
+also disclosed in the folded scope evidence and Marketplace README.
+
+Publication remains pending the exact-commit nonpublishing platform gate and
+matching-tag workflow. Preserve the private frozen preview separately; public
+CI/artifacts use synthetic data only. The new platform visual gate exercises
+the breakdown and dense account overlays in addition to speed and allowance.
+Native Windows UI and native Tab traversal remain unvalidated; platform package,
+smoke and legacy-handoff checks are required on both operating systems.
 
 ## 2.11.1 Published Receipt
 
@@ -265,6 +283,8 @@ uv run python scripts/generate_marketplace_screenshot.py
 uv run python scripts/generate_marketplace_screenshot.py --check
 uv run python scripts/check_allowance_ui.py
 uv run python scripts/check_speed_ui.py
+uv run python scripts/check_usage_breakdown_ui.py
+uv run python scripts/check_breakdown_overlay_ui.py
 ```
 
 Canonical images are `docs/marketplace/extension-usage-synthetic.png` and
@@ -316,13 +336,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.11.1`, both
+Confirm Python and extension metadata and lockfiles all say `2.12.0`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.11.1`:
+Only after the non-publishing platform gate succeeds, create and push `v2.12.0`:
 
 ```bash
-git tag v2.11.1
-git push origin v2.11.1
+git tag v2.12.0
+git push origin v2.12.0
 ```
 
 The tag reruns all platform gates and publishes
@@ -331,7 +351,7 @@ The tag reruns all platform gates and publishes
 Marketplace versions, and package hashes. The workflow does not create a GitHub
 Release; VSCE uses `--skip-duplicate` on a rerun.
 
-Query the public Marketplace catalog for version 2.11.1 on both `darwin-arm64`
+Query the public Marketplace catalog for version 2.12.0 on both `darwin-arm64`
 and `win32-x64`, download each official versioned target VSIX, and require its
 SHA-256 to equal the corresponding artifact from the exact tag workflow. Retain
 run URLs, catalog metadata and public hashes under ignored release evidence;

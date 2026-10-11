@@ -94,6 +94,22 @@ Preserve medians, middle-50% intervals, small samples, missing gaps,
 exact keyboard-accessible details and script-disabled CSP. Rendering revision 29
 invalidates old HTML; no new scripts or dependencies are introduced.
 
+### Distinguishable Series Presentation (2026-10-10)
+
+Always-visible spread bars and dashed small-sample outlines competed with the
+median series, especially where models converged. The renderer now prioritizes
+the median: stable model-specific marker shapes match the legend, and separate
+right-side labels name each model and its latest measured bucket value. Hollow
+markers retain small-sample status without dotted outlines. Middle-50% spread
+remains in exact details and appears on the selected point's hover or keyboard
+focus, never as an unexplained additional series. Decorative connecting lines
+cannot intercept marker pointer input. Explicit marker focus replaces
+the browser's default SVG-link outline. Missing buckets still interrupt lines;
+latest labels do not imply interpolation through gaps. Rendering revision 30
+invalidates HTML only, preserving timing facts and monetary caches. Browser
+guardrails cover marker identity, focus/hover spread, label collisions and
+narrow-container bounds under the unchanged script-free CSP.
+
 Hourly aggregation and calendar enumeration share a nominal local-clock-hour
 identity with the observed fixed UTC offset. Rounding with a ZoneInfo object can
 re-resolve the offset inside a partially skipped/repeated hour; stepping UTC

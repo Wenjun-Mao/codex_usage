@@ -7,6 +7,7 @@ from urllib.parse import quote
 from codex_usage.model_presentation import assign_model_color_slots, model_display_sort_key
 from codex_usage.speed_queries import calendar_buckets
 from codex_usage.report_speed_chart import date_label, render_plot
+from codex_usage.report_speed_marks import legend_marker
 
 
 def summary_html(stats: dict | None) -> str:
@@ -39,7 +40,7 @@ def render_speed(aggregates, nav, status, timezone):
     slots.update({m: i % 7 for i, m in enumerate(models[7:])})
     buckets = calendar_buckets(nav, timezone)
     chart, rows = render_plot(aggregates[nav["granularity"]], buckets, models, slots, detail)
-    legend = "".join(f'<span><i style="background:var(--model-{slots[m]})"></i>{html.escape(m)}</span>' for m in models)
+    legend = "".join(f'<span>{legend_marker(slots[m])}{html.escape(m)}</span>' for m in models)
     navigation = ""
     overview = ""
     full_range = date_label(nav["min_date"], nav["max_date"])
@@ -76,7 +77,7 @@ def render_speed(aggregates, nav, status, timezone):
         f'<div class="speed-legend">{legend}</div>{overview}{navigation}'
         f'{chart}<div class="speed-progress">{progress}</div>'
         + ('<p class="muted">No buckets with at least five eligible responses. Missing timing is not missing usage.</p>' if not rows else "")
-        + f'<details class="speed-evidence"><summary>Timing evidence and coverage</summary><p>{html.escape(coverage)}Client-observed output-phase tokens per second, including reasoning once. Not server decode speed or task throughput. Efforts are pooled; client, workload, routing and unknown service tier can affect results. Responses need at least 500 output tokens and 10 ms per timed model item. The middle 50% shows variation, not a confidence interval. Dashed points have 5-19 responses; fewer than five leaves a gap.</p><p>Exclusions: {html.escape(exclusions)}.</p><div class="table-wrap"><table><thead><tr><th>Model</th><th>Local bucket (offset)</th><th>tok/s</th><th>Middle 50%</th><th>Responses</th><th>Tasks</th><th>Sources</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></details></section>'
+        + f'<details class="speed-evidence"><summary>Timing evidence and coverage</summary><p>{html.escape(coverage)}Client-observed output-phase tokens per second, including reasoning once. Not server decode speed or task throughput. Efforts are pooled; client, workload, routing and unknown service tier can affect results. Responses need at least 500 output tokens and 10 ms per timed model item. The middle 50% shows variation, not a confidence interval. Buckets with 5-19 responses are small samples; fewer than five leaves a gap.</p><p>Exclusions: {html.escape(exclusions)}.</p><div class="table-wrap"><table><thead><tr><th>Model</th><th>Local bucket (offset)</th><th>tok/s</th><th>Middle 50%</th><th>Responses</th><th>Tasks</th><th>Sources</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></details></section>'
     )
 
 
@@ -92,19 +93,33 @@ def speed_css():
     .speed-window nav { display:flex; flex-wrap:wrap; gap:4px; }.speed-window a { border:1px solid var(--border); border-radius:4px; }
     .speed-window [aria-disabled] { opacity:.65; }
     .speed-legend { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; margin:10px 0; }
-    .speed-legend span { overflow-wrap:anywhere; }.speed-legend i { display:inline-block; width:9px; height:9px; margin-right:5px; }
+    .speed-legend span { display:inline-flex; align-items:center; gap:5px; overflow-wrap:anywhere; }
+    .speed-legend svg { flex:none; fill:currentColor; stroke:currentColor; stroke-width:1; }
     .speed-chart { container-type:inline-size; min-width:0; }.speed-unit { font-size:12px; color:var(--muted); margin-bottom:4px; }
-    .speed-chart-grid { display:grid; grid-template-columns:44px minmax(0,1fr); }
+    .speed-chart-grid { display:grid; grid-template-columns:44px minmax(0,1fr) 100px; gap:4px; }
     .speed-y-axis { position:relative; height:224px; font-size:12px; color:var(--muted); }
     .speed-y-axis span { position:absolute; right:8px; transform:translateY(-50%); }
     .speed-plot { min-width:0; padding:0 8px; }.speed-plot svg { display:block; width:100%; height:224px; overflow:visible; }
-    .speed-grid { stroke:var(--border); }.speed-plot a:focus circle { stroke-width:4; fill:var(--text); }
+    .speed-grid { stroke:var(--border); }.speed-grid,.speed-trend { pointer-events:none; }
+    .speed-point { outline:none; }.speed-marker { fill:currentColor; stroke:var(--surface); stroke-width:1.5; stroke-linejoin:round; }
+    .speed-point-small .speed-marker { fill:var(--surface); stroke:currentColor; stroke-width:1.5; }
+    .speed-interval { visibility:hidden; stroke:currentColor; stroke-width:2; opacity:.65; pointer-events:none; }
+    .speed-point:hover .speed-interval,.speed-point:focus .speed-interval { visibility:visible; }
+    .speed-point:focus .speed-marker { stroke:var(--text); stroke-width:3; }
+    .speed-series-labels { position:relative; height:224px; min-width:0; }
+    .speed-series-label { position:absolute; left:0; right:0; font-size:12px; line-height:14px; }
+    .speed-series-label strong { display:block; font-weight:650; overflow-wrap:anywhere; }
+    .speed-series-label small { display:block; color:var(--muted); font-size:11px; }
+    .speed-series-list { overflow-y:auto; }.speed-series-list .speed-series-label { position:static; display:block; margin-bottom:6px; }
     .speed-x-axis { position:relative; height:44px; color:var(--muted); font-size:12px; }
     .speed-ticks { position:absolute; inset:0; }.speed-ticks-medium,.speed-ticks-compact { display:none; }
     .speed-tick { position:absolute; top:8px; white-space:nowrap; line-height:16px; text-align:center; transform:translateX(-50%); }
     .speed-tick span { display:block; }.speed-tick-first { transform:none; text-align:left; }.speed-tick-last { transform:translateX(-100%); text-align:right; }
     @container(max-width:650px) { .speed-ticks-wide { display:none; }.speed-ticks-medium { display:block; } }
-    @container(max-width:400px) { .speed-ticks-medium { display:none; }.speed-ticks-compact { display:block; } }
+    @container(max-width:400px) {
+        .speed-ticks-medium { display:none; }.speed-ticks-compact { display:block; }
+        .speed-chart-grid { grid-template-columns:36px minmax(0,1fr) 76px; }
+    }
     .speed-overview { margin:14px 0; }.speed-overview-label,.speed-overview-dates { font-size:11px; color:var(--muted); }
     .speed-overview svg { display:block; margin:6px 0; width:100%; height:54px; background:var(--surface-soft); }
     .speed-selection { fill:var(--highlight); fill-opacity:.12; stroke:var(--highlight); stroke-opacity:.5; }

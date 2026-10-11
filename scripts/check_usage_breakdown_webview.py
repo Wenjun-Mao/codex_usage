@@ -86,6 +86,14 @@ class BreakdownTarget(NativeSpeedTarget):
         raise AssertionError("Native Enter did not change the rendered mode")
 
 
+def synthetic_host_environment(root, home, rpc, rpc_fixture, environ=None):
+    source = os.environ if environ is None else environ
+    allowed = {key: source[key] for key in ("PATH", "TMPDIR", "LANG", "LC_ALL", "SYSTEMROOT") if key in source}
+    return dict(allowed, HOME=str(root / "home"), CODEX_HOME=str(home),
+        CODEX_USAGE_DATA_DIR=str(root / "settings"), CODEX_SPEED_ACCEPTANCE_ROOT=str(root),
+        CODEX_CLI_PATH=str(rpc), CODEX_BREAKDOWN_RPC_FIXTURE=str(rpc_fixture))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--code", type=Path, default=Path("/Applications/Visual Studio Code.app/Contents/MacOS/Code"))
@@ -133,9 +141,7 @@ def main():
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
-        environment = dict(os.environ, HOME=str(root / "home"), CODEX_HOME=str(home),
-                           CODEX_USAGE_DATA_DIR=str(root / "settings"), CODEX_SPEED_ACCEPTANCE_ROOT=str(root),
-                           CODEX_CLI_PATH=str(rpc), CODEX_BREAKDOWN_RPC_FIXTURE=str(rpc_fixture))
+        environment = synthetic_host_environment(root, home, rpc, rpc_fixture)
         with (args.output / "host.log").open("w") as log:
             process = subprocess.Popen(disposable_command(args.code, root, extension, port),
                 env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -152,45 +158,35 @@ def main():
                     browser = playwright.chromium.connect_over_cdp(endpoint["webSocketDebuggerUrl"], timeout=15000)
                     target, state = attach_speed_target(browser, deadline, decode, diagnostics, diagnostics_path, BreakdownTarget)
                     (args.output / "initial-state.json").write_text(json.dumps(state, indent=2))
-                    assert state["state"]["basis"] == "cycle", state
+                    assert state["state"]["basis"] == "selected" and state["state"]["grain"] == "daily", state
                     clicks = []
-                    labels = ["Tokens", "By project", "Estimated credits", "API cost", "Project", "Estimated credits", "Tokens", "Other", "Hour", "Previous", "Next", "Latest day", "Selected range"]
-                    for label in labels:
+                    def click(label):
                         diagnostics["stage"] = "rendered click: " + label
-                        diagnostics["before"] = target.state(decode)
-                        diagnostics_path.write_text(json.dumps(diagnostics, indent=2))
-                        if label == "Latest day":
-                            for _ in range(2):
-                                previous = target.click("Previous", decode)
-                                wait_native_state(target, previous, decode, lambda s, a: s["state"] == a["state"])
-                        if label == "Selected range":
-                            target.disclose("Current observed window")
                         requested = target.click(label, decode)
-                        target.deadline = min(deadline, time.monotonic() + 15)
-                        state = wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
+                        target.deadline = min(deadline, time.monotonic()+15)
+                        rendered = wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
                         target.deadline = deadline
-                        clicks.append({"label": label, "requested": requested, "rendered": state})
+                        clicks.append({"label": label, "requested": requested, "rendered": rendered})
                         diagnostics["rendered_clicks"] = clicks
                         diagnostics_path.write_text(json.dumps(diagnostics, indent=2))
                         target.screenshot(args.output / f"native-{len(clicks)}.png")
-                    target.disclose("Selected range")
-                    label = target.label_for(lambda s: s["basis"].startswith("window:") and s["day"] < (now-timedelta(days=7)).date().isoformat())
-                    requested = target.click(label, decode)
-                    state = wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
-                    clicks.append({"label": label, "requested": requested, "rendered": state})
-                    target.screenshot(args.output / f"native-{len(clicks)}.png")
-                    for prefix in ("project:", "hour:"):
-                        if prefix == "project:":
-                            requested = target.click("Project", decode)
-                            wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
-                        else:
-                            target.disclose("Inspect every hour occurrence")
-                        label = target.label_for(lambda s: s["detail"].startswith(prefix))
-                        requested = target.click(label, decode)
-                        state = wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
-                        clicks.append({"label": label, "requested": requested, "rendered": state})
-                        target.screenshot(args.output / f"native-{len(clicks)}.png")
-                    clicks.append(target.keyboard("Project"))
+                        return rendered
+                    for label in ("Tokens", "Project", "Estimated credits", "API cost", "Projects", "Estimated credits", "Tokens", "Other", "Time", "Hourly", "Previous", "Next"):
+                        click(label)
+                    target.disclose("Weekly allowance")
+                    click("Credit balance")
+                    target.disclose("Credit balance")
+                    click("None")
+                    target.disclose("None")
+                    click("Weekly allowance")
+                    click("Daily")
+                    target.disclose("Inspect every day")
+                    click(target.label_for(lambda s: s["detail"].startswith("day:") and s["day"] == (now-timedelta(days=1)).date().isoformat()))
+                    target.disclose("Inspect every hour occurrence")
+                    click(target.label_for(lambda s: s["detail"].startswith("hour:")))
+                    click("Projects")
+                    click(target.label_for(lambda s: s["view"] == "time" and bool(s["project"])))
+                    clicks.append(target.keyboard("Daily"))
                     (root / "clicked.json").write_text(json.dumps(clicks))
                     target.close()
                     browser.close()

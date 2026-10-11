@@ -132,6 +132,8 @@ jobs:
           uv run python scripts/generate_marketplace_screenshot.py --check
           uv run python scripts/check_allowance_ui.py
           uv run python scripts/check_speed_ui.py
+          uv run python scripts/check_usage_breakdown_ui.py
+          uv run python scripts/check_breakdown_overlay_ui.py
 
       - name: Upload synthetic speed verification evidence
         uses: actions/upload-artifact@v6
@@ -140,6 +142,18 @@ jobs:
           path: |
             output/playwright/observed-speed/*.json
             output/playwright/observed-speed/*.png
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload synthetic usage breakdown verification evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: usage-allowance-synthetic-ui
+          path: |
+            output/playwright/usage-breakdown/*.json
+            output/playwright/usage-breakdown/*.png
+            output/playwright/allowance-clarity/*.json
+            output/playwright/allowance-clarity/*.png
           if-no-files-found: error
           retention-days: 14
 

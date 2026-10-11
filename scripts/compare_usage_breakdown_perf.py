@@ -78,7 +78,9 @@ def measure(args):
         if args.candidate:
             current = cold
             times = []
-            for changes in ({"metric": "tokens"}, {"view": "project"}, {"metric": "cost"}, {"view": "hour"}, {"group": "project"}):
+            unified = "grain" in cold.breakdown_navigation["state"]
+            result["navigation_contract"] = "unified-calendar-v4" if unified else "observed-window-v3"
+            for changes in ({"metric": "tokens"}, {"view": "project"}, {"metric": "cost"}, {"view": "time" if unified else "hour"}, {"group": "project"}, *([{"grain": "hourly"}, {"overlay": "balance"}, {"overlay": "none"}, {"grain": "daily"}] if unified else [])):
                 desired = {**current.breakdown_navigation["state"], **changes}
                 action = next(a for a in current.breakdown_navigation["actions"] if a["state"] == desired)
                 started = perf_counter()
@@ -86,11 +88,18 @@ def measure(args):
                 times.append(perf_counter()-started)
             result["warm_control_seconds"] = times
             window_times = []
-            for action in (a for a in cold.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")):
+            drills = [a for a in cold.breakdown_navigation["actions"] if (a["state"]["detail"].startswith("day:") if unified else a["state"]["basis"].startswith("window:"))]
+            samples = [drills[0], drills[len(drills)//2], drills[-1]] if drills else []
+            result["sampled_drill_count"] = len(samples)
+            for sampled in samples:
+                # Each rendered report replaces its scope's issued controls.
+                # Reload the origin before measuring an exact freshly issued drill.
+                origin = render()
+                action = next(a for a in origin.breakdown_navigation["actions"] if a["state"] == sampled["state"])
                 started = perf_counter()
                 render(action)
                 window_times.append(perf_counter()-started)
-            result["warm_window_seconds"] = window_times
+            result["warm_day_drill_seconds" if unified else "warm_observed_window_seconds"] = window_times
             result["warm_derived_prepare_calls"] = components.get("derived_preparation", 0)
         # Monetary markup before/after insertion must be byte-identical against
         # the actual release, not a candidate's own accounting implementation.
@@ -125,10 +134,10 @@ def main():
     release = subprocess.check_output(["git", "rev-parse", args.release], cwd=repo, text=True).strip()
     evidence = {"release": release, "candidate_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
         "candidate_working_tree": True, "synthetic_only": args.synthetic,
-        "live_access": "none; supplied synthetic ledger only" if args.synthetic else "one SQLite mode=ro backup; no live report or capture",
+        "input_access": "one SQLite mode=ro backup of the supplied ledger; no report or capture against the source",
         "cache_protocol": "identical pre-existing cost index; discard rendered/speed/allowance report caches on each copy",
         "component_contract": "inclusive nested times; do not sum overlapping base subcomponents",
-        "observations_only": True, "results": {}}
+        "observations_only": True, "comparison_meaning": "release has no breakdown; accepted uses observed-window separate plots; candidate uses full-calendar unified plot. Timings are observations, not a performance claim.", "results": {}}
     source_files = sorted((repo / "src/codex_usage").glob("*.py"))
     evidence["candidate_python_source_sha256"] = hashlib.sha256(b"".join(
         p.name.encode()+b"\0"+p.read_bytes() for p in source_files)).hexdigest()
@@ -155,7 +164,8 @@ def main():
             with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
                 tar.extractall(authority, filter="data")
             authorities[name] = authority
-        now = datetime.now(UTC).isoformat()
+        now = args.now or datetime.now(UTC).isoformat()
+        evidence["fixed_report_time"] = now
         for report_range in ("today", "all"):
             observations = {}
             for name in ("release", *( ["accepted"] if args.accepted else []), "candidate"):

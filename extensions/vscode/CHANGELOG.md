@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 2.12.0 - 2026-10-10
+
+- Add one Usage & Allowance Breakdown for the selected calendar range, with
+  Daily/Hourly model or project stacks and project ranking. Compare tokens,
+  API-equivalent cost and estimated Standard credits alongside account-wide
+  captured weekly allowance or credit balance, including previous dates.
+- Link each series to its own axis with compact keys and latest readings.
+  Use slimmer centered bars, readable K/M/B values and subtle ticks for nonzero
+  segments below chart resolution; keep exact values and continuity evidence.
+- Distinguish observed-speed models with direct labels and unique markers;
+  show middle-50% spread on hover or focus without dotted sample outlines.
+- Clearly identify dedicated codex-auto-review approval checks as free for
+  ChatGPT subscription use after the October 6 announcement. Preserve the
+  existing zero estimated-credit rule, API-excluded tokens and earlier unknown
+  pricing; ordinary code reviews are unchanged.
+- Preserve source events, pricing, capture scheduling and monetary totals.
+  Account overlays are not project billing attribution; no interpolation across
+  resets or conflicts. Warm controls do not scan or reprice historical logs.
+
 ## 2.11.1 - 2026-10-08
 
 - Fit observed-speed plots to their container with readable, collision-spaced

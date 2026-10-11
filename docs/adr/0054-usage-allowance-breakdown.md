@@ -1,6 +1,6 @@
 # ADR 0054: Usage And Allowance Breakdown
 
-Status: Implementation candidate, 2026-10-09. Not a release decision.
+Status: Accepted after full-dashboard owner review, 2026-10-10.
 Product direction: 2026-10-08.
 
 ## Context
@@ -16,16 +16,36 @@ model. Preserve API unknown-price tokens, review tokens and known-zero credits
 independently. Images retain their separate accounting section. Project
 transitions and the global project selection apply only to usage, never meters.
 
-Current cycle means the observed continuous suffix of one unambiguous active
-weekly series with a fresh live anchor. Its opening is left-censored unless
-captured continuity proves a boundary. Never derive it from deadline minus
-duration. If unavailable, use the explicitly labeled dashboard selected range.
-Daily full-range context and one local calendar day of detail share actual
-UTC bounds; repeated hours retain offsets and skipped hours remain absent.
-Captured meter points are not interpolated or connected across boundaries.
+The dashboard calendar Range is the sole date-range authority. Continuity
+fragments are evidence, never primary navigation or nominal reset cycles.
+Time / Projects shares one chart area. Time offers Daily / Hourly, metric,
+Model / Project stacks and one Weekly allowance / Credit balance / None overlay.
+Default is API cost, model stacks, weekly overlay; Today/Yesterday use Hourly,
+wider ranges Daily. Grain persists within a scope; a new range resets defaults.
+
+Daily spans every selected calendar date, including unobserved/empty/future dates.
+Hourly is bounded to seven consecutive local dates, initially ending on the latest
+in-range usage or account capture. Previous/Next/Latest move bounded seven-day
+windows. Daily drill selects a day and opens its hourly window; Daily return
+clears dependent detail and restores the entire range. Project drills filter
+usage detail only and never mutate global filters or account overlays.
+Project drills are issued only for projects present in the selected calendar
+summary. Historical-only projects remain in capture-causal exact evidence as
+plain labels marked "No selected-range usage", without calendar drill commands.
+An evidence inspection never widens the calendar range to make a project valid.
+Projects shows ranked top ten plus inspectable Other, stacked by model; no account
+axis against categories. Explicit metric changes never change the overlay.
+
+One UTC transform positions usage bars, captured account points and sparse local
+time ticks. Left axis is zero-based selected metric; right is account-wide weekly
+0-100% or finite observed credit range, explicitly not zero-based. None removes
+the right axis. Stacks and compact account dots have separate visible keys.
+Capture points never interpolate or connect across any boundary. Multiple supported
+weekly limit/plan identities stay separate; conflicting/unsupported readings
+are disclosed, not manufactured into a meter. Stale latest probes do not hide history.
 
 `BreakdownInterval` names two distinct membership contracts. Selected range
-retains dashboard calendar `[start, end)` accounting. Current cycle and its
+retains dashboard calendar `[start, end)` accounting. Retained continuity intervals and their
 hour/day partitions use allowance's capture-causal `(origin, capture]`: exclude
 the opening event, include the captured endpoint, and assign an exact hour/day
 boundary event to the interval it closes. Integer-microsecond SQL inclusion
@@ -45,9 +65,8 @@ Bucket hover/accessibility names include date/time, project/model context and
 value. Visible bounds omit implementation microsecond padding; exact raw rows
 remain inspectable. Scope/accounting explanations are progressive disclosures.
 
-The meter is weekly and account-wide: current cycle plots the exact active
-limit/plan; Selected range plots historical known-weekly readings, with a
-visible limit/plan legend. Nonweekly and missing-duration evidence stays in
+The weekly overlay is account-wide historical known-weekly readings, with a
+visible limit/plan legend and a fixed percentage axis. Nonweekly and missing-duration evidence stays in
 the exact-reading disclosure, never silently presented as weekly. A domain
 without weekly readings explicitly marks weekly allowance unavailable.
 
@@ -55,10 +74,14 @@ Prepare selected range and all retained observed weekly scopes once. Store compa
 and project-hour partitions in the existing disposable rendered report cache,
 with distinct namespaced keys. No new ledger schema or raw valuation index.
 Identity binds ledger/pricing/renderer/evidence revisions, timezone, transitions,
-global project keys, range and selected cycle. Writes are revision-checked;
+global project keys and calendar range. Renderer/state revision 5 excludes all
+prior observed-window navigation caches; exact old issued receipts can classify
+expiry but cannot reinterpret old fragments as a calendar range. Writes are revision-checked;
 superseded or stale source generations cannot enter preparation. Warm controls
-decode compact summaries and only the selected day/project partition, never
-historical allowance reports, source records, prices or fits.
+decode one selected summary and at most seven per-day/project composition
+partitions for Hourly. Daily uses prepared model/project stacks and project-model
+summaries, not every project-hour partition. They never load historical allowance
+reports, source records, prices or fits or prepare continuity.
 The host also invalidates presentation when probe freshness changes or a
 captured deadline passes without capture. An older cached status cannot
 invalidate navigation from a newer rendered revision during startup.
@@ -106,8 +129,8 @@ balance changes may include purchases and never prove individual event debits.
 Reuse the prepared capture-causal continuity checkpoints to enumerate every
 retained weekly portion, including ambiguous/unknown-plan portions. Stable IDs
 bind limit, observed opening and boundary identity, never labels or array order.
-Dated entries carry plan/limit/boundary context. Current freshness controls only
-the current alias/default, not historical access. Bounds are observed endpoints,
+Collapsed evidence entries carry plan/limit/boundary context and issued exact
+interval inspection. Freshness never replaces the selected calendar range. Bounds are observed endpoints,
 not nominal openings or a claim of whole-window coverage. Preserve raw conflicts.
 
 Estimated credits use already-valued Standard credits in all composition paths;
@@ -136,22 +159,59 @@ slicing prevents window x records valuation. Partition balances by
 intersecting local day once, so warm windows/metrics/groups/days/drills never
 load historical reports or prepare continuity/deltas/fits/prices.
 The scope directory stores bounds and partition identities only; warm rendering
-reads one active-window composition summary, not every historical composition.
-The current alias reuses its matching observed-window composition partition.
+reads the selected calendar summary, not every historical composition. An explicit
+continuity inspection reads only its named existing capture-causal summary.
 Revision and issued-scope expiry/recovery rules remain unchanged. Reject silent date-only
 identities, reset-zeroed balances and inferred credit deductions.
 
-Balance plots label their observed-range (not zero-based) scale; a separate
-compact signed net-change axis places each original interval at its exact delta
-magnitude. Neither connects balance points nor divides an interval into hours.
-Missing in-domain captures and spanning evidence are distinct states. Chronology
-compares parsed instants, not ISO text, retaining original offsets in exact rows.
-Shared numeric usage/balance/change ticks strip insignificant fractional zeros and compact
-long/tiny values scientifically within the fixed gutter. If compact absolute
-ticks collapse distinct observed balances, use an explicitly labeled common
-balance offset, not identical misleading ticks or a changed domain. Exact
-Decimal tick values remain in titles and original captures in inspection rows.
-Browser guards measure actual text ranges against spans and gutter padding.
+Credit balance points label an observed-range scale. The original exact Decimal
+balance/change table is available through issued per-local-day inspection, including
+spanning intervals. No separate net-change plot or inferred hourly debit remains.
+
+Visible labels use metric-aware K/M/B/T units and readable dollars, ordinarily two
+decimals, never general scientific notation. Tiny values increase precision; long
+axis values use a named common scale, and collapsed large-balance movement uses an
+explicit exact common offset. Rounded tick ceilings contain unmodified bar values.
+Full numeric values/timestamps remain in exact inspection and accessible mark names.
+Responsive gutters and wrapped offsets keep both axes visible without font shrinking.
+
+Cold preparation retains every raw quota identity (timestamp, limit, slot, plan,
+duration, used, reset, credits and provenance) and original balance adjacency.
+Derived per-day displays keep actual bucket endpoints/extrema and both sides of
+continuity boundaries/conflicts. Shared display reduction keeps up to four actual
+points per 180 time bins per series, plus all boundaries; boundaries are exempt
+from the ordinary budget, never silently dropped to meet a hard cap. Adversarial
+boundary-heavy evidence can therefore exceed this budget, an explicit residual risk.
+Warm reduction works on annotated display partitions and does not recompute
+continuity. Exact issued day inspection loads the raw selected-day partition only,
+never serializes all retained raw readings in the All-time default.
+
+## Account Overlay Readability (2026-10-10)
+
+Dense retained readings must not look like extra model series. The primary account
+series uses neutral text color, compact dots and an explicit right-axis label;
+additional account identities have separately keyed colors. Only the latest
+captured point per account identity is enlarged, and its value/timestamp appears
+in the account key. Usage colors are keyed immediately above the bars. Dense
+boundary diagnostics belong in account evidence disclosure, not the primary key.
+These are unconnected actual readings, not interpolated allowance curves. All
+retained boundary points and exact-day inspection remain unchanged; presentation
+must never manufacture reset annotations or hide conflicts to simplify the plot.
+
+The owner selected Axis-Linked over vertically aligned panes on 2026-10-10.
+Usage key and metric title align left; the neutral account key aligns right above
+its percentage/balance axis. The single-series weekly key is compact: Allowance
+Remaining, then Latest and the most recent captured in-range percentage. Account
+scope, limit/plan and timestamp belong in tooltip/accessibility and exact evidence;
+multiple identities remain visibly distinct. Balance scale offsets and conflict
+warnings remain explicit. No alternate pane runtime path is retained.
+
+Bars occupy half their time slot and stay centered on the same UTC transform.
+Below-resolution nonzero components use understated colored ticks at their true
+stack boundary, not open circles resembling separate point annotations. Segment
+values and additive geometry are never inflated to create minimum-height bars.
+Exact values remain in mark titles and issued inspection. These readability
+changes do not change valuation, capture coverage or account attribution.
 
 ## Alternatives And Consequences
 

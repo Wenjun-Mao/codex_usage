@@ -89,7 +89,7 @@ def test_free_review_unknown_pricing_and_exact_additive_other():
 def test_warm_all_controls_have_no_history_decode_fitting_pricing_or_sources(tmp_path, monkeypatch):
     breakdown_home(tmp_path)
     first = render(tmp_path)
-    assert first.breakdown_navigation["state"]["basis"] == "cycle"
+    assert first.breakdown_navigation["state"]["basis"] == "selected"
     base = render_speed_report(tmp_path, range_name="all", project_keys=[], theme="day", timezone_name="UTC", now=AT)
     assert first.html.replace(first.html[first.html.index('<style>\n    .usage-breakdown'):first.html.index('<section class="section observed-speed"')], "") == base.html
     def forbidden(*args, **kwargs):
@@ -102,16 +102,15 @@ def test_warm_all_controls_have_no_history_decode_fitting_pricing_or_sources(tmp
     assert render(tmp_path).html == first.html
     current = first
     for changes in ({"metric": "tokens"}, {"view": "project"}, {"metric": "cost"},
-                    {"view": "hour"}, {"group": "project"}, {"day": "2026-10-08"},
-                    {"day": "2026-10-09"}, {"basis": "selected", "day": "2026-10-09", "detail": ""}):
+                    {"view": "time"}, {"grain": "hourly"}, {"group": "project"}, {"overlay": "balance"}, {"overlay": "none"}, {"grain": "daily"}, {"grain": "hourly"}):
         requested = action(current, **changes)
         current = render(tmp_path, breakdown_action=json.dumps(requested))
         assert current.breakdown_navigation["state"] == requested["state"]
-    project_action = next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"].startswith("project:"))
+    project_action = next(a for a in current.breakdown_navigation["actions"] if a["state"]["project"] != "")
     current = render(tmp_path, breakdown_action=json.dumps(project_action))
-    assert "Project hourly detail" in current.html
+    assert "Usage detail:" in current.html
     hour_action = next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"].startswith("hour:"))
-    assert "Hour detail" in render(tmp_path, breakdown_action=json.dumps(hour_action)).html
+    assert "Exact detail" in render(tmp_path, breakdown_action=json.dumps(hour_action)).html
 
 
 def test_command_shape_scope_stale_generation_and_no_resurrection(tmp_path):
@@ -129,7 +128,7 @@ def test_command_shape_scope_stale_generation_and_no_resurrection(tmp_path):
     with pytest.raises(ValueError, match="scope expired"):
         render(tmp_path, breakdown_action=json.dumps(requested))
     fresh = render(tmp_path)
-    assert "Interval totals: 0 tokens" in fresh.html
+    assert "Selected range totals: 0 tokens" in fresh.html
 
 
 def test_cycle_live_expiry_multi_series_slot_identity_and_rebase(tmp_path):
@@ -155,7 +154,7 @@ def test_cycle_live_expiry_multi_series_slot_identity_and_rebase(tmp_path):
         connection.commit()
         report["status"] = allowance_status(connection, now=AT + timedelta(minutes=1))
         assert prepare_evidence(connection, report, AT + timedelta(minutes=1))["cycle"] is None
-    assert first.breakdown_navigation["state"]["basis"] == "cycle", "slot moves cannot split weekly identity"
+    assert first.breakdown_navigation["state"]["basis"] == "selected", "slot moves cannot split weekly identity"
 
 
 def test_expired_deadline_and_duplicate_slot_aliases_are_not_nominal_cycles(tmp_path):
@@ -166,7 +165,7 @@ def test_expired_deadline_and_duplicate_slot_aliases_are_not_nominal_cycles(tmp_
         store_read(connection, QuotaRead(AT.isoformat(), "pro", (point, replace(point, slot="secondary"))), None)
         increment_ledger_revision(connection)
         connection.commit()
-    assert render(tmp_path).breakdown_navigation["state"]["basis"] == "cycle"
+    assert render(tmp_path).breakdown_navigation["state"]["basis"] == "selected"
     with open_ledger(path) as connection:
         point = replace(point, timestamp=(AT + timedelta(minutes=1)).isoformat(), resets_at=int((AT + timedelta(minutes=5)).timestamp()))
         store_read(connection, QuotaRead(point.timestamp, "pro", (point,)), None)
@@ -177,7 +176,7 @@ def test_expired_deadline_and_duplicate_slot_aliases_are_not_nominal_cycles(tmp_
     later = AT + timedelta(minutes=6)
     expired = render_ledger_report(tmp_path, range_name="all", project_keys=[], theme="day", timezone_name="UTC", now=later)
     assert expired.breakdown_navigation["state"]["basis"] == "selected"
-    assert "deadline elapsed" in expired.html
+    assert expired.breakdown_navigation["evidence_state"]["deadline_elapsed"]
     with pytest.raises(ValueError):
         render_ledger_report(tmp_path, range_name="all", project_keys=[], theme="day", timezone_name="UTC", now=later, breakdown_action=json.dumps(requested))
 
@@ -194,7 +193,7 @@ def test_transition_selection_and_coverage_remain_baseline_accounting(tmp_path):
     selected = render_ledger_report(tmp_path, range_name="all", project_keys=["transition-target"], theme="day", timezone_name="UTC", now=AT)
     assert "Transition target" in selected.html and "34% used" in selected.html
     disabled = render_ledger_report(tmp_path, range_name="all", project_keys=["transition-target"], theme="day", timezone_name="UTC", now=AT, auto_transitions=False)
-    assert "Interval totals: 0 tokens" in disabled.html
+    assert "Selected range totals: 0 tokens" in disabled.html
     with open_ledger(path) as connection:
         connection.execute("update ledger_sources set is_stale=1")
         increment_ledger_revision(connection)

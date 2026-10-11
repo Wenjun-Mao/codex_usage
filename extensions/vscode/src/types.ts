@@ -61,8 +61,11 @@ export interface ProjectSummary {
 }
 
 export interface BreakdownState {
-  basis: "cycle" | "selected" | `window:${string}`;
-  view: "hour" | "project";
+  basis: "selected";
+  view: "time" | "project";
+  grain: "daily" | "hourly";
+  overlay: "weekly" | "balance" | "none";
+  project: string;
   metric: "cost" | "tokens" | "credits";
   group: "model" | "project";
   day: string;

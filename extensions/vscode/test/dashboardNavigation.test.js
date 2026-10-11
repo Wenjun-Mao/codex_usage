@@ -5,7 +5,7 @@ const { AgentRequestError } = require("../out/agentClient");
 
 test("an older cached status cannot invalidate a newer rendered navigation scope", () => {
   const navigation = new DashboardNavigation();
-  const state = { basis: "cycle", view: "hour", metric: "cost", group: "model", day: "2026-10-09", detail: "" };
+  const state = { basis: "selected", view: "time", grain: "daily", overlay: "weekly", project: "", metric: "cost", group: "model", day: "2026-10-09", detail: "" };
   const action = { scope: "a".repeat(64), state: { ...state, metric: "tokens" } };
   const status = { ledger_revision: 1, plan_allowance: { probe_status: "stale", active_buckets: [] } };
   navigation.query(new URLSearchParams(), "all", status);
@@ -21,7 +21,7 @@ test("an older cached status cannot invalidate a newer rendered navigation scope
 
 test("deadline expiry clears a current-cycle command without a new revision", () => {
   const navigation = new DashboardNavigation();
-  const state = { basis: "cycle", view: "hour", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
+  const state = { basis: "selected", view: "time", grain: "daily", overlay: "weekly", project: "", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
   const action = { scope: "a".repeat(64), state };
   const status = { ledger_revision: 2, plan_allowance: { probe_status: "fresh", active_buckets: [{ duration_minutes: 10080, resets_at: Date.now()/1000 + 100 }] } };
   navigation.query(new URLSearchParams(), "all", status);
@@ -34,7 +34,7 @@ test("deadline expiry clears a current-cycle command without a new revision", ()
 
 test("fresh-to-stale invalidates issued evidence scope even for Selected range", () => {
   const navigation = new DashboardNavigation();
-  const state = { basis: "selected", view: "hour", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
+  const state = { basis: "selected", view: "time", grain: "daily", overlay: "weekly", project: "", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
   const action = { scope: "a".repeat(64), state };
   const status = { ledger_revision: 2, plan_allowance: { probe_status: "fresh", active_buckets: [] } };
   navigation.query(new URLSearchParams(), "all", status);
@@ -81,7 +81,7 @@ test("malformed, unissued and generic failures never trigger bare-report retry",
 
 test("explicit Reload clears retained commands even if receipt retention has elapsed", () => {
   const navigation = new DashboardNavigation();
-  const state = { basis: "selected", view: "hour", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
+  const state = { basis: "selected", view: "time", grain: "daily", overlay: "weekly", project: "", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
   const action = { scope: "a".repeat(64), state };
   const status = { ledger_revision: 1, plan_allowance: { probe_status: "stale", active_buckets: [] } };
   navigation.query(new URLSearchParams(), "all", status);

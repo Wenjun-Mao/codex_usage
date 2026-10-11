@@ -67,6 +67,8 @@ def aggregate(valued, timezone, evidence, *, start, end, complete, causal=False)
     interval = BreakdownInterval(start, end, causal)
     days = defaultdict(list)
     projects, daily = {}, {}
+    daily_stacks = {}
+    daily_project_models = {}
     cells = {}
     calendars = {}
     for item in valued:
@@ -98,6 +100,11 @@ def aggregate(valued, timezone, evidence, *, start, end, complete, causal=False)
         project = projects.setdefault(row["project"], {"label": row["label"], "models": {}})
         add(project["models"].setdefault(row["model"], empty()), row)
         add(daily.setdefault(row["day"], empty()), row)
+        stacks = daily_stacks.setdefault(row["day"], {"model": {}, "project": {}})
+        add(stacks["model"].setdefault(row["model"], empty()), row)
+        add(stacks["project"].setdefault(row["project"], empty()), row)
+        project_models = daily_project_models.setdefault(row["day"], {}).setdefault(row["project"], {})
+        add(project_models.setdefault(row["model"], empty()), row)
     all_total = total(cells.values())
     def calibrate(bounds, values):
         if not bounds.causal:
@@ -112,9 +119,12 @@ def aggregate(valued, timezone, evidence, *, start, end, complete, causal=False)
             values = total(r for r in rows if r["hour"] == hour["key"])
             hour_calibrations[hour["key"]] = calibrate(interval.clip(hour["start"], hour["end"]), values)
         partitions["day:" + day] = {"rows": rows, "calibrations": hour_calibrations}
+        for project in {r["project"] for r in rows}:
+            partitions["day:" + day + ":project:" + project] = {"rows": [r for r in rows if r["project"] == project]}
     for project in projects:
         partitions["project:" + project] = [r for r in cells.values() if r["project"] == project]
-    return {"projects": projects, "daily": daily, "total": all_total,
+    return {"projects": projects, "daily": daily, "daily_stacks": daily_stacks,
+            "daily_project_models": daily_project_models, "total": all_total,
             "calibration": calibration, "start": start, "end": end,
             "causal": causal, "interval_notation": interval.notation}, partitions
 

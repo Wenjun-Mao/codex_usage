@@ -9,7 +9,7 @@ from unittest.mock import patch
 from playwright.sync_api import sync_playwright
 
 from codex_usage.agent_reports import render_ledger_report
-from observed_speed_fixture import AT, chart_home
+from observed_speed_fixture import AT, chart_home, converging_chart
 
 
 def assert_chart_layout(section):
@@ -25,6 +25,15 @@ def assert_chart_layout(section):
     assert chart.locator(".speed-unit").is_visible()
     assert chart.locator(".speed-y-axis").is_visible()
     assert plot.locator("svg").evaluate("e => getComputedStyle(e).overflow") == "visible"
+    assert plot.locator('.speed-marker').count() == plot.locator('svg a').count()
+    assert plot.locator('.speed-interval').evaluate_all(
+        "es => es.every(e => getComputedStyle(e).visibility === 'hidden')")
+    series = chart.locator('.speed-series-label')
+    boxes = sorted((series.nth(index).bounding_box() for index in range(series.count())), key=lambda box: box['y'])
+    assert all(left['y'] + left['height'] <= right['y'] + 1
+               for left, right in zip(boxes, boxes[1:])), 'series labels overlap'
+    assert all(box['x'] >= 0 and box['x'] + box['width'] <= section.bounding_box()['x'] + section.bounding_box()['width'] + 1
+               for box in boxes), 'series labels overflow'
     labels = []
     ticks = plot.locator(".speed-tick")
     for index in range(ticks.count()):
@@ -42,14 +51,20 @@ def assert_chart_layout(section):
                for left, right in zip(labels, labels[1:])), "date labels overlap"
     for point in (plot.locator("svg a").first, plot.locator("svg a").last):
         point.focus()
-        mark = point.locator("circle").bounding_box()
-        stroke = float(point.locator("circle").evaluate("e => getComputedStyle(e).strokeWidth").removesuffix("px")) / 2
+        mark = point.locator(".speed-marker").bounding_box()
+        stroke = float(point.locator(".speed-marker").evaluate("e => getComputedStyle(e).strokeWidth").removesuffix("px")) / 2
         assert mark["x"] - stroke >= bounds["x"]
         assert mark["x"] + mark["width"] + stroke <= bounds["x"] + bounds["width"]
         assert "middle 50%" in point.get_attribute("aria-label")
+        assert point.locator('.speed-interval').evaluate("e => getComputedStyle(e).visibility") == 'visible'
+        assert point.evaluate("e => getComputedStyle(e).outlineStyle") == 'none'
         point.press("Enter")
         target = section.locator(point.get_attribute("href"))
         assert target.count() == 1 and target.is_visible(), "point detail stayed hidden"
+    hover_point = plot.locator('svg a').first
+    hover_point.locator('.speed-marker').hover()
+    assert hover_point.locator('.speed-interval').evaluate("e => getComputedStyle(e).visibility") == 'visible'
+    section.locator('.speed-unit').hover()
     assert section.locator(".speed-overview a").count() == 0
     summary = section.locator("details > summary")
     if section.locator("details").get_attribute("open") is not None:
@@ -98,6 +113,19 @@ def main():
                 try:
                     page = context.new_page()
                     for theme in ("day", "night"):
+                        for width in (1440, 760, 360):
+                            document = args.output / f'{theme}-converging-{width}.html'
+                            document.write_text(converging_chart(theme))
+                            page.set_viewport_size({'width': width, 'height': 900})
+                            page.goto(document.resolve().as_uri())
+                            section = page.locator('.observed-speed')
+                            layout = assert_chart_layout(section)
+                            assert section.locator('.speed-series-label').count() == 3
+                            if engine == 'chromium':
+                                section.screenshot(path=str(args.output / f'{theme}-converging-{width}.png'))
+                            evidence['browser_views'].append({'engine': engine, 'theme': theme,
+                                'scenario': 'converging', 'width': width,
+                                'javascript_disabled': True, **layout})
                         for name, granularity, range_name, window in (
                             ("daily", "daily", "30d", None),
                             ("daily-all", "daily", "all", None),

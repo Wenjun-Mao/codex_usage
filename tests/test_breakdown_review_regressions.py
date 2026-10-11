@@ -42,17 +42,17 @@ def test_selected_range_preserves_missing_nonweekly_and_weekly_evidence(tmp_path
         increment_ledger_revision(connection)
         connection.commit()
     first = render(tmp_path)
-    action = next(a for a in first.breakdown_navigation["actions"] if a["state"]["basis"] == "selected")
+    action = next(a for a in first.breakdown_navigation["actions"] if a["state"]["detail"] == "readings:2026-10-09")
     report = render(tmp_path, action)
     section = report.html.split('<section class="section usage-breakdown"', 1)[1]
-    assert "Captured weekly allowance remaining" in section
-    assert f"Exact captured readings ({len(durations)})" in section
+    assert "Weekly allowance remaining" in section
+    assert "Exact captured allowance readings" in section
     if None in durations:
         assert "duration unavailable" in section and "plan unavailable" in section
     if 10080 in durations:
-        assert "codex · weekly · pro" in section
+        assert "codex / pro" in section and "Latest:" in section
     else:
-        assert "Weekly allowance unavailable: no supported weekly readings" in section
+        assert "Weekly overlay unavailable: no supported in-domain captured readings" in section
         assert 'class="ub-meter-legend"' not in section
 
 
@@ -104,11 +104,13 @@ def test_real_calibrated_cycle_and_hour_render_with_exact_endpoints(tmp_path):
         assert any(r["hour"] == hour_key for r in day["rows"])
         recent = next(p for series in evidence["paces"] for p in series if p["name"] == "Recent" and p["method"] == "calibrated cost")
         assert sum(r["allowance_cost"] for r in day["rows"] if r["hour"] == hour_key) == pytest.approx(recent["cost"])
-    assert "pp estimated" in first.html
-    action = next(a for a in first.breakdown_navigation["actions"] if a["state"]["detail"] == "hour:" + hour_key)
+    interval = next(a for a in first.breakdown_navigation["actions"] if a["state"]["detail"].startswith("evidence:"))
+    assert "pp estimated" in render(tmp_path, interval).html
+    hourly = render(tmp_path, next(a for a in first.breakdown_navigation["actions"] if a["state"]["grain"] == "hourly"))
+    action = next(a for a in hourly.breakdown_navigation["actions"] if a["state"]["detail"] == "hour:" + hour_key)
     drilled = render(tmp_path, action)
-    hour_detail = drilled.html.split('<h3>Hour detail', 1)[1].split('<details><summary>All interval', 1)[0]
-    assert "pp estimated" in hour_detail and "Capture-causal" in hour_detail
+    hour_detail = drilled.html.split("<h3>Exact detail", 1)[1].split("<details><summary>All selected-range", 1)[0]
+    assert "contributions unavailable" in hour_detail and "calendar membership" in hour_detail
 
 
 @pytest.mark.parametrize("kwargs", [{"unknown": True}, {"full": True}])
@@ -137,7 +139,7 @@ def test_utc_sampled_causal_hour_membership_includes_closing_boundary(zone_name,
     info, data = aggregate(value_records(records), zone, {"cycle": None, "paces": []},
         start=start, end=end, complete=True, causal=True)
     assert info["total"]["tokens"] == len(records)-1
-    assert list(k for k in data if k.startswith("day:")) == ["day:"+day]
+    assert list(k for k in data if k.startswith("day:") and ":project:" not in k) == ["day:"+day]
     rows = data["day:"+day]["rows"]
     for hour in hours:
         expected = sum(hour["start"] < r.timestamp.timestamp() <= hour["end"] for r in records)
@@ -146,7 +148,7 @@ def test_utc_sampled_causal_hour_membership_includes_closing_boundary(zone_name,
 
 def test_receipt_policy_is_bounded_and_expired_or_fabricated_proofs_reject(tmp_path):
     path = breakdown_home(tmp_path)
-    state = {"basis": "selected", "view": "hour", "metric": "cost", "group": "model", "day": "2026-10-09", "detail": ""}
+    state = {"basis": "selected", "view": "time", "grain": "daily", "overlay": "weekly", "project": "", "metric": "cost", "group": "model", "day": "2026-10-09", "detail": ""}
     actions = [{"scope": f"{i:064x}", "state": state} for i in range(RECEIPT_MAX_SCOPES+2)]
     with open_ledger(path, read_only=True) as connection:
         revision = int(connection.execute("select value from ledger_meta where key='ledger_revision'").fetchone()[0])

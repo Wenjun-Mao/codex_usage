@@ -64,6 +64,11 @@ def test_platform_vsix_packages_are_built_and_published_independently() -> None:
     assert "verify-vsix-archive.py" in macos
     assert "generate_marketplace_screenshot.py --check" in macos
     assert "check_allowance_ui.py" in macos
+    assert "check_usage_breakdown_ui.py" in macos
+    assert "check_breakdown_overlay_ui.py" in macos
+    assert "usage-allowance-synthetic-ui" in macos
+    assert "output/playwright/usage-breakdown/*.json" in macos
+    assert "output/playwright/allowance-clarity/*.json" in macos
     assert "runs-on: windows-2025" in windows
     assert "npm run package:vsix:win" in windows
     assert "codex-usage-companion-win32-x64.vsix" in windows

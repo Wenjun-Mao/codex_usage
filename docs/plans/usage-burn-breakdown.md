@@ -1,430 +1,379 @@
 # Usage And Allowance Breakdown
 
-Status: Product direction approved 2026-10-08; implementation authorized and
-started 2026-10-09, after the released 2.11.1 observed-speed usability patch.
-Separate implementation candidate corrected and re-verified on 2026-10-09;
-not shipped. Initial verification missed the reviewed interval, missing-evidence,
-visual-axis and scope-recovery cases; corrected evidence is recorded below.
-Manager implementation review accepted the corrected candidate on 2026-10-09.
-The approved unpublished extension below is implemented; its independent manager
-acceptance retest remains pending, distinct from the earlier base acceptance.
-Human product acceptance, version/release approval and publication remain gated.
+Status: Unified-chart implementation approved 2026-10-09 and complete on retained
+main. Independent review fixes, collector rebuild, full Python/extension checks,
+cross-browser matrix and native macOS control replay passed. A new isolated
+Codex Usage Local Preview is open with verified frozen records and controls.
+Owner accepted the full isolated dashboard preview and authorized release on
+2026-10-10. Preparing 2.12.0; publication is gated by the exact-commit platform
+checks and matching-tag workflow in [Release Checklist](../release.md).
+Current and historical technical evidence is in Verification History.
+No live capture or installed-extension mutation is part of release verification.
+Historical planning permissions below are retained as history.
+
+Retained checkout: main at `aedd9db4481841962762aba8a86f241d4d48ebc4`.
+Release candidate version is 2.12.0. Pre-existing untracked `apps/` is out of scope.
+Prior technical acceptance is recorded in
+[Verification History](usage-burn-breakdown-verification.md).
+This is the same feature and release candidate, not a parallel implementation.
+
+### Revised Candidate Checkpoint (2026-10-09)
+
+Independent review follow-up: historical evidence could issue a project drill
+absent from the selected calendar summary, then fail at its label lookup.
+Command issuance now requires selected-range membership; historical-only rows
+remain exact evidence marked "No selected-range usage", without drill links.
+Calendar bounds, global filters and account overlays do not change. ADR 0054
+records the contract; internal cache revision 5 expires old issued commands.
+The Oct9 selected-range / Oct8-only project regression passes. The previous
+source/binary freeze is superseded by the post-review rebuild identity.
+
+The unified contract is implemented. The manager's full Python suite passes
+(1,736 tests, one expected Windows-only junction skip), as do the extension
+build/tests (48), Ruff and diff checks. The Firefox last-tick border-anchor
+overshoot was fixed at the endpoint alignment contract; all 720 browser cases
+pass across Chromium/WebKit/Firefox, narrow/medium/wide views and both themes.
+Native macOS sandboxed/offline replay passes 21 mouse/Enter transitions.
+Native Windows and native Tab traversal remain unvalidated.
+Historical evidence and counts below remain historical, not reused verification.
+
+Fresh private exploratory evidence is under ignored
+`output/playwright/usage-breakdown/unified-private-worker-01a12389-r3/`:
+158,249 frozen quota observations yield 20,477 display marks (20,337 mandatory
+boundaries, 140 ordinary), 9,359,626 breakdown bytes / 14,604,001 full HTML bytes,
+and 0.642s warm report rendering with zero forbidden historical work. Boundary
+classification diagnostics are nonexclusive: 15,457 reset-deadline changes
+(15,046 below 60 seconds), 2,055 plan changes, 923 used-percent decreases and
+275 same-instant semantic conflicts. Deadline corrections are retained, not
+merged to enforce a visual budget. Dense all-time overlays remain a limitation.
+Actual compiled AgentClient authenticated loopback replay preserves the full
+HTML (15,142,281 JSON bytes, 0.068s); Chromium narrow/wide screenshots render all
+marks. This is not native VS Code webview acceptance or fresh preview creation.
+
+The baseline Python fingerprint now uses real NUL separators, matching preview
+preparation. Earlier literal-backslash-zero hashes are historical and cannot be
+compared directly. The source freeze utility separately names its sorted JSON
+path/digest-manifest convention and covers Python/TypeScript, scripts, tests,
+active docs and build dependency inputs.
+
+The manager's controlled comparison uses the existing frozen private snapshot,
+identical disposable cost-index inputs, cleared derived caches and a fixed
+2026-10-09T14:50:00Z report clock. Existing base-report HTML is byte-identical.
+Today cold/warm observations are 14.27s/0.241s for this candidate versus
+13.17s/0.601s for the prior accepted candidate; All Time is 44.66s/0.582s versus
+40.54s/0.608s. All Time whole HTML grows from 9.76 MB to 14.60 MB because
+mandatory boundary evidence is retained. These are observations, not a speedup
+claim; warm derived preparation calls are zero. The comparison harness restores
+fresh issued commands before sampling drills, respecting receipt expiry.
+
+The frozen Last7/30 measurements, new isolated preview, normalized-record
+preservation and actual running collector isolation checks pass. Nine rendered
+preview control transitions pass and return to Last7/Daily/API cost/weekly
+allowance. The preview reuses the original Oct9 10:39 EDT capture; normal startup
+reads zero task bytes and adds only an unavailable offline credit observation.
+Human product acceptance is the remaining gate. Source/binary identity accompanies
+the checkpoint. No account/live source mutation or publication was performed.
 
 ## Goal
 
-Explain when captured usage happened, which models/projects contributed, and
-how account-wide included allowance and credit balances changed within observed
-weekly portions or the dashboard selected range.
-Complement the compact Hourly Heatmap rather than replacing its overview.
+Explain when captured usage happened, which models/projects contributed, and how
+account-wide weekly allowance or credit balance changed. Make the breakdown
+useful in one chart rather than requiring comparison of several repeated plots.
+Complement the Hourly Heatmap; do not change token, pricing or allowance math.
 
-## Approved Unpublished Extension (2026-10-09)
+The revised full-dashboard **Codex Usage Local Preview** was accepted. The next
+delivery is the gate-verified Marketplace release; the isolated frozen preview
+remains separate from the user's installed extension and live ledger.
 
-Extend this same candidate, not a second feature or release. Replace the binary
-cycle/range control with a compact observed-window disclosure: current observed
-weekly portion when supported, all dated retained weekly portions, and Selected
-range. Entries identify limit, plan and continuity boundary as well as dates.
-Historical portions remain browsable without a fresh current anchor; unknown
-openings, conflicting captures, rebases and plan boundaries stay explicit.
-Weekly membership remains `(origin, capture]`; Selected range stays calendar
-`[start, end)`. Global filters are never mutated by chart navigation.
-Selected calendar bounds remain complete, but the default day is the latest
-in-range usage or account-wide capture; empty ranges clamp the clock to bounds.
-Observed singleton windows open their actual capture day, including midnight.
+## Root Cause And Layer
 
-Add Estimated credits to both views, groups, rankings and drills using existing
-valued Standard credits, including included usage, free known zero and unknowns.
-Do not change token/API-dollar accounting or imply actual per-project billing.
-Align captured account-wide balances with hourly allowance on the same UTC domain.
-Read all retained prospective captures, including missing placeholders; preserve
-exact Decimal net changes and original endpoints across day/window/reset bounds.
-Cross-boundary intervals are unallocatable, never prorated or assigned to an hour.
-Invalid/missing/unlimited/plan-discontinuous adjacency is unknown. Increases are
-possible reload/grant/refund/adjustment evidence, not negative spending. Neither
-hasCredits nor exhaustion proves a particular event's funding.
+- Numeric labels follow an eight-character, general-precision containment
+  contract. It deliberately produces scientific notation and preserves more
+  dollar decimals than a scanning chart needs. Fix the metric-aware formatting
+  and tick-scale contract, not isolated strings or smaller fonts.
+- The period picker exposes allowance continuity suffixes as user-facing
+  periods. Rebases and conflicts can produce adjacent or singleton fragments;
+  these are legitimate evidence boundaries, not useful navigation choices.
+  Separate evidence continuity from the displayed date range. Do not merge
+  fragments in the calibration model merely to simplify labels.
+- The "full-range" daily chart is clipped to the selected observed fragment.
+  A short fragment becomes one oversized daily bar with intraday ticks.
+  A second hourly plot and separate allowance/balance/change plots repeat the
+  same time domain. Fix composition and navigation at the breakdown view layer.
+- Previous visual gates proved containment and accounting, not that defaults,
+  units and range controls were understandable. Add observable UX criteria
+  alongside parity, security and responsive tests.
 
-Cold preparation reuses calendar valuation, queries/values only the missing
-observed-window union using the ledger timestamp index, and reuses one continuity
-index, then stores revision-bound scope/day/project/evidence partitions. No
-window x history valuation or warm historical decode/fit/materialize/reprice/scan.
-Measure added cold cost honestly against v2.11.1 and the accepted candidate.
-Include an explicitly scaled long-history Today comparison, not just tiny data;
-never value years before any weekly evidence merely to prepare Today.
-Expand domain/HTTP/host/browser/native gates to six metric/view combinations,
-dated scopes, no-current evidence, exact balances and zero warm window work.
-Existing release/product/Windows/native-Tab gates remain; no version or install.
+## Proposed Experience
 
-## Experience
+### One Range, One Chart
 
-- Compact controls: Hour / Project, Tokens / API cost / Estimated credits,
-  and observed weekly window / Selected range.
-- Hour: stacked hourly bars with Model / Project stack grouping; default to
-  API-equivalent cost stacked by model for the current reset window.
-- Project: ranked horizontal totals stacked by model for the selected interval.
-- Selecting an hour reveals project-by-model detail with tokens, cost and estimated credits.
-  Selecting a project reveals its hourly pattern.
-- An aligned percentage chart below Hour view shows captured allowance remaining
-  on the same time domain, not a dollar/percentage dual-axis overlay.
-- Retain full-range context, readable axes and responsive bounded detail windows.
-  Do not reproduce the speed chart's hidden-axis or misleading-range defects.
+The dashboard's existing Range control is the sole date-range authority:
+Today, Yesterday, Last 7 days, Last 30 days, This month, All time and custom dates.
+Remove the breakdown's observed-period picker. Never silently replace the
+selected calendar range with the latest allowance suffix or mutate global
+filters during drill-down.
 
-## Evidence Contract
+Historical allowance windows remain visible through wider/custom dashboard
+ranges and captured boundary evidence. Raw continuity fragments stay in a
+collapsed evidence disclosure; they are not called complete reset cycles.
+No inferred nominal cycle opening or automatic reset-aligned usage total.
 
-Reuse trusted, already-valued event summaries; do not introduce another pricing
-pipeline or infer quota from raw token totals. Tokens include cached input and
-free included reviews. API-equivalent dollars are not subscription charges.
+Use **Time / Projects** as the main view control. Time has **Daily / Hourly**,
+the existing Tokens / API cost / Estimated credits metric control, and
+Model / Project stack grouping. Use a compact menu for the account overlay:
+**Weekly allowance / Credit balance / None**. Hide time-only controls in
+Projects. All controls remain native issued command links with scripts disabled.
 
-Actual allowance is account-wide and must remain so under project/model filters.
-Clearly distinguish captured meter readings from cost-calibrated estimates.
-Reuse compatible current/previous allowance references and established full-meter,
-reset, plan, coverage and unknown-cost boundaries. Credit-funded usage must not
-reduce the included-allowance estimate. Unknown/excluded monetary values are not
-zero. Missing local usage or snapshots must not imply complete account coverage.
+Default to API cost, model stacks and weekly allowance. Today/Yesterday start
+Hourly; wider ranges start Daily. Explicit grain choices survive metric/group/
+overlay changes within the same valid scope; a new global range resets to its
+appropriate default. Do not automatically switch the account overlay when the
+usage metric changes: estimated credits are not observed balance deductions.
 
-Prefer composition bars over a waterfall: empirical quota attribution does not
-form an exact additive bridge to the captured balance. Estimated contributions
-may be useful, but cannot be labeled exact per-project/model quota spending.
+Daily shows the entire selected calendar range, including empty dates.
+Hourly shows at most seven consecutive local calendar days, initially the
+latest in-range day with usage or an account capture and the preceding six
+days, clipped to the selected range. Previous/Next/Latest move by bounded
+seven-day windows; show their actual dates. For an entirely empty selection,
+use the clock day clamped to the selected bounds. UTC chronology preserves DST
+repeated/skipped/partial hours and visible offsets where needed.
 
-## Implementation Planning Before Coding
+Drilling a daily bar opens the hourly window containing that day and a selected
+day/hour detail. Return to Daily restores the whole range, not a clipped
+"overview." Every bucket has accessible exact-value inspection; details update
+beneath the chart rather than creating another plot. Project selection filters
+usage detail only; the account overlay stays account-wide and visibly labeled.
 
-1. Bind reset-window bounds to verified allowance history and define behavior
-   when the actual opening timestamp or readings are unavailable.
-2. Define the indexed hour/project/model aggregation and cache identities;
-   preserve monetary parity and warm ledger-only reports.
-3. Specify filter scope, drill-down/navigation commands, empty/partial coverage,
-   unknown-price and credit-funded states under the existing script-free host.
-4. Validate the primary flow with representative synthetic fixtures before
-   expanding it; test additive totals, DST, reset crossings, saturation, credits,
-   keyboard navigation and wide/narrow rendering.
+### Shared Timeline And Honest Axes
 
-## Initial Implementation Decisions
+Use one time domain for stacked usage bars and captured account readings.
+The left axis is the selected usage metric with a zero baseline. The right
+axis is weekly remaining percentage, fixed at 0-100%, or captured credit
+balance, explicitly labeled account-wide and observed-range when not zero-based.
+Only one account overlay is visible; None removes its axis.
 
-- Default to Current observed window when available; offer all dated observed
-  historical weekly portions and an explicit Selected range that follows the
-  dashboard's range. Never silently change the global date filter.
-- Identify the current weekly series from captured allowance evidence. Use
-  verified continuity/reset boundaries; when the opening is unobserved, label
-  the observed portion and do not invent a zero-usage opening or subtract the
-  nominal seven-day duration from the deadline. Missing weekly evidence must
-  leave selected-range usage and retained historical portions available, with
-  current allowance explicitly unavailable.
-- Use one local calendar day of hourly detail, initially the latest observed
-  day, plus a full-range daily overview and validated Previous/Next/Latest
-  navigation. Preserve repeated/skipped DST hours and fixed visible axes.
-- Rank projects by the active metric. Show the top ten plus an inspectable
-  Other group; grouping must preserve exact sums and never hide detail rows.
-- Show actual captured allowance points on the aligned time axis. Do not
-  interpolate an exact balance, connect across unsupported resets, or imply
-  per-project meter ownership when usage is filtered.
-- Estimated percentage-point contributions may appear in drill-down only
-  when an existing compatible, capture-causal calibration supports the exact
-  interval. Full-meter/credit-funded cutoffs, unknown costs, incompatible
-  plans/reset series and incomplete coverage make the estimate unavailable.
-  No exact per-project quota attribution or estimated replacement meter.
-- Keep navigation and drill-down within the existing script-disabled host,
-  with exact argument, scope, date/hour/project and stale-command validation.
-- Prepare trusted valued summaries once per relevant revision and reuse
-  indexed summaries for view/metric/group/drill-down changes. No second pricing
-  policy, report-triggered source scans, or warm-control monetary repricing.
-  The scope directory contains bounds/identity only; each active-window summary,
-  day and project are separate partitions. Current alias reuses its observed
-  historical window composition rather than repeating aggregation.
+Use distinct mark styles and a visible key for usage stacks versus account
+readings. Keep captured points as points, not interpolated balances. Do not
+connect across resets, corrections, conflicts, plan changes or missing readings,
+and do not suggest that bar heights reconcile to exact quota or credit debits.
+Keep both numeric axes and the common time axis visible without horizontal
+panning. Prefer readable sparse local date/hour ticks over arbitrary repeated
+timestamps. Empty/future/unobserved spans must not imply measured zero workload.
 
-## Delivery Gates
+Multiple supported weekly limit/plan series remain separately identifiable on
+the percentage axis; ambiguous/unsupported/nonweekly evidence is disclosed,
+not combined into a fabricated weekly meter. A missing requested overlay
+stays explicitly unavailable rather than silently selecting a different one.
+Retained historical points remain usable when the latest live probe is stale.
 
-Record the durable data/scope/evidence contract in an ADR before integrating
-the feature. Verify full/indexed monetary parity, additive composition totals,
-unknown/free-credit semantics, causal/reset boundaries, transitions, DST and
-zero warm-control historical work. Exercise all six metric/view combinations, both stack groups,
-drill-downs, empty/partial states, keyboard paths and wide/narrow layouts with
-synthetic data, then real native script-disabled command links. Preserve the
-live ledger, installed extension, Keychain, services and unrelated `apps/`.
-Leave a reviewed implementation candidate for release approval; do not tag or
-publish Marketplace packages as part of this kickoff.
+Credit balance points retain exact finite Decimal values. Original interval
+net decreases/increases and boundary-crossing intervals remain in an expandable
+exact table; remove the separate signed-change chart. Missing/invalid/unlimited/
+nonchronological/unknown-plan captures continue to break delta adjacency.
+A weekly reset alone does not break credit balance continuity. Never prorate
+a spanning interval, infer an hourly debit or subtract included usage estimates
+from actual credits. Possible purchases/grants/refunds remain increases, not
+negative spending.
 
-## Initial Verification (62b72c29; Superseded By Review Fixes)
+Projects uses the same chart area for ranked horizontal totals, stacked by model,
+with top ten plus inspectable Other. Hide the account overlay: a time-based
+account balance cannot be drawn against categorical project positions.
+Selecting a project opens its Time detail without changing global filters.
 
-These checks passed on the original candidate but missed the manager/reviewer
-reproductions below. Their historical observations are not acceptance of the
-corrected candidate or proof that its additional cold cost was pre-existing.
+### Human Number Formatting
 
-- Implemented candidate: partitioned revision-bound valued composition,
-  chronological local-hour occurrences, cycle/selected scope, fixed visible
-  axes, model/project groups, project ranking/Other and native command controls.
-- Proven: focused composition/cache/domain and authenticated HTTP tests, independent UTC
-  sampling across Toronto/Lord Howe/Chatham DST, monetary baseline markup parity,
-  unknown/free-review separation, expiry/rebase/multi-series, slot aliases,
-  exact-interval/series/capture-availability calibration and strict commands.
-- Proven: full Python suite 1,665 passed, one Windows-only native-junction skip;
-  Ruff and diff whitespace checks passed; extension tests/build 38 passed.
-- Proven: 252 script-disabled Chromium/WebKit/Firefox views across Day/Night
-  and 1440/760/360 widths, four modes, both hour groups, scope changes, Other,
-  drills, empty filters, stale anchors and partial coverage. Fixed-font visible
-  axes, section/control overflow and exact-table keyboard disclosure checked;
-  representative wide/narrow screenshots inspected.
-- Proven: isolated macOS VS Code OOPIF DOM acceptance, 14 rendered inputs
-  (13 recorded mouse activations and one real Enter), strict host rejection,
-  scripts disabled and unchanged restrictive CSP. Keyboard focus originated
-  through CDP DOM.focus, not demonstrated native Tab traversal. Disposable
-  HOME/CODEX_HOME/profile and in-memory secret storage; fresh local bundled
-  binary; startup used synthetic RPC only and settled before rendered clicks.
-- Proven: read-only SQLite backup to a disposable home retained actual-baseline
-  API-dollar, token, unknown/excluded and standard-credit totals. Live account
-  values and identifying contents are absent from tracked evidence. Reports,
-  cache writes and synthetic captures ran only on disposable homes/copies.
-- Observed, not a benchmark or rollout-causality claim: final private copy took
-  1.23 s; cold all-time report 56.59 s, including derived preparation 4.44 s;
-  warm report 0.347 s and mode/metric/group controls 0.175-0.212 s. Synthetic
-  cold report 0.097 s, warm report 0.0069 s, controls 0.0033-0.0087 s.
-  Forbidden historical preparation/materialization/decode/fitting/repricing
-  guards passed for warm controls, including day/project/hour navigation in
-  focused tests. All-time HTML remains approximately 5.98 MB on this baseline;
-  cold preparation and large existing report size remain material limitations.
-- Diagnostics retained locally: initial native startup capture/status ordering,
-  OOPIF Tab focus and screenshot node-lifetime failures. Startup now settles
-  against synthetic RPC; newer rendered revisions survive older cached status;
-  freshness/deadline expiry refreshes without ledger mutation; screenshot nodes
-  share one DOM lifetime. Final native repeat passed after these root fixes.
-- Gated: independent manager review, product acceptance, release approval and
-  publication. Native Windows acceptance was not run; its junction test remains
-  skipped on macOS. Exact-interval contributions deliberately remain unavailable
-  for arbitrary intervals without an established compatible reference; no real
-  per-project quota attribution is claimed. No version bump, tag, install or
-  release run occurred. Retained main checkout and unrelated apps/ preserved.
+Use metric-aware, human-unit labels and sensible tick spacing:
+`139.03 M tokens`, `$28.61`, `1.23 K credits`, and `50%`.
+Tokens/credits may use consistent K/M/B/T units; currency uses readable dollar
+ticks, ordinarily at most two fractional digits. Axis titles carry units;
+rounded tick ceilings must still contain every unmodified plotted value.
+
+Do not show scientific notation in ordinary visible axis/rank/summary values.
+Increase meaningful precision or use a clearly named common scale/offset when
+rounding would hide nonzero tiny amounts or distinct large-balance movement.
+Retain full numeric/Decimal values and original timestamps in inspection,
+accessible names and titles. Never round stored or aggregated values.
+Wide/narrow labels must fit without shrinking text or hiding axes.
+
+## Preserved Contracts And Exclusions
+
+- Reuse trusted dashboard-valued records, transitions and global project
+  filtering. Tokens include cached input and included reviews; API-equivalent
+  dollars are not subscription charges. Images stay separate.
+- Selected-range composition retains calendar `[start, end)` membership and
+  baseline parity. Retained evidence/calibration intervals keep their established
+  capture-causal `(origin, capture]` semantics; do not borrow calibration merely
+  because calendar totals resemble an evidence interval.
+- Actual allowances/balances are always account-wide. Exact captured points,
+  estimated Standard credits, known free zero and unknown/excluded values remain
+  distinct. No exact per-project/model funding attribution or new forecast.
+- Keep continuity/reset/calibration math, raw balances, pricing and ledger schema
+  unchanged. This is a view/navigation contract revision, not historical capture,
+  repricing, deletion, task transfer or collector ownership work.
+- Reuse revision-bound partitions and issued receipts. Warm controls do no source
+  scans, historical decoding/materialization, repricing, continuity preparation
+  or fitting. Do not load every historical composition for one visible window.
+- No new frontend framework, product webview scripts, CSP relaxation, telemetry,
+  backend deployment/tunnel, installed-extension replacement or Marketplace work.
+  General cold-history optimization and unrelated UI refactors are excluded.
+
+[ADR 0054](../adr/0054-usage-allowance-breakdown.md) remains the existing technical
+contract until implementation approval. The revision explicitly supersedes its
+separate-chart, primary observed-period picker and scientific-tick presentation
+choices, not its accounting/evidence guarantees. Update those sections after
+approval; do not append contradictory active decisions.
+
+## Ordered Deliverables
+
+1. **Bind the revised view contract.** Update ADR 0054 and the strict Python/
+   TypeScript navigation state, defaults and revision/cache identities. Reject
+   forged/unsupported actions; preserve typed expiry recovery for genuinely
+   issued old scopes without interpreting old fragments as the new date range.
+2. **Prepare reusable time summaries.** Add daily model/project composition and
+   bounded seven-day hourly reads using existing valued partitions. Fix stable
+   legend identity across grain/metric/drill changes. Do not repeatedly scan
+   all project partitions or reprice records to assemble each daily view.
+3. **Build shared plot primitives.** Separate usage stacks, account point
+   overlays, axes and inspection composition into cohesive modules. One shared
+   UTC transform must drive bar bounds, captured points and time ticks. Keep
+   formatting unit-aware, both axes fixed and responsive controls bounded.
+4. **Replace the old view.** Remove the period picker, redundant daily context,
+   standalone meter/balance/net-change plots and their obsolete commands.
+   Implement Time/Projects, grain/overlay choices and reversible drill-downs;
+   retain exact tables and progressively disclosed evidence.
+5. **Resolve dense-history display before acceptance.** Test realistic retained
+   capture density, not only small synthetic data. Daily must keep the full
+   selected domain; use explicit below-resolution marks where bars are tiny.
+   If account points need bounded display reduction, retain actual bucket
+   endpoints/extrema and continuity boundaries, never averaged/interpolated
+   balances. Keep every original reading accessible in partitioned inspection.
+   Measure preparation, HTML size and warm latency; do not call the rewrite a
+   performance improvement without a controlled comparison.
+6. **Verify the revised candidate.** Run focused regressions first, then Python,
+   Ruff and extension tests/build; extend existing browser/native/parity gates
+   for the matrix below. Inspect representative screenshots rather than relying
+   only on bounding-box assertions. Any unproven host/input path stays disclosed.
+7. **Build and open a fresh isolated preview.** Reuse the existing private
+   snapshot baseline in a new ignored preview directory; rebuild the collector
+   from the verified revised source and record source/binary identity. Verify
+   isolation and normalized-record preservation before presenting the new window.
+   Leave the older preview available for comparison.
+8. **Human review.** User reviews the new Codex Usage Local Preview. Capture
+   actionable feedback here and iterate within the approved scope; technical
+   test passes do not stand in for product acceptance. Release only under
+   separate explicit authorization.
+
+Default to serial work on retained main. A bounded read-only review of the
+state/evidence and overlay contract is useful after the candidate stabilizes;
+do not create parallel writers. Once implementation is approved, use Relay
+direct for any delegated work and remain with workers through verification,
+review and completion. No task creation/delegation is authorized by planning.
+
+## Acceptance Matrix
+
+- **Reported preview defects:** a short Oct 9 fragment cannot become the primary
+  period; Last 30 days displays the whole selected range in Daily; one main
+  plot appears in Time, no daily-context/meter/balance/change plots beneath it.
+  Values around 139,030,000/278,050,000 tokens and $28.61067/$57.22134 are readable.
+- **Controls and navigation:** Today/Yesterday, 7d, 30d, Month, All time and
+  custom ranges; Daily/Hourly/Projects; all three metrics; both time stack
+  groups; all overlays; day/hour/project/Other drill and return; earliest/latest
+  seven-day windows; no global filter mutation or unreachable retained detail.
+- **Accounting/evidence:** additive model/project totals and exact base monetary,
+  language/image/allowance parity; selected calendar boundaries; included
+  reviews/free/unknown; current/prior resets and corrections; stale/no current
+  probe; multiple/missing weekly series; exhausted allowance with credit decrease,
+  later reset, unchanged credits, increases, unlimited/unknown and spanning
+  intervals; ordinary and extreme finite Decimal balances.
+- **Visual correctness:** Day/Night at 360/760/1440 widths in Chromium, WebKit
+  and Firefox; actual glyph containment, noncolliding dates, both visible axes,
+  correct shared-domain coordinates, explicit scales and dense/sparse/empty data.
+  Test Toronto/Lord Howe/Chatham DST, midnight boundaries, partial days and
+  singletons in evidence. Account marks must be distinguishable from stacks
+  without depending solely on color.
+- **Security/cache:** existing restrictive script-disabled CSP, forged/unissued/
+  stale command rejection and one typed recovery; revision/pricing/timezone/
+  transition/filter identity; zero forbidden warm work across grains, overlays,
+  seven-day navigation and drills. Native VS Code mouse/keyboard paths remain
+  separate from browser proof; native Windows/Tab gaps must be reported honestly.
+- **Human acceptance:** user can identify the selected range, leading model or
+  project, metric units, allowance versus credit balance and unknown evidence
+  from the revised preview without inspecting technical continuity labels.
+
+## Preview Permissions And Rollback
+
+Historical planning-stage permission: that turn authorized plan-file changes only. Approval to implement this plan
+will also cover local tests/builds, ignored verification artifacts, a read-only
+backup from the existing private preview ledger and launch of one new disposable
+VS Code development-host window. It does not authorize a new live capture,
+fresh live-ledger backup, account login, installed-extension replacement,
+release, Keychain reset or stopping the user's normal VS Code/collector.
+
+Use distinct preview HOME/CODEX_HOME, user data, extension directory and settings.
+Copy no task logs, auth files, runtime keys or live configuration. Disable
+scheduled capture; retain the normal startup path against empty sessions and
+an offline RPC that returns unavailable, never synthetic account values.
+Record zero task-source bytes and any added unavailable startup observations.
+Compare original normalized usage/image/speed/quota/credit records with the
+frozen baseline; all derived writes remain in the new copy.
+
+Reuse the reviewed preview-only collector sandbox wrapper: block live Codex,
+collector settings and Keychain access and verify the actual running collector.
+Keep Electron's native renderer sandbox and in-memory secret storage; do not
+sandbox the whole Electron host or bypass its sandbox. Host-only launch seams
+must not modify product modules, binary contents, scripts or CSP.
+
+Rollback is closing/stopping only the new verified owned preview process group.
+Retain its private source hashes, logs and snapshot for diagnosis; leave the old
+preview, normal windows, live services and installed extension untouched.
+Private snapshot values and screenshots remain ignored and must not be published.
 
 ## Verification Entrypoints
 
-Run from the retained repository root; output stays ignored and local:
+Run focused tests covering the affected modules before broader checks. Existing
+entrypoints should be extended for the revised contract, not replaced with an
+unrelated harness:
 
 ```sh
 uv run pytest -q -rs
 uv run ruff check .
 npm --prefix extensions/vscode test
-uv run python scripts/check_usage_breakdown_ui.py --output output/playwright/usage-breakdown/review-ui
+uv run python scripts/check_usage_breakdown_ui.py --output output/playwright/usage-breakdown/unified-ui
 bash scripts/build-agent-macos-arm64.sh
-uv run python scripts/check_usage_breakdown_webview.py --output output/playwright/usage-breakdown/review-native
+uv run python scripts/check_usage_breakdown_webview.py --output output/playwright/usage-breakdown/unified-native
 ```
 
-The baseline script `scripts/check_usage_breakdown_baseline.py` requires an
-explicit `--ledger` path; it opens that ledger read-only and deletes the private
-disposable copy after verification. Use an ignored `--output` path, never a
-tracked data fixture. Semantics are recorded in ADR 0054. No schema migration
-was introduced; partitions use the existing disposable rendered-report table.
+Use the established baseline/parity and controlled performance scripts on
+synthetic fixtures or explicitly supplied disposable/private copies. Never
+report a changed live workload as a controlled comparison. Check source/binary
+fingerprints, actual preview isolation, startup behavior and unchanged live
+settings separately from rendering. Do not reuse old verification counts as
+proof of the revised chart.
 
-Final local evidence: `output/playwright/usage-breakdown/review-ui/evidence.json`,
-`review-native/evidence.json` and `private-review-baseline.json` under that same
-directory. Browser PNGs are named by scenario/width; native PNGs by input number.
-Failed-attempt diagnostic directories are retained there for manager inspection.
+## Affected Files
 
-## Manager Review Corrections (2026-10-09)
+- `src/codex_usage/report_usage_breakdown.py`,
+  `report_usage_breakdown_chart.py`, `report_breakdown_axis.py`,
+  `report_breakdown_numbers.py`, `report_breakdown_balances.py` and theme helpers:
+  view composition, shared axes/overlays, human units and detail disclosures.
+- `src/codex_usage/breakdown_reports.py`, `breakdown_aggregation.py`,
+  `breakdown_commands.py`: derived summaries, range/state/cache revision and
+  strict issued navigation. Evidence/window/balance modules change only if
+  needed to expose existing facts to the view, not to weaken continuity.
+- `extensions/vscode/src/types.ts`, `breakdownNavigation.ts` and relevant
+  report transport/host tests: matching state and expiry handling. The existing
+  global range picker keeps its current semantics.
+- Existing `tests/test_*breakdown*.py`, browser/native checking scripts,
+  ADR 0054 and this plan. Add cohesive focused modules where responsibilities
+  require them; do not expand a catch-all file beyond repository size guidance.
+- Ignored `output/local-preview/<new-id>/`: fresh candidate harness, snapshot,
+  source/binary identities, launch/stop instructions and verification readback.
 
-- Implemented: optional-duration evidence no longer enters a mixed int/None
-  tuple comparison. Weekly plots have explicit series/plan legends and weekly
-  unavailable states; missing-duration and nonweekly readings remain exact raw
-  evidence. Selected-range mixed/missing/5h full-report regressions pass.
-- Implemented: named capture-causal `(origin, capture]` composition excludes
-  opening events and includes closing events, including exact hour/day bounds.
-  SQL microsecond padding is separate from display/calibration endpoints.
-  Genuine valued-ledger/estimator cycle and one-hour renders now show compatible
-  contributions; unknown/full-meter cases remain unavailable. Selected-range
-  calendar membership retains baseline parity and does not borrow incompatible
-  right-closed calibration. Independent UTC sampling guards partial/repeated DST.
-- Implemented: fixed-font sparse HTML ticks align with actual chronological
-  daily/hourly/meter geometry, secondary ticks hide on narrow displays, and
-  hover/accessibility names carry dated project/model/value context. Complete
-  day/hour commands remain inspectable disclosures. Bounds no longer show SQL
-  microsecond padding; accounting prose is progressively disclosed.
-- Implemented: expiry binds issued evidence, not the command's target basis.
-  Authenticated HTTP distinguishes typed expired issued scopes (409) from
-  malformed/unissued inputs (400). Host permits one typed bare-report recovery
-  for midnight, timezone, transition, freshness and revision changes, preserving
-  global filters. Reload clears chart state; older cached status cannot discard
-  a newer rendered scope. Authenticated TypeScript transport regression passes.
-- Implemented: receipt hashes survive ordinary old-report pruning under their
-  own bounded 256-scope/24-hour policy. They never authorize stale composition
-  reuse. Post-pruning two-client HTTP regression and cap/TTL tests pass. No new
-  ledger schema or package version was introduced; see ADR 0054.
-- Proven after corrections: full suite 1,677 passed with one pre-existing
-  Windows-only junction skip; extension tests/build 47 passed; Ruff and diff
-  whitespace passed. Final hover-label change additionally passed 28 focused
-  domain/HTTP tests and the final browser/native repeats.
-- Proven after corrections: 360 script-disabled Chromium/WebKit/Firefox views
-  at 1440/760/360 widths, Day/Night, four modes/groups/drills, 30-day context,
-  Chatham partial-hour and Toronto repeated-hour days, empty filters, stale/
-  partial coverage, missing-duration/5h-only and multiple-weekly-series states.
-  Tick geometry, fixed fonts, collision-free labels, same hourly/meter domain,
-  dated hover/accessibility names and visible weekly legends were asserted.
-  Wide/narrow screenshots were inspected; exact rows and commands remain.
-- Proven after corrections: fresh macOS bundled-agent/isolated VS Code replay
-  passed 14 rendered inputs with strict OOPIF CDP DOM, real mouse/Enter, no
-  product scripts or CSP relaxation. Hour disclosure was opened with real
-  input before drill-down. Native Tab traversal and Windows remain unproven.
-- Proven after corrections: controlled `v2.11.1` comparison on one identical
-  disposable SQLite backup, fixed clock, timezone, selection and accounting
-  settings; both Today and all-time retained byte-identical base HTML. Each
-  copy discarded rendered/speed/allowance report caches but retained the same
-  pre-existing cost index. Release source came from tag commit
-  b2eb6f02542be2a1aab1952bcad5ea5cde062aa6, extracted into a temporary directory,
-  not a branch/worktree. Final trial ran without concurrent owned verification
-  jobs; existing real services/windows were not stopped or changed.
-- Observed paired performance, not benchmark/causal rollout evidence:
+## Decisions Left To The Implementer
 
-  | Component (seconds unless bytes) | Today release | Today candidate | All release | All candidate |
-  | --- | ---: | ---: | ---: | ---: |
-  | Cold total | 6.288 | 8.389 | 38.276 | 41.123 |
-  | Base report, inclusive | 5.989 | 5.835 | 37.893 | 37.355 |
-  | Derived preparation | n/a | 1.956 | n/a | 2.906 |
-  | Quota evidence preparation, nested in derived | n/a | 1.828 | n/a | 2.159 |
-  | Composition, nested in derived | n/a | 0.010 | n/a | 0.578 |
-  | Final derived HTML rendering | n/a | 0.0033 | n/a | 0.0033 |
-  | Derived cache write | n/a | 0.401 | n/a | 0.416 |
-  | Warm report | 0.045 | 0.141 | 0.043 | 0.141 |
-  | HTML bytes | 3,638,343 | 3,807,405 | 5,240,689 | 5,409,751 |
-
-  Nested components overlap and must not be summed. Candidate warm controls
-  were 0.131-0.151 s (Today), 0.131-0.142 s (all-time). Additional cold work is
-  primarily the breakdown's second quota-history extraction/continuity
-  preparation, composition and cache serialization/write layer, not monetary
-  chart rendering. The base also has its own allowance preparation and full
-  materialization cost; timing differences in this pair do not prove invariant
-  baseline performance. This feature adds measurable cost; it is not dismissed
-  as pre-existing. Warm synthetic forbidden-work gates remain zero, including
-  navigation/drills. Further cold-history reuse is a potential optimization,
-  not an acceptance claim or a new pricing policy in this candidate.
-- Evidence for this corrected source is local and ignored under
-  `output/playwright/usage-breakdown/`: `review-fixes-accepted-ui/evidence.json`,
-  `review-fixes-accepted-native/evidence.json`, and
-  `review-fixes-serial-controlled-perf.json` (includes Python source fingerprint,
-  component timings and base-HTML parity hashes). Screenshot names retain
-  scenario/width and native input number. Prior failed attempts remain local.
-- At worker handoff, still gated: independent manager acceptance, native Windows proof, product
-  acceptance, version/release approval and publication. Sole worker writes;
-  manager/reviewer remain read-only. No live writes/capture/install/Keychain or
-  unrelated apps/ changes.
-
-Corrected verification scripts are the same UI/native entrypoints above with
-the corrected output paths. The controlled performance entrypoint is
-`scripts/compare_usage_breakdown_perf.py --ledger <explicit-ledger> --output
-<ignored-evidence-path>`; its only live ledger access is one read-only backup,
-and all reports/cache mutations run on temporary copies. It records nested
-components separately rather than subtracting derived time from a total to
-claim an unchanged base.
-
-## Manager Acceptance (2026-10-09)
-
-Reviewed candidate `c40df6c63a14a5af8f4a23292cdfda55cc79cece` is accepted for
-the next release stage. The missing-duration, causal-interval, visual-axis and
-scope-recovery findings, including post-pruning issued commands, are addressed.
-The committed Python source matches the controlled-comparison fingerprint.
-
-Manager verification: 28 focused domain/HTTP regressions; full Python suite
-1,677 passed with one expected Windows-only junction skip; 47 extension
-tests/build; Ruff and whitespace checks. The nine-case synthetic comparison
-against v2.11.1 retained exact monetary, image, repository and full/indexed
-allowance parity. Inspected corrected chart evidence includes 30-day context,
-repeated-hour days and explicit multiple-weekly-series legends. The worker's
-360 browser cases and 14 native inputs retain their stated evidence boundaries.
-
-Measured added cold preparation and cache-write cost is accepted as a disclosed
-candidate limitation, not as an invariant baseline or performance improvement.
-Native Windows and native Tab traversal remain unproven. No version bump,
-release CI, tag, publication or installation was performed for this candidate.
-The worker completed, was archived, and its Relay route was removed after
-review. Retained main and unrelated apps/ are preserved.
-
-## Extension Candidate Verification (2026-10-09)
-
-Sole-worker extension on retained main, without a new branch/worktree. Reviewed
-calendar default-day correction passed independent review: Month opens Oct9 from
-usage/account-wide captures, keeps Oct1-Nov1 bounds, and singleton midnight stays
-on its observed day. Mixed-offset chronology and backwards-origin raw membership
-regressions preserve points while prohibiting invalid deltas. Missing/unlimited
-states expose Unknown axes, not false zero; small movement on large balances is
-visible without interpolation. No live ledger or private backup was used.
-Manager found Decimal general-format trailing zeros clipping the fixed axis
-gutter, also affecting large-token general-format ticks. Shared compact numeric
-formatting now covers usage/balance/change axes, with explicit common offsets
-for collapsed large/small ranges and exact titles. Refreshed evidence below uses
-real text-range containment guards, without widening or hiding axes.
-
-Final Python fingerprint (sorted `src/codex_usage/*.py`, filename + NUL + bytes):
-`7e0461b92a5d8706f195d3489bdc410d68d1e5c0cff57119e47b92a0c817204f`.
-
-- Focused numeric/domain/HTTP/indexed-union tests: 74 passed. Full Python: 1,723 passed,
-  one expected Windows-only junction skip. Ruff and whitespace checks passed.
-- Extension build and 48 host tests passed, including strict issued/forged/expired
-  commands, one recovery and stale cached-status behavior. macOS agent rebuilt.
-- Script-disabled Chromium/WebKit/Firefox: 612 checks, Day/Night, 1440/760/360,
-  six metric/view combinations, groups/drills, dated windows, Month, DST,
-  unknown/unlimited, large/tiny/max-valid balances, signed changes and 182M/546M
-  token scales. Actual text-range bounds fit every numeric span and padded gutter;
-  fixed shared time axes and keyboard disclosures passed. Screenshots inspected.
-- Disposable native VS Code replay: 17 real mouse/Enter inputs, including dated
-  prior window and credits, restrictive script-disabled CSP, synthetic RPC only,
-  in-memory secretstorage and isolated profiles. Native Tab/Windows are unproven.
-- Nine frozen synthetic range/project cases retained exact v2.11.1 language,
-  monetary, image, repository and full/indexed allowance parity. Additional
-  synthetic breakdown totals preserved tokens/API cost/estimated credits.
-- Warm guards prohibit preparation, historical decoding, materialization,
-  repricing and fitting, including historical window switches. The directory has
-  no composition bodies; only the active summary/day/project partitions load.
-
-Scaled fixture: 210,240 events, 24 projects, 729.41875 days, ten weekly captures
-in the last ten days. Generated with the existing extended fixture (`days=730`,
-`projects=24`), seeded baseline cost index, identical disposable SQLite copies.
-Serial paired observations against released v2.11.1 and accepted `c9a7be13`:
-
-| Seconds | Today release | Today accepted | Today extension | All release | All accepted | All extension |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Cold total | 0.3186 | 0.3065 | 0.3018 | 17.8565 | 21.6385 | 21.0399 |
-| Derived preparation | n/a | 0.0305 | 0.0348 | n/a | 2.3572 | 2.1677 |
-| Derived cache write | n/a | 0.0231 | 0.0250 | n/a | 0.7615 | 0.7933 |
-| Warm report | 0.0030 | 0.0246 | 0.0258 | 0.0090 | 0.0366 | 0.0364 |
-
-Today extension queried/valued 1,152 additional union records versus accepted
-864, not all 210,240 events. All-time reused selected valuation with no additional
-record query/value work. Warm derived record/preparation work was zero; dated
-switches took 0.0368-0.0440 s Today and 0.0347-0.0353 s all-time; warm controls
-took 0.0336-0.0544 s Today and 0.0299-0.0350 s all-time. Nested times overlap;
-do not sum them or infer causal speedups from these single observations. Added
-cold preparation/cache-write cost remains real, especially all-time cache writes.
-This is scaled synthetic evidence, not live-account or dense multi-year capture
-validation; the smaller synthetic fixture is reported separately.
-
-Final-source ignored evidence under `output/playwright/usage-breakdown/`:
-`axis-format-accepted-ui/evidence.json`, `axis-format-accepted-native/evidence.json`,
-`axis-format-released-parity.json`, `axis-format-synthetic-parity.json`,
-`axis-format-scaled-perf.json`, `axis-format-small-perf.json`. Earlier
-`extension-final-*` evidence remains retained but precedes the axis correction.
-Use the existing UI/native/parity/performance entrypoints; comparison adds
-`--accepted c9a7be13 --synthetic` to explicitly distinguish synthetic evidence.
-Pending: manager acceptance retests, human product acceptance, native Windows/Tab
-proof and separately approved release/publication. No version/tag/release/install,
-live service/tunnel/Keychain mutation, historical credit backfill or apps/ changes.
-Worker remains available for review fixes; manager owns archival/Relay cleanup.
-
-## Extension Manager Acceptance (2026-10-09)
-
-Candidate `60da7daf991f738c29912c697da333f69527cc75` is accepted for the
-next release stage. Historical observed portions, estimated Standard credits,
-account-wide captured balances and original net-change intervals preserve their
-separate evidence contracts. The independent review's Selected-month navigation
-finding and the manager's numeric-gutter finding are corrected with regressions.
-
-Manager repeated the full Python suite: 1,723 passed, one expected Windows-only
-junction skip; Ruff, 48 extension tests/build and whitespace checks passed.
-Nine synthetic range/project cases retained exact v2.11.1 monetary, language,
-image, repository and full/indexed allowance parity. An independent 36-view
-Chromium/WebKit/Firefox check at 360/760/1440 verified actual numeric text-range
-containment and distinct offset ticks for extreme balances, with scripts disabled.
-Final narrow screenshots for large balances and realistic large-token scales
-were inspected. The committed Python source matches the scaled-comparison
-fingerprint above. The worker's 612 browser checks and 17 native inputs were
-reviewed with their stated synthetic and native-input boundaries.
-
-Disclosed cold preparation/cache-write cost remains an accepted limitation,
-not a speedup claim. Dense multi-year capture performance, live-account behavior,
-native Windows and native Tab traversal remain unproven. No version bump,
-release CI, tag, publication, installation or live-state mutation was performed.
-The implementation worker and read-only reviewer completed, were archived, and
-their Relay routes were removed after review. Retained main and unrelated apps/
-remain unchanged outside this assignment.
+Exact state field names, tick-step algorithm, module splits, bounded display
+point budget and partition layout are engineering choices within the contracts
+above. They must pass dense/narrow/history gates before the new preview is
+called ready. A material scope change or weaker evidence/isolation guarantee
+requires renewed discussion, not a hidden exception.

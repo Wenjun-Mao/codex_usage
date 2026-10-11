@@ -97,10 +97,10 @@ def test_dated_scopes_stale_anchor_and_original_event_membership(tmp_path):
         assert "balances" not in metadata["evidence"]
     stale = render(tmp_path, now=AT+timedelta(hours=2))
     actions = [a for a in stale.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")]
-    assert len(actions) == 2 and stale.breakdown_navigation["state"]["basis"] == "selected"
-    historical = render(tmp_path, actions[-1], now=AT+timedelta(hours=2))
+    assert len(actions) == 0 and stale.breakdown_navigation["state"]["basis"] == "selected"
+    historical = stale
     assert "scheduled reset" in historical.html
-    assert "codex / pro" in historical.html and "observed portion" in historical.html
+    assert "codex / pro" in historical.html and "observed continuity fragment" in historical.html
     with pytest.raises(ValueError, match="expired"):
         render(tmp_path, next(a for a in first.breakdown_navigation["actions"] if a["state"]["metric"] == "credits"), now=AT+timedelta(hours=2))
 
@@ -124,20 +124,23 @@ def test_zero_warm_historical_work_all_windows_metrics_groups_drills(tmp_path):
             return original_load(connection, key)
         stack.enter_context(patch("codex_usage.breakdown_reports.load", bounded_load))
         current = first
-        for issued in [a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")]:
+        for issued in [a for a in first.breakdown_navigation["actions"] if a["state"]["detail"].startswith("day:")]:
             current = render(tmp_path, issued)
             for metric in ("credits", "tokens", "cost"):
-                for view in ("project", "hour"):
+                for view in ("project", "time"):
                     for key, value in (("metric", metric), ("view", view), ("group", "project")):
-                        if key != "group" or current.breakdown_navigation["state"]["view"] == "hour":
+                        if key != "group" or current.breakdown_navigation["state"]["view"] == "time":
                             reads.clear()
                             action = next(a for a in current.breakdown_navigation["actions"] if a["state"] == {**current.breakdown_navigation["state"], key: value})
                             current = render(tmp_path, action)
                             summaries = [k for k in reads if k.endswith(":summary") and k.startswith("breakdown:")]
                             assert len(summaries) == 1 and issued["state"]["basis"] in summaries[0]
-            for prefix in ("project:", "hour:"):
-                action = next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"].startswith(prefix))
+            for changes in ({"grain": "hourly", "detail": ""}, {"overlay": "balance"}):
+                action = next(a for a in current.breakdown_navigation["actions"] if a["state"] == {**current.breakdown_navigation["state"], **changes})
                 current = render(tmp_path, action)
+            for predicate in (lambda s: bool(s["project"]), lambda s: s["detail"].startswith("hour:")):
+                current = render(tmp_path, next(a for a in current.breakdown_navigation["actions"] if predicate(a["state"])))
+        current = render(tmp_path, next(a for a in current.breakdown_navigation["actions"] if a["state"]["detail"] == "readings:" + current.breakdown_navigation["state"]["day"]))
         assert "Exact balances and net-change intervals" in current.html
 
 
@@ -145,9 +148,11 @@ def test_balances_independent_of_project_selection(tmp_path):
     breakdown_home(tmp_path, extended=True)
     unfiltered = render(tmp_path)
     filtered = render(tmp_path, keys=["nonexistent-synthetic"])
-    def block(report):
-        return report.html.split('<h3>Captured credit balance', 1)[1].split('<details><summary>Exact hourly', 1)[0]
-    assert block(unfiltered) == block(filtered)
+    def block(report, keys):
+        report = render(tmp_path, next(a for a in report.breakdown_navigation["actions"] if a["state"]["overlay"] == "balance"), keys=keys)
+        report = render(tmp_path, next(a for a in report.breakdown_navigation["actions"] if a["state"]["detail"] == "readings:" + report.breakdown_navigation["state"]["day"]), keys=keys)
+        return report.html.split("<summary>Exact balances and net-change intervals", 1)[1].split("</details>", 1)[0]
+    assert block(unfiltered, []) == block(filtered, ["nonexistent-synthetic"])
 
 
 @pytest.mark.parametrize("zone", ["America/Toronto", "Pacific/Chatham"])
@@ -171,7 +176,7 @@ def test_no_current_and_ambiguous_conflict_portions_remain_accessible(tmp_path):
     assert first.breakdown_navigation["state"]["basis"] == "selected"
     assert "observation conflict" in first.html
     actions = [a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")]
-    assert len(actions) >= 3
+    assert not actions
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
         conflicts = [w for w in load(connection, key)["evidence"]["windows"].values() if w["ambiguous"]]
@@ -197,9 +202,9 @@ def test_large_balance_small_episode_visible_and_spanning_state():
         "balance": str(62500-i*250), "change": "-250" if i else None,
         "plan": "pro", "unlimited": False, "diagnostic": "", "reason": "first capture"} for i in range(3)]
     document = balances(points, AT.timestamp(), AT.timestamp()+7200, UTC)
-    assert "observed range 62000 to 62500" in document
-    assert 'cy="0.000"' in document and 'cy="140.000"' in document
-    assert 'y1="95.000"' in document and "Net decrease -250" in document
+    assert "balance 62000 credits" in document and "balance 62500 credits" in document
+    assert "<svg" not in document
+    assert "Net decrease -250" in document
     spanning = balances(points[1:], AT.timestamp()+600, AT.timestamp()+3000, UTC)
     assert "No in-domain balance captures" in spanning and "boundary-crossing, unallocatable" in spanning
     assert "no captures or spanning evidence" in balances([], AT.timestamp(), AT.timestamp()+3000, UTC)
@@ -213,9 +218,9 @@ def test_unknown_or_unlimited_raw_captures_are_not_zero_or_absent(unlimited):
     document = balances(points, AT.timestamp()-1, AT.timestamp()+1, UTC)
     assert "No finite valid balances among in-domain captures" in document
     assert "No in-domain balance captures" not in document
-    assert document.count("<span>Unknown</span>") == 2
+    assert "<svg" not in document
     assert "<span>0</span>" not in document and "observed range 0 to 0" not in document
-    assert "No known net credit changes" in document
+    assert "Unknown: first retained capture" in document
     assert ("Unlimited" if unlimited else "balance Unknown") in document
 
 
@@ -231,7 +236,7 @@ def test_singleton_midnight_scope_and_localized_picker_summary(tmp_path):
             timezone_name="America/Toronto", now=AT,
             breakdown_action=json.dumps(action) if action else None)
     first = local_render()
-    historical = next(a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:") and a["state"]["day"] == "2026-10-09")
+    historical = next(a for a in first.breakdown_navigation["actions"] if a["state"]["detail"].startswith("day:") and a["state"]["day"] == "2026-10-09")
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
         metadata = load(connection, key)
@@ -239,9 +244,9 @@ def test_singleton_midnight_scope_and_localized_picker_summary(tmp_path):
         info = metadata["ranges"][singleton[0]]
         assert info["latest_day"] == info["min_date"] == info["max_date"] == "2026-10-09"
     report = local_render(historical)
-    assert '2026-10-08 to 2026-10-09' in report.html or '2026-10-09 to 2026-10-09' in report.html
-    older = next(a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:") and a["state"]["day"] == "2026-10-08")
-    assert '2026-10-06 to 2026-10-08' in local_render(older).html
+    assert "Selected range: 2026-10-05 to 2026-10-09" in report.html
+    older = next(a for a in first.breakdown_navigation["actions"] if a["state"]["detail"].startswith("day:") and a["state"]["day"] == "2026-10-08")
+    assert "Selected range: 2026-10-05 to 2026-10-09" in local_render(older).html
 
 
 def test_backwards_origin_across_days_keeps_actual_raw_capture(tmp_path):
@@ -256,7 +261,7 @@ def test_backwards_origin_across_days_keeps_actual_raw_capture(tmp_path):
         start = datetime.fromisoformat(day).replace(tzinfo=zone).timestamp()
         stop = (datetime.fromisoformat(day).replace(tzinfo=zone)+timedelta(days=1)).timestamp()
         document = balances(partition, start, stop, zone)
-        assert "balance 99 credits" in document and '<circle ' in document
+        assert "balance 99 credits" in document and "<svg" not in document
         assert "nonchronological captures" in document and "No in-domain" not in document
         assert 'stroke-dasharray="3 3"' not in document
 
@@ -343,7 +348,7 @@ def test_latest_unavailable_read_does_not_hide_retained_weekly_portions(tmp_path
     first = render(tmp_path, now=AT+timedelta(minutes=1))
     assert first.breakdown_navigation["state"]["basis"] == "selected"
     actions = [a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")]
-    assert len(actions) == 2
+    assert len(actions) == 0
     assert all(render(tmp_path, action, now=AT+timedelta(minutes=1)).breakdown_navigation["state"] == action["state"] for action in actions)
 
 

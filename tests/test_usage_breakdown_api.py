@@ -52,7 +52,7 @@ def test_api_stale_expiry_rebase_slots_and_multi_series(tmp_path):
         code, report = request(server)
         assert code == 200
         nav = report["breakdown_navigation"]
-        assert nav["state"]["basis"] == "cycle"
+        assert nav["state"]["basis"] == "selected"
         action = next(a for a in nav["actions"] if a["state"]["metric"] == "tokens")
         assert request(server, action)[0] == 200
         assert request(server, {**action, "extra": True})[0] == 400
@@ -68,25 +68,25 @@ def test_api_stale_expiry_rebase_slots_and_multi_series(tmp_path):
             connection.commit()
         agent.now = AT + timedelta(minutes=1)
         rebased = request(server)[1]
-        assert rebased["breakdown_navigation"]["state"]["basis"] == "cycle"
+        assert rebased["breakdown_navigation"]["state"]["basis"] == "selected"
         assert "deadline rebase" in rebased["html"]
         agent.now = AT + timedelta(minutes=6)
         expired = request(server)[1]
         assert expired["breakdown_navigation"]["state"]["basis"] == "selected"
-        assert "deadline elapsed" in expired["html"]
+        assert expired["breakdown_navigation"]["evidence_state"]["deadline_elapsed"]
         with open_ledger(ledger) as connection:
             point = replace(point, timestamp=agent.now.isoformat(), resets_at=int((AT + timedelta(days=4)).timestamp()))
             store_read(connection, QuotaRead(point.timestamp, "pro", (point, replace(point, slot="primary"))), None)
             increment_ledger_revision(connection)
             connection.commit()
-        assert request(server)[1]["breakdown_navigation"]["state"]["basis"] == "cycle"
+        assert request(server)[1]["breakdown_navigation"]["state"]["basis"] == "selected"
         with open_ledger(ledger) as connection:
             store_read(connection, QuotaRead(point.timestamp, "pro", (point, replace(point, limit_id="other-series"))), None)
             increment_ledger_revision(connection)
             connection.commit()
         ambiguous = request(server)[1]
         assert ambiguous["breakdown_navigation"]["state"]["basis"] == "selected"
-        assert "ambiguous" in ambiguous["html"]
+        assert "other-series" in ambiguous["html"]
     finally:
         server.stop()
 
@@ -156,7 +156,7 @@ def test_historical_credit_scope_commands_and_recovery_without_current_anchor(tm
     server.start()
     try:
         first = request(server)[1]
-        historical = next(a for a in first["breakdown_navigation"]["actions"] if a["state"]["basis"].startswith("window:"))
+        historical = next(a for a in first["breakdown_navigation"]["actions"] if a["state"]["detail"].startswith("day:"))
         code, report = request(server, historical)
         assert code == 200
         credits = next(a for a in report["breakdown_navigation"]["actions"] if a["state"]["metric"] == "credits")
@@ -166,7 +166,7 @@ def test_historical_credit_scope_commands_and_recovery_without_current_anchor(tm
         code, expired = request(server, credits)
         assert (code, expired["code"]) == (409, "breakdown_scope_expired")
         stale = request(server)[1]
-        reissued = next(a for a in stale["breakdown_navigation"]["actions"] if a["state"]["basis"] == historical["state"]["basis"])
+        reissued = next(a for a in stale["breakdown_navigation"]["actions"] if a["state"]["detail"] == historical["state"]["detail"])
         assert request(server, reissued)[0] == 200
         assert stale["breakdown_navigation"]["state"]["basis"] == "selected"
     finally:

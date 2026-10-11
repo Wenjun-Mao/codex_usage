@@ -91,3 +91,34 @@ def chart_home(home):
     refresh_cached_session_data([home / "sessions"], cache_database_path=db, max_workers=1)
     synchronize_parser_workset(db)
     return db
+
+
+def converging_chart(theme):
+    """Synthetic hourly series with overlapping late-day medians and wide spread."""
+    from codex_usage.report_speed import render_speed, speed_css
+    from codex_usage.report_theme import report_css
+    values = {
+        'gpt-6.1-sol': {0: 39, 1: 37, 7: 37, 11: 31, 12: 30, 13: 42,
+                       14: 39, 15: 37, 16: 41, 17: 39, 18: 46, 19: 61, 20: 73, 21: 74},
+        'gpt-6-astra': {19: 64, 20: 69, 21: 80},
+        'gpt-6-luna': {0: 143, 1: 143, 7: 130, 11: 122, 14: 132,
+                      15: 142, 16: 146, 19: 153, 20: 151, 21: 148},
+    }
+    points = []
+    for model, hours in values.items():
+        for hour, median in hours.items():
+            n = 8 if hour in (1, 11, 16) else 36
+            points.append({'model': model, 'bucket': f'2026-10-08T{hour:02d}:00:00+00:00',
+                           'median': median, 'p25': median - 8, 'p75': median + 14,
+                           'n': n, 'tasks': 3, 'sources': 3, 'small': n < 20})
+    aggregates = {'summaries': {model: {} for model in values}, 'daily': [],
+                  'hourly': points, 'reasons': {}}
+    nav = {'scope': 'a' * 64, 'granularity': 'hourly', 'min_date': '2026-10-08',
+           'max_date': '2026-10-08', 'window_start': '2026-10-08',
+           'window_end': '2026-10-08', 'previous': None, 'next': None}
+    section = render_speed(aggregates, nav, {'complete': 9, 'pending': 0}, UTC)
+    return (f'<!doctype html><html lang="en" data-codex-theme="{theme}"><head>'
+            '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>Codex Usage speed chart - synthetic review</title>'
+            f'<style>{report_css()}{speed_css()}</style></head>'
+            f'<body><main class="report">{section}</main></body></html>')

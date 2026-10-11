@@ -1,7 +1,11 @@
 from datetime import UTC, datetime
+import re
 
-from codex_usage.report_speed import render_speed
-from codex_usage.report_speed_chart import nice_scale, selection_band, tick_indices, x_position
+from codex_usage.report_speed import render_speed, speed_css
+from codex_usage.report_speed_chart import nice_scale, render_plot, selection_band, tick_indices, x_position
+from codex_usage.report_speed_marks import MARKERS, series_labels, short_model_label
+from codex_usage.model_presentation import assign_model_color_slots
+from codex_usage.report_speed import detail
 from codex_usage.speed_queries import calendar_buckets
 
 
@@ -55,7 +59,7 @@ def test_nice_numeric_scale_is_above_interval_and_uses_readable_ticks():
 def test_daily_fits_container_with_full_scope_and_global_backfill_label():
     rendered = render_speed(aggregates([point("2026-10-07"), point("2026-10-08")]),
                             navigation(), {"complete": 4, "unmeasurable": 2, "pending": 120}, UTC)
-    assert 'width="100%"' in rendered and "viewBox" not in rendered
+    assert '<svg width="100%" height="224" role="group"' in rendered
     assert 'class="speed-y-axis"' in rendered and 'class="speed-x-axis"' in rendered
     assert "Sep 9 - Oct 8, 2026" in rendered and "30 days" in rendered
     assert "Account-wide timing history: 6 sources checked &middot; 120 pending" in rendered
@@ -91,3 +95,61 @@ def test_selection_band_uses_local_dates_not_hour_counts():
     band = selection_band(buckets, "2026-11-01", "2026-11-07")
     assert 'x="0.0000%"' in band and 'width="71.3333%"' in band
     assert 'width="100.0000%"' in selection_band(["2026-11-01"], "2026-11-01", "2026-11-01")
+
+
+def test_current_models_have_distinct_fixed_size_markers_and_matching_legend():
+    models = ('gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna')
+    slots = assign_model_color_slots(models)
+    assert len({MARKERS[slots[model]] for model in models}) == 3
+    data = aggregates([point('2026-10-08', model=model) for model in models])
+    data['summaries'] = {model: {'n': 20} for model in models}
+    rendered = render_speed(data, navigation(), {}, UTC)
+    for model in models:
+        assert f'data-model-slot="{slots[model]}"' in rendered
+        assert f'<strong>{short_model_label(model)}</strong>' in rendered
+    assert rendered.count('class="speed-marker"') == 3
+    assert rendered.count('class="speed-series-label"') == 3
+
+
+def test_spread_and_small_samples_have_separate_point_semantics():
+    rendered, rows = render_plot([point('2026-10-08', n=8)], ['2026-10-08'],
+                                ['gpt-6.1-sol'], {'gpt-6.1-sol': 6}, detail)
+    assert 'class="speed-point speed-point-small"' in rendered
+    assert 'class="speed-interval"' in rendered
+    assert 'stroke-dasharray' not in rendered
+    assert 'middle 50% 40.0-46.0; 8 responses' in rendered
+    assert len(rows) == 1 and '<td>40.0-46.0</td>' in rows[0]
+
+
+def test_last_measured_label_survives_trailing_gaps_without_connecting_them():
+    rendered, _ = render_plot([point('2026-10-07')], ['2026-10-07', '2026-10-08'],
+                             ['gpt-6.1-sol'], {'gpt-6.1-sol': 6}, detail)
+    assert '<small>43.0 tok/s</small>' in rendered
+    assert 'title="gpt-6.1-sol; 2026-10-07"' in rendered
+    assert 'stroke-width="2"' not in rendered
+
+
+def test_series_label_collisions_are_resolved_inside_plot_bounds():
+    models = ('gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna')
+    endpoints = [{'model': model, 'median': 80, 'y': 100, 'bucket': '2026-10-08'} for model in models]
+    rendered = series_labels(endpoints, assign_model_color_slots(models), top=10, span=200)
+    positions = [float(value) for value in re.findall(r'top:([\d.]+)px', rendered)]
+    assert positions[0] >= 10 and positions[-1] + 28 <= 210
+    assert all(right - left >= 28 for left, right in zip(positions, positions[1:]))
+
+
+def test_many_or_long_model_labels_use_a_flowing_list_and_escape_content():
+    models = [f'model-{index}-long-<name>' for index in range(8)]
+    endpoints = [{'model': model, 'median': 80, 'y': 100, 'bucket': '2026-10-08'} for model in models]
+    rendered = series_labels(endpoints, {model: index % 7 for index, model in enumerate(models)}, top=10, span=200)
+    assert 'speed-series-labels speed-series-list' in rendered
+    assert '<name>' not in rendered and '&lt;name&gt;' in rendered
+    assert rendered.count('class="speed-series-label"') == 8
+
+
+def test_decorative_segments_cannot_intercept_marker_hover():
+    rendered, _ = render_plot([point('2026-10-07'), point('2026-10-08')],
+                             ['2026-10-07', '2026-10-08'], ['gpt-6.1-sol'],
+                             {'gpt-6.1-sol': 6}, detail)
+    assert rendered.count('class="speed-trend"') == 1
+    assert '.speed-grid,.speed-trend { pointer-events:none; }' in speed_css()

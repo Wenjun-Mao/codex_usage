@@ -18,13 +18,15 @@ from codex_usage.breakdown_evidence import prepare_evidence, weekly_anchors
 from codex_usage.breakdown_intervals import BreakdownInterval
 from codex_usage.breakdown_balances import balance_partitions
 from codex_usage.breakdown_commands import BreakdownScopeExpired, issued_action, receipt, prune_receipts, RECEIPT_PREFIX
+from codex_usage.breakdown_state import validate_state
+from codex_usage.breakdown_display import display_partitions
 from codex_usage.ledger_queries import query_ledger_records, query_ledger_status, query_ledger_transitions
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.ledger_usage_ranges import subtract_bounds
 from codex_usage.parser import finalize_session_records
 from codex_usage.project_transitions import apply_project_transitions
 
-BREAKDOWN_REVISION = 3
+BREAKDOWN_REVISION = 5
 
 
 def digest(value):
@@ -65,7 +67,8 @@ def prepare(connection, path, report_range, keys, timezone, status, kwargs, sink
     captured_times = list(account_times)
     captured_times.extend(v / 1e6 for v in extent if v is not None)
     cycle = evidence["cycle"]
-    metadata = {"evidence": evidence, "ranges": {}, "complete": status.coverage.complete}
+    metadata = {"evidence": evidence, "ranges": {}, "complete": status.coverage.complete,
+                "default_grain": "hourly" if kwargs["range_name"] in {"today", "yesterday"} else "daily"}
     partitions = {}
     transitions = query_ledger_transitions(connection) if kwargs.get("auto_transitions", True) else []
     def valued_query(**query):
@@ -132,6 +135,8 @@ def prepare(connection, path, report_range, keys, timezone, status, kwargs, sink
         partitions[basis + ":summary"] = info
         partitions.update({basis + ":" + k: v for k, v in data.items()})
     # Raw history is partitioned by local day; warm navigation never decodes it.
+    partitions.update(display_partitions(evidence["points"], "weekly", timezone))
+    partitions.update(display_partitions(evidence["balances"], "balance", timezone))
     for point in evidence.pop("points"):
         day = datetime.fromisoformat(point["timestamp"]).astimezone(timezone).date().isoformat()
         partitions.setdefault("meter:" + day, []).append(point)
@@ -147,10 +152,16 @@ def initial_state(metadata, live_status):
         reason = "weekly live anchor stale, partial or ambiguous"
     if cycle and weekly and (weekly[0].resets_at is None or weekly[0].resets_at <= live_status["now"]):
         reason = "weekly reset deadline elapsed or unavailable"
-    basis = "cycle" if cycle and not reason else "selected"
+    basis = "selected"
     info = metadata["ranges"][basis]
-    return {"basis": basis, "view": "hour", "metric": "cost", "group": "model",
-            "day": info["latest_day"], "detail": ""}, reason
+    return {"basis": basis, "view": "time", "grain": metadata["default_grain"],
+            "overlay": "weekly", "metric": "cost", "group": "model",
+            "day": info["latest_day"], "project": "", "detail": ""}, reason
+
+
+def live_evidence_state(live):
+    return {"probe_status": live["probe_status"], "deadline_elapsed": any(
+        p.resets_at is not None and p.resets_at <= live["now"] for p in weekly_anchors(live))}
 
 
 def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
@@ -181,7 +192,7 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
             args = issued_action(connection, breakdown_action, load)
             allowed = load(connection, prefix + "nav:" + args["scope"])
             reason = initial_state(metadata, live)[1] if metadata else None
-            if not metadata or not allowed or allowed["reason"] != reason:
+            if not metadata or not allowed or allowed["reason"] != reason or allowed.get("evidence_state") != live_evidence_state(live):
                 raise BreakdownScopeExpired("Issued breakdown scope expired; reload without chart commands")
             if args not in allowed["actions"]:
                 raise ValueError("Unsupported breakdown command")
@@ -196,22 +207,18 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
             writes[prefix + "metadata"] = metadata
         state, reason = initial_state(metadata, live)
         if args is not None:
-            state = args["state"]
-            if state["basis"] == "cycle" and reason:
-                raise BreakdownScopeExpired("Weekly evidence expired; reload the dashboard")
+            state = validate_state(args["state"])
         def partition(name, default):
             if name.startswith(state["basis"] + ":"):
                 name = metadata["ranges"][state["basis"]]["partition_basis"] + name[len(state["basis"]):]
             key = prefix + name
             return writes[key] if key in writes else load(connection, key) or default
         info = partition(state["basis"] + ":summary", {})
-        scope = digest([identity, metadata["evidence"], reason, state])
-        nav = {"scope": scope, "state": state, "actions": [], "evidence_state": {
-            "probe_status": live["probe_status"], "deadline_elapsed": any(
-                p.resets_at is not None and p.resets_at <= live["now"] for p in weekly_anchors(live))}}
+        scope = digest([identity, metadata["evidence"], reason, live_evidence_state(live), state])
+        nav = {"scope": scope, "state": state, "actions": [], "evidence_state": live_evidence_state(live)}
         section = render_breakdown(metadata, info, state, nav, reason, timezone, partition,
                                    global_filtered=bool(keys))
-        writes[prefix + "nav:" + scope] = {"reason": reason, "actions": nav["actions"]}
+        writes[prefix + "nav:" + scope] = {"reason": reason, "actions": nav["actions"], "evidence_state": nav["evidence_state"]}
         writes[RECEIPT_PREFIX + scope] = receipt(nav["actions"])
         rendered = base.html
         # The speed section replaces its placeholder; place breakdown after the

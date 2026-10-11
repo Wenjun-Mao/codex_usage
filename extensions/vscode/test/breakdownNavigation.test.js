@@ -3,7 +3,7 @@ const test = require("node:test");
 const { validateBreakdownNavigation } = require("../out/breakdownNavigation");
 
 test("breakdown accepts only exact server-issued current-scope states", () => {
-  const state = { basis: "cycle", view: "hour", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
+  const state = { basis: "selected", view: "time", grain: "daily", overlay: "weekly", project: "", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
   const action = { scope: "a".repeat(64), state };
   const nav = { scope: action.scope, state, actions: [action] };
   assert.deepEqual(validateBreakdownNavigation(action, nav), action);
@@ -15,7 +15,7 @@ test("breakdown accepts only exact server-issued current-scope states", () => {
 });
 
 test("dated windows and estimated credits require an exact issued action", () => {
-  const state = { basis: `window:${"b".repeat(64)}`, view: "hour", metric: "credits", group: "project", day: "2026-10-01", detail: "" };
+  const state = { basis: "selected", view: "time", grain: "hourly", overlay: "balance", project: "", metric: "credits", group: "project", day: "2026-10-01", detail: "" };
   const action = { scope: "a".repeat(64), state };
   const nav = { scope: action.scope, state, actions: [action] };
   assert.deepEqual(validateBreakdownNavigation(action, nav), action);

@@ -27,11 +27,16 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.11.0.
+Linux are not supported in 2.12.0.
 
 ## What You Can Do
 
 - Open the ledger-backed Usage dashboard without rescanning task JSONLs.
+- Compare Daily/Hourly usage by model or project in one Usage & Allowance
+  Breakdown: tokens, API-equivalent cost or estimated Standard credits, with
+  account-wide captured weekly allowance or credit balance on a separate scale.
+  Inspect previous dates through the global range filter and retain exact
+  readings, reset boundaries and unknown values in folded details.
 - Compare observed model output-phase tok/s in Model Details and Daily/Hourly
   trends, with median, middle 50% range, sample counts and seven-day hourly windows.
 - Run **Capture Usage** when you want current totals immediately.
@@ -70,6 +75,12 @@ captured reset. Each row shows its actual observed span, a local run-out date
 and approximate days/hours before reset, or the percentage that would remain.
 Full dates and timezone offsets are available on hover. These are conditional
 projections, not guarantees; their calculations and freshness limits are unchanged.
+
+Dedicated `codex-auto-review` approval checks are free for ChatGPT subscription
+use after the October 6 announcement. Their tokens stay visible, but estimated
+Standard credits are zero and they do not add uncertainty to allowance valuation.
+They remain API-excluded because OpenAI has not published a USD API rate for this
+model. Earlier unknown prices and ordinary model-based code reviews are unchanged.
 
 ## Commands
 
