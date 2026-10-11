@@ -154,7 +154,7 @@ def _build_kpis(total: UsageSummary) -> list[KpiCard]:
         api_excluded_detail = f"{_fmt_int(total.credits.unpriced_tokens)} without credit rates"
     return [
         KpiCard("Total Tokens", _fmt_int(total.usage.total_tokens), f"{_fmt_int(total.record_count)} usage events"),
-        KpiCard("API-Equivalent Cost", f"${total.cost.total_usd:,.2f}", f"{priced_share:.0%} of tokens priced"),
+        KpiCard("API-Equivalent Cost", _summary_money(total.cost.total_usd), f"{priced_share:.0%} of tokens priced"),
         KpiCard("Codex Credits", _fmt_credits(total.credits.total_credits), credit_detail),
         KpiCard("Cache Hit Share", f"{cache_share:.1%}", f"{_fmt_int(total.usage.cached_input_tokens)} cached input"),
         KpiCard("API-Excluded Tokens", _fmt_int(total.cost.unpriced_tokens), api_excluded_detail),
@@ -301,6 +301,10 @@ def _fmt_int(value: int) -> str:
 
 
 def _fmt_credits(value: float) -> str:
-    if value >= 1_000:
-        return f"{value:,.0f}"
-    return f"{value:,.1f}"
+    from codex_usage.report_numbers import estimated_credits
+    return estimated_credits(value)
+
+
+def _summary_money(value: float) -> str:
+    from codex_usage.report_numbers import summary_money
+    return summary_money(value)

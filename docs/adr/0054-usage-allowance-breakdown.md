@@ -70,12 +70,14 @@ visible limit/plan legend and a fixed percentage axis. Nonweekly and missing-dur
 the exact-reading disclosure, never silently presented as weekly. A domain
 without weekly readings explicitly marks weekly allowance unavailable.
 
-Prepare selected range and all retained observed weekly scopes once. Store compact metadata, per-day composition
-and project-hour partitions in the existing disposable rendered report cache,
-with distinct namespaced keys. No new ledger schema or raw valuation index.
-Identity binds ledger/pricing/renderer/evidence revisions, timezone, transitions,
-global project keys and calendar range. Renderer/state revision 5 excludes all
-prior observed-window navigation caches; exact old issued receipts can classify
+Prepare selected calendar composition per range; share account-wide evidence
+across ranges and project selections. Prepare exact retained weekly composition
+only on an issued interval inspection, then reuse it across calendar ranges.
+Store compact metadata, per-day composition and project-hour partitions in the
+existing disposable rendered report cache. [ADR 0055](0055-range-independent-breakdown-preparation.md)
+defines the separate account, selected-range and historical cache identities.
+No new ledger schema or raw valuation index. Renderer/state revision 6 excludes
+earlier eager-preparation caches; exact old issued receipts can classify
 expiry but cannot reinterpret old fragments as a calendar range. Writes are revision-checked;
 superseded or stale source generations cannot enter preparation. Warm controls
 decode one selected summary and at most seven per-day/project composition
@@ -148,19 +150,17 @@ window boundaries stay visible with exact original endpoints and an unallocatabl
 boundary-crossing label, never prorated or assigned to a bucket. No historical
 credit backfill, source capture, extra Plan Allowance line or depletion forecast.
 
-Cold preparation reuses calendar selection valuation, then queries/values only
-the missing union of observed weekly intervals through the ledger timestamp
-index. Each required event is valued at most once; years before the first weekly
-evidence and inter-window gaps are not decoded/repriced merely for Today.
-Selected all-time may reuse its complete already-valued baseline. The finite
-`bounds_union` query contract intersects existing bounds and preserves canonical
-trusted-record decoding/order, project aliases and transitions. Timestamp
-slicing prevents window x records valuation. Partition balances by
-intersecting local day once, so warm windows/metrics/groups/days/drills never
-load historical reports or prepare continuity/deltas/fits/prices.
+Cold preparation reuses calendar selection valuation without querying historical
+usage outside that selection. The earlier missing-union eager strategy is
+superseded by ADR 0055: a retained interval is queried/valued only when its exact
+inspection is opened, using timestamp-indexed capture-causal bounds and the same
+trusted-record decoding, project aliases and transitions. Selected All-time still
+uses its already-valued baseline. Partition account evidence and balances once
+per account identity, so warm windows/metrics/groups/days/drills never load
+historical reports or prepare continuity/deltas/fits/prices.
 The scope directory stores bounds and partition identities only; warm rendering
 reads the selected calendar summary, not every historical composition. An explicit
-continuity inspection reads only its named existing capture-causal summary.
+continuity inspection prepares or reads only its named capture-causal summary.
 Revision and issued-scope expiry/recovery rules remain unchanged. Reject silent date-only
 identities, reset-zeroed balances and inferred credit deductions.
 

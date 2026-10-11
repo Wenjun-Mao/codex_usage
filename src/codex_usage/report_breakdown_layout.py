@@ -3,7 +3,7 @@ import html
 
 
 def axis_linked_chart(*, metric, title, scale, usage_marks, layer, grid,
-                      timeline, labels, width, height, kind):
+                      timeline, labels, width, height, kind, hover_targets=""):
     usage_title = {"tokens": "Tokens", "cost": "API-equivalent cost ($)",
                    "credits": "Estimated Standard credits"}[metric]
     usage_key = '<div class="ub-legend">' + ''.join(
@@ -25,7 +25,7 @@ def axis_linked_chart(*, metric, title, scale, usage_marks, layer, grid,
     # Extend the viewport symmetrically without moving the timeline transform.
     marker_room = 4 if layer.axis else 0
     content += (f'<div class="ub-chart{" ub-shared" if layer.axis else ""}" style="--ub-axis-height:{height}px">'
-        f'<div class="ub-axis">{scale}</div><div class="ub-scroll">'
+        f'<div class="ub-axis">{scale}</div><div class="ub-scroll">' + hover_targets +
         f'<svg width="100%" height="{height+8}" viewBox="{-marker_room} -4 {width+2*marker_room} {height+8}" preserveAspectRatio="none"'
         f' style="width:{100*(width+2*marker_room)/width:.6f}%;margin-left:{-100*marker_room/width:.6f}%"'
         f' role="img" aria-label="{html.escape(usage_title + ("; " + layer.name if layer.axis else ""), quote=True)}">'

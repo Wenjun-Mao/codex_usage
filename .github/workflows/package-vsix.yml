@@ -134,6 +134,7 @@ jobs:
           uv run python scripts/check_speed_ui.py
           uv run python scripts/check_usage_breakdown_ui.py
           uv run python scripts/check_breakdown_overlay_ui.py
+          uv run python scripts/check_breakdown_hover_ui.py
 
       - name: Upload synthetic speed verification evidence
         uses: actions/upload-artifact@v6
@@ -154,6 +155,8 @@ jobs:
             output/playwright/usage-breakdown/*.png
             output/playwright/allowance-clarity/*.json
             output/playwright/allowance-clarity/*.png
+            output/playwright/breakdown-hover/*.json
+            output/playwright/breakdown-hover/*.png
           if-no-files-found: error
           retention-days: 14
 

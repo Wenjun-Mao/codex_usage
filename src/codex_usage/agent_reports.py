@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 
-from codex_usage import __version__
 from codex_usage.aggregation import (
     aggregate_valued_records,
     filter_records_by_project_keys,
@@ -31,8 +30,7 @@ from codex_usage.ledger_queries import (
 )
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.parser import finalize_session_records
-from codex_usage.pricing import PRICING_AS_OF
-from codex_usage.image_pricing import IMAGE_PRICING_REVISION
+from codex_usage.pricing_identity import pricing_revision
 from codex_usage.ledger_materialization import materialize_ledger
 from codex_usage.project_economics import build_project_economics
 from codex_usage.project_transitions import apply_project_transitions
@@ -40,8 +38,8 @@ from codex_usage.report_breakdown import build_report_breakdown_from_valued
 from codex_usage.reporting import render_html_report
 
 
-PRICING_REVISION = f"{PRICING_AS_OF}:{__version__}:gpt-6-sol-luna-6.1-sol-standard-credits-v1:bedrock-in-region-v1:image:{IMAGE_PRICING_REVISION}"
-REPORT_RENDER_REVISION = 33
+PRICING_REVISION = pricing_revision()
+REPORT_RENDER_REVISION = 34
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +112,7 @@ def _render_base_ledger_report(
     with (nullcontext(_snapshot) if _snapshot is not None else open_ledger(ledger_path, read_only=True)) as connection:
         if _snapshot is None:
             connection.execute("begin")
-        status = query_ledger_status(connection)
+        status = (_prepared_sink or {}).get("status") or query_ledger_status(connection, now=now)
         pace_report = cached_allowance_pace(
             connection, revision=status.revision, pricing_revision=PRICING_REVISION,
             coverage_complete=status.coverage.complete,
@@ -127,8 +125,7 @@ def _render_base_ledger_report(
             )
             pace_report = allowance_report
         from codex_usage.allowance_pace import presentation_identity
-        from codex_usage.allowance_queries import allowance_status
-        pace_report["status"] = allowance_status(connection, now=now)
+        pace_report["status"] = status.plan_allowance
         cache_key = _report_cache_key(
             status.revision,
             report_range.cache_identity,
@@ -151,12 +148,21 @@ def _render_base_ledger_report(
                 status=status,
             )
 
-        if allowance_report is None:
-            allowance_report = indexed_allowance_report(
-                connection, ledger_path, revision=status.revision,
-                pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
-            )
-        allowance_report["status"] = pace_report["status"]
+        allowance_key = "allowance-html:" + _report_cache_key(
+            status.revision, "account", [], theme, str(timezone), True,
+            pace_report["status"]["probe_status"], presentation_identity(pace_report, now.timestamp()),
+            now.astimezone(timezone).date().isoformat() if pace_report.get("paces") else None,
+            credit_freshness=(pace_report["status"].get("credits") or {}).get("freshness", "unavailable"))
+        allowance_html = _load_cached_report(connection, allowance_key)
+        allowance_created = allowance_html is None
+        if allowance_html is None:
+            if allowance_report is None:
+                allowance_report = indexed_allowance_report(
+                    connection, ledger_path, revision=status.revision,
+                    pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete)
+            allowance_report["status"] = pace_report["status"]
+            from codex_usage.report_allowance import render_allowance_section
+            allowance_html = render_allowance_section(allowance_report, timezone=timezone, now=now)
         materialized = materialize_ledger(
             connection, report_range, normalized_keys, timezone, status,
             auto_transitions=auto_transitions,
@@ -179,6 +185,7 @@ def _render_base_ledger_report(
             breakdown=build_report_breakdown_from_valued(valued),
             project_economics=build_project_economics(valued),
             allowance_report=allowance_report,
+            allowance_html=allowance_html,
             image_report=materialized.images,
             sessions_dirs=[],
             files_scanned=int(source_counts["total"] or 0),
@@ -193,7 +200,10 @@ def _render_base_ledger_report(
             embedded_usage_only=True,
         )
         rendered = output_path.read_text(encoding="utf-8")
-    _store_cached_report(ledger_path, cache_key, status.revision, rendered)
+    cached_fragments = {cache_key: rendered}
+    if allowance_created:
+        cached_fragments[allowance_key] = allowance_html
+    _store_cached_reports(ledger_path, status.revision, cached_fragments)
     return RenderedLedgerReport(
         html=rendered,
         ledger_revision=status.revision,
@@ -323,29 +333,25 @@ def _load_cached_report(
     return str(row["html"]) if row is not None else None
 
 
-def _store_cached_report(
+def _store_cached_reports(
     ledger_path: Path,
-    cache_key: str,
     revision: int,
-    rendered: str,
+    fragments: dict[str, str],
 ) -> None:
     with open_ledger(ledger_path) as connection:
+        connection.execute("begin immediate")
         current_revision = ledger_revision(connection)
         if current_revision != revision:
             return
-        connection.execute(
+        connection.executemany(
             """
             insert or replace into rendered_reports (
                 cache_key, ledger_revision, pricing_revision, created_at, html
             ) values (?, ?, ?, ?, ?)
             """,
-            (
-                cache_key,
-                revision,
-                PRICING_REVISION,
-                datetime.now().astimezone().isoformat(),
-                rendered,
-            ),
+            [(key, revision, PRICING_REVISION,
+              datetime.now().astimezone().isoformat(), rendered)
+             for key, rendered in fragments.items()],
         )
         connection.execute(
             "delete from rendered_reports where ledger_revision < ? and cache_key not like 'breakdown-issued:%'", (revision,)

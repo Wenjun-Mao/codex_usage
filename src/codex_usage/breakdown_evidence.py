@@ -19,7 +19,8 @@ def weekly_anchors(status):
 def prepare_evidence(connection, report, now):
     points, provenance, live = load_quota_evidence(connection)
     anchors = weekly_anchors(report["status"])
-    prepared = prepare_pace_evidence(points, live)
+    prepared = prepare_pace_evidence(points, live,
+        series_keys={(p.limit_id, 10080) for p in points if p.duration_minutes == 10080})
     reason = "weekly live evidence unavailable"
     cycle = None
     if len(anchors) > 1:

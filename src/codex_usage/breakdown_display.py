@@ -2,11 +2,10 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
-import json
 
 
 def identity(point):
-    return json.dumps({k: v for k, v in point.items() if not k.startswith("_")}, sort_keys=True, separators=(",", ":"))
+    return tuple(sorted((k, v) for k, v in point.items() if not k.startswith("_")))
 
 
 def value(point, kind):

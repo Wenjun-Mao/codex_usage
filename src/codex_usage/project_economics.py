@@ -122,20 +122,14 @@ def build_project_economics(
         project_records.setdefault(record.project_key, []).append(valued)
         project_labels[record.project_key] = record.project_label
 
-    projects = tuple(
+    projects = tuple(sorted((
         _build_project(
             key,
             project_labels[key],
             project_records[key],
         )
-        for key in sorted(
-            project_records,
-            key=lambda project_key: (
-                -_summarize(project_records[project_key]).usage.total_tokens,
-                project_key,
-            ),
-        )
-    )
+        for key in project_records
+    ), key=lambda project: (-project.total.usage.total_tokens, project.key)))
     benchmark = _build_project(
         ALL_PROJECTS_KEY,
         "All projects",
@@ -152,8 +146,8 @@ def _build_project(
     valued_records: Sequence[ValuedUsageRecord],
 ) -> ProjectEconomics:
     total = _summarize(valued_records)
-    coverage = _coverage(valued_records)
     metrics = _turn_metrics(valued_records, include_model=False)
+    coverage = _coverage(total, metrics)
     models: dict[str, list[ValuedUsageRecord]] = {}
     for valued in valued_records:
         models.setdefault(valued.record.model, []).append(valued)
@@ -177,27 +171,24 @@ def _build_model(
     project_total: UsageSummary,
 ) -> ModelEconomics:
     total = _summarize(valued_records)
+    metrics = _turn_metrics(valued_records, include_model=True)
     return ModelEconomics(
         key=model,
         label=model,
         total=total,
-        coverage=_coverage(valued_records),
-        metrics=_turn_metrics(valued_records, include_model=True),
+        coverage=_coverage(total, metrics),
+        metrics=metrics,
         token_share=_share(total.usage.total_tokens, project_total.usage.total_tokens),
         cost_share=_share(total.cost.total_usd, project_total.cost.total_usd),
     )
 
 
-def _coverage(valued_records: Sequence[ValuedUsageRecord]) -> TurnCoverage:
-    total = _summarize(valued_records)
-    measured = _summarize(
-        valued for valued in valued_records if valued.record.turn_id
-    )
+def _coverage(total: UsageSummary, measured: TurnMetrics) -> TurnCoverage:
     return TurnCoverage(
         total_responses=total.record_count,
-        measured_responses=measured.record_count,
+        measured_responses=measured.response_count,
         total_tokens=total.usage.total_tokens,
-        measured_tokens=measured.usage.total_tokens,
+        measured_tokens=measured.token_count,
     )
 
 
@@ -213,7 +204,6 @@ def _turn_metrics(
             turn_key += (record.model,)
         turn_summaries[turn_key] = _add(turn_summaries.get(turn_key), valued.summary)
 
-    measured_summary = _summarize(measured)
     priced_turns = tuple(
         summary
         for summary in turn_summaries.values()
@@ -230,8 +220,8 @@ def _turn_metrics(
     )
     return TurnMetrics(
         turn_count=len(turn_summaries),
-        response_count=measured_summary.record_count,
-        token_count=measured_summary.usage.total_tokens,
+        response_count=sum(v.summary.record_count for v in measured),
+        token_count=sum(v.summary.usage.total_tokens for v in measured),
         priced_turn_count=len(priced_turns),
         priced_response_count=len(priced_responses),
         priced_turn_cost_usd=priced_turn_cost_usd,

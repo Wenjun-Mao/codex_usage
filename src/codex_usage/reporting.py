@@ -182,6 +182,7 @@ def render_html_report(
     project_economics: ProjectEconomicsReport | None = None,
     image_report: ImageReport | None = None,
     allowance_report: dict | None = None,
+    allowance_html: str | None = None,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     theme = normalize_report_theme(theme)
@@ -225,6 +226,7 @@ def render_html_report(
             agent_activity=agent_activity,
             image_report=image_report,
             allowance_report=allowance_report,
+            allowance_html=allowance_html,
             allowance_timezone=generated_at.tzinfo or UTC,
             allowance_now=generated_at,
         ),
@@ -283,6 +285,7 @@ def _render_usage_view(
     agent_activity: AgentActivity | None,
     image_report: ImageReport | None,
     allowance_report: dict | None = None,
+    allowance_html: str | None = None,
     allowance_timezone: tzinfo = UTC,
     allowance_now: datetime | None = None,
 ) -> str:
@@ -300,7 +303,7 @@ def _render_usage_view(
         f"{pricing_notice_html}"
         f"{_empty_report_notice(view_model)}"
         f"{project_transitions_html}"
-        f"{render_allowance_section(allowance_report, timezone=allowance_timezone, now=allowance_now)}"
+        f"{allowance_html if allowance_html is not None else render_allowance_section(allowance_report, timezone=allowance_timezone, now=allowance_now)}"
         f"{render_project_economics_section(view_model.project_economics)}"
         f"{render_image_activity_section(image_report)}"
         '<div class="dashboard-grid">'

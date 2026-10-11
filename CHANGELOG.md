@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.12.1 - 2026-10-11
+
+- Speed up calendar-range changes by sharing account preparation, valuing
+  historical intervals only when inspected, and reusing rendered chart sections.
+- Avoid repeated economics aggregation and full pricing-table hashes per event.
+  Key monetary caches by accounting rules rather than the package version.
+- Show usage-bar tooltips immediately on hover or keyboard focus, with readable
+  money, credit and token values instead of long floating-point decimals.
+- Keep single-day hourly ticks compact, with timezone context shown once.
+- Preserve exact accounting, retained account evidence, scope validation and
+  snapshot checks; no capture, pricing-rate or source-event changes.
+
 ## 2.12.0 - 2026-10-10
 
 - Add one Usage & Allowance Breakdown for the selected calendar range, with

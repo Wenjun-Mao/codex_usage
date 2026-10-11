@@ -8,6 +8,8 @@ from codex_usage.report_usage_breakdown_chart import plot
 from codex_usage.report_breakdown_overlay import overlay
 from codex_usage.report_usage_breakdown_chart import COLORS
 from codex_usage.breakdown_display import identity
+from codex_usage.report_breakdown_axis import timestamp_label
+from codex_usage.report_breakdown_numbers import metric_label
 
 
 def dates_between(first, last):
@@ -74,7 +76,7 @@ def time_view(info, state, nav, timezone, partition, ranking, command, uri, deta
             values[label] += value[state["metric"]]
         bars.append(values)
         unknown.append(any(v["credit_unknown"] if state["metric"] == "credits" else v["unknown"] or v["api_excluded"] if state["metric"] == "cost" else False for v in composition.values()))
-        descriptions.append("; ".join(f'{names.get(k, k) if state["group"] == "project" else k}: {v[state["metric"]]!r}' for k, v in composition.items()) or "No captured local usage; not measured zero workload")
+        descriptions.append("; ".join(f'{names.get(k, k) if state["group"] == "project" else k}: {metric_label(v[state["metric"]], state["metric"])}' for k, v in composition.items()) or "No captured local usage; not measured zero workload")
         changes = {"grain": "hourly", "day": bucket["day"], "detail": "day:" + bucket["day"]} if daily else {"detail": "hour:" + bucket["key"]}
         links.append(uri(command(nav, state, bucket["label"], **changes)))
     points = {}
@@ -82,7 +84,7 @@ def time_view(info, state, nav, timezone, partition, ranking, command, uri, deta
         for day in days:
             for p in partition(("meter-display:" if state["overlay"] == "weekly" else "balance-display:") + day, {"points": []})["points"]:
                 points[json_identity(p)] = p
-    content += plot(bars, metric=state["metric"], labels=labels, links=links, incomplete=unknown, intervals=[(b["start"], b["end"]) for b in buckets], display_names=names if state["group"] == "project" else None, bucket_labels=[b["day"] + " " + b["label"] for b in buckets], bucket_details=descriptions, timezone=timezone, daily=daily, title="Daily selected range" if daily else "Chronological local hours", account_points=list(points.values()), account_overlay=state["overlay"])
+    content += plot(bars, metric=state["metric"], labels=labels, links=links, incomplete=unknown, intervals=[(b["start"], b["end"]) for b in buckets], display_names=names if state["group"] == "project" else None, bucket_labels=[b["day"] if daily else timestamp_label(b["start"], timezone) for b in buckets], bucket_details=descriptions, timezone=timezone, daily=daily, title="Daily selected range" if daily else "Chronological local hours", account_points=list(points.values()), account_overlay=state["overlay"])
     if state["overlay"] != "none":
         content += '<details><summary>Exact account readings by local day</summary><div class="ub-hour-labels">' + ''.join(command(nav, state, day, detail="readings:" + day) for day in days) + '</div></details>'
         if state["detail"].startswith("readings:"):

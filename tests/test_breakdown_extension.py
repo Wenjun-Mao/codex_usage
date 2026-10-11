@@ -89,7 +89,9 @@ def test_dated_scopes_stale_anchor_and_original_event_membership(tmp_path):
         assert len(metadata["evidence"]["windows"]) == 2
         for basis, window in metadata["evidence"]["windows"].items():
             assert "projects" not in metadata["ranges"][basis] and "daily" not in metadata["ranges"][basis]
-            info = load(connection, key[:-len("metadata")] + basis + ":summary")
+            issued = next(a for a in first.breakdown_navigation["actions"] if a["state"]["detail"] == "evidence:" + basis)
+            render(tmp_path, issued)
+            info = load(connection, metadata["history_prefix"] + basis + ":summary")
             lo, hi = (round(datetime.fromisoformat(window[k]).timestamp()*1e6) for k in ("start", "end"))
             tokens = connection.execute("select sum(total_tokens) from ledger_usage_events where timestamp_us>? and timestamp_us<=?", (lo, hi)).fetchone()[0] or 0
             assert info["total"]["tokens"] == tokens
@@ -115,7 +117,7 @@ def test_zero_warm_historical_work_all_windows_metrics_groups_drills(tmp_path):
         for name in ("breakdown_reports.prepare", "breakdown_reports.value_records", "breakdown_reports.query_ledger_records",
             "allowance_queries.load_quota_evidence", "allowance_index._decode_cached_report", "allowance_estimation.estimate_window",
             "agent_reports.materialize_ledger", "pricing.estimate_cost", "breakdown_evidence.prepare_pace_evidence",
-            "breakdown_evidence.prepare_balances", "breakdown_reports.balance_partitions"):
+            "breakdown_evidence.prepare_balances", "breakdown_preparation.balance_partitions"):
             stack.enter_context(patch("codex_usage."+name, forbidden))
         from codex_usage.breakdown_reports import load as original_load
         reads = []
@@ -266,23 +268,34 @@ def test_backwards_origin_across_days_keeps_actual_raw_capture(tmp_path):
         assert 'stroke-dasharray="3 3"' not in document
 
 
-def test_cold_history_valued_once_and_current_alias_reuses_composition(tmp_path):
+def test_history_not_valued_until_inspected_and_current_alias_reuses_composition(tmp_path):
     path = breakdown_home(tmp_path, extended=True, days=30)
     import codex_usage.breakdown_reports as reports
     with patch.object(reports, "query_ledger_records", wraps=reports.query_ledger_records) as queries, \
          patch.object(reports, "value_records", wraps=reports.value_records) as valuations, \
          patch.object(reports, "aggregate", wraps=reports.aggregate) as aggregates:
-        render_ledger_report(tmp_path, range_name="today", project_keys=[], theme="day", timezone_name="UTC", now=AT)
-    assert queries.call_count == valuations.call_count == 1
-    required_records = valuations.call_args.args[0]
-    assert required_records and all(record.timestamp >= AT-timedelta(days=10) for record in required_records)
-    assert "bounds_union" in queries.call_args.kwargs
+        first = render_ledger_report(tmp_path, range_name="today", project_keys=[], theme="day", timezone_name="UTC", now=AT)
+    assert queries.call_count == valuations.call_count == 0
+    assert aggregates.call_count == 1
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
         metadata = load(connection, key)
-        assert aggregates.call_count == 1+len(metadata["evidence"]["windows"])
         assert metadata["ranges"]["cycle"]["partition_basis"].startswith("window:")
         assert not connection.execute("select 1 from rendered_reports where cache_key=?", (key[:-len("metadata")]+"cycle:summary",)).fetchone()
+        assert not connection.execute("select 1 from rendered_reports where cache_key like 'breakdown-history:%'").fetchone()
+    basis = metadata["ranges"]["cycle"]["partition_basis"]
+    issued = next(a for a in first.breakdown_navigation["actions"] if a["state"]["detail"] == "evidence:" + basis)
+    with patch.object(reports, "query_ledger_records", wraps=reports.query_ledger_records) as queries, \
+         patch.object(reports, "value_records", wraps=reports.value_records) as valuations:
+        def today():
+            return render_ledger_report(tmp_path, range_name="today", project_keys=[], theme="day",
+                timezone_name="UTC", now=AT, breakdown_action=json.dumps(issued))
+        inspected = today()
+        assert today().html == inspected.html
+    assert queries.call_count == valuations.call_count == 1
+    bounds = queries.call_args.kwargs["bounds"]
+    assert bounds.start_us == round(metadata["ranges"][basis]["start"]*1e6)+1
+    assert bounds.end_us == round(metadata["ranges"][basis]["end"]*1e6)+1
 
 
 @pytest.mark.parametrize("reset_hour", [0, 6, 12])
@@ -311,14 +324,17 @@ def test_original_historical_opening_excluded_and_closing_event_included(tmp_pat
         expected = connection.execute("select sum(total_tokens) from ledger_usage_events where timestamp_us>? and timestamp_us<=?", (round(start.timestamp()*1e6),round(end.timestamp()*1e6))).fetchone()[0]
         increment_ledger_revision(connection)
         connection.commit()
-    render(tmp_path)
+    first_report = render(tmp_path)
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
-        windows = load(connection, key)["evidence"]["windows"]
+        metadata = load(connection, key)
+        windows = metadata["evidence"]["windows"]
         basis = next(b for b,w in windows.items() if w["start"] == start.isoformat())
-        summary = load(connection, key[:-len("metadata")]+basis+":summary")
+        issued = next(a for a in first_report.breakdown_navigation["actions"] if a["state"]["detail"] == "evidence:" + basis)
+        render(tmp_path, issued)
+        summary = load(connection, metadata["history_prefix"]+basis+":summary")
         assert summary["total"]["tokens"] == expected
-        rows = [r for day in summary["daily"] for r in load(connection, key[:-len("metadata")]+basis+":day:"+day)["rows"]]
+        rows = [r for day in summary["daily"] for r in load(connection, metadata["history_prefix"]+basis+":day:"+day)["rows"]]
         assert sum(r["tokens"] for r in rows) == expected
         assert last[1] > 0 and first[1] > 0
 

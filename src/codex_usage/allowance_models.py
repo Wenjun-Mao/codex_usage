@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 
@@ -19,7 +19,7 @@ class QuotaObservation:
     reset_credits: int | None = None
 
     def to_dict(self):
-        return asdict(self)
+        return {key: getattr(self, key) for key in self.__dataclass_fields__}
 
 
 def identifier(value: object) -> str:

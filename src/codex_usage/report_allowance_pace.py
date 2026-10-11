@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from html import escape
 
 from codex_usage.allowance_pace import pace_state
+from codex_usage.report_numbers import decimal_text, summary_money
 
 
 def span_label(seconds):
@@ -84,22 +85,22 @@ def pace_details(paces, status, *, now=None):
             method = ("captured cost / reference / observed elapsed hours" if p.get("method") == "calibrated cost"
                       else "signed net elapsed-time rate")
             reference = p.get("reference")
-            calibration = (f'; reference ${reference["value"]:g}, {"previous" if reference["previous"] else "current"} cycle, '
+            calibration = (f'; reference {summary_money(reference["value"])}, {"previous" if reference["previous"] else "current"} cycle, '
                            f'{reference["start"]} to {reference["end"]}, available {reference["available_at"]}, {reference["confidence"]}' if reference else "")
             if "calibrated_reason" in p:
-                calibration += (f'; cost {p["cost"] if p["cost"] is not None else "unavailable"}, '
+                calibration += (f'; cost {decimal_text(p["cost"]) if p["cost"] is not None else "unavailable"}, '
                                 f'interval {p["observed_start"] or "unavailable"} to captured anchor; '
                                 f'coverage complete: {p["coverage_complete"]}; {p["unpriced_tokens"]} unpriced tokens; '
                                 f'calibration: {p["calibrated_reason"] or "eligible"}')
             lookback = ("entire observed coherent suffix; reset instant may be unobserved"
                         if p["name"] == "Cycle" else f'up to {span_label(p["horizon_seconds"])} lookback')
-            rate = f'{p["rate"]:.3f} pp/hour' if p["rate"] is not None else "unavailable"
+            rate = decimal_text(p["rate"], places=3, trim=True) + ' pp/hour' if p["rate"] is not None else "unavailable"
             state = pace_state(p, status, clock)
             reason = ("awaiting fresh capture" if state == "awaiting" else "") or p["reason"] or ("missing live reset" if p["reset"] is None else "eligible; conditional on captured reading")
             items.append(
                 f'<p>{escape(p["limit_id"])} · {p["duration_minutes"]} min · {escape(p["name"])}: {method}; {lookback}; '
                 f'{span_label(p["span_seconds"])} observed; {p["observations"]} observations; '
-                f'{p["movement"]:g} signed percentage points; {rate}; '
+                f'{decimal_text(p["movement"], trim=True)} signed percentage points; {rate}; '
                 f'maximum gap {span_label(p["gap_seconds"])}; {p["corrections"]} corrections; '
                 f'{p["conflicts"]} conflicts; boundary: {escape(p["boundary"])}; {escape(reason)}{escape(calibration)}.</p>'
             )

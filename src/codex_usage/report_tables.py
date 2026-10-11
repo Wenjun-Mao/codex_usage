@@ -184,9 +184,8 @@ def format_int(value: int) -> str:
 
 
 def format_credits(value: float) -> str:
-    if value >= 1_000:
-        return f"{value:,.0f}"
-    return f"{value:,.1f}"
+    from codex_usage.report_numbers import estimated_credits
+    return estimated_credits(value)
 
 
 def _aggregate_row_html(row: AggregateRow) -> str:

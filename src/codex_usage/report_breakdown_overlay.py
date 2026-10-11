@@ -7,6 +7,7 @@ from decimal import Decimal, localcontext
 from codex_usage.report_breakdown_balances import balance_ticks, balances
 from codex_usage.breakdown_display import reduce_points
 from codex_usage.report_breakdown_numbers import compact_decimal
+from codex_usage.report_numbers import percentage_text
 
 
 @dataclass(frozen=True)
@@ -42,14 +43,14 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
         def coordinate(p):
             return height * p["used_percent"] / 100
         def label(p):
-            return f'Weekly allowance · right axis | {p["timestamp"]} | {p["limit_id"]} / {p["plan"]} | {100-p["used_percent"]!r}% remaining | {p["provenance"]}'
+            return f'Weekly allowance · right axis | {p["timestamp"]} | {p["limit_id"]} / {p["plan"]} | {percentage_text(100-p["used_percent"])}% remaining | {p["provenance"]}'
         def group(p):
             return p["limit_id"], p["plan"]
         def color(p):
             index = series.index(group(p))
             return "var(--text)" if index == 0 else colors[(index-1) % len(colors)]
         def summary(p):
-            return f'{p["limit_id"]} · weekly · {p["plan"]} · {compact_decimal(100-p["used_percent"])}% remaining'
+            return f'{p["limit_id"]} · weekly · {p["plan"]} · {percentage_text(100-p["used_percent"])}% remaining'
     else:
         valid = [p for p in in_domain if p["balance"] is not None and not p["unlimited"] and not p["diagnostic"]]
         minimum = min((Decimal(p["balance"]) for p in valid), default=Decimal(0))
@@ -64,7 +65,7 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
                 context.prec = max(40, len(minimum.as_tuple().digits) + len(maximum.as_tuple().digits) + 4)
                 return height * (1-float((Decimal(p["balance"])-minimum)/(maximum-minimum))) if maximum != minimum else height/2
         def label(p):
-            return f'Credit balance · right axis | {p["timestamp"]} | balance {p["balance"]} credits | {p["plan"] or "plan unavailable"}'
+            return f'Credit balance · right axis | {p["timestamp"]} | balance {compact_decimal(p["balance"])} credits | {p["plan"] or "plan unavailable"}'
         def group(p):
             return "balance",
         def color(p):
@@ -82,7 +83,7 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
         text = "Credit balance · conflicting latest captures" if ambiguous_latest else summary(p)
         compact_single = compact_key and len(latest) == 1
         if compact_single:
-            value = compact_decimal(100-p["used_percent"]) + "%" if kind == "weekly" else compact_decimal(p["balance"]) + " credits"
+            value = percentage_text(100-p["used_percent"]) + "%" if kind == "weekly" else compact_decimal(p["balance"]) + " credits"
             text = "Conflicting latest captures" if ambiguous_latest else "Latest: " + value
         detail = "Latest capture is ambiguous" if ambiguous_latest else "Latest captured in selected range | " + name + " | " + label(p)
         swatch = "" if compact_single else f'<i class="ub-account-swatch" style="background:{color(p)}"></i>'

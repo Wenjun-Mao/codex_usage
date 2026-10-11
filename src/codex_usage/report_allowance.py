@@ -4,6 +4,7 @@ from html import escape
 
 from codex_usage.report_allowance_pace import pace_details, pace_rows
 from codex_usage.report_allowance_credits import credit_details, credit_heading
+from codex_usage.report_numbers import percentage_text
 
 
 ALLOWANCE_HISTORY_LIMIT = 12
@@ -29,7 +30,13 @@ def text(value):
 
 
 def money(value):
-    return f"${value:,.2f}" if value is not None else "Insufficient data"
+    from codex_usage.report_numbers import summary_money
+    return escape(summary_money(value)) if value is not None else "Insufficient data"
+
+
+def estimate_number(value):
+    from codex_usage.report_numbers import decimal_text
+    return decimal_text(value, trim=True) if value is not None else "Unavailable"
 
 
 def series_label(window):
@@ -39,7 +46,7 @@ def series_label(window):
 
 def evidence_line(window, label):
     estimate = window["estimate"]
-    return (f'<p>{label}: {estimate["span"]:g} percentage points, {estimate["bins"]} bins, '
+    return (f'<p>{label}: {estimate_number(estimate["span"])} percentage points, {estimate["bins"]} bins, '
             f'{money(estimate["cost_span"])} local priced usage.</p>')
 
 
@@ -94,7 +101,7 @@ def _history_html(history):
             f'<strong class="allowance-history-value">{money(estimate["value"])}</strong></div>'
             f'<p class="allowance-history-meta">Observed {text(window["start"][:10])}–{text((window.get("fit_end") or window["end"])[:10])} · '
             f'{window_status} · {text(estimate["confidence"])} confidence · '
-            f'{estimate["span"]:g} percentage points · {estimate["bins"]} bins · 100% priced · {ledger_coverage}</p>'
+            f'{estimate_number(estimate["span"])} percentage points · {estimate["bins"]} bins · 100% priced · {ledger_coverage}</p>'
             '</li>'
         )
     count = len(history)
@@ -177,7 +184,7 @@ def _observation_row(point, timezone):
     else:
         reset_cell = '<td>Unavailable</td>'
     return (
-        f'<tr><td{observed_title}>{text(observed)}</td><td>{point["used_percent"]:g}%</td>'
+        f'<tr><td{observed_title}>{text(observed)}</td><td>{point["used_percent"]!r}%</td>'
         f'<td>{text(point["slot"])} · {text(source)}</td>{reset_cell}</tr>'
     )
 
@@ -228,14 +235,14 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
             '<div class="allowance-bucket">'
             '<div class="allowance-bucket-summary">'
             f'<strong>{identity}</strong>'
-            f'<span class="allowance-bucket-usage">{bucket["used_percent"]:g}% used · '
-            f'{remaining_percent:g}% remaining</span>'
+            f'<span class="allowance-bucket-usage">{text(percentage_text(bucket["used_percent"]))}% used · '
+            f'{text(percentage_text(remaining_percent))}% remaining</span>'
             f'<span class="muted allowance-bucket-reset">Reset: {reset_markup}</span>'
             '</div>'
-            f'<meter min="0" max="100" value="{remaining_percent:g}" '
+            f'<meter min="0" max="100" value="{remaining_percent}" '
             f'aria-label="{identity} percentage remaining" '
             f'aria-describedby="{observation_id}" '
-            f'aria-valuetext="{remaining_percent:g}% remaining"></meter>'
+            f'aria-valuetext="{text(percentage_text(remaining_percent))}% remaining"></meter>'
             f'{observation_markup}{pace_markup}</div>'
         )
     qualified = report["qualified"]
@@ -255,10 +262,10 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
             f'{text(window["start"][:10])}–{text(window["end"][:10])} · {text(estimate["confidence"])}'
             f' · {text(window["closure"])}</summary>'
             f'<p>{text(window["plan"] or "Unknown plan")} · {text(window["duration_minutes"])} min · '
-            f'{estimate["span"]:g} percentage points · {estimate["bins"]} bins · '
+            f'{estimate_number(estimate["span"])} percentage points · {estimate["bins"]} bins · '
             f'local cost span {money(estimate["cost_span"])} · {money(estimate["value"])}</p>'
             f'<p>Allowance fit: {"100% priced" if window.get("fully_priced", True) else "Unpriced usage: monetary estimate unavailable"} · {"Complete local ledger" if window.get("coverage_complete", True) else "Partial local ledger"}</p>'
-            f'<p>R² {estimate["r_squared"]:.3f} · sensitivity P90/P10 {text(estimate["sensitivity_ratio"])} · '
+            f'<p>R² {estimate["r_squared"]:.3f} · sensitivity P90/P10 {estimate_number(estimate["sensitivity_ratio"])} · '
             f'{window["corrections"]} meter corrections</p>'
             f'{excluded_markup}'
             f'<details><summary>Quota observations ({len(window["points"])})</summary>'

@@ -236,7 +236,7 @@ def load_ledger_status(ledger_path: Path) -> LedgerStatus:
         return query_ledger_status(connection)
 
 
-def query_ledger_status(connection: sqlite3.Connection) -> LedgerStatus:
+def query_ledger_status(connection: sqlite3.Connection, *, now: datetime | None = None) -> LedgerStatus:
     coverage = _coverage(connection)
     capture = connection.execute(
         """
@@ -251,7 +251,7 @@ def query_ledger_status(connection: sqlite3.Connection) -> LedgerStatus:
         last_capture_error=str(capture["error"] or "") if capture else "",
         coverage=coverage,
         image_backfill=_image_backfill_coverage(connection),
-        plan_allowance=allowance_status(connection),
+        plan_allowance=allowance_status(connection, now=now),
         speed=speed_status(connection),
     )
 

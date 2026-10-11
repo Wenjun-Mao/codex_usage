@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 from codex_usage.breakdown_aggregation import ranked_projects, total
 from codex_usage.report_breakdown_numbers import compact_decimal
+from codex_usage.report_numbers import decimal_text
 from codex_usage.report_usage_breakdown_chart import COLORS, css
 from codex_usage.report_breakdown_time import time_view
 
@@ -26,13 +27,13 @@ def uri(link):
 def detail_table(rows, calibration, nav, state, *, selected_projects):
     body = []
     for row in sorted(rows, key=lambda r: (r["project"], r["model"], r.get("hour", ""))):
-        cost = f'${row["cost"]!r}'
+        cost = '$' + decimal_text(row["cost"])
         if row["unknown"]:
             cost += f' + unknown ({row["unknown"]:,} tokens)'
         if row["api_excluded"]:
             cost += f'; API-excluded review tokens {row["api_excluded"]:,}'
-        credits = f'{row["credits"]!r}' + (f' + unknown ({row["credit_unknown"]:,} tokens)' if row["credit_unknown"] else "")
-        pp = f'{100 * row["allowance_cost"] / calibration["value"]!r} pp estimated' if calibration.get("value") else "Unavailable"
+        credits = decimal_text(row["credits"]) + (f' + unknown ({row["credit_unknown"]:,} tokens)' if row["credit_unknown"] else "")
+        pp = decimal_text(100 * row["allowance_cost"] / calibration["value"], trim=True) + ' pp estimated' if calibration.get("value") else "Unavailable"
         label = (command(nav, state, row["label"], view="time", project=row["project"], detail="")
             if row["project"] in selected_projects else html.escape(row["label"]) + ' · No selected-range usage')
         body.append(f'<tr><td>{label}</td><td>{html.escape(row["model"])}</td><td>{html.escape(row.get("hour", "Selected calendar total"))}</td><td>{row["tokens"]:,}</td><td>{cost}</td><td>{credits}</td><td>{pp}</td></tr>')
@@ -77,10 +78,10 @@ def render_breakdown(metadata, info, state, nav, reason, timezone, partition, *,
         maximum = max((total(p["models"].values())[state["metric"]] for _, p in ranking), default=0) or 1
         for key, project in ranking:
             value = total(project["models"].values())
-            segments = ''.join(f'<span style="width:{v[state["metric"]] / maximum * 100:.6f}%;background:{COLORS[models.index(m) % len(COLORS)]}" title="{html.escape(project["label"] + " | " + m)}: {v[state["metric"]]!r} {state["metric"]}"></span>' for m, v in project["models"].items())
+            segments = ''.join(f'<span style="width:{v[state["metric"]] / maximum * 100:.6f}%;background:{COLORS[models.index(m) % len(COLORS)]}" title="{html.escape(project["label"] + " | " + m)}: {compact_decimal(v[state["metric"]], unit=state["metric"])} {state["metric"]}"></span>' for m, v in project["models"].items())
             label = command(nav, state, project["label"], detail="other" if key is None else "", project=key or "", view="time" if key is not None else "project")
             unknown = value["credit_unknown"] if state["metric"] == "credits" else value["unknown"] if state["metric"] == "cost" else 0
-            content += f'<div class="ub-rank">{label}<div class="ub-stack">{segments}</div><strong title="{value[state["metric"]]!r}">{compact_decimal(value[state["metric"]], unit=state["metric"])}{" + unknown" if unknown else ""}{" + excluded" if state["metric"] == "cost" and value["api_excluded"] else ""}</strong></div>'
+            content += f'<div class="ub-rank">{label}<div class="ub-stack">{segments}</div><strong title="{decimal_text(value[state["metric"]])}">{compact_decimal(value[state["metric"]], unit=state["metric"])}{" + unknown" if unknown else ""}{" + excluded" if state["metric"] == "cost" and value["api_excluded"] else ""}</strong></div>'
     if state["view"] == "project":
         legend = [(m, i) for i, m in enumerate(models)]
         content += '<div class="ub-legend">' + ''.join(f'<span><i style="background:{COLORS[i % len(COLORS)]}"></i>{html.escape(label)}</span>' for label, i in legend) + '</div>'

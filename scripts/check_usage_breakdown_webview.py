@@ -18,6 +18,7 @@ from codex_usage.agent_settings import AgentSettings, save_agent_settings
 from check_speed_webview import disposable_command, stop_owned_host, wait_cdp_endpoint
 from speed_native_target import NativeSpeedTarget, attach_speed_target, attributes, node_text, nodes, wait_native_state
 from usage_breakdown_fixture import breakdown_home
+from breakdown_native_hover import check_native_hover
 
 
 def decode(uri):
@@ -159,6 +160,8 @@ def main():
                     target, state = attach_speed_target(browser, deadline, decode, diagnostics, diagnostics_path, BreakdownTarget)
                     (args.output / "initial-state.json").write_text(json.dumps(state, indent=2))
                     assert state["state"]["basis"] == "selected" and state["state"]["grain"] == "daily", state
+                    target.screenshot(args.output / "native-initial.png")
+                    hover = check_native_hover(target, args.output / "native-hover-tab.png")
                     clicks = []
                     def click(label):
                         diagnostics["stage"] = "rendered click: " + label
@@ -198,6 +201,7 @@ def main():
                     time.sleep(.1)
                 evidence = json.loads((root / "host-evidence.json").read_text())
                 evidence["credential_isolation"] = "--use-inmemory-secretstorage; disposable HOME/CODEX_HOME/profile"
+                evidence["hover_and_tab"] = hover
                 evidence["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
                 evidence["native_target_contract"] = "Explicit OOPIF CDP DOM, hit-tested real input; no injected scripts"
                 (args.output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")

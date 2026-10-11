@@ -3,7 +3,6 @@ import json
 import math
 import zlib
 from bisect import bisect_right
-from dataclasses import replace
 from datetime import UTC, datetime
 
 from codex_usage.allowance_estimation import allowance_fit_points, estimate_window
@@ -199,7 +198,9 @@ def load_quota_evidence(connection):
         origins = json.loads(row["origins"]) if row["origins"] else []
         sources = {_SOURCE_LABELS.get(origin, "Unknown source") for origin in origins} or {"Unknown source"}
         for stamp in times:
-            selected = replace(point, timestamp=stamp)
+            selected = point if stamp == point.timestamp else QuotaObservation(
+                stamp, point.limit_id, point.slot, point.plan, point.used_percent,
+                point.duration_minutes, point.resets_at, point.reset_credits)
             points.append(selected)
             if "live" in origins:
                 live_points.add(selected)

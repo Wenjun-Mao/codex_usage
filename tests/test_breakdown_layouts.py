@@ -108,7 +108,8 @@ def test_narrow_bars_keep_centers_and_exact_heights():
     assert all(float(bar.attrib["width"]) == 180 for bar in bars)
     assert [float(bar.attrib["x"]) + float(bar.attrib["width"])/2 for bar in bars] == [180, 180, 540]
     assert float(bars[0].attrib["height"]) == pytest.approx(125 / 200 * 180)
-    assert "sol: 125 cost" in bars[0].find("title").text
+    assert "sol: $125.00" in bars[0].find("desc").text
+    assert bars[0].find("title") is None
 
 
 def test_below_resolution_values_use_ticks_not_circles_or_inflated_bars():
@@ -116,7 +117,7 @@ def test_below_resolution_values_use_ticks_not_circles_or_inflated_bars():
     svg = svgs(document)[0]
     ticks = [mark for mark in svg if mark.attrib.get("class") == "ub-tiny-segment"]
     assert len(ticks) == 1 and ticks[0].tag == "line"
-    assert "luna: 0.0001 cost" in ticks[0].find("title").text
+    assert "luna: $0.0001" in ticks[0].find("desc").text
     assert not any(mark.tag == "circle" for mark in svg)
     assert document.count('<rect') == 1
     assert 'class="ub-resolution-evidence"' in document

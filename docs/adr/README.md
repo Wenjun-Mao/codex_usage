@@ -68,3 +68,6 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0052: Included Auto-review Accounting](0052-included-auto-review-accounting.md)
 - [0053: Observed Output Speed](0053-observed-output-speed.md)
 - [0054: Usage And Allowance Breakdown](0054-usage-allowance-breakdown.md)
+- [0055: Range-Independent Breakdown Preparation](0055-range-independent-breakdown-preparation.md)
+- [0056: Readable Script-Free Chart Inspection](0056-readable-script-free-chart-inspection.md)
+- [0057: Presentation And Accounting Cache Identities](0057-presentation-and-accounting-cache-identities.md)

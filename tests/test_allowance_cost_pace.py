@@ -60,6 +60,16 @@ def test_flat_meter_positive_cost_and_partial_spans_have_no_regression_gates():
     assert '(estimated)' in pace_rows(rows, 'fresh', timezone=ZoneInfo('UTC'), now=BASE+timedelta(hours=.5))
 
 
+def test_pace_detail_formats_derived_values_without_mutating_them():
+    rows = fit([point(0), point(.5), point(1)], [(1, 74.19778399999994, 0)],
+        [reference(value=969.938471239)])
+    cost = rows[0]["cost"]
+    markup = pace_details([rows], 'fresh', now=BASE+timedelta(hours=1))
+    assert '; cost 74.20,' in markup and 'reference $969.94' in markup
+    assert '74.19778399999994' not in markup and '969.938471239' not in markup
+    assert rows[0]["cost"] == cost
+
+
 def test_recent_daily_and_multiday_cycle_share_one_reference_and_actual_endpoints():
     points = [point(h) for h in (0, 12, 24, 47, 47.5, 48)]
     rows = fit(points, [(12, 10, 0), (24, 10, 0), (47, 20, 0), (47.5, 1, 0), (48, 1, 0)])

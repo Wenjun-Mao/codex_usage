@@ -1,7 +1,8 @@
 """Fixed-size, visibly bounded charts; semantic exact values live beside them."""
 import html
 from codex_usage.report_breakdown_axis import time_axis
-from codex_usage.report_breakdown_numbers import numeric_axis, tick_ceiling
+from codex_usage.report_breakdown_numbers import metric_label, numeric_axis, tick_ceiling
+from codex_usage.report_breakdown_hover import bucket_hover, css as hover_css
 from codex_usage.report_breakdown_overlay import CapturedLayer, captured_layer
 from codex_usage.report_breakdown_layout import axis_linked_chart
 
@@ -16,6 +17,7 @@ def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=N
     step = width / max(1, len(bars))
     slots = {label: COLORS[i % len(COLORS)] for i, label in enumerate(labels)}
     marks = []
+    hover_targets = []
     tiny = False
     for index, values in enumerate(bars):
         local_step = step
@@ -31,23 +33,29 @@ def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=N
         details = (bucket_details or [""] * len(bars))[index]
         for label, value in values.items():
             display = (display_names or {}).get(label, label)
-            exact = html.escape(f'{context} | {display}: {value!r} {metric} | {details}')
+            exact = html.escape(f'{context} | {display}: {metric_label(value, metric)} | {details}')
             size = value / maximum * height
             if value <= 0:
                 continue
             if size < 1 or bar_width < 1:
                 tiny = True
-                parts.append(f'<line class="ub-tiny-segment" x1="{x:.3f}" x2="{x+bar_width:.3f}" y1="{bottom:.3f}" y2="{bottom:.3f}" stroke="{slots[label]}" stroke-width=".75" vector-effect="non-scaling-stroke"><title>{exact} (below chart resolution)</title></line>')
+                parts.append(f'<line class="ub-tiny-segment" x1="{x:.3f}" x2="{x+bar_width:.3f}" y1="{bottom:.3f}" y2="{bottom:.3f}" stroke="{slots[label]}" stroke-width=".75" vector-effect="non-scaling-stroke"><desc>{exact} (below chart resolution)</desc></line>')
             else:
-                parts.append(f'<rect x="{x:.3f}" y="{bottom - size:.3f}" width="{bar_width:.3f}" height="{size:.6f}" fill="{slots[label]}"><title>{exact}</title></rect>')
+                parts.append(f'<rect x="{x:.3f}" y="{bottom - size:.3f}" width="{bar_width:.3f}" height="{size:.6f}" fill="{slots[label]}"><desc>{exact}</desc></rect>')
             bottom -= size
         if incomplete and incomplete[index]:
             unknown_label = "Unknown estimated credits; not known zero" if metric == "credits" else "Unknown or API-excluded cost; not zero"
-            parts.append(f'<path d="M{x + bar_width/2:.3f},{height - 5} l4,5 l-4,5 l-4,-5 z" fill="none" stroke="var(--text)" vector-effect="non-scaling-stroke"><title>{html.escape(context + " | " + details)} | {unknown_label}</title></path>')
-        inspection = html.escape(f'Inspect {context} | total {sum(values.values())!r} {metric} | {details}', quote=True)
+            parts.append(f'<path d="M{x + bar_width/2:.3f},{height - 5} l4,5 l-4,5 l-4,-5 z" fill="none" stroke="var(--text)" vector-effect="non-scaling-stroke"><desc>{html.escape(context + " | " + details)} | {unknown_label}</desc></path>')
+        inspection = html.escape(f'Inspect {context} | total {metric_label(sum(values.values()), metric)} | {details}', quote=True)
         if not parts:
-            parts.append(f'<rect x="{x:.3f}" y="0" width="{bar_width:.3f}" height="{height}" fill="transparent"><title>{inspection} | no captured local usage; not proof of zero account workload</title></rect>')
-        marks.append((f'<a href="{html.escape(links[index], quote=True)}" aria-label="{inspection}"><title>{inspection}</title>' if links else "") + "".join(parts) + ("</a>" if links else ""))
+            parts.append(f'<rect x="{x:.3f}" y="0" width="{bar_width:.3f}" height="{height}" fill="transparent"><desc>{inspection} | no captured local usage; not proof of zero account workload</desc></rect>')
+        marks.append("".join(parts))
+        stack_height = sum(values.values()) / maximum * height
+        hit_height = max(6, stack_height) if values else height
+        hover_targets.append(bucket_hover(context, values, metric, slots, display_names or {},
+            left=x/width*100, width=bar_width/width*100, top=height-hit_height+7,
+            height=hit_height, center=(x+bar_width/2)/width*100,
+            href=links[index] if links else None, incomplete=bool(incomplete and incomplete[index])))
     grid = ''.join(f'<line x1="0" x2="{width}" y1="{height * f}" y2="{height * f}" stroke="var(--border)"/>' for f in (0, .5, 1))
     scale = (numeric_axis([maximum, maximum / 2, 0], unit=metric)
              if observed_maximum else '<span>No known values</span><span></span><span>0 known</span>')
@@ -58,8 +66,9 @@ def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=N
         layer=layer, grid=grid,
         timeline=time_axis(intervals[0][0], intervals[-1][1], timezone, daily=daily) if intervals else "",
         labels=[((display_names or {}).get(label, label), slots[label]) for label in labels
-            if not display_names or label in visible], width=width, height=height, kind=account_overlay)
-    return content + ('<details class="ub-resolution-evidence"><summary>Small segments</summary><p class="ub-note">Colored ticks mark nonzero segments below chart resolution. Exact values remain in hover and details.</p></details>' if tiny else "")
+            if not display_names or label in visible], width=width, height=height, kind=account_overlay,
+        hover_targets="".join(hover_targets))
+    return content + ('<details class="ub-resolution-evidence"><summary>Small segments</summary><p class="ub-note">Colored ticks mark nonzero segments below chart resolution. Values remain available in hover and details.</p></details>' if tiny else "")
 
 
 def css():
@@ -84,7 +93,8 @@ def css():
     .ub-scroll {overflow:visible;padding:3px 0;min-width:0}
 
     .ub-scroll svg {display:block;overflow:visible}.ub-bounds {display:flex;justify-content:space-between;gap:16px;font-size:12px;margin:6px 0 14px;overflow-wrap:anywhere}.ub-bounds span {min-width:0;max-width:48%}
-    .ub-time-axis {position:relative;height:52px;margin-top:5px;font-size:12px;line-height:15px}
+    .ub-time-axis {position:relative;height:calc(14px + var(--ub-tick-rows,2)*15px);margin-top:5px;font-size:12px;line-height:15px}
+    .ub-time-context {font-size:12px;color:var(--muted);line-height:17px;margin:3px 0 8px;overflow-wrap:anywhere}
     .ub-tick {position:absolute;top:0;width:0;height:5px;border-left:1px solid var(--muted)}
     .ub-tick>span {position:absolute;top:7px;white-space:nowrap;text-align:center;width:82px}
     .ub-tick.first>span {left:0;text-align:left}.ub-tick.middle>span {left:-41px}.ub-tick.last>span {left:-82px;text-align:right}
@@ -100,5 +110,5 @@ def css():
     .usage-breakdown table {font-variant-numeric:tabular-nums}.usage-breakdown details {margin:10px 0}
     .usage-breakdown summary {cursor:pointer}.ub-hour-labels {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;font-size:12px}
     @media(max-width:900px) {.ub-tick-secondary {display:none}}
-    @media(max-width:560px) {.ub-chart {grid-template-columns:72px minmax(0,1fr)}.ub-chart.ub-shared {grid-template-columns:72px minmax(0,1fr) 72px}.ub-tick>span {width:64px}.ub-tick.last>span {left:-64px}.ub-tick-secondary,.ub-tick-center {display:none}.ub-rank {grid-template-columns:100px minmax(40px,1fr) 75px}.ub-controls {gap:6px}.ub-hour-labels {grid-template-columns:repeat(2,minmax(0,1fr))}}
-    </style>"""
+    @media(max-width:560px) {.ub-chart {grid-template-columns:72px minmax(0,1fr)}.ub-chart.ub-shared {grid-template-columns:72px minmax(0,1fr) 72px}.ub-tick-secondary,.ub-tick-center {display:none}.ub-rank {grid-template-columns:100px minmax(40px,1fr) 75px}.ub-controls {gap:6px}.ub-hour-labels {grid-template-columns:repeat(2,minmax(0,1fr))}}
+    </style>""" + hover_css()

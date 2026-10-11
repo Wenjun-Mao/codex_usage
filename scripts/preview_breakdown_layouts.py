@@ -43,6 +43,12 @@ def chart_inputs(ledger, range_name, now, timezone):
 
         def render(action=None):
             captured.clear()
+            # This diagnostic captures renderer inputs, not warm HTML. Clear
+            # only derived chart sections in the disposable copy; retain issued
+            # actions and account/selection preparation for normal navigation.
+            with open_ledger(target) as connection:
+                connection.execute("delete from rendered_reports where cache_key like 'breakdown:%:section:%'")
+                connection.commit()
             with patch("codex_usage.report_breakdown_time.plot", capture):
                 report = render_ledger_report(home, range_name=range_name, project_keys=[],
                     theme="night", timezone_name=timezone, now=now,

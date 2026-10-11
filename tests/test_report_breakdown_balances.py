@@ -1,11 +1,13 @@
 """Human labels and exact extreme-balance inspection on the shared layer."""
 from datetime import UTC, datetime
 from decimal import Decimal
+import re
+from xml.etree import ElementTree
 
 import pytest
 
 from codex_usage.report_breakdown_balances import balance_ticks
-from codex_usage.report_breakdown_numbers import compact_decimal, tick_ceiling
+from codex_usage.report_breakdown_numbers import compact_decimal, metric_label, tick_ceiling
 from codex_usage.report_breakdown_overlay import overlay
 from codex_usage.report_usage_breakdown_chart import COLORS, plot
 
@@ -41,5 +43,8 @@ def test_tick_ceiling_contains_unmodified_values(value):
     assert maximum >= value
     metric = "tokens" if value > 1000 else "cost"
     document = plot([{"model": value}], metric=metric, labels=["model"])
-    assert f'model: {value!r}' in document
+    svg = ElementTree.fromstring(re.search(r"<svg\b.*?</svg>", document, re.DOTALL)[0])
+    mark = next(mark for mark in svg if mark.tag == "rect")
+    assert float(mark.attrib["height"]) == pytest.approx(value / maximum * 180, abs=.000001)
+    assert f'model: {metric_label(value, metric)}' in mark.find("desc").text
     assert compact_decimal(maximum, unit=metric) in document

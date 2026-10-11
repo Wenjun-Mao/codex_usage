@@ -167,11 +167,15 @@ def main():
                                 # Dense history has many marks; batch DOM reads without
                                 # dropping per-mark assertions or adding product scripts.
                                 mark_titles = section.locator("svg rect, svg circle, svg path, svg .ub-tiny-segment").evaluate_all(
-                                    "marks => marks.map(m => m.querySelector('title')?.textContent ?? '')")
+                                    "marks => marks.map(m => m.querySelector('title,desc')?.textContent ?? '')")
                                 assert all("2026-" in title for title in mark_titles), (label, mark_titles)
-                                link_labels = section.locator("svg a").evaluate_all(
+                                link_labels = section.locator(".ub-hover-target[href]").evaluate_all(
                                     "links => links.map(a => a.getAttribute('aria-label') ?? '')")
                                 assert all("2026-" in text for text in link_labels), (label, link_labels)
+                                if section.locator("svg").count():
+                                    assert link_labels, (label, "missing issued hover inspections")
+                                    assert section.locator(".ub-hover-target[href]").evaluate_all(
+                                        "links => links.every(a=>a.getAttribute('href').startsWith('command:codexUsage.navigateBreakdown?'))")
                                 if label == "multi-weekly":
                                     assert "another-limit · weekly · plus" in section.locator(".ub-meter-legend").inner_text()
                                     assert "codex · weekly · pro" in section.locator(".ub-meter-legend").inner_text()

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from bisect import bisect_right
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from functools import cache
 
 from codex_usage.bedrock_pricing import (
     BEDROCK_API_RATE_ROWS,
@@ -18,6 +15,10 @@ from codex_usage.pricing_models import (
     RequestPricingContract as RequestPricingContract,
 )
 from codex_usage.subscription_usage import AUTO_REVIEW_FREE_FROM, AUTO_REVIEW_MODEL
+from codex_usage.pricing_schedule import (
+    EffectiveModelRate as EffectiveModelRate,
+    schedule_entry_for_model as _schedule_entry_for_model,
+)
 
 
 PRICING_AS_OF = "2026-10-07"
@@ -41,24 +42,6 @@ GPT_6_ASTRA_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
 GPT_6_SOL_LUNA_API_EFFECTIVE_FROM = datetime(2026, 9, 22, tzinfo=UTC)
 GPT_6_1_SOL_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 29, tzinfo=UTC)
 GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
-
-
-@dataclass(frozen=True)
-class EffectiveModelRate:
-    model_key: str
-    effective_from: datetime
-    rate: ModelRate
-    aliases: tuple[str, ...] = ()
-    request_pricing_contract: RequestPricingContract = STANDARD_REQUEST_PRICING
-
-    def rate_for_usage(self, usage: TokenUsage) -> ModelRate:
-        return self.request_pricing_contract.rate_for_usage(self.rate, usage)
-
-
-@dataclass(frozen=True, slots=True)
-class _EffectiveRateTimeline:
-    effective_from: tuple[datetime, ...]
-    entries: tuple[EffectiveModelRate, ...]
 
 
 def _effective_rate(
@@ -334,54 +317,6 @@ def _rate_for_model(
     return entry.rate
 
 
-def _schedule_entry_for_model(
-    schedule: tuple[EffectiveModelRate, ...],
-    model: str,
-    at: datetime | None = None,
-) -> EffectiveModelRate | None:
-    normalized = _normalize_model_id(model)
-    timeline = _compiled_schedule(schedule).get(normalized)
-    if timeline is None:
-        return None
-    effective_at = _normalize_effective_at(at)
-    if effective_at is None:
-        return timeline.entries[-1]
-    index = bisect_right(timeline.effective_from, effective_at) - 1
-    return None if index < 0 else timeline.entries[index]
-
-
-@cache
-def _compiled_schedule(
-    schedule: tuple[EffectiveModelRate, ...],
-) -> dict[str, _EffectiveRateTimeline]:
-    indexed: dict[str, list[EffectiveModelRate]] = {}
-    for entry in schedule:
-        keys = {_normalize_model_id(entry.model_key)}
-        keys.update(_normalize_model_id(alias) for alias in entry.aliases)
-        for key in keys:
-            indexed.setdefault(key, []).append(entry)
-
-    compiled: dict[str, _EffectiveRateTimeline] = {}
-    for key, entries in indexed.items():
-        ordered = tuple(
-            sorted(
-                entries,
-                key=lambda entry: (
-                    _normalize_effective_at(entry.effective_from)
-                    or BASELINE_EFFECTIVE_FROM
-                ),
-            )
-        )
-        compiled[key] = _EffectiveRateTimeline(
-            effective_from=tuple(
-                _normalize_effective_at(entry.effective_from) or BASELINE_EFFECTIVE_FROM
-                for entry in ordered
-            ),
-            entries=ordered,
-        )
-    return compiled
-
-
 def estimate_cost(
     usage: TokenUsage, model: str, at: datetime | None = None
 ) -> CostBreakdown | None:
@@ -434,15 +369,3 @@ def estimate_codex_credits(
         output_credits=output_credits,
         total_credits=uncached_input_credits + cached_input_credits + output_credits,
     )
-
-
-def _normalize_effective_at(value: datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
-
-
-def _normalize_model_id(value: str) -> str:
-    return value.strip().casefold()

@@ -28,6 +28,14 @@ def render(home, action=None):
         timezone_name="UTC", now=AT, breakdown_action=json.dumps(action) if action else None)
 
 
+def inspect_cycle(home, path, report):
+    with open_ledger(path, read_only=True) as connection:
+        key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
+        basis = load(connection, key)["ranges"]["cycle"]["partition_basis"]
+    return render(home, next(a for a in report.breakdown_navigation["actions"]
+        if a["state"]["detail"] == "evidence:" + basis))
+
+
 @pytest.mark.parametrize("durations", [(None, 10080), (None, 300), (300,)])
 def test_selected_range_preserves_missing_nonweekly_and_weekly_evidence(tmp_path, durations):
     path = breakdown_home(tmp_path)
@@ -85,11 +93,12 @@ def calibrated_home(home, *, unknown=False, full=False):
 def test_real_calibrated_cycle_and_hour_render_with_exact_endpoints(tmp_path):
     path = calibrated_home(tmp_path)
     first = render(tmp_path)
+    inspected = inspect_cycle(tmp_path, path, first)
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
         metadata = load(connection, key)
         cycle_basis = metadata["ranges"]["cycle"]["partition_basis"]
-        cycle = load(connection, key[:-len("metadata")] + cycle_basis + ":summary")
+        cycle = load(connection, metadata["history_prefix"] + cycle_basis + ":summary")
         assert cycle["end"] == AT.timestamp()
         assert cycle["calibration"]["value"] is not None
         evidence = metadata["evidence"]
@@ -98,14 +107,13 @@ def test_real_calibrated_cycle_and_hour_render_with_exact_endpoints(tmp_path):
         excluded_tokens = connection.execute("select sum(total_tokens) from ledger_usage_events where timestamp_us<=?", (round(cycle["start"]*1e6),)).fetchone()[0]
         selected = load(connection, key[:-len("metadata")] + "selected:summary")
         assert selected["total"]["tokens"] - cycle["total"]["tokens"] == excluded_tokens
-        day = load(connection, key[:-len("metadata")] + cycle_basis + ":day:2026-10-09")
+        day = load(connection, metadata["history_prefix"] + cycle_basis + ":day:2026-10-09")
         hour_key = (AT-timedelta(hours=1)).isoformat()
         assert day["calibrations"][hour_key]["value"] is not None
         assert any(r["hour"] == hour_key for r in day["rows"])
         recent = next(p for series in evidence["paces"] for p in series if p["name"] == "Recent" and p["method"] == "calibrated cost")
         assert sum(r["allowance_cost"] for r in day["rows"] if r["hour"] == hour_key) == pytest.approx(recent["cost"])
-    interval = next(a for a in first.breakdown_navigation["actions"] if a["state"]["detail"].startswith("evidence:"))
-    assert "pp estimated" in render(tmp_path, interval).html
+    assert "pp estimated" in inspected.html
     hourly = render(tmp_path, next(a for a in first.breakdown_navigation["actions"] if a["state"]["grain"] == "hourly"))
     action = next(a for a in hourly.breakdown_navigation["actions"] if a["state"]["detail"] == "hour:" + hour_key)
     drilled = render(tmp_path, action)
@@ -117,11 +125,13 @@ def test_real_calibrated_cycle_and_hour_render_with_exact_endpoints(tmp_path):
 def test_real_cycle_unknown_or_full_stays_unavailable(tmp_path, kwargs):
     path = calibrated_home(tmp_path, **kwargs)
     report = render(tmp_path)
+    inspected = inspect_cycle(tmp_path, path, report)
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
-        basis = load(connection, key)["ranges"]["cycle"]["partition_basis"]
-        assert load(connection, key[:-len("metadata")] + basis + ":summary")["calibration"]["value"] is None
-    assert "pp estimated" not in report.html.split('<section class="section usage-breakdown"', 1)[1]
+        metadata = load(connection, key)
+        basis = metadata["ranges"]["cycle"]["partition_basis"]
+        assert load(connection, metadata["history_prefix"] + basis + ":summary")["calibration"]["value"] is None
+    assert "pp estimated" not in inspected.html.split('<section class="section usage-breakdown"', 1)[1]
 
 
 @pytest.mark.parametrize("zone_name,day", [("Pacific/Chatham", "2026-09-27"),

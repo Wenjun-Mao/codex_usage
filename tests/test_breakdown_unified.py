@@ -75,7 +75,7 @@ def test_same_slot_conflicts_preserve_every_raw_observation(tmp_path):
     assert "Conflicting account readings" in first.html
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
-        raw = load(connection, key[:-len("metadata")] + "meter:2026-10-09")
+        raw = load(connection, load(connection, key)["account_prefix"] + "meter:2026-10-09")
         conflict = [p for p in raw if p["limit_id"] == "conflicting"]
         assert len(conflict) == len({identity(p) for p in conflict}) == 3
 
