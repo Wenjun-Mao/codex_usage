@@ -1,6 +1,6 @@
 # ADR 0056: Readable Script-Free Chart Inspection
 
-Status: Accepted for local implementation, 2026-10-11. Not released.
+Status: Released in 2.12.1, 2026-10-11.
 
 Native VS Code acceptance also checks the host's automatic command-URI anchor
 titles. The hit-area child has an explicit empty title to suppress inherited
@@ -72,9 +72,12 @@ contained popups and account-dot hit testing in Chromium, WebKit and Firefox,
 at desktop and narrow widths with scripts disabled. The broader dashboard matrix
 checks actual tick glyph containment, controls and exact inspection access.
 
-Local verification: 1,795 Python tests passed with one platform-specific skip;
-48 extension tests passed. The script-disabled browser checks covered 72
+Release verification: the exact candidate passed 1,814 Python tests with one
+platform-specific skip; 48 extension tests passed. Browser checks covered 72
 hover/focus views and 720 dashboard layout views across all three engines,
 day/night themes and widths of 1440, 760 and 360 pixels. Exact frozen accounting
-parity remained intact. No release, installation or live-ledger mutation was
-part of this verification.
+parity remained intact. The rebuilt bundled macOS host passed 21 real rendered
+interactions, immediate hover and real Tab traversal between usage bars with
+scripts disabled and in-memory secret storage. Native Windows UI and full-toolbar
+Tab traversal remain unvalidated. See the 2.12.1 receipt in `docs/release.md` for
+publication proof. No live installation or ledger was modified for verification.

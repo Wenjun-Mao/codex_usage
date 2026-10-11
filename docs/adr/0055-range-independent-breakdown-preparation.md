@@ -1,6 +1,6 @@
 # ADR 0055: Range-Independent Breakdown Preparation
 
-Status: Accepted for local implementation, 2026-10-11. Not released.
+Status: Released in 2.12.1, 2026-10-11.
 
 ## Context
 
@@ -34,8 +34,9 @@ Keep three disposable preparation namespaces in `rendered_reports`:
   identity, but not the calendar range or theme. Only an exact server-issued
   interval inspection queries and values that interval, then caches its detail.
 
-Breakdown revision 6 prevents earlier cache bodies or issued actions from being
-reinterpreted. Preparation and base rendering remain pinned to one read snapshot;
+Breakdown revision 6 introduced this preparation contract; ADR 0057's revision 7
+also invalidates earlier cache bodies and issued actions. Preparation and base
+rendering remain pinned to one read snapshot;
 a write transaction stores derived data only if the ledger revision still
 matches. Strict issued-scope validation and typed expiry recovery remain intact.
 Sharing account data does not allow historical project totals to cross filters.

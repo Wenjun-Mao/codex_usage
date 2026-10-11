@@ -5,21 +5,60 @@ Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
 
-## 2.12.1 Candidate
+## 2.12.1 Published Receipt
 
 Owner authorized optimization and release on 2026-10-11. ADRs 0055-0057 define
 range-independent preparation, immediate script-free usage-bar inspection and
-separate presentation/accounting cache identities. This patch retains exact
-values and evidence. Local frozen-input timings are backend measurements, not
-native painting latency; cold all-history reports still process selected events.
+separate presentation/accounting cache identities. Exact accounting, source
+events, account evidence, pricing rates and capture scheduling are unchanged.
 
-Before tagging, run the core, extension, parity/work, archive and synthetic
-browser gates, plus a fresh disposable packaged macOS webview with in-memory
-secret storage. Dispatch nonpublishing CI against the exact candidate on main.
-Only a matching passing candidate may be tagged. Public proof uses
-`scripts/verify_marketplace_release.cjs COMMIT PREFLIGHT_RUN TAG_RUN ARTIFACT_DIR OUTPUT_DIR`
-to compare official downloads with tag artifacts and catalog hashes. This section
-is a candidate checklist, not evidence of publication.
+Released on 2026-10-11 as `v2.12.1`, pointing to
+`902b766cc8d81e3555fee88f51f18bfbd3176031` on `main`.
+Exact [nonpublishing CI](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38114661807)
+passed before the tag. The [tag publication workflow](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38115502921)
+passed all core, package, smoke, archive, disposable handoff, visual and
+publication gates. Both public catalog entries were validated at
+2026-10-11 06:01 UTC (02:01 EDT), without duplicate publication.
+
+Official versioned downloads passed independent archive audits and exactly match
+the tag-built artifacts and catalog SHA-256 declarations:
+
+- macOS Apple Silicon (`darwin-arm64`):
+  `512b7c225dab6020df68158cb9fe8918fb3e501649a62a2bd24f39b64564cc59`
+- Windows x64 (`win32-x64`):
+  `53cf83628484f59f1f69240030e56da010304b384a5ceb184d65815ca3980e4e`
+
+The exact candidate passed 1,814 Python tests with one expected Windows-only
+junction skip, 48 extension tests/build, Ruff, lock validation and exact frozen
+monetary/economics parity. Tag-built visual checks passed 720 breakdown, 90
+dense-overlay, 72 immediate hover/focus, 162 observed-speed, 180 allowance and
+36 meter cases across Chromium/WebKit/Firefox. Warm historical materialization,
+fitting and repricing counters remain zero. Tiny balances retain distinct axis
+units; tiny nonzero and near-boundary percentages never silently become zero
+or 100% in summary labels.
+
+The fresh bundled macOS host passed 21 real rendered interactions with scripts
+disabled. Hit-tested tooltips appeared in 23-25 ms after input; real Tab reached
+the next usage bar. An explicit empty title on each hit-area child prevents the
+VS Code host's automatic command-URI title from competing with CSS inspection.
+The host used disposable data/profile paths and `--use-inmemory-secretstorage`.
+Native Windows UI and full-toolbar Tab traversal remain unvalidated.
+
+On the same frozen ledger and fixed Today/Yesterday/7-day navigation sequence,
+with the monetary index primed, uncached backend report times improved from
+13.20/13.88/16.57 seconds to 4.18/1.17/3.37 seconds. Cached Today/Yesterday
+improved from 0.39/0.45 seconds to 0.11/0.12 seconds. These are backend timings,
+not VS Code transfer or painting latency, and are not a promise for other
+machines. Separate cold 30-day/all-history checks took 8.77/22.97 seconds; the
+one-time monetary identity rebuild took 4.09 seconds. Large selected ranges
+and retained exact detail remain real costs.
+
+No live ledger, installed extension, service or Keychain was modified for
+verification. Private corpus evidence remains ignored and unpublished;
+public artifacts use synthetic data only. Unrelated `apps/` remains untouched.
+Workflows, catalog, official downloads and hash evidence remain ignored under
+`output/releases/2.12.1/`. Public proof is reproducible with
+`scripts/verify_marketplace_release.cjs COMMIT PREFLIGHT_RUN TAG_RUN ARTIFACT_DIR OUTPUT_DIR`.
 
 ## 2.12.0 Published Receipt
 

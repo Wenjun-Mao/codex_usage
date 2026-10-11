@@ -1,6 +1,6 @@
 # ADR 0057: Presentation And Accounting Cache Identities
 
-Status: Accepted, 2026-10-11.
+Status: Released in 2.12.1, 2026-10-11.
 
 ## Context
 
