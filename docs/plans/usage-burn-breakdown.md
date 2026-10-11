@@ -5,14 +5,14 @@ main. Independent review fixes, collector rebuild, full Python/extension checks,
 cross-browser matrix and native macOS control replay passed. A new isolated
 Codex Usage Local Preview is open with verified frozen records and controls.
 Owner accepted the full isolated dashboard preview and authorized release on
-2026-10-10. Preparing 2.12.0; publication is gated by the exact-commit platform
-checks and matching-tag workflow in [Release Checklist](../release.md).
+2026-10-10. Released as 2.12.0 after exact-commit platform checks, matching-tag
+publication and verified public downloads; see [Release Receipt](../release.md).
 Current and historical technical evidence is in Verification History.
 No live capture or installed-extension mutation is part of release verification.
 Historical planning permissions below are retained as history.
 
-Retained checkout: main at `aedd9db4481841962762aba8a86f241d4d48ebc4`.
-Release candidate version is 2.12.0. Pre-existing untracked `apps/` is out of scope.
+Released source: `v2.12.0` at `3a1f9cc48794505ccf97ebde2daf5461ab0434d3` on main.
+Release version is 2.12.0. Pre-existing untracked `apps/` is out of scope.
 Prior technical acceptance is recorded in
 [Verification History](usage-burn-breakdown-verification.md).
 This is the same feature and release candidate, not a parallel implementation.
@@ -81,8 +81,8 @@ account-wide weekly allowance or credit balance changed. Make the breakdown
 useful in one chart rather than requiring comparison of several repeated plots.
 Complement the Hourly Heatmap; do not change token, pricing or allowance math.
 
-The revised full-dashboard **Codex Usage Local Preview** was accepted. The next
-delivery is the gate-verified Marketplace release; the isolated frozen preview
+The revised full-dashboard **Codex Usage Local Preview** was accepted and the
+gate-verified Marketplace release is complete. The isolated frozen preview
 remains separate from the user's installed extension and live ledger.
 
 ## Root Cause And Layer

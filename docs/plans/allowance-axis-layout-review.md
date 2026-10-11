@@ -1,7 +1,7 @@
 # Allowance Axis Layout Review
 
 Status: Owner selected Axis-Linked and accepted the full-dashboard preview on
-2026-10-10. Source integrated for 2.12.0 release preparation. No installed
+2026-10-10. Released in 2.12.0 with verified public platform downloads. No installed
 extension changes are part of preview or release verification.
 
 ## Problem

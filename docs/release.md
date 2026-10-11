@@ -5,7 +5,7 @@ Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
 
-## 2.12.0 Candidate
+## 2.12.0 Published Receipt
 
 Owner accepted the full isolated dashboard preview and authorized release on
 2026-10-10. This candidate includes the unified Usage & Allowance Breakdown,
@@ -16,12 +16,40 @@ unchanged; dedicated auto-review keeps ADR 0052's effective-dated zero estimated
 credit rule and separate API-excluded tokens. Its free subscription status is
 also disclosed in the folded scope evidence and Marketplace README.
 
-Publication remains pending the exact-commit nonpublishing platform gate and
-matching-tag workflow. Preserve the private frozen preview separately; public
-CI/artifacts use synthetic data only. The new platform visual gate exercises
-the breakdown and dense account overlays in addition to speed and allowance.
-Native Windows UI and native Tab traversal remain unvalidated; platform package,
-smoke and legacy-handoff checks are required on both operating systems.
+Released on 2026-10-10 as `v2.12.0`, pointing to
+`3a1f9cc48794505ccf97ebde2daf5461ab0434d3` on `main`.
+Exact [nonpublishing CI](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38106623451)
+passed before the tag. The [tag publication workflow](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38107378933)
+passed core, both platform package/smoke/archive/handoff gates, visual checks
+and publication. Public catalog propagation was verified at
+2026-10-11 03:29 UTC (2026-10-10 23:29 EDT), without duplicate publication.
+
+The public Marketplace catalog lists validated 2.12.0 entries for both targets.
+Official versioned downloads passed independent archive audits and exactly match
+the tag-built artifacts and catalog SHA-256 declarations:
+
+- macOS Apple Silicon (`darwin-arm64`):
+  `0953039d046b18dcf42b0cd4b041ba81f3f5a15562c5544fcc13e56df7489497`
+- Windows x64 (`win32-x64`):
+  `85eadd587ce9aa93bffb1d1383ea16c134a725f0177f86947d633b6ee1ad6e3b`
+
+Final local checks passed: 1,764 Python tests with one expected Windows-only
+junction skip, 48 extension tests/build, Ruff, lock validation, exact monetary
+parity, bounded-work counters and regenerated synthetic screenshots. Tag-built
+visual evidence confirms 720 script-disabled breakdown cases, 90 dense-overlay
+cases and 162 observed-speed cases across Chromium/WebKit/Firefox, both themes
+and narrow/medium/wide viewports. Warm historical materialization/fitting/repricing
+counters remain zero. The usage-only SVG now reserves horizontal marker room
+only for an account overlay; its no-overlay overflow regression is covered.
+
+The accepted full-dashboard preview remains private and frozen; public CI and
+artifacts use synthetic data only. Native Windows UI and native Tab traversal
+remain unvalidated. Account overlays do not establish project billing attribution;
+observed speed does not establish server decode speed or causal rollout gains.
+No live data, installed extension, service or Keychain was modified for release
+verification. Unrelated `apps/` remains untouched. Detailed workflows, public
+catalog, downloaded packages and hash evidence remain ignored under
+`output/releases/2.12.0/`.
 
 ## 2.11.1 Published Receipt
 
