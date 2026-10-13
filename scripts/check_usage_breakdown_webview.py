@@ -1,5 +1,6 @@
 """Isolated script-free VS Code OOPIF DOM and real mouse/keyboard acceptance."""
 import argparse
+import asyncio
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -12,7 +13,7 @@ from tempfile import TemporaryDirectory
 import time
 from urllib.parse import unquote
 
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 from codex_usage.agent_settings import AgentSettings, save_agent_settings
 
 from check_speed_webview import disposable_command, stop_owned_host, wait_cdp_endpoint
@@ -30,61 +31,61 @@ def decode(uri):
 class BreakdownTarget(NativeSpeedTarget):
     chart_class = "usage-breakdown"
 
-    def state(self, _decode):
-        chart = self.chart()
+    async def state(self, _decode):
+        chart = await self.chart()
         if chart is None:
             return None
         return {"scope": attributes(chart)["data-scope"], "state": json.loads(attributes(chart)["data-state"])}
 
-    def label_for(self, predicate):
-        for node in nodes(self.chart()):
+    async def label_for(self, predicate):
+        for node in nodes(await self.chart()):
             if node.get("nodeName") == "A":
                 uri = attributes(node).get("href", "")
                 if uri.startswith("command:codexUsage.navigateBreakdown?") and predicate(decode(uri)["state"]):
                     return node_text(node)
         raise AssertionError("Expected rendered command absent")
 
-    def screenshot(self, path):
-        document = self.document()
+    async def screenshot(self, path):
+        document = await self.document()
         chart = next(n for n in nodes(document) if self.chart_class in attributes(n).get("class", "").split())
         toolbar = next(n for n in nodes(document) if "companion-actions" in attributes(n).get("class", "").split())
-        self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": chart["nodeId"]})
-        top = min(self.send("DOM.getContentQuads", {"nodeId": chart["nodeId"]})["quads"][0][1::2])
-        bottom = max(self.send("DOM.getContentQuads", {"nodeId": toolbar["nodeId"]})["quads"][0][1::2])
+        await self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": chart["nodeId"]})
+        top = min((await self.send("DOM.getContentQuads", {"nodeId": chart["nodeId"]}))["quads"][0][1::2])
+        bottom = max((await self.send("DOM.getContentQuads", {"nodeId": toolbar["nodeId"]}))["quads"][0][1::2])
         if top < bottom + 12:
-            self.send("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": 400, "y": bottom + 20,
+            await self.send("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": 400, "y": bottom + 20,
                 "deltaX": 0, "deltaY": top - bottom - 12})
-            self.page.wait_for_timeout(100)
-        self.page.screenshot(path=str(path), timeout=5000)
+            await self.page.wait_for_timeout(100)
+        await self.page.screenshot(path=str(path), timeout=5000)
 
-    def disclose(self, label):
-        summary = next(n for n in nodes(self.chart()) if n.get("nodeName") == "SUMMARY" and node_text(n) == label)
-        self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": summary["nodeId"]})
-        quad = self.send("DOM.getContentQuads", {"nodeId": summary["nodeId"]})["quads"][0]
+    async def disclose(self, label):
+        summary = next(n for n in nodes(await self.chart()) if n.get("nodeName") == "SUMMARY" and node_text(n) == label)
+        await self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": summary["nodeId"]})
+        quad = (await self.send("DOM.getContentQuads", {"nodeId": summary["nodeId"]}))["quads"][0]
         x, y = sum(quad[::2])/4, sum(quad[1::2])/4
-        hit = self.send("DOM.getNodeForLocation", {"x": round(x), "y": round(y)})
+        hit = await self.send("DOM.getNodeForLocation", {"x": round(x), "y": round(y)})
         assert hit["backendNodeId"] in {n.get("backendNodeId") for n in nodes(summary)}
         for event in ("mousePressed", "mouseReleased"):
-            self.send("Input.dispatchMouseEvent", {"type": event, "x": x, "y": y, "button": "left", "clickCount": 1})
-        self.page.wait_for_timeout(100)
+            await self.send("Input.dispatchMouseEvent", {"type": event, "x": x, "y": y, "button": "left", "clickCount": 1})
+        await self.page.wait_for_timeout(100)
 
-    def keyboard(self, label):
+    async def keyboard(self, label):
         # CDP DOM focus sets the input origin in the script-disabled OOPIF;
         # real Enter input and a changed rendered state prove activation.
-        link = next(n for n in nodes(self.chart()) if n.get("nodeName") == "A" and node_text(n) == label)
+        link = next(n for n in nodes(await self.chart()) if n.get("nodeName") == "A" and node_text(n) == label)
         args = decode(attributes(link)["href"])
-        self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": link["nodeId"]})
-        self.send("DOM.focus", {"nodeId": link["nodeId"]})
-        before = self.state(decode)
+        await self.send("DOM.scrollIntoViewIfNeeded", {"nodeId": link["nodeId"]})
+        await self.send("DOM.focus", {"nodeId": link["nodeId"]})
+        before = await self.state(decode)
         for event in ("keyDown", "keyUp"):
-            self.send("Input.dispatchKeyEvent", {"type": event, "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13})
+            await self.send("Input.dispatchKeyEvent", {"type": event, "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13})
         stop = time.monotonic() + 5
         while time.monotonic() < stop:
-            state = self.state(decode)
+            state = await self.state(decode)
             if state and state["state"] != before["state"]:
                 assert state["state"] == args["state"]
                 return {"keyboard": True, "requested": args, "before": before, "rendered": state, "focus_origin": "CDP DOM.focus; real Enter"}
-            self.page.wait_for_timeout(100)
+            await self.page.wait_for_timeout(100)
         raise AssertionError("Native Enter did not change the rendered mode")
 
 
@@ -96,7 +97,7 @@ def synthetic_host_environment(root, home, rpc, rpc_fixture, environ=None):
         CODEX_CLI_PATH=str(rpc), CODEX_BREAKDOWN_RPC_FIXTURE=str(rpc_fixture))
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--code", type=Path, default=Path("/Applications/Visual Studio Code.app/Contents/MacOS/Code"))
     parser.add_argument("--output", type=Path, default=Path("output/playwright/usage-breakdown/native"))
@@ -150,45 +151,45 @@ def main():
                     if process.poll() is not None or time.monotonic() > deadline:
                         raise TimeoutError("Disposable VS Code host not ready; see host.log")
                     time.sleep(.1)
-                with sync_playwright() as playwright:
+                async with async_playwright() as playwright:
                     endpoint = wait_cdp_endpoint(port, deadline, diagnostics)
-                    browser = playwright.chromium.connect_over_cdp(endpoint["webSocketDebuggerUrl"], timeout=15000)
-                    target, state = attach_speed_target(browser, deadline, decode, diagnostics, diagnostics_path, BreakdownTarget)
+                    browser = await playwright.chromium.connect_over_cdp(endpoint["webSocketDebuggerUrl"], timeout=15000)
+                    target, state = await attach_speed_target(browser, deadline, decode, diagnostics, diagnostics_path, BreakdownTarget)
                     (args.output / "initial-state.json").write_text(json.dumps(state, indent=2))
                     assert state["state"]["basis"] == "selected" and state["state"]["grain"] == "daily", state
-                    target.screenshot(args.output / "native-initial.png")
-                    hover = check_native_hover(target, args.output / "native-hover-tab.png")
+                    await target.screenshot(args.output / "native-initial.png")
+                    hover = await check_native_hover(target, args.output / "native-hover-tab.png")
                     clicks = []
-                    def click(label):
+                    async def click(label):
                         diagnostics["stage"] = "rendered click: " + label
-                        requested = target.click(label, decode)
+                        requested = await target.click(label, decode)
                         target.deadline = min(deadline, time.monotonic()+15)
-                        rendered = wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
+                        rendered = await wait_native_state(target, requested, decode, lambda s, a: s["state"] == a["state"])
                         target.deadline = deadline
                         clicks.append({"label": label, "requested": requested, "rendered": rendered})
                         diagnostics["rendered_clicks"] = clicks
                         diagnostics_path.write_text(json.dumps(diagnostics, indent=2))
-                        target.screenshot(args.output / f"native-{len(clicks)}.png")
+                        await target.screenshot(args.output / f"native-{len(clicks)}.png")
                         return rendered
                     for label in ("Tokens", "Project", "Estimated credits", "API cost", "Projects", "Estimated credits", "Tokens", "Other", "Time", "Hourly", "Previous", "Next"):
-                        click(label)
-                    target.disclose("Weekly allowance")
-                    click("Credit balance")
-                    target.disclose("Credit balance")
-                    click("None")
-                    target.disclose("None")
-                    click("Weekly allowance")
-                    click("Daily")
-                    target.disclose("Inspect every day")
-                    click(target.label_for(lambda s: s["detail"].startswith("day:") and s["day"] == (now-timedelta(days=1)).date().isoformat()))
-                    target.disclose("Inspect every hour occurrence")
-                    click(target.label_for(lambda s: s["detail"].startswith("hour:")))
-                    click("Projects")
-                    click(target.label_for(lambda s: s["view"] == "time" and bool(s["project"])))
-                    clicks.append(target.keyboard("Daily"))
+                        await click(label)
+                    await target.disclose("Weekly allowance")
+                    await click("Credit balance")
+                    await target.disclose("Credit balance")
+                    await click("None")
+                    await target.disclose("None")
+                    await click("Weekly allowance")
+                    await click("Daily")
+                    await target.disclose("Inspect every day")
+                    await click(await target.label_for(lambda s: s["detail"].startswith("day:") and s["day"] == (now-timedelta(days=1)).date().isoformat()))
+                    await target.disclose("Inspect every hour occurrence")
+                    await click(await target.label_for(lambda s: s["detail"].startswith("hour:")))
+                    await click("Projects")
+                    await click(await target.label_for(lambda s: s["view"] == "time" and bool(s["project"])))
+                    clicks.append(await target.keyboard("Daily"))
                     (root / "clicked.json").write_text(json.dumps(clicks))
-                    target.close()
-                    browser.close()
+                    await target.close()
+                    await browser.close()
                 while not (root / "host-evidence.json").exists():
                     if (root / "failure.txt").exists():
                         raise RuntimeError((root / "failure.txt").read_text())
@@ -204,7 +205,7 @@ def main():
                 (args.output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
                 diagnostics["stage"] = "complete"
                 print(json.dumps({"native_inputs": len(evidence["rendered_input"]), "script_disabled": evidence["script_disabled"]}))
-            except Exception as error:
+            except (Exception, asyncio.CancelledError) as error:
                 diagnostics["failure"] = f"{type(error).__name__}: {error}"
                 raise
             finally:
@@ -213,4 +214,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

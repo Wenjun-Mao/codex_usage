@@ -1,6 +1,7 @@
 """Accept actual script-disabled VS Code command links in an isolated synthetic host."""
 
 import argparse
+import asyncio
 import json
 import hashlib
 import os
@@ -15,7 +16,7 @@ from urllib.error import URLError
 from urllib.parse import unquote
 from urllib.request import ProxyHandler, build_opener
 
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
 from observed_speed_fixture import chart_home
 from speed_native_target import attach_speed_target, wait_native_state
@@ -143,7 +144,7 @@ def disposable_command(code, root, extension, port):
 
 
 def source_fingerprints(repo):
-    paths = ("scripts/check_speed_webview.py", "scripts/speed_native_target.py",
+    paths = ("scripts/check_speed_webview.py", "scripts/speed_native_target.py", "scripts/native_cdp.py",
              "scripts/vscode_speed_acceptance.js", "extensions/vscode/src/speedNavigation.ts",
              "extensions/vscode/src/reportHtml.ts", "src/codex_usage/speed_parser.py",
              "src/codex_usage/speed_projection.py", "src/codex_usage/session_chunk_reader.py",
@@ -205,6 +206,10 @@ def wait_owned_group_exit(group):
 
 
 def accept_native_link(root, port, deadline, output):
+    return asyncio.run(accept_native_link_async(root, port, deadline, output))
+
+
+async def accept_native_link_async(root, port, deadline, output):
     diagnostics = {"synthetic_only": True, "stage": "endpoint", "endpoint_attempts": 0}
     diagnostics_path = output / "cdp-diagnostics.json"
     try:
@@ -213,29 +218,29 @@ def accept_native_link(root, port, deadline, output):
         diagnostics.update(stage="browser_attach", endpoint_available=True,
                            endpoint_seconds=time.monotonic() - started, browser=endpoint["Browser"])
         diagnostics_path.write_text(json.dumps(diagnostics, indent=2) + "\n")
-        with sync_playwright() as playwright:
+        async with async_playwright() as playwright:
             started = time.monotonic()
-            browser = playwright.chromium.connect_over_cdp(
+            browser = await playwright.chromium.connect_over_cdp(
                 endpoint["webSocketDebuggerUrl"], timeout=15000
             )
             diagnostics.update(stage="frame_target", browser_attached=True,
                                attach_seconds=time.monotonic() - started)
             diagnostics_path.write_text(json.dumps(diagnostics, indent=2) + "\n")
-            target, state = attach_speed_target(browser, deadline, navigation_args, diagnostics, diagnostics_path)
+            target, state = await attach_speed_target(browser, deadline, navigation_args, diagnostics, diagnostics_path)
             assert state["granularity"] == "daily", state
             diagnostics["initial_state"] = state
             clicks = []
             # Each command replaces webview.html and therefore its content frame.
             for label in ("Hourly", "Previous", "Previous", "Latest week", "Previous", "Next", "Daily", "Hourly"):
-                args = target.click(label, navigation_args)
-                state = wait_native_state(target, args, navigation_args, matches_navigation)
+                args = await target.click(label, navigation_args)
+                state = await wait_native_state(target, args, navigation_args, matches_navigation)
                 clicks.append({"label": label, "requested": args, "rendered": state})
-                target.screenshot(output / f"native-{len(clicks)}-{label.lower()}.png")
+                await target.screenshot(output / f"native-{len(clicks)}-{label.lower()}.png")
             diagnostics.update(stage="complete", rendered_clicks=clicks)
             (root / "clicked.json").write_text(json.dumps(clicks))
-            target.close()
-            browser.close()
-    except Exception as error:
+            await target.close()
+            await browser.close()
+    except (Exception, asyncio.CancelledError) as error:
         diagnostics["failure"] = f"{type(error).__name__}: {error}"
         raise
     finally:

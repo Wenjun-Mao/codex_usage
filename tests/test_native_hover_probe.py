@@ -1,5 +1,6 @@
 """Diagnostic observation must preserve CDP arguments, errors and class restoration."""
 import json
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -20,7 +21,7 @@ def test_protocol_trace_observes_existing_replies_without_extra_calls(fails):
         def __init__(self):
             self.session = SimpleNamespace(send=self.outer)
 
-        def outer(self, method, params):
+        async def outer(self, method, params):
             calls.append((method, params))
             self._received({"sessionId": self.session_id, "message": json.dumps({"id": self.sequence})})
             return {"computedStyle": [{"name": "visibility", "value": "visible"}, {"name": "opacity", "value": "1"}]}
@@ -28,9 +29,9 @@ def test_protocol_trace_observes_existing_replies_without_extra_calls(fails):
         def _received(self, event):
             calls.append(("received", event))
 
-        def send(self, method, params=None):
+        async def send(self, method, params=None):
             self.sequence += 1
-            result = self.session.send("Target.sendMessageToTarget", {"method": method, "params": params})
+            result = await self.session.send("Target.sendMessageToTarget", {"method": method, "params": params})
             if fails:
                 raise RuntimeError("original failure")
             return result
@@ -41,9 +42,9 @@ def test_protocol_trace_observes_existing_replies_without_extra_calls(fails):
     with probe.protocol_trace(Target, rows):
         if fails:
             with pytest.raises(RuntimeError, match="original failure"):
-                target.send("CSS.getComputedStyleForNode", {"nodeId": 7})
+                asyncio.run(target.send("CSS.getComputedStyleForNode", {"nodeId": 7}))
         else:
-            result = target.send("CSS.getComputedStyleForNode", {"nodeId": 7})
+            result = asyncio.run(target.send("CSS.getComputedStyleForNode", {"nodeId": 7}))
             assert result["computedStyle"][0]["value"] == "visible"
     assert Target.send is original_send and Target._received is original_received
     assert target.session.send is original_outer

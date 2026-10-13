@@ -1,4 +1,6 @@
 import importlib.util
+import asyncio
+from unittest.mock import AsyncMock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -65,16 +67,16 @@ def test_explicit_native_target_click_uses_rendered_dom_and_input_not_scripts(ha
         "children": [{"nodeType": 3, "nodeValue": "Hourly"}]}]}
     toolbar = {"nodeId": 4, "attributes": ["class", "companion-actions"]}
     target = object.__new__(NativeSpeedTarget)
-    target.chart = lambda: chart
+    target.chart = AsyncMock(return_value=chart)
     documents = []
-    def document():
+    async def document():
         documents.append(True)
         return {"children": [chart, toolbar]}
     target.document = document
-    target.page = SimpleNamespace(wait_for_timeout=lambda delay: None)
+    target.page = SimpleNamespace(wait_for_timeout=AsyncMock())
     calls = []
     scrolled = False
-    def send(method, params):
+    async def send(method, params):
         nonlocal scrolled
         calls.append((method, params))
         if method == "DOM.getContentQuads":
@@ -87,18 +89,18 @@ def test_explicit_native_target_click_uses_rendered_dom_and_input_not_scripts(ha
             scrolled = True
         return {"backendNodeId": 2} if method == "DOM.getNodeForLocation" else {}
     target.send = send
-    assert target.click("Hourly", harness.navigation_args) == args
+    assert asyncio.run(target.click("Hourly", harness.navigation_args)) == args
     assert len(documents) == 1, "DOM frontend IDs must come from one coherent document"
     assert scrolled == covered
     assert calls[-4][0] == "DOM.getNodeForLocation"
     assert calls[-1][1] == {"type": "mouseReleased", "x": 20, "y": 60 if covered else 30, "button": "left", "clickCount": 1}
     assert not any(method.startswith("Runtime.") for method, _ in calls)
-    def obstructed(method, params):
-        return {"backendNodeId": 4} if method == "DOM.getNodeForLocation" else send(method, params)
+    async def obstructed(method, params):
+        return {"backendNodeId": 4} if method == "DOM.getNodeForLocation" else await send(method, params)
     target.send = obstructed
     pressed = sum(params.get("type") == "mousePressed" for _, params in calls)
     with pytest.raises(AssertionError, match="Occluded native link"):
-        target.click("Hourly", harness.navigation_args)
+        asyncio.run(target.click("Hourly", harness.navigation_args))
     assert sum(params.get("type") == "mousePressed" for _, params in calls) == pressed
 
 

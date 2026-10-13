@@ -62,7 +62,7 @@ def contract_files(root=ROOT):
         "extensions/vscode/scripts/test-qualification.js", "extensions/vscode/package.json",
         "extensions/vscode/scripts/qualification-reporter.cjs",
         "scripts/verification/python-case-baseline.json", "scripts/verification/extension-case-baseline.json",
-        "scripts/check_speed_webview.py", "scripts/speed_native_target.py",
+        "scripts/check_speed_webview.py", "scripts/speed_native_target.py", "scripts/native_cdp.py",
         "scripts/breakdown_rpc_fixture.py", "scripts/usage_breakdown_fixture.py",
         "uv.lock", "extensions/vscode/package-lock.json"]
     files += [file.relative_to(root).as_posix() for directory in ("scripts/release", "scripts/verification")

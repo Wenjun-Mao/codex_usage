@@ -75,3 +75,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0059: Lazy Account Display Partitions](0059-lazy-account-display-partitions.md)
 - [0060: Historical Allowance Calculation Reuse](0060-historical-allowance-calculation-reuse.md)
 - [0061: Qualified Artifact Promotion](0061-qualified-artifact-promotion.md)
+- [0062: Native Observation Transport](0062-native-observation-transport.md)

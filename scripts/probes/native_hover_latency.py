@@ -29,21 +29,21 @@ def protocol_trace(target_type, rows):
                 row["iframe_reply_ms"] = milliseconds()
         return original_received(target, event)
 
-    def send(target, method, params=None):
+    async def send(target, method, params=None):
         row = {"method": method, "started_ms": milliseconds()}
         key = (id(target), target.sequence + 1)
         active[key] = row
         session_send = target.session.send
 
-        def outer_send(name, parameters=None):
-            result = session_send(name, parameters)
+        async def outer_send(name, parameters=None):
+            result = await session_send(name, parameters)
             if name == "Target.sendMessageToTarget":
                 row["outer_ack_ms"] = milliseconds()
             return result
 
         target.session.send = outer_send
         try:
-            result = original_send(target, method, params)
+            result = await original_send(target, method, params)
             if method == "CSS.getComputedStyleForNode":
                 row["style"] = {item["name"]: item["value"] for item in result["computedStyle"]
                     if item["name"] in ("visibility", "opacity")}
