@@ -3,7 +3,6 @@ import argparse
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
-from time import perf_counter
 from zoneinfo import ZoneInfo
 
 from playwright.sync_api import sync_playwright
@@ -12,6 +11,7 @@ from codex_usage.report_usage_breakdown_chart import plot
 from preview_breakdown_layouts import document
 from verification.visual_cases import identity
 from verification.visual_evidence import VisualEvidence
+from verification.hover_observation import observe_input, observe_keyboard
 
 
 def chart(zone_name, *, days=1, metric="cost", dst=False):
@@ -71,20 +71,19 @@ def main():
                                     hit = target.locator(".ub-hover-hit")
                                     assert hit.get_attribute("title") == ""
                                     tooltip = page.locator(".ub-hover-bucket").nth(index).locator(".ub-hover-tooltip")
-                                    started = perf_counter()
-                                    hit.hover(position={"x": 2, "y": 2}, timeout=1000)
-                                    tooltip.wait_for(state="visible", timeout=250)
-                                    durations.append(perf_counter()-started)
+                                    handle = tooltip.element_handle()
+                                    assert handle is not None
+                                    durations.append(observe_input(page, handle,
+                                        lambda: hit.hover(position={"x": 2, "y": 2}, timeout=1000),
+                                        visible=True, phase="hover"))
                                     text = tooltip.inner_text()
                                     assert "74.197783" not in text and "e+" not in text
                                     assert "$74.20" in text if scenario != "tokens" else "139.03 M tokens" in text
                                     assert target.get_attribute("href").endswith("issued=" + str(index))
                                     assert tooltip.evaluate("e=>{const b=e.getBoundingClientRect(),p=e.closest('.ub-scroll').getBoundingClientRect();return b.left>=p.left-1&&b.right<=p.right+1&&e.scrollWidth<=e.clientWidth+1}"), (engine, scenario, width, text)
-                                    page.mouse.move(0, 0)
-                                    tooltip.wait_for(state="hidden", timeout=250)
-                                    page.keyboard.press("Tab")
-                                    target.focus()
-                                    tooltip.wait_for(state="visible", timeout=250)
+                                    observe_input(page, handle, lambda: page.mouse.move(0, 0),
+                                        visible=False, phase="hide")
+                                    observe_keyboard(page, handle, targets, index)
                                     if index < 2:
                                         page.keyboard.press("Tab")
                                         assert targets.nth(index+1).evaluate("e=>e===document.activeElement")
