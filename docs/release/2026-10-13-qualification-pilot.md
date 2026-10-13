@@ -1,7 +1,7 @@
 # Qualification Pilot Receipt
 
-Date: 2026-10-13. Status: journal, normal qualification and dry-run promotion pass;
-controlled failure/retry in progress.
+Date: 2026-10-13. Status: journal pilot passes; prior normal/dry-run evidence is
+retained. Current source qualification is held by hosted WebKit input latency.
 This receipt is nonpublishing evidence, not release approval. No new tag,
 Marketplace upload, credential/settings change or existing-version replacement.
 Production promotion remains source-disabled.
@@ -11,6 +11,8 @@ Production promotion remains source-disabled.
 - Implementation: `108e92c7` on retained `main`.
 - Pinned candidate: `b01aa9c8d000d5192971b931f9ec49187e2164dc`.
 - Corrected qualified source: `dc79adb616601959748480f8fac118fd9455e69f`.
+- Transport correction: `b2814244bfa7d64d5bfdd0285cb5991e32c37095`.
+- Guarded observation source: `8f6eb9d0e41822f362fe96ec1dbe2d7efbb690d3`.
 - Owner approved the durable Git journal, scoped commits/pushes and nonpublishing
   normal, controlled-failure/retry and dry-run pilots.
 - Unrelated untracked `apps/` is untouched and uncommitted.
@@ -112,3 +114,100 @@ Its uploaded archive SHA-256 is
 
 See the [measured profile](../research/2026-10-13-verification-and-release-profile.md)
 for queue, execution-span and summed-runner-work boundaries.
+
+## Native Transport Follow-Up
+
+[Read-only plain/traced diagnostic](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38447513798)
+passed both fresh-host samples using the original normal-qualified package.
+Plain hover observations were 32/43ms and traced observations 35/73ms. These are
+observer timings on different hosts; no overhead subtraction or causal speed claim.
+The trace adds no style reads and does not supersede the failed retry.
+
+Review confirmed fixed-delay reply polling and incomplete whole-command timeout
+coverage. [ADR 0062](../adr/0062-native-observation-transport.md) defines the public
+async event/Future correction. Reply/ACK order, correlation, expired stored replies,
+closure, cancellation and pending-state cleanup are regression guarded. The exact
+250ms input-to-observation guard and all real inputs remain unchanged.
+
+Current local verification: 2,118 passed and one approved skip in 64.01 seconds;
+all 2,119 collected identities reconcile. Focused native checks pass 51 cases.
+A real Chromium CDP round trip and isolated local pinned-Code replay pass; the
+latter exercises 21 inputs with script execution disabled and 13/15ms hover.
+It uses revalidated historical package bytes for diagnostic purposes, not hosted
+authority for the changed source contract. Monetary parity/work and Ruff pass.
+The read-only review has no remaining correctness findings and is collected,
+closed and unregistered. Standalone speed-main cancellation cleanup has existing
+unconditional cleanup but is not newly exercised through a full speed-main fixture.
+
+Fresh source-bound pilots:
+
+- [Normal](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38450968712): failed WebKit focus observation.
+- [Controlled failure/retry](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38450970364): cancelled before execution.
+- Fresh dry-run promotion: pending successful normal qualification.
+
+The new transport changes the execution-closure fingerprint. Earlier receipts
+remain historical evidence, not qualification for this candidate. Renderer root
+cause and general hosted flake reliability are not claimed solved.
+
+## Current Held Gate
+
+The owning observation contract now pre-resolves a stable tooltip handle and
+starts one strict `<250ms` budget before real input. Keyboard setup uses the
+verified preceding legend/usage target; no corrective focus follows real Tab.
+[ADR 0063](../adr/0063-real-input-observation-budget.md) records the contract.
+
+- [Normal source `8f6eb9d0`](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38455041352):
+  attempt 1 failed WebKit keyboard/style observation at 453ms. One bounded
+  failed-job rerun failed at 310ms inside locator hover before any style read.
+- [Controlled failure/retry](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38455044042):
+  attempt 1 failed exactly its requested first hover case; aggregation/native
+  skipped. Attempt 2 reused the eight healthy gates but failed a WebKit keyboard
+  call at 472ms before the first style read. It is not qualified.
+- Pointer readiness has been separated from physical motion: original locator
+  actionability remains through `hover(trial=True)` and the exact rendered
+  coordinate must pass hit testing. Since the pinned driver moves during trial,
+  pointer/focus reset and an explicit hidden baseline are required afterward.
+  The same physical input budget remains. The 310ms observation covers the
+  combined locator path, not proven readiness-only time.
+  This fixes a measurement conflation, not the unexplained keyboard stall.
+- Complete local verification of that correction passed 2,133 tests with one
+  approved skip in 63.87 seconds; raw JUnit and collection reconcile all 2,134
+  unique identities. All 72 script-disabled hover views pass. These results
+  precede the hidden-baseline correction and do not prove fresh transitions;
+  fresh full-suite/matrix evidence is required below.
+- A separate bounded `hover-input-probe.yml` records SDK send/reply timing for
+  the original inputs. It is read-only, runs no publisher/producer step, keeps
+  failed evidence, and cannot qualify a candidate. Its debug overhead is not
+  calibrated; results cannot justify subtracting time from the deadline.
+
+Both failed runs are terminal. No repeated runs until green, engine removal,
+timeout relaxation or product CSS patch is accepted without causal evidence.
+Current-source full hosted/native qualification and fresh dry-run promotion
+remain open. Production journal readback is still its empty pinned genesis;
+no tag, publication, live data or secret/settings change was made.
+
+## Fresh Hidden-Baseline Verification
+
+Read-only GPT-6.1 Sol / High review found the pinned driver's trial-hover priming;
+effective model settings were unverified. A script-disabled runtime probe
+confirmed priming and pointer-away reset in Chromium, WebKit and Firefox.
+The corrected fixture retains actionability/hit checks and requires hidden,
+unfocused, non-hovered state immediately before each timed visibility input.
+
+Fresh complete local verification passes 2,143 cases with the one approved
+non-Windows junction skip in 64.55 seconds. Independent raw JUnit/collection
+validation reconciles all 2,144 unique identities. All 72 browser views pass;
+Ruff, frozen monetary parity and bounded-work guards pass. Raw evidence is
+`output/qualification/hidden-baseline-final-core/` and
+`output/qualification/hidden-baseline-hover/`.
+
+Review found no blocking correctness issues after correction. Added regressions
+exercise the real 250ms/472ms action-only rejection before a timed style read,
+preserve original diagnostic failures, and restore both the module and `argv`.
+The reviewer is collected, closed and unregistered; no workers remain.
+
+The bounded `hover_input_latency.py` wrapper marks existing input/style calls
+without adding DOM reads or inputs. The separate workflow records SDK protocol
+timestamps. Both keep original failures and the unchanged guard; debug-marker
+overhead remains charged and uncalibrated. Fresh hosted diagnosis/qualification
+is still pending, not inferred from these local passes.

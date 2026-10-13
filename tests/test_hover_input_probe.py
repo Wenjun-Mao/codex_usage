@@ -1,0 +1,99 @@
+"""Diagnostic markers preserve the original input, reads, guard and failures."""
+from types import SimpleNamespace
+
+import pytest
+
+from release_tooling_support import load_tool
+
+probe = load_tool("probes.hover_input_latency")
+
+
+@pytest.mark.parametrize("fails", (False, True))
+def test_observation_trace_retains_each_original_call_and_restores_guard(fails):
+    calls = []
+    tooltip = SimpleNamespace(evaluate=lambda *args, **kwargs: (calls.append(("style", args, kwargs)), "original")[1])
+    def input_action():
+        calls.append("real Tab")
+
+    def original(page, handle, action, **kwargs):
+        assert page == "page" and kwargs == {"visible": True, "keyboard": True, "phase": "keyboard"}
+        assert handle.evaluate("baseline") == "original"
+        action()
+        if fails:
+            raise AssertionError("original 250ms guard")
+        assert handle.evaluate("style", argument=7) == "original"
+        return .02
+
+    module, rows = SimpleNamespace(observe_input=original), []
+    with probe.observation_trace(module, rows):
+        args = ("page", tooltip, input_action)
+        kwargs = {"visible": True, "keyboard": True, "phase": "keyboard"}
+        if fails:
+            with pytest.raises(AssertionError, match="original 250ms guard"):
+                module.observe_input(*args, **kwargs)
+        else:
+            assert module.observe_input(*args, **kwargs) == .02
+    assert module.observe_input is original
+    assert calls == [("style", ("baseline",), {}), "real Tab"] + (
+        [] if fails else [("style", ("style",), {"argument": 7})])
+    assert len(rows) == 1
+    stages = [entry["stage"] for entry in rows[0]["calls"]]
+    assert stages == ["baseline-entry", "baseline-return", "input-entry", "input-return"] + (
+        [] if fails else ["style-entry", "style-return"]) + ["observation-return"]
+    if fails:
+        assert rows[0]["failure"] == "AssertionError: original 250ms guard"
+    assert rows[0]["phase"] == "keyboard"
+    timings = [entry["ms"] for entry in rows[0]["calls"]]
+    assert timings == sorted(timings)
+
+
+@pytest.mark.parametrize("delay", (.25, .472))
+def test_real_observer_rejects_action_only_overrun_before_timed_style(monkeypatch, delay):
+    observation = load_tool("verification.hover_observation")
+    now, calls, rows = [0.0], [], []
+    monkeypatch.setattr(observation, "perf_counter", lambda: now[0])
+    tooltip = SimpleNamespace(evaluate=lambda _: (calls.append("baseline"),
+        {"hidden": True, "active": False, "hover": False})[1])
+
+    def action():
+        calls.append("real Tab")
+        now[0] += delay
+
+    with probe.observation_trace(observation, rows):
+        with pytest.raises(AssertionError, match="'state': None"):
+            observation.observe_input(None, tooltip, action, visible=True, keyboard=True, phase="keyboard")
+    assert calls == ["baseline", "real Tab"]
+    assert [entry["stage"] for entry in rows[0]["calls"]] == [
+        "baseline-entry", "baseline-return", "input-entry", "input-return", "observation-return"]
+
+
+@pytest.mark.parametrize("fails", (False, True))
+def test_main_restores_argv_and_records_original_failure(monkeypatch, tmp_path, fails):
+    import json
+    import sys
+
+    args = ["probe", "--output", str(tmp_path)]
+    monkeypatch.setattr(sys, "argv", args)
+    observation = load_tool("verification.hover_observation")
+    original = observation.observe_input
+
+    def run(path, *, run_name):
+        assert path == str(probe.SCRIPTS / "check_breakdown_hover_ui.py")
+        assert run_name == "__main__" and sys.argv == [path, "--output", str(tmp_path)]
+        if fails:
+            raise AssertionError("original failure")
+
+    monkeypatch.setattr(probe.runpy, "run_path", run)
+    if fails:
+        with pytest.raises(AssertionError, match="original failure"):
+            probe.main()
+    else:
+        probe.main()
+    assert sys.argv is args and observation.observe_input is original
+    evidence = json.loads((tmp_path / "input-timings.json").read_text())
+    assert evidence["diagnostic_only"] is True and evidence["deadline_ms"] == 250
+    assert evidence["extra_dom_reads"] == 0 and evidence["script_injection"] is False
+    assert evidence["instrumentation_overhead_calibrated"] is False
+    assert evidence["replay_passed"] is not fails
+    if fails:
+        assert evidence["failure"] == "AssertionError: original failure"

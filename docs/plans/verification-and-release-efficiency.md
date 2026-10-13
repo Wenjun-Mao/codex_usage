@@ -1,7 +1,8 @@
 # Verification And Release Efficiency
 
-Date: 2026-10-13. Status: local, journal, normal hosted and dry-run gates pass;
-controlled failure/retry remains in progress. Production promotion is source-disabled.
+Date: 2026-10-13. Status: local and journal gates pass. Earlier normal/dry-run
+evidence is retained; current source qualification is held by hosted WebKit
+input/observation latency. Production promotion is source-disabled.
 Scope agreed: faster failure-local gates, exact qualified-artifact promotion,
 and fewer browser round trips without reducing coverage.
 
@@ -341,6 +342,32 @@ event kinds. Local regressions cover lost responses, replay, malformed/missing
 history and deletion of all Actions evidence. Production cutover begins at 2.12.3;
 the bootstrap pins and hosted synthetic append/conflict/replay pilot now pass.
 Independent readback confirms two pilot entries and no production entries.
-Full platform/native qualification and dry-run inspection pass. Controlled retry
-remains in progress; see the [pilot receipt](../release/2026-10-13-qualification-pilot.md).
+Earlier platform/native qualification and dry-run inspection pass. Current
+source qualification is held; see the [pilot receipt](../release/2026-10-13-qualification-pilot.md).
 Publication/new tags still require separate release approval.
+
+The controlled retry independently confirmed unchanged package receipts/bytes
+and reused eight healthy gate origins, but its native guard failed at 273ms.
+Separate plain/traced samples pass without relaxing that guard. Proven transport
+polling/timeout defects are corrected under [ADR 0062](../adr/0062-native-observation-transport.md),
+not presented as renderer root-cause proof. The new source `b2814244` has 2,118
+passing local tests, one approved skip and a passing isolated 21-input native smoke.
+Its fresh normal, controlled-retry and dry-run gates remain open; earlier source
+receipts cannot authorize the changed execution closure.
+
+The guarded source `8f6eb9d0` retained every real input and all three engines;
+normal/retry attempts failed hosted WebKit latency, including a 472ms keyboard
+call before the first style read. Pointer readiness is now separate setup with
+the original actionability and exact hit checks; local 72-view and full core
+verification pass. The root of the hosted keyboard stall remains unresolved.
+One bounded read-only SDK protocol diagnostic is authorized under the existing
+nonpublishing pilot scope. D4, current-source hosted/native acceptance and
+fresh dry-run inspection remain open; no prior receipt is borrowed.
+
+The pinned SDK's trial hover was independently reviewed and runtime-proven to
+move the pointer and prime CSS hover. The fixture now resets pointer/focus and
+checks a genuinely hidden baseline before timing. Fresh full local verification
+passes 2,143 cases plus the approved skip, with complete 2,144-case reconciliation;
+all 72 hover views and parity/work/Ruff guards pass. Diagnostic wrappers preserve
+original input/read counts, deadline failures and cleanup. The read-only reviewer
+is collected and closed. Hosted latency causality and D4 acceptance remain open.

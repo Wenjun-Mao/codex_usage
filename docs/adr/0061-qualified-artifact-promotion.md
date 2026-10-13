@@ -1,8 +1,9 @@
 # ADR 0061: Qualified Artifact Promotion
 
-Status: Accepted for implementation on 2026-10-13; local, journal, normal hosted
-and dry-run qualification pass; controlled retry in progress. Production promotion
-is disabled, not released. Owner selected explicit promotion; see the
+Status: Accepted for implementation on 2026-10-13; local and journal gates pass.
+Earlier normal/dry-run receipts are retained; the current observation contract
+is not fully hosted-qualified. Production promotion is disabled, not released.
+Owner selected explicit promotion; see the
 [implementation plan](../plans/verification-and-release-efficiency.md).
 
 ## Context

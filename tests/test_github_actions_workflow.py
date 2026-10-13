@@ -173,6 +173,19 @@ def test_journal_write_permission_is_job_scoped_and_pilot_has_no_publisher_secre
     assert "VSCE_PAT" not in pilot and "publish_qualified_vsix" not in pilot
 
 
+def test_input_probe_is_bounded_read_only_and_cannot_emit_release_proofs() -> None:
+    text = (ROOT / ".github/workflows/hover-input-probe.yml").read_text()
+    assert "workflow_dispatch:" in text and 'test "$GITHUB_REF" = refs/heads/main' in text
+    assert "contents: read" in text and "persist-credentials: false" in text
+    assert "timeout-minutes: 5" in text and "set -o pipefail" in text
+    assert "DEBUG: pw:protocol,pw:api" in text
+    assert "scripts/probes/hover_input_latency.py --output output/diagnostic/hover" in text
+    assert "if: always()" in text and "path: output/diagnostic/hover" in text
+    for forbidden in ("VSCE_PAT", "contents: write", "record-gate", "qualification.py",
+                      "publication_journal.py", "publish_qualified_vsix", "--fail-case"):
+        assert forbidden not in text
+
+
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))
 def test_changelogs_describe_2_0_release(changelog: Path) -> None:
     text = changelog.read_text(encoding="utf-8")

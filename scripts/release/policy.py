@@ -16,7 +16,7 @@ GATES = {"metadata": "Release metadata", "core": "Core and accounting",
 JOBS = {**GATES, "hosted": "Freeze hosted qualification", "native": "Native macOS"}
 SCHEMA = 1
 PROMOTION_ENABLED = False
-PROMOTION_BLOCKER = "Production promotion awaits independently retained publication-history authority"
+PROMOTION_BLOCKER = "Production promotion awaits full source-bound qualification of independently retained publication authority"
 MAX_ARCHIVE = 250 * 1024 * 1024
 HOST = {"version": "1.141.0", "commit": "2a59476c9bfcb90b3ddc372c36762471b7dfad1c",
     "sha256": "9b4ae386e3cf738d7ba990237ddf0a18092c924a1bcae465ed4697964745f42d",

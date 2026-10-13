@@ -1,0 +1,38 @@
+name: WebKit Input Diagnostic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    name: Input protocol diagnostic
+    runs-on: macos-26
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Require nonpublishing main context
+        run: |
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+      - uses: ./.github/actions/qualification-tools
+      - name: Install original styling engines
+        run: uv run playwright install chromium firefox webkit
+      - name: Trace one bounded original input sequence without changing its guard
+        env:
+          DEBUG: pw:protocol,pw:api
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p output/diagnostic/hover
+          uv run python scripts/probes/hover_input_latency.py --output output/diagnostic/hover \
+            2>&1 | tee output/diagnostic/hover/protocol.log
+      - name: Preserve diagnostic output, never producer receipts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: hover-input-diagnostic-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: output/diagnostic/hover
+          if-no-files-found: warn
+          retention-days: 14

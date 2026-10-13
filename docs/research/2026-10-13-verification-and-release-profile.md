@@ -4,8 +4,9 @@ Date: 2026-10-13. Status: baseline assessment plus measured local implementation
 Release authority: 2.12.2 at `11908ab947c4dc4eac9a991c144d8b6e1601ff35`.
 The baseline assessment was read-only. Follow-up changes affect verification and
 qualification tooling only; product accounting/rendering, deadlines, installed
-extensions and live data remain unchanged. Normal hosted qualification and dry-run
-promotion pass; the controlled failure/retry pilot is still in progress.
+extensions and live data remain unchanged. Earlier normal hosted qualification
+and dry-run receipts are retained. The current observation contract remains held
+by hosted WebKit input/observation latency; it is not fully qualified.
 
 ## Method And Limits
 
@@ -252,6 +253,35 @@ hide timeout is a separate unresolved observation.
 The [pilot receipt](../release/2026-10-13-qualification-pilot.md) records journal
 pins, qualified bytes and controlled-retry status. Current raw hosted job metadata
 and inspection artifacts remain under `output/qualification/hosted-*`.
+
+## Held Observation Follow-Up
+
+The corrected asynchronous native transport removes proven polling and deadline
+defects, not a demonstrated renderer delay. Fresh hosted WebKit guards failed
+at 453ms for keyboard plus style observation, 310ms inside locator hover before
+any style read, and 472ms inside the keyboard call before any style read.
+Later visible DOM cannot establish within-deadline performance.
+
+Pointer actionability and exact hit preparation are now outside the physical
+input budget; real mouse motion starts that unchanged strict budget. Trial
+hover still moves the pointer in the pinned driver: a three-engine runtime
+probe exposed CSS priming. Resetting pointer/focus and checking hidden state
+are now required before measuring a fresh transition. Earlier preparation-only
+passes are superseded. Local
+72-view verification and the complete 2,133-test suite plus one approved skip
+pass, but do not supersede the hosted failures. A separate read-only
+`hover-input-probe.yml` records the original SDK input send/reply sequence;
+debug instrumentation overhead is uncalibrated and its output is never a
+qualification/publication receipt. No engine removal, timing subtraction,
+timeout increase or repeated run until green is an accepted fix.
+
+Fresh hidden-baseline verification passes all 72 views, 2,143 core cases plus
+the one approved skip, complete 2,144-case reconciliation, and parity/work/Ruff.
+The read-only reviewer is collected and closed; no blocking correctness issue
+remains in that fixture or the diagnostic wrapper. Local results do not resolve
+hosted input scheduling/processing latency. The
+[pilot receipt](../release/2026-10-13-qualification-pilot.md) names the held runs
+and remaining source-bound normal, controlled-retry and dry-run gates.
 
 ## Evidence And Reproduction
 

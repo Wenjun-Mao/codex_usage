@@ -11,7 +11,7 @@ from codex_usage.report_usage_breakdown_chart import plot
 from preview_breakdown_layouts import document
 from verification.visual_cases import identity
 from verification.visual_evidence import VisualEvidence
-from verification.hover_observation import observe_input, observe_keyboard
+from verification.hover_observation import observe_input, observe_keyboard, prepare_pointer
 
 
 def chart(zone_name, *, days=1, metric="cost", dst=False):
@@ -73,8 +73,9 @@ def main():
                                     tooltip = page.locator(".ub-hover-bucket").nth(index).locator(".ub-hover-tooltip")
                                     handle = tooltip.element_handle()
                                     assert handle is not None
+                                    point = prepare_pointer(page, hit, handle)
                                     durations.append(observe_input(page, handle,
-                                        lambda: hit.hover(position={"x": 2, "y": 2}, timeout=1000),
+                                        lambda: page.mouse.move(point["x"], point["y"]),
                                         visible=True, phase="hover"))
                                     text = tooltip.inner_text()
                                     assert "74.197783" not in text and "e+" not in text

@@ -7,6 +7,7 @@ import pytest
 from release_tooling_support import load_tool
 
 observation = load_tool("verification.hover_observation")
+HIDDEN = {"visible": False, "hidden": True, "active": False, "focusVisible": False, "hover": False}
 
 
 @pytest.mark.parametrize("delay,passes", ((.1, True), (.249, True), (.25, False), (.273, False)))
@@ -19,6 +20,8 @@ def test_input_and_style_read_share_strict_absolute_budget(monkeypatch, delay, p
     def sample(_):
         calls.append("style")
         now[0] += delay / 2
+        if len(calls) == 1:
+            return HIDDEN
         return state
 
     def action():
@@ -27,11 +30,11 @@ def test_input_and_style_read_share_strict_absolute_budget(monkeypatch, delay, p
 
     args = (SimpleNamespace(wait_for_timeout=lambda _: None), SimpleNamespace(evaluate=sample), action)
     if passes:
-        assert observation.observe_input(*args, visible=True, keyboard=True, phase="keyboard") == delay
+        assert observation.observe_input(*args, visible=True, keyboard=True, phase="keyboard") == pytest.approx(delay)
     else:
         with pytest.raises(AssertionError):
             observation.observe_input(*args, visible=True, keyboard=True, phase="keyboard")
-    assert calls == ["real input", "style"]
+    assert calls == ["style", "real input", "style"]
 
 
 @pytest.mark.parametrize("fault", ("active", "focusVisible", "hover"))
@@ -40,9 +43,13 @@ def test_keyboard_observation_requires_real_target_modality_without_hover_maskin
     monkeypatch.setattr(observation, "perf_counter", lambda: now[0])
     state = {"visible": True, "hidden": False, "active": True, "focusVisible": True, "hover": False}
     state[fault] = fault == "hover"
+    first = [True]
 
     def sample(_):
         now[0] += .1
+        if first[0]:
+            first[0] = False
+            return HIDDEN
         return state
 
     with pytest.raises(AssertionError):
@@ -94,3 +101,50 @@ def test_hover_harness_uses_guarded_keyboard_sequence_not_corrective_focus():
     source = inspect.getsource(load_tool("check_breakdown_hover_ui").main)
     assert "observe_keyboard(page, handle, targets, index)" in source
     assert "target.focus()" not in source
+
+
+def test_pointer_preparation_resets_trial_hover_then_requires_hidden_baseline_and_exact_hit():
+    calls = []
+    state = [HIDDEN]
+
+    def trial(**kwargs):
+        calls.append(("readiness", kwargs))
+        state[0] = {**HIDDEN, "visible": True, "hidden": False, "hover": True}
+
+    def reset(x, y):
+        calls.append(("reset pointer", x, y))
+        state[0] = HIDDEN
+
+    hit = SimpleNamespace(hover=trial,
+        bounding_box=lambda: {"x": 10, "y": 20, "width": 30, "height": 40},
+        evaluate=lambda expression, point: (calls.append(("hit", point)), True)[1])
+    page = SimpleNamespace(mouse=SimpleNamespace(move=reset),
+        evaluate=lambda _: calls.append("blur"))
+    tooltip = SimpleNamespace(evaluate=lambda _: (calls.append("baseline"), state[0])[1])
+    assert observation.prepare_pointer(page, hit, tooltip) == {"x": 12, "y": 22}
+    assert calls == [("readiness", {"position": {"x": 2, "y": 2}, "timeout": 1000, "trial": True}),
+        ("reset pointer", 0, 0), "blur", "baseline",
+        ("hit", {"x": 12, "y": 22})]
+    hit.evaluate = lambda *_: False
+    with pytest.raises(AssertionError):
+        observation.prepare_pointer(page, hit, tooltip)
+    page.mouse.move = lambda *_: None
+    with pytest.raises(AssertionError, match="input baseline"):
+        observation.prepare_pointer(page, hit, tooltip)
+
+
+@pytest.mark.parametrize("fault", ("hidden", "active", "hover"))
+def test_primed_tooltip_cannot_pass_as_a_fresh_input(monkeypatch, fault):
+    state = {**HIDDEN, fault: fault != "hidden"}
+    tooltip = SimpleNamespace(evaluate=lambda _: state)
+    def action():
+        pytest.fail("Primed input must be rejected before timed action")
+
+    with pytest.raises(AssertionError, match="input baseline"):
+        observation.observe_input(None, tooltip, action, visible=True, phase="hover")
+
+
+def test_pointer_budget_starts_before_real_motion_not_locator_readiness():
+    source = inspect.getsource(load_tool("check_breakdown_hover_ui").main)
+    assert source.index("point = prepare_pointer(page, hit, handle)") < source.index("durations.append(observe_input(")
+    assert 'lambda: page.mouse.move(point["x"], point["y"])' in source
