@@ -455,41 +455,19 @@ continuous coverage.
 
 ## Non-Publishing Platform Gate
 
-Review the candidate diff and local gates before pushing `main`. Then dispatch
-the non-publishing workflow from the exact candidate commit on `main` before
-tagging:
-
-```bash
-gh workflow run package-vsix.yml --ref main -f publish=false
-```
-
-Require the `validate`, `macos-vsix`, and `windows-vsix` jobs to pass. Preserve
-the run URL and both artifact checksums as release evidence. The macOS job also
-checks the extension screenshot and allowance visual gates. A platform gate that
-cannot be run is a release blocker, not an implicit pass.
+The next workflow candidate separates full nonpublishing qualification from
+explicit promotion. Its operating procedure and pending qualification gates are
+in [Qualified VSIX Promotion](release/qualified-promotion.md). Review the exact
+candidate and local gates before an authorized commit/push or hosted pilot.
+Historical receipts above retain the workflow and artifacts actually used then.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.12.2`, both
-changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.12.2`:
-
-```bash
-git tag v2.12.2
-git push origin v2.12.2
-```
-
-The tag reruns all platform gates and publishes
-`codex-usage-companion-darwin-arm64.vsix` and
-`codex-usage-companion-win32-x64.vsix`. Record the tag commit, workflow URL,
-Marketplace versions, and package hashes. The workflow does not create a GitHub
-Release; VSCE uses `--skip-duplicate` on a rerun.
-
-Query the public Marketplace catalog for version 2.12.2 on both `darwin-arm64`
-and `win32-x64`, download each official versioned target VSIX, and require its
-SHA-256 to equal the corresponding artifact from the exact tag workflow. Retain
-run URLs, catalog metadata and public hashes under ignored release evidence;
-the pre-tag build's checksums need not equal the tag rebuild's ZIP bytes.
+Creating a tag alone will not publish or rebuild. Publication requires separate
+release approval and an explicitly selected successful qualification run/attempt;
+see [Qualified VSIX Promotion](release/qualified-promotion.md). The exact qualified
+VSIX bytes must match the official downloads and Marketplace declarations.
+The already published 2.12.2 version/tag is immutable, not a new canary candidate.
 
 Tell users with an older native preview to complete explicit service handoff
 before uninstalling it, and to preserve their shared `.codex-usage` data.

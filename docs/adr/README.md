@@ -74,3 +74,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0058: Post-Capture Preparation Work](0058-post-capture-preparation-work.md)
 - [0059: Lazy Account Display Partitions](0059-lazy-account-display-partitions.md)
 - [0060: Historical Allowance Calculation Reuse](0060-historical-allowance-calculation-reuse.md)
+- [0061: Qualified Artifact Promotion](0061-qualified-artifact-promotion.md)

@@ -1,0 +1,32 @@
+name: Record publication intent
+description: Persist a target's possible side effect before publisher credentials
+inputs:
+  target:
+    required: true
+    description: Qualified target about to be uploaded
+runs:
+  using: composite
+  steps:
+    - name: Prepare immutable intent
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        GH_TOKEN: ${{ github.token }}
+      run: uv run python scripts/publication_intent.py prepare --directory output/promotion --target "$TARGET"
+    - uses: actions/upload-artifact@v6
+      id: intent
+      with:
+        name: intent-${{ inputs.target }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+        path: output/promotion/intent-${{ inputs.target }}/intent.json
+        if-no-files-found: error
+        retention-days: 14
+    - name: Stamp original publisher intent
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        GH_TOKEN: ${{ github.token }}
+        ARTIFACT_ID: ${{ steps.intent.outputs.artifact-id }}
+        ARTIFACT_DIGEST: ${{ steps.intent.outputs.artifact-digest }}
+      run: >-
+        uv run python scripts/publication_intent.py stamp --directory output/promotion --target "$TARGET"
+        --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST"

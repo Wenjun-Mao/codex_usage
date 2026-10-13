@@ -1,0 +1,127 @@
+name: Promote Qualified VSIX
+run-name: "Promote qualified run=${{ inputs.qualification_run }} attempt=${{ inputs.qualification_attempt }} dry-run=${{ inputs.dry_run }}"
+on:
+  workflow_dispatch:
+    inputs:
+      qualification_run:
+        description: Exact successful qualification run ID
+        required: true
+        type: string
+      qualification_attempt:
+        description: Current successful qualification attempt
+        required: true
+        type: string
+      dry_run:
+        description: Inspect qualification only; no publisher credentials or upload
+        required: true
+        type: boolean
+        default: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: codex-usage-promotion-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    name: Validate qualification
+    runs-on: ubuntu-latest
+    outputs:
+      trusted_sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - name: Checkout trusted publisher definitions, not artifact-provided code
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Freeze trusted publisher revision
+        id: revision
+        run: |
+          sha="$(git rev-parse HEAD)"
+          echo "CODEX_PUBLISHER_CHECKOUT $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/qualification-tools
+      - name: Inspect or validate exact proof
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN: ${{ inputs.qualification_run }}
+          QUALIFICATION_ATTEMPT: ${{ inputs.qualification_attempt }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [[ "$DRY_RUN" == true ]]; then
+            uv run python scripts/qualification.py inspect --run "$QUALIFICATION_RUN" --attempt "$QUALIFICATION_ATTEMPT" --output output/promotion
+          else
+            uv run python scripts/qualification.py validate-publication --run "$QUALIFICATION_RUN" --attempt "$QUALIFICATION_ATTEMPT" --ref "$GITHUB_REF" --output output/promotion \
+              --promotion-run "$GITHUB_RUN_ID" --promotion-attempt "$GITHUB_RUN_ATTEMPT"
+          fi
+      - name: Upload inspection evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: qualification-inspection-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: output/promotion/qualified.json
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    name: Publish qualified packages
+    needs: validate
+    if: inputs.dry_run == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.trusted_sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/qualification-tools
+      - name: Install trusted locked publisher dependencies
+        working-directory: extensions/vscode
+        run: npm ci --ignore-scripts
+      - name: Revalidate original proofs and upload bytes before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN: ${{ inputs.qualification_run }}
+          QUALIFICATION_ATTEMPT: ${{ inputs.qualification_attempt }}
+        run: >-
+          uv run python scripts/qualification.py validate-publication --run "$QUALIFICATION_RUN"
+          --attempt "$QUALIFICATION_ATTEMPT" --ref "$GITHUB_REF" --output output/promotion
+          --promotion-run "$GITHUB_RUN_ID" --promotion-attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Check complete prior publication history without publisher credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python scripts/publication_intent.py history --directory output/promotion
+      - name: Preflight both public targets without publisher credentials
+        id: preflight
+        run: node scripts/publish_qualified_vsix.cjs output/promotion prepare
+      - name: Record darwin-arm64 intent
+        if: steps.preflight.outputs.mac == 'true'
+        uses: ./.github/actions/record-publication-intent
+        with:
+          target: darwin-arm64
+      - name: Publish darwin-arm64
+        if: steps.preflight.outputs.mac == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: node scripts/publish_qualified_vsix.cjs output/promotion darwin-arm64
+      - name: Record win32-x64 intent
+        if: steps.preflight.outputs.win == 'true'
+        uses: ./.github/actions/record-publication-intent
+        with:
+          target: win32-x64
+      - name: Publish win32-x64
+        if: steps.preflight.outputs.win == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: node scripts/publish_qualified_vsix.cjs output/promotion win32-x64
+      - name: Record complete upload outcome without publisher credentials
+        run: node scripts/publish_qualified_vsix.cjs output/promotion complete
+      - name: Preserve publication outcome including partial upload
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: publication-outcome-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: output/promotion/publication.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -10,6 +10,8 @@ from playwright.sync_api import sync_playwright
 
 from codex_usage.agent_reports import render_ledger_report
 from observed_speed_fixture import AT, chart_home, converging_chart
+from verification.visual_cases import identity
+from verification.visual_evidence import VisualEvidence
 
 
 def assert_chart_layout(section):
@@ -83,7 +85,7 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     evidence = {"synthetic_only": True, "browser_views": [], "performance": {}}
-    with TemporaryDirectory(prefix="speed-ui-") as raw:
+    with VisualEvidence(args.output, "speed") as audit, TemporaryDirectory(prefix="speed-ui-") as raw:
         home = Path(raw)
         started = perf_counter()
         chart_home(home)
@@ -114,18 +116,22 @@ def main():
                     page = context.new_page()
                     for theme in ("day", "night"):
                         for width in (1440, 760, 360):
-                            document = args.output / f'{theme}-converging-{width}.html'
-                            document.write_text(converging_chart(theme))
-                            page.set_viewport_size({'width': width, 'height': 900})
-                            page.goto(document.resolve().as_uri())
-                            section = page.locator('.observed-speed')
-                            layout = assert_chart_layout(section)
-                            assert section.locator('.speed-series-label').count() == 3
-                            if engine == 'chromium':
-                                section.screenshot(path=str(args.output / f'{theme}-converging-{width}.png'))
-                            evidence['browser_views'].append({'engine': engine, 'theme': theme,
-                                'scenario': 'converging', 'width': width,
-                                'javascript_disabled': True, **layout})
+                            with audit.case(page, identity(engine, "converging", theme, width)):
+                                document = args.output / f'{theme}-converging-{width}.html'
+                                contents = converging_chart(theme)
+                                document.write_text(contents)
+                                audit.document(f"{theme}-converging", contents)
+                                page.set_viewport_size({'width': width, 'height': 900})
+                                page.goto(document.resolve().as_uri())
+                                section = page.locator('.observed-speed')
+                                layout = assert_chart_layout(section)
+                                assert page.locator("script").count() == 0
+                                assert section.locator('.speed-series-label').count() == 3
+                                if engine == 'chromium':
+                                    section.screenshot(path=str(args.output / f'{theme}-converging-{width}.png'))
+                                evidence['browser_views'].append({'engine': engine, 'theme': theme,
+                                    'scenario': 'converging', 'width': width,
+                                    'javascript_disabled': True, **layout})
                         for name, granularity, range_name, window in (
                             ("daily", "daily", "30d", None),
                             ("daily-all", "daily", "all", None),
@@ -137,34 +143,36 @@ def main():
                             report = render(theme, granularity, range_name, window)
                             for width, embedded in ((1440, False), (760, False), (360, False),
                                                     (1440, True)):
-                                suffix = "embedded" if embedded else str(width)
-                                document = args.output / f"{theme}-{name}-{suffix}.html"
-                                contents = report.html
-                                if embedded:
-                                    contents = contents.replace("</style>",
-                                        ".observed-speed { width:320px; max-width:100%; }</style>")
-                                document.write_text(contents)
-                                page.set_viewport_size({"width": width, "height": 900})
-                                page.goto(document.resolve().as_uri())
-                                assert page.locator("script").count() == 0
-                                heading = page.get_by_role("heading", name="Observed Output Speed", exact=True)
-                                heading.scroll_into_view_if_needed()
-                                section = page.locator(".observed-speed")
-                                assert section.locator(".speed-legend span").count() == 3
-                                box = section.bounding_box()
-                                assert box and box["x"] >= 0 and box["x"] + box["width"] <= width + 1
-                                layout = assert_chart_layout(section)
-                                if name == "empty-week":
-                                    assert layout["empty"]
-                                    assert section.locator(".speed-overview circle").count() > 0
-                                    assert section.get_by_role("link", name="Latest week", exact=True).count() == 1
-                                if name == "hourly":
-                                    assert "7 of 30 days" in section.locator(".speed-window").inner_text()
-                                if engine == "chromium":
-                                    section.screenshot(path=str(args.output / f"{theme}-{name}-{suffix}.png"))
-                                evidence["browser_views"].append({"engine": engine, "theme": theme,
-                                    "granularity": granularity, "width": width, "embedded": embedded,
-                                    "scenario": name, "javascript_disabled": True, **layout})
+                                with audit.case(page, identity(engine, name, theme, width, embedded=embedded)):
+                                    suffix = "embedded" if embedded else str(width)
+                                    document = args.output / f"{theme}-{name}-{suffix}.html"
+                                    contents = report.html
+                                    if embedded:
+                                        contents = contents.replace("</style>",
+                                            ".observed-speed { width:320px; max-width:100%; }</style>")
+                                    document.write_text(contents)
+                                    audit.document(f"{theme}-{name}-{suffix}", contents)
+                                    page.set_viewport_size({"width": width, "height": 900})
+                                    page.goto(document.resolve().as_uri())
+                                    assert page.locator("script").count() == 0
+                                    heading = page.get_by_role("heading", name="Observed Output Speed", exact=True)
+                                    heading.scroll_into_view_if_needed()
+                                    section = page.locator(".observed-speed")
+                                    assert section.locator(".speed-legend span").count() == 3
+                                    box = section.bounding_box()
+                                    assert box and box["x"] >= 0 and box["x"] + box["width"] <= width + 1
+                                    layout = assert_chart_layout(section)
+                                    if name == "empty-week":
+                                        assert layout["empty"]
+                                        assert section.locator(".speed-overview circle").count() > 0
+                                        assert section.get_by_role("link", name="Latest week", exact=True).count() == 1
+                                    if name == "hourly":
+                                        assert "7 of 30 days" in section.locator(".speed-window").inner_text()
+                                    if engine == "chromium":
+                                        section.screenshot(path=str(args.output / f"{theme}-{name}-{suffix}.png"))
+                                    evidence["browser_views"].append({"engine": engine, "theme": theme,
+                                        "granularity": granularity, "width": width, "embedded": embedded,
+                                        "scenario": name, "javascript_disabled": True, **layout})
                 finally:
                     context.close()
                     browser.close()

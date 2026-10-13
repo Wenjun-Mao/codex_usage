@@ -77,7 +77,13 @@ def test_release_checklist_locks_extension_visual_gate() -> None:
     ):
         assert command in checklist
     assert "uv run playwright install chromium" in workflow
-    assert "uv run python scripts/generate_marketplace_screenshot.py --check" in workflow
+    # The screenshot command is now owned by the mandatory isolated suite runner.
+    from release_tooling_support import load_tool
+    assert "screenshots-allowance" in workflow and "scripts/run_visual_suite.py" in workflow
+    assert load_tool("run_visual_suite").SCRIPTS["screenshots-allowance"] == (
+        ("screenshots", "generate_marketplace_screenshot.py", "--check"),
+        ("allowance", "check_allowance_ui.py"),
+    )
 
 
 def test_native_architecture_adrs_record_ownership_and_rejected_alternatives() -> None:

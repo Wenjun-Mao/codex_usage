@@ -10,6 +10,8 @@ from playwright.sync_api import sync_playwright
 from codex_usage.agent_reports import render_ledger_report
 from codex_usage.report_usage_breakdown_chart import css, plot
 from usage_breakdown_fixture import AT, breakdown_home
+from verification.visual_cases import identity
+from verification.visual_evidence import VisualEvidence
 
 
 START = datetime(2026, 10, 4, tzinfo=UTC)
@@ -61,7 +63,7 @@ def main():
         ("weekly-full", [{**endpoint, "used_percent": 0}], "weekly"),
         ("weekly-empty", [{**endpoint, "used_percent": 100}], "weekly")]
     evidence = {"synthetic_only": args.frozen_html is None, "live_access": "none", "views": []}
-    with sync_playwright() as playwright:
+    with VisualEvidence(args.output, "overlay", synthetic_only=args.frozen_html is None) as audit, sync_playwright() as playwright:
         for engine in ("chromium", "webkit", "firefox"):
             browser = getattr(playwright, engine).launch()
             try:
@@ -71,44 +73,48 @@ def main():
                     document = report.html[:opening] + section(readings, kind) + report.html[closing:]
                     for theme in ("day", "night"):
                         path = args.output / f"{label}-{theme}.html"
-                        path.write_text(document.replace('data-codex-theme="day"', f'data-codex-theme="{theme}"'))
+                        contents = document.replace('data-codex-theme="day"', f'data-codex-theme="{theme}"')
+                        path.write_text(contents)
+                        audit.document(f"{label}-{theme}", contents)
                         for width in (1440, 760, 360):
-                            page.set_viewport_size({"width": width, "height": 900})
-                            page.goto(path.resolve().as_uri())
-                            chart = page.locator(".usage-breakdown")
-                            assert chart.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
-                            assert chart.locator(".ub-axis").count() == 2
-                            assert chart.locator("svg").evaluate("""e => {
-                                const bounds = e.parentElement.getBoundingClientRect(), transform = e.getScreenCTM();
-                                const left = new DOMPoint(0, 0).matrixTransform(transform).x;
-                                const right = new DOMPoint(720, 0).matrixTransform(transform).x;
-                                return Math.abs(left - bounds.left) < .1 && Math.abs(right - bounds.right) < .1;
-                            }"""), (engine, label, width, "time alignment")
-                            assert "right axis" in chart.locator(".ub-account-title").get_attribute("title")
-                            assert chart.locator(".ub-meter-legend").is_visible()
-                            assert not chart.locator(".ub-overlay-evidence").get_attribute("open")
-                            assert "Dense boundary evidence" not in chart.inner_text()
-                            marks = chart.locator(".ub-account-point")
-                            assert marks.count() == len(readings), (engine, label, marks.count())
-                            assert marks.evaluate_all("es => es.every(e => e.tagName === 'circle' && e.getAttribute('aria-label').includes('right axis'))")
-                            last = chart.locator('.ub-account-point[data-latest="true"][fill="var(--text)"]').first
-                            point_color = last.evaluate("e => getComputedStyle(e).fill")
-                            text_color = chart.locator(".ub-account-title").evaluate("e => getComputedStyle(e).color")
-                            assert point_color == text_color, (engine, label, point_color, text_color)
-                            last.hover()
-                            assert last.evaluate("e => getComputedStyle(e).r") == "3px", (engine, label)
-                            page.mouse.move(0, 0)
-                            disclosure = chart.locator(".ub-overlay-evidence summary")
-                            disclosure.focus()
-                            disclosure.press("Enter")
-                            assert chart.locator(".ub-overlay-evidence").get_attribute("open") is not None
-                            disclosure.press("Enter")
-                            chart.locator("h2").click()
-                            if engine == "chromium" and width in (1440, 360):
-                                chart.screenshot(path=str(args.output / f"{label}-{theme}-{width}.png"))
-                            evidence["views"].append({"engine": engine, "case": label, "theme": theme,
-                                "width": width, "script_disabled": True, "captured_points": marks.count(),
-                                "synthetic_only": True, "separate_account_key": True, "hover": True, "keyboard_evidence": True})
+                            with audit.case(page, identity(engine, label, theme, width)):
+                                page.set_viewport_size({"width": width, "height": 900})
+                                page.goto(path.resolve().as_uri())
+                                chart = page.locator(".usage-breakdown")
+                                assert page.locator("script").count() == 0
+                                assert chart.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
+                                assert chart.locator(".ub-axis").count() == 2
+                                assert chart.locator("svg").evaluate("""e => {
+                                    const bounds = e.parentElement.getBoundingClientRect(), transform = e.getScreenCTM();
+                                    const left = new DOMPoint(0, 0).matrixTransform(transform).x;
+                                    const right = new DOMPoint(720, 0).matrixTransform(transform).x;
+                                    return Math.abs(left - bounds.left) < .1 && Math.abs(right - bounds.right) < .1;
+                                }"""), (engine, label, width, "time alignment")
+                                assert "right axis" in chart.locator(".ub-account-title").get_attribute("title")
+                                assert chart.locator(".ub-meter-legend").is_visible()
+                                assert not chart.locator(".ub-overlay-evidence").get_attribute("open")
+                                assert "Dense boundary evidence" not in chart.inner_text()
+                                marks = chart.locator(".ub-account-point")
+                                assert marks.count() == len(readings), (engine, label, marks.count())
+                                assert marks.evaluate_all("es => es.every(e => e.tagName === 'circle' && e.getAttribute('aria-label').includes('right axis'))")
+                                last = chart.locator('.ub-account-point[data-latest="true"][fill="var(--text)"]').first
+                                point_color = last.evaluate("e => getComputedStyle(e).fill")
+                                text_color = chart.locator(".ub-account-title").evaluate("e => getComputedStyle(e).color")
+                                assert point_color == text_color, (engine, label, point_color, text_color)
+                                last.hover()
+                                assert last.evaluate("e => getComputedStyle(e).r") == "3px", (engine, label)
+                                page.mouse.move(0, 0)
+                                disclosure = chart.locator(".ub-overlay-evidence summary")
+                                disclosure.focus()
+                                disclosure.press("Enter")
+                                assert chart.locator(".ub-overlay-evidence").get_attribute("open") is not None
+                                disclosure.press("Enter")
+                                chart.locator("h2").click()
+                                if engine == "chromium" and width in (1440, 360):
+                                    chart.screenshot(path=str(args.output / f"{label}-{theme}-{width}.png"))
+                                evidence["views"].append({"engine": engine, "case": label, "theme": theme,
+                                    "width": width, "script_disabled": True, "captured_points": marks.count(),
+                                    "synthetic_only": True, "separate_account_key": True, "hover": True, "keyboard_evidence": True})
                 if args.frozen_html:
                     for theme in ("day", "night"):
                         for width in (1440, 760, 360):

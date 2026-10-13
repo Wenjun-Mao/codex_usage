@@ -1,0 +1,33 @@
+name: Publication Journal Pilot
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: codex-usage-journal-pilot
+  cancel-in-progress: false
+jobs:
+  pilot:
+    name: Synthetic retained journal
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/qualification-tools
+      - name: Exercise isolated synthetic sibling conflict and replay
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run python scripts/publication_journal.py pilot --output output/journal-pilot/evidence.json
+      - name: Preserve bounded pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: journal-pilot-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: output/journal-pilot/evidence.json
+          if-no-files-found: warn
+          retention-days: 14

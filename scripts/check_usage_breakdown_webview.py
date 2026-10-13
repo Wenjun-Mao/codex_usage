@@ -19,6 +19,7 @@ from check_speed_webview import disposable_command, stop_owned_host, wait_cdp_en
 from speed_native_target import NativeSpeedTarget, attach_speed_target, attributes, node_text, nodes, wait_native_state
 from usage_breakdown_fixture import breakdown_home
 from breakdown_native_hover import check_native_hover
+from release.native import bind_evidence, prepare_extension
 
 
 def decode(uri):
@@ -99,6 +100,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--code", type=Path, default=Path("/Applications/Visual Studio Code.app/Contents/MacOS/Code"))
     parser.add_argument("--output", type=Path, default=Path("output/playwright/usage-breakdown/native"))
+    parser.add_argument("--vsix", type=Path, help="Use this exact qualified package, never a fresh rebuild")
+    parser.add_argument("--qualification-input", type=Path, help="Hash-bound hosted qualification input")
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[1]
     args.output.mkdir(parents=True, exist_ok=True)
@@ -124,16 +127,9 @@ def main():
                 "credits": {"balance": "58.000000000000000001", "hasCredits": True, "unlimited": False}}}},
             "account/usage/read": {"summary": {"lifetimeTokens": 0}}}))
         extension = root / "extension"
-        extension.mkdir()
-        source = repo / "extensions" / "vscode"
-        shutil.copytree(source / "out", extension / "out")
+        package = prepare_extension(repo, extension, args.vsix)
         binary = extension / "bin" / "darwin-arm64" / "codex-usage-agent"
-        binary.parent.mkdir(parents=True)
-        shutil.copy2(repo / "build/packaged-agent/aarch64-apple-darwin/codex-usage-agent-aarch64-apple-darwin", binary)
-        manifest = json.loads((source / "package.json").read_text())
-        manifest["activationEvents"] = []
-        (extension / "package.json").write_text(json.dumps(manifest))
-        shutil.copy2(repo / "scripts/vscode_breakdown_acceptance.js", extension / "acceptance.js")
+        qualification = json.loads(args.qualification_input.read_text()) if args.qualification_input else None
         user = root / "user-data" / "User"
         user.mkdir(parents=True)
         (user / "settings.json").write_text(json.dumps({"codexUsage.range": "all", "codexUsage.theme": "day",
@@ -204,6 +200,7 @@ def main():
                 evidence["hover_and_tab"] = hover
                 evidence["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
                 evidence["native_target_contract"] = "Explicit OOPIF CDP DOM, hit-tested real input; no injected scripts"
+                bind_evidence(evidence, repo, args.code, package, qualification)
                 (args.output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
                 diagnostics["stage"] = "complete"
                 print(json.dumps({"native_inputs": len(evidence["rendered_input"]), "script_disabled": evidence["script_disabled"]}))

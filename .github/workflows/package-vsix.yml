@@ -1,257 +1,231 @@
 name: Platform VSIX
-run-name: "Codex Usage VSIX publish=${{ inputs.publish || false }} ref=${{ github.ref_name }}"
-
+run-name: "Qualify Codex Usage VSIX ref=${{ github.ref_name }} probe=${{ inputs.fail_case != '' }}"
 on:
   workflow_dispatch:
     inputs:
-      publish:
-        description: "Publish the platform VSIX packages (dispatch must target a matching release tag)"
-        required: true
-        type: boolean
-        default: false
-  push:
-    tags:
-      - "v*"
-
+      fail_case:
+        description: "Explicit synthetic case-key failure, first attempt only; never a release candidate"
+        required: false
+        type: string
+        default: ""
 permissions:
   contents: read
-
+  actions: read
 concurrency:
-  group: codex-usage-distribution-${{ github.ref }}
+  group: codex-usage-qualification-${{ github.ref }}
   cancel-in-progress: false
-
 env:
-  NODE_VERSION: "24"
-  PYTHON_VERSION: "3.13"
-
+  QUALIFICATION_WORKFLOW_SHA: ${{ github.workflow_sha }}
+  QUALIFICATION_PROBE: ${{ inputs.fail_case != '' }}
 jobs:
-  validate:
-    name: Validate core and distribution contract
+  metadata:
+    name: Release metadata
     runs-on: ubuntu-latest
-    outputs:
-      publish: ${{ steps.mode.outputs.publish }}
-      version: ${{ steps.mode.outputs.version }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
-      - name: Resolve distribution mode
-        id: mode
-        env:
-          REQUESTED_PUBLISH: ${{ inputs.publish || false }}
+      - name: Require nonpublishing main dispatch
+        shell: bash
         run: |
-          version="$(node -p "require('./extensions/vscode/package.json').version")"
-          publish=false
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            expected_tag="v${version}"
-            if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
-              echo "Release tag $GITHUB_REF_NAME does not match version $version." >&2
-              exit 1
-            fi
-            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-              echo "Release tags must point to a commit contained in origin/main." >&2
-              exit 1
-            fi
-            publish=true
-          elif [[ "$REQUESTED_PUBLISH" == "true" ]]; then
-            echo "Marketplace publication requires dispatching a matching v$version tag." >&2
-            exit 1
-          fi
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+      - uses: ./.github/actions/qualification-tools
+      - name: Fail early on independent metadata, history and workflow contracts
+        env:
+          PYTHONPATH: scripts
+        run: >-
+          uv run pytest -q -p verification.pytest_inventory tests/test_release_history.py tests/test_github_actions_workflow.py
+          --qualification-scope metadata --qualification-inventory output/qualification/metadata/inventory.json
+          --junitxml=output/qualification/metadata/tests.xml
+      - name: Prepare metadata proof
+        run: >-
+          uv run python scripts/qualification.py payload --gate metadata
+          --directory output/qualification/metadata --output output/producer/payload.zip
+      - uses: ./.github/actions/record-gate
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Run Python tests
-        run: uv run pytest -q
-
-      - name: Run Ruff
+          gate: metadata
+          payload: output/producer/payload.zip
+  core:
+    name: Core and accounting
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qualification-tools
+      - name: Complete Python suite
+        env:
+          PYTHONPATH: scripts
+        run: >-
+          uv run pytest -q -p verification.pytest_inventory --qualification-scope core
+          --qualification-inventory output/qualification/core/inventory.json --junitxml=output/qualification/core/tests.xml
+      - name: Ruff
         run: uv run ruff check .
-
-      - name: Verify frozen monetary parity and bounded timing work
+      - name: Frozen monetary parity and bounded work
         run: |
           uv run python scripts/check_speed_parity.py
           uv run python scripts/check_speed_work.py
-
-  macos-vsix:
-    name: Build macOS Apple Silicon VSIX
-    needs: validate
+      - name: Prepare core proof
+        run: >-
+          uv run python scripts/qualification.py payload --gate core
+          --directory output/qualification/core --output output/producer/payload.zip
+      - uses: ./.github/actions/record-gate
+        with:
+          gate: core
+          payload: output/producer/payload.zip
+  package:
+    name: Package (${{ matrix.target }})
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-26
+            script: package:vsix:mac
+          - target: win32-x64
+            os: windows-2025
+            script: package:vsix:win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qualification-tools
+      - name: Install locked companion dependencies
+        working-directory: extensions/vscode
+        run: npm ci
+      - name: Complete extension tests and build matching collector/VSIX
+        working-directory: extensions/vscode
+        shell: bash
+        env:
+          PACKAGE_SCRIPT: ${{ matrix.script }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          npm run test:qualification -- "../../output/qualification/package-$TARGET/extension-tests.xml"
+          npm run "$PACKAGE_SCRIPT"
+      - name: Verify archive and disposable legacy handoff
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          uv run python scripts/verify-vsix-archive.py "output/releases/codex-usage-companion-$TARGET.vsix" "$TARGET"
+          node scripts/accept_disposable_handoff.js
+      - name: Prepare platform proof
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: >-
+          uv run python scripts/qualification.py payload --gate "package-$TARGET"
+          --directory "output/qualification/package-$TARGET" --output output/producer/payload.zip
+          --package "output/releases/codex-usage-companion-$TARGET.vsix"
+      - uses: ./.github/actions/record-gate
+        with:
+          gate: package-${{ matrix.target }}
+          payload: output/producer/payload.zip
+  visual:
+    name: Visual (${{ matrix.suite }})
+    needs: metadata
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        suite: [screenshots-allowance, speed, breakdown, overlay, hover]
     runs-on: macos-26
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: extensions/vscode/package-lock.json
-
-      - name: Install companion dependencies
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qualification-tools
+      - name: Install screenshot renderer dependencies
+        if: matrix.suite == 'screenshots-allowance'
         working-directory: extensions/vscode
         run: npm ci
-
-      - name: Test and package macOS VSIX
-        working-directory: extensions/vscode
-        run: |
-          npm test
-          npm run package:vsix:mac
-
-      - name: Verify packaged macOS VSIX
-        run: uv run python scripts/verify-vsix-archive.py output/releases/codex-usage-companion-darwin-arm64.vsix darwin-arm64
-
-      - name: Accept disposable macOS legacy handoff
-        run: node scripts/accept_disposable_handoff.js
-
-      - name: Install visual test browsers
+      - name: Install all styling engines
         run: uv run playwright install chromium firefox webkit
-
-      - name: Verify extension screenshots and allowance UI
+      - name: Run independent synthetic suite
+        shell: bash
+        env:
+          SUITE: ${{ matrix.suite }}
+          REQUESTED_FAILURE: ${{ inputs.fail_case }}
         run: |
-          uv run python scripts/generate_marketplace_screenshot.py --check
-          uv run python scripts/check_allowance_ui.py
-          uv run python scripts/check_speed_ui.py
-          uv run python scripts/check_usage_breakdown_ui.py
-          uv run python scripts/check_breakdown_overlay_ui.py
-          uv run python scripts/check_breakdown_hover_ui.py
-
-      - name: Upload synthetic speed verification evidence
+          fault=""
+          if [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]; then fault="$REQUESTED_FAILURE"; fi
+          uv run python scripts/run_visual_suite.py "$SUITE" --output "output/qualification/$SUITE" --fail-case "$fault"
+      - name: Preserve bounded diagnostics even on assertion failure
+        if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: observed-speed-synthetic-ui
+          name: diagnostics-${{ matrix.suite }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: |
-            output/playwright/observed-speed/*.json
-            output/playwright/observed-speed/*.png
-          if-no-files-found: error
+            output/qualification/${{ matrix.suite }}/**/*.json
+            output/qualification/${{ matrix.suite }}/**/failure.png
+          if-no-files-found: warn
           retention-days: 14
-
-      - name: Upload synthetic usage breakdown verification evidence
-        uses: actions/upload-artifact@v6
+      - name: Prepare complete visual proof
+        shell: bash
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: >-
+          uv run python scripts/qualification.py payload --gate "visual-$SUITE"
+          --directory "output/qualification/$SUITE" --output output/producer/payload.zip
+      - uses: ./.github/actions/record-gate
         with:
-          name: usage-allowance-synthetic-ui
-          path: |
-            output/playwright/usage-breakdown/*.json
-            output/playwright/usage-breakdown/*.png
-            output/playwright/allowance-clarity/*.json
-            output/playwright/allowance-clarity/*.png
-            output/playwright/breakdown-hover/*.json
-            output/playwright/breakdown-hover/*.png
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload macOS VSIX
-        uses: actions/upload-artifact@v6
-        with:
-          name: codex-usage-companion-darwin-arm64
-          path: output/releases/codex-usage-companion-darwin-arm64.vsix
-          if-no-files-found: error
-          retention-days: 14
-
-  windows-vsix:
-    name: Build Windows x64 VSIX
-    needs: validate
-    runs-on: windows-2025
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: extensions/vscode/package-lock.json
-
-      - name: Install companion dependencies
-        working-directory: extensions/vscode
-        run: npm ci
-
-      - name: Test and package Windows VSIX
-        working-directory: extensions/vscode
-        run: |
-          npm test
-          npm run package:vsix:win
-
-      - name: Verify packaged Windows VSIX
-        run: uv run python scripts/verify-vsix-archive.py output/releases/codex-usage-companion-win32-x64.vsix win32-x64
-
-      - name: Accept disposable Windows legacy handoff
-        run: node scripts/accept_disposable_handoff.js
-
-      - name: Upload Windows VSIX
-        uses: actions/upload-artifact@v6
-        with:
-          name: codex-usage-companion-win32-x64
-          path: output/releases/codex-usage-companion-win32-x64.vsix
-          if-no-files-found: error
-          retention-days: 14
-
-  publish-vsix:
-    name: Publish platform VSIX packages
-    needs:
-      - validate
-      - macos-vsix
-      - windows-vsix
-    if: needs.validate.outputs.publish == 'true'
+          gate: visual-${{ matrix.suite }}
+          payload: output/producer/payload.zip
+  hosted:
+    name: Freeze hosted qualification
+    needs: [metadata, core, package, visual]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: extensions/vscode/package-lock.json
-
-      - name: Install companion publishing dependencies
-        working-directory: extensions/vscode
-        run: npm ci
-
-      - name: Download platform VSIX packages
-        uses: actions/download-artifact@v6
-        with:
-          path: output/releases
-          pattern: codex-usage-companion-*
-          merge-multiple: true
-
-      - name: Publish platform VSIX packages
-        working-directory: extensions/vscode
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qualification-tools
+      - name: Validate complete producer inventories and original executions
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          test -n "$VSCE_PAT"
-          npx vsce publish --skip-duplicate --packagePath ../../output/releases/codex-usage-companion-darwin-arm64.vsix
-          npx vsce publish --skip-duplicate --packagePath ../../output/releases/codex-usage-companion-win32-x64.vsix
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          uv run python scripts/qualification.py freeze --run "$GITHUB_RUN_ID"
+          --attempt "$GITHUB_RUN_ATTEMPT" --output output/qualification/hosted
+      - name: Prepare immutable hosted manifest
+        run: >-
+          uv run python scripts/qualification.py payload --gate hosted
+          --directory output/qualification/hosted --output output/producer/payload.zip
+      - uses: ./.github/actions/record-gate
+        with:
+          gate: hosted
+          payload: output/producer/payload.zip
+  native:
+    name: Native macOS
+    needs: hosted
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/qualification-tools
+      - name: Fetch exact qualified native package and hosted identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          uv run python scripts/qualification.py fetch-native --run "$GITHUB_RUN_ID"
+          --attempt "$GITHUB_RUN_ATTEMPT" --output output/native-input
+      - name: Download hash-pinned isolated VS Code
+        run: uv run python scripts/download_native_host.py --output "$RUNNER_TEMP/qualified-code"
+      - name: Accept packaged collector/assets with isolated credentials
+        run: >-
+          uv run python scripts/check_usage_breakdown_webview.py
+          --code "$RUNNER_TEMP/qualified-code/Visual Studio Code.app/Contents/MacOS/Code"
+          --vsix output/native-input/qualified.vsix --qualification-input output/native-input/qualification-input.json
+          --output output/qualification/native
+      - name: Record pinned host metadata
+        run: cp "$RUNNER_TEMP/qualified-code/host.json" output/qualification/native/host.json
+      - name: Preserve native diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diagnostics-native-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: output/qualification/native
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Prepare native proof
+        run: >-
+          uv run python scripts/qualification.py payload --gate native
+          --directory output/qualification/native --output output/producer/payload.zip
+      - uses: ./.github/actions/record-gate
+        with:
+          gate: native
+          payload: output/producer/payload.zip

@@ -1,0 +1,52 @@
+name: Record qualified producer
+description: Bind one successful gate to immutable payload and receipt uploads
+inputs:
+  gate:
+    required: true
+    description: Logical gate in the trusted qualification contract
+  payload:
+    required: true
+    description: Bounded payload.zip, prepared after all gate checks
+outputs:
+  payload-id:
+    value: ${{ steps.payload.outputs.artifact-id }}
+  receipt-id:
+    value: ${{ steps.receipt.outputs.artifact-id }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/upload-artifact@v6
+      id: payload
+      with:
+        name: payload-${{ inputs.gate }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+        path: ${{ inputs.payload }}
+        if-no-files-found: error
+        retention-days: 14
+        compression-level: 0
+    - name: Bind producer receipt
+      shell: bash
+      env:
+        GATE: ${{ inputs.gate }}
+        PAYLOAD: ${{ inputs.payload }}
+        ARTIFACT_ID: ${{ steps.payload.outputs.artifact-id }}
+        ARTIFACT_DIGEST: ${{ steps.payload.outputs.artifact-digest }}
+      run: >-
+        uv run python scripts/qualification.py receipt --gate "$GATE"
+        --payload "$PAYLOAD" --artifact-id "$ARTIFACT_ID"
+        --artifact-digest "$ARTIFACT_DIGEST" --output output/producer/receipt.json
+    - uses: actions/upload-artifact@v6
+      id: receipt
+      with:
+        name: receipt-${{ inputs.gate }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+        path: output/producer/receipt.json
+        if-no-files-found: error
+        retention-days: 14
+    - name: Record original-job marker
+      shell: bash
+      env:
+        GATE: ${{ inputs.gate }}
+        ARTIFACT_ID: ${{ steps.receipt.outputs.artifact-id }}
+        ARTIFACT_DIGEST: ${{ steps.receipt.outputs.artifact-digest }}
+      run: >-
+        uv run python scripts/qualification.py marker --gate "$GATE"
+        --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST"

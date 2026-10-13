@@ -1,7 +1,9 @@
 """Exercise production report allowance and meter rendering across browsers."""
 from copy import deepcopy
+import argparse
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 import re
 from zoneinfo import ZoneInfo
 
@@ -16,6 +18,8 @@ from codex_usage.report_allowance import (
     render_allowance_section,
 )
 from codex_usage.report_theme import report_css
+from verification.visual_cases import identity
+from verification.visual_evidence import VisualEvidence
 
 
 THEMES = {
@@ -74,7 +78,13 @@ def _report_for_state(state):
     return report
 
 
-def _check_report_matrix(page, browser_name):
+def _check_report_view(page, report, state, theme, width, history_colors):
+    page.set_viewport_size({"width": width, "height": 900})
+    page.set_content(_document(report, theme))
+    _check_report_content(page, report, state, theme, history_colors)
+
+
+def _check_report_matrix(page, browser_name, audit):
     count = 0
     history_colors = {}
     for state in (
@@ -92,9 +102,9 @@ def _check_report_matrix(page, browser_name):
         report = _report_for_state(state)
         for theme in ("day", "night"):
             for width in (1440, 760, 360):
-                page.set_viewport_size({"width": width, "height": 900})
-                page.set_content(_document(report, theme))
-                _check_report_content(page, report, state, theme, history_colors)
+                audit.document(f"{state}-{theme}", _document(report, theme))
+                audit.check(page, identity(browser_name, state, theme, width),
+                    _check_report_view, page, report, state, theme, width, history_colors)
                 count += 1
     assert history_colors["day"] != history_colors["night"]
     return count
@@ -298,7 +308,7 @@ def _contrast_ratio(first, second):
     return (bright + 0.05) / (dark + 0.05)
 
 
-def _check_meter_visuals(page, browser_name):
+def _check_meter_visuals(page, browser_name, audit):
     for theme in THEMES:
         for used in VALUES:
             remaining = 100 - used
@@ -306,60 +316,68 @@ def _check_meter_visuals(page, browser_name):
             report["status"]["active_buckets"] = [
                 dict(report["status"]["active_buckets"][0], used_percent=used)
             ]
-            page.set_viewport_size({"width": 360, "height": 240})
-            page.set_content(_document(report, theme))
-            meter = page.get_by_role(
-                "meter", name="codex · 7 days percentage remaining"
-            )
-            assert meter.count() == 1
-            assert meter.get_attribute("min") == "0"
-            assert meter.get_attribute("max") == "100"
-            assert meter.get_attribute("value") == str(remaining)
-            assert meter.get_attribute("aria-valuetext") == f"{remaining}% remaining"
-            assert page.locator(".allowance-bucket-usage").inner_text() == (
-                f"{used}% used · {100 - used}% remaining"
-            )
-            styles = meter.evaluate(
-                "e => ({"
-                "native: e.localName === 'meter' && e.getAttribute('role') === null && e.tabIndex === -1, "
-                "appearance: getComputedStyle(e).appearance, width: getComputedStyle(e).width, "
-                "height: getComputedStyle(e).height, track: getComputedStyle(e).backgroundColor, "
-                "accent: getComputedStyle(e).color, "
-                "text: getComputedStyle(e.parentElement.querySelector('.allowance-bucket-usage')).color, "
-                "page: getComputedStyle(document.body).backgroundColor})"
-            )
-            assert styles["native"]
-            assert styles["appearance"] == "none"
-            accent_rgb = _css_rgb(styles["accent"])
-            track_rgb = _css_rgb(styles["track"])
-            page_rgb = _css_rgb(styles["page"])
-            assert _contrast_ratio(accent_rgb, track_rgb) >= 3
-            assert _contrast_ratio(track_rgb, page_rgb) < _contrast_ratio(accent_rgb, page_rgb)
-            assert _contrast_ratio(_css_rgb(styles["text"]), page_rgb) >= 4.5
-            pace_color = page.locator(".allowance-pace").first.evaluate("e => getComputedStyle(e).color")
-            assert _contrast_ratio(_css_rgb(pace_color), page_rgb) >= 4.5
-            assert _contrast_ratio(accent_rgb, page_rgb) >= 3
+            audit.check(page, identity(browser_name, "meter", theme, 360, used=used),
+                _check_meter, page, browser_name, report, theme, used, remaining)
 
-            # Meter value pseudo styles are not reflected consistently by
-            # getComputedStyle; sample the actual engine-painted pixels.
-            image = Image.open(BytesIO(meter.screenshot())).convert("RGB")
-            center_row = [image.getpixel((x, image.height // 2)) for x in range(image.width)]
-            colored_fraction = sum(pixel == accent_rgb for pixel in center_row) / image.width
-            assert abs(colored_fraction - remaining / 100) <= 0.04, (
-                f"{browser_name}/{theme} meter at {used}% has {colored_fraction:.3f} "
-                "accent fill across its center row; expected remaining allowance"
-            )
+
+def _check_meter(page, browser_name, report, theme, used, remaining):
+    page.set_viewport_size({"width": 360, "height": 240})
+    page.set_content(_document(report, theme))
+    meter = page.get_by_role(
+        "meter", name="codex · 7 days percentage remaining"
+    )
+    assert meter.count() == 1
+    assert meter.get_attribute("min") == "0"
+    assert meter.get_attribute("max") == "100"
+    assert meter.get_attribute("value") == str(remaining)
+    assert meter.get_attribute("aria-valuetext") == f"{remaining}% remaining"
+    assert page.locator(".allowance-bucket-usage").inner_text() == (
+        f"{used}% used · {100 - used}% remaining"
+    )
+    styles = meter.evaluate(
+        "e => ({"
+        "native: e.localName === 'meter' && e.getAttribute('role') === null && e.tabIndex === -1, "
+        "appearance: getComputedStyle(e).appearance, width: getComputedStyle(e).width, "
+        "height: getComputedStyle(e).height, track: getComputedStyle(e).backgroundColor, "
+        "accent: getComputedStyle(e).color, "
+        "text: getComputedStyle(e.parentElement.querySelector('.allowance-bucket-usage')).color, "
+        "page: getComputedStyle(document.body).backgroundColor})"
+    )
+    assert styles["native"]
+    assert styles["appearance"] == "none"
+    accent_rgb = _css_rgb(styles["accent"])
+    track_rgb = _css_rgb(styles["track"])
+    page_rgb = _css_rgb(styles["page"])
+    assert _contrast_ratio(accent_rgb, track_rgb) >= 3
+    assert _contrast_ratio(track_rgb, page_rgb) < _contrast_ratio(accent_rgb, page_rgb)
+    assert _contrast_ratio(_css_rgb(styles["text"]), page_rgb) >= 4.5
+    pace_color = page.locator(".allowance-pace").first.evaluate("e => getComputedStyle(e).color")
+    assert _contrast_ratio(_css_rgb(pace_color), page_rgb) >= 4.5
+    assert _contrast_ratio(accent_rgb, page_rgb) >= 3
+
+    # Meter value pseudo styles are not reflected consistently by
+    # getComputedStyle; sample the actual engine-painted pixels.
+    image = Image.open(BytesIO(meter.screenshot())).convert("RGB")
+    center_row = [image.getpixel((x, image.height // 2)) for x in range(image.width)]
+    colored_fraction = sum(pixel == accent_rgb for pixel in center_row) / image.width
+    assert abs(colored_fraction - remaining / 100) <= 0.04, (
+        f"{browser_name}/{theme} meter at {used}% has {colored_fraction:.3f} "
+        "accent fill across its center row; expected remaining allowance"
+    )
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=Path("output/playwright/allowance-ui"))
+    args = parser.parse_args()
     total = 0
-    with sync_playwright() as playwright:
+    with VisualEvidence(args.output, "allowance") as audit, sync_playwright() as playwright:
         for browser_name in BROWSERS:
             browser = getattr(playwright, browser_name).launch()
             try:
-                page = browser.new_page()
-                total += _check_report_matrix(page, browser_name)
-                _check_meter_visuals(page, browser_name)
+                page = browser.new_page(java_script_enabled=False)
+                total += _check_report_matrix(page, browser_name, audit)
+                _check_meter_visuals(page, browser_name, audit)
             finally:
                 browser.close()
     print(

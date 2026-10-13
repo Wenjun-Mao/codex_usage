@@ -9,6 +9,7 @@ from codex_usage import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "package-vsix.yml"
+PROMOTION = ROOT / ".github" / "workflows" / "promote-vsix.yml"
 PYPROJECT = ROOT / "pyproject.toml"
 UV_LOCK = ROOT / "uv.lock"
 EXTENSION_ROOT = ROOT / "extensions" / "vscode"
@@ -36,17 +37,19 @@ def extract_workflow_job(text: str, job_name: str) -> str:
 
 def test_workflow_requires_a_matching_tag_for_marketplace_publication() -> None:
     text = read_workflow()
-
     assert "workflow_dispatch:" in text
-    assert "publish:" in text and "default: false" in text
-    assert '"v*"' in text
-    assert "Marketplace publication requires dispatching a matching" in text
-    assert 'expected_tag="v${version}"' in text
-    assert "git merge-base --is-ancestor" in text
+    assert "  push:" not in text and "VSCE_PAT" not in text and "vsce publish" not in text
+    assert 'test "$GITHUB_REF" = refs/heads/main' in text
+    promotion = PROMOTION.read_text()
+    assert "qualification_run:" in promotion and "qualification_attempt:" in promotion
+    assert "default: true" in promotion and "if: inputs.dry_run == false" in promotion
+    assert "validate-publication" in promotion and '--ref "$GITHUB_REF"' in promotion
+    assert promotion.count('--promotion-run "$GITHUB_RUN_ID" --promotion-attempt "$GITHUB_RUN_ATTEMPT"') == 2
+    assert promotion.index("Revalidate original proofs") < promotion.index("VSCE_PAT:")
 
 
 def test_release_workflow_has_no_native_app_jobs_or_toolchain() -> None:
-    workflow = read_workflow()
+    workflow = read_workflow() + PROMOTION.read_text()
     for forbidden in ("macos-native:", "windows-native:", "apps/desktop", "cargo ",
                       "tauri", "--bundles dmg", "--bundles nsis", "prepare-native-release"):
         assert forbidden not in workflow
@@ -54,34 +57,27 @@ def test_release_workflow_has_no_native_app_jobs_or_toolchain() -> None:
 
 def test_platform_vsix_packages_are_built_and_published_independently() -> None:
     text = read_workflow()
-    macos = extract_workflow_job(text, "macos-vsix")
-    windows = extract_workflow_job(text, "windows-vsix")
-    publish = extract_workflow_job(text, "publish-vsix")
-
-    assert "runs-on: macos-26" in macos
-    assert "npm run package:vsix:mac" in macos
-    assert "codex-usage-companion-darwin-arm64.vsix" in macos
-    assert "verify-vsix-archive.py" in macos
-    assert "generate_marketplace_screenshot.py --check" in macos
-    assert "check_allowance_ui.py" in macos
-    assert "check_usage_breakdown_ui.py" in macos
-    assert "check_breakdown_overlay_ui.py" in macos
-    assert "check_breakdown_hover_ui.py" in macos
-    assert "usage-allowance-synthetic-ui" in macos
-    assert "output/playwright/usage-breakdown/*.json" in macos
-    assert "output/playwright/allowance-clarity/*.json" in macos
-    assert "output/playwright/breakdown-hover/*.json" in macos
-    assert "runs-on: windows-2025" in windows
-    assert "npm run package:vsix:win" in windows
-    assert "codex-usage-companion-win32-x64.vsix" in windows
-    assert "verify-vsix-archive.py" in windows
-
-    assert "macos-vsix" in publish and "windows-vsix" in publish
-    assert "macos-native" not in publish and "windows-native" not in publish
-    assert "actions/download-artifact@v6" in publish
-    assert "npx vsce publish --skip-duplicate" in publish
-    assert "codex-usage-companion-darwin-arm64.vsix" in publish
-    assert "codex-usage-companion-win32-x64.vsix" in publish
+    package = extract_workflow_job(text, "package")
+    visual = extract_workflow_job(text, "visual")
+    hosted = extract_workflow_job(text, "hosted")
+    native = extract_workflow_job(text, "native")
+    publish = extract_workflow_job(PROMOTION.read_text(), "publish")
+    assert "os: macos-26" in package and "os: windows-2025" in package
+    assert "script: package:vsix:mac" in package and "script: package:vsix:win" in package
+    assert "npm run test:qualification" in package and "extension-tests.xml" in package
+    assert "verify-vsix-archive.py" in package
+    assert "accept_disposable_handoff.js" in package
+    assert "codex-usage-companion-$TARGET.vsix" in package
+    assert "max-parallel: 2" in visual and "fail-fast: false" in visual
+    assert "suite: [screenshots-allowance, speed, breakdown, overlay, hover]" in visual
+    assert "if: always()" in visual and "**/failure.png" in visual
+    assert "needs: [metadata, core, package, visual]" in hosted
+    assert "scripts/qualification.py freeze" in hosted
+    assert "needs: hosted" in native and "--vsix output/native-input/qualified.vsix" in native
+    assert "download_native_host.py" in native
+    assert "validate-publication" in publish and "publish_qualified_vsix.cjs" in publish
+    assert "npm ci --ignore-scripts" in publish and "needs.validate.outputs.trusted_sha" in publish
+    assert "package:vsix" not in publish and "npm test" not in publish
     assert "gh release" not in publish
 
 
@@ -122,8 +118,8 @@ def test_companion_package_contract_requires_platform_specific_collectors() -> N
     )
     assert "package:vsix:win" in json.dumps(extension)
     assert "package:vsix:mac" in json.dumps(extension)
-    assert "codex-usage-companion-darwin-arm64.vsix" in workflow
-    assert "codex-usage-companion-win32-x64.vsix" in workflow
+    assert "target: darwin-arm64" in workflow and "target: win32-x64" in workflow
+    assert "codex-usage-companion-$TARGET.vsix" in workflow
     assert "codex-usage-companion.vsix" not in workflow
     assert "codex-usage-dashboard-win32" not in workflow
     assert "codex-usage-dashboard-darwin" not in workflow
@@ -143,6 +139,36 @@ def test_release_visual_gate_installs_all_meter_styling_engines() -> None:
     workflow = read_workflow()
 
     assert "uv run playwright install chromium firefox webkit" in workflow
+
+
+def test_metadata_gates_expensive_jobs_without_replacing_full_coverage() -> None:
+    workflow = read_workflow()
+    metadata = extract_workflow_job(workflow, "metadata")
+    assert "tests/test_release_history.py tests/test_github_actions_workflow.py" in metadata
+    core = extract_workflow_job(workflow, "core")
+    assert "uv run pytest -q -p verification.pytest_inventory" in core
+    assert "--qualification-scope core" in core and "--junitxml=" in core and "--qualification-inventory" in core
+    for name in ("core", "package", "visual"):
+        assert "needs: metadata" in extract_workflow_job(workflow, name)
+    assert "QUALIFICATION_PROBE:" in workflow
+    record = (ROOT / ".github/actions/record-gate/action.yml").read_text()
+    assert "artifact-id" in record and "artifact-digest" in record
+    assert "-a${{ github.run_attempt }}" in record and "overwrite: true" not in record
+    assert "scripts/qualification.py marker" in record
+
+
+def test_journal_write_permission_is_job_scoped_and_pilot_has_no_publisher_secret() -> None:
+    promotion = PROMOTION.read_text()
+    validate = extract_workflow_job(promotion, "validate")
+    publish = extract_workflow_job(promotion, "publish")
+    assert "contents: write" not in validate and "contents: write" in publish
+    assert "persist-credentials: false" in publish
+    intent = (ROOT / ".github/actions/record-publication-intent/action.yml").read_text()
+    assert intent.count("GH_TOKEN: ${{ github.token }}") == 2 and "VSCE_PAT" not in intent
+    pilot = (ROOT / ".github/workflows/journal-pilot.yml").read_text()
+    assert "scripts/publication_journal.py pilot" in pilot and "contents: write" in pilot
+    assert "persist-credentials: false" in pilot
+    assert "VSCE_PAT" not in pilot and "publish_qualified_vsix" not in pilot
 
 
 @pytest.mark.parametrize("changelog", CHANGELOGS, ids=("repository", "extension"))

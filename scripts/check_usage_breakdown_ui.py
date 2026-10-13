@@ -12,6 +12,9 @@ from playwright.sync_api import sync_playwright
 from codex_usage.agent_reports import render_ledger_report
 from codex_usage.ledger_schema import open_ledger, increment_ledger_revision
 from usage_breakdown_fixture import AT, breakdown_home
+from verification.breakdown_layout import SNAPSHOT, assert_layout
+from verification.visual_cases import identity
+from verification.visual_evidence import VisualEvidence
 
 
 def main():
@@ -20,7 +23,7 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     evidence = {"synthetic_only": True, "views": [], "performance": {}}
-    with TemporaryDirectory(prefix="breakdown-ui-") as raw:
+    with VisualEvidence(args.output, "breakdown") as audit, TemporaryDirectory(prefix="breakdown-ui-") as raw:
         home = Path(raw)
         started = perf_counter()
         ledger = breakdown_home(home, extended=True, days=12)
@@ -149,70 +152,27 @@ def main():
                             document = args.output / f"{label}-{theme}.html"
                             contents = report.html.replace('data-codex-theme="day"', f'data-codex-theme="{theme}"')
                             document.write_text(contents)
+                            audit.document(f"{label}-{theme}", contents)
                             evidence["performance"].setdefault("html_bytes", {})[label] = len(contents.encode())
                             for width in (1440, 760, 360):
-                                page.set_viewport_size({"width": width, "height": 900})
-                                page.goto(document.resolve().as_uri())
-                                section = page.locator(".usage-breakdown")
-                                assert section.count() == 1 and page.locator("script").count() == 0
-                                assert section.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), (engine, label, width, section.evaluate("e => [...e.children].map(c => [c.tagName,c.className,c.clientWidth,c.scrollWidth])"))
-                                for axis in section.locator(".ub-axis").all():
-                                    assert axis.is_visible()
-                                    assert axis.evaluate("e => getComputedStyle(e).fontSize") == "12px"
-                                for axis in section.locator(".ub-axis").all():
-                                    # A span box fits even when its glyphs extend into the plot.
-                                    boxes = axis.evaluate("e => {const gutter=e.getBoundingClientRect(),right=gutter.right-parseFloat(getComputedStyle(e).paddingRight);return [...e.children].filter(s=>s.textContent.trim()).map(s=>{const range=document.createRange();range.selectNodeContents(s);const text=range.getBoundingClientRect(),span=s.getBoundingClientRect();return {label:s.textContent,textLeft:text.left,textRight:text.right,spanLeft:span.left,spanRight:span.right,gutterLeft:gutter.left,gutterRight:right}})}")
-                                    assert all(b["textLeft"] >= max(b["spanLeft"], b["gutterLeft"])-1 and b["textRight"] <= min(b["spanRight"], b["gutterRight"])+1 for b in boxes), (engine, label, width, boxes)
-                                axes = section.locator(".ub-time-axis")
-                                # Dense history has many marks; batch DOM reads without
-                                # dropping per-mark assertions or adding product scripts.
-                                mark_titles = section.locator("svg rect, svg circle, svg path, svg .ub-tiny-segment").evaluate_all(
-                                    "marks => marks.map(m => m.querySelector('title,desc')?.textContent ?? '')")
-                                assert all("2026-" in title for title in mark_titles), (label, mark_titles)
-                                link_labels = section.locator(".ub-hover-target[href]").evaluate_all(
-                                    "links => links.map(a => a.getAttribute('aria-label') ?? '')")
-                                assert all("2026-" in text for text in link_labels), (label, link_labels)
-                                if section.locator("svg").count():
-                                    assert link_labels, (label, "missing issued hover inspections")
-                                    assert section.locator(".ub-hover-target[href]").evaluate_all(
-                                        "links => links.every(a=>a.getAttribute('href').startsWith('command:codexUsage.navigateBreakdown?'))")
-                                if label == "multi-weekly":
-                                    assert "another-limit · weekly · plus" in section.locator(".ub-meter-legend").inner_text()
-                                    assert "codex · weekly · pro" in section.locator(".ub-meter-legend").inner_text()
-                                if label in ("unknown-balances", "unlimited-balances"):
-                                    assert section.locator(".ub-right-axis").inner_text().strip() == "Unknown"
-                                    assert "No finite valid balances among in-domain captures" in section.inner_text()
-                                    assert "No in-domain balance captures" not in section.inner_text()
-                                if label == "extreme-balances":
-                                    assert "Axis offset:" in section.inner_text()
-                                    tick_labels = section.locator(".ub-right-axis span").all_text_contents()
-                                    assert len(set(tick_labels)) == 3, tick_labels
-                                if report.breakdown_navigation["state"]["view"] == "time":
-                                    assert axes.count() == 1, (label, axes.count())
-                                    assert section.locator("svg").count() == 1
-                                    assert section.locator(".ub-axis").count() == (1 if report.breakdown_navigation["state"]["overlay"] == "none" else 2)
-                                    assert section.locator(".ub-window-picker").count() == 1
-                                else:
-                                    assert axes.count() == 0 and section.locator(".ub-right-axis").count() == 0
-                                assert "Full-range daily context" not in section.inner_text()
-                                for axis in axes.all():
-                                    assert axis.evaluate("e => {const r=e.getBoundingClientRect();const t=[...e.querySelectorAll(\'.ub-tick\')].filter(x=>getComputedStyle(x).display!==\'none\');const boxes=t.map(x=>{const q=document.createRange();q.selectNodeContents(x.querySelector(\'span\'));return q.getBoundingClientRect()});return boxes.every((b,i)=>b.left>=r.left-1 && b.right<=r.right+1 && (!i || boxes[i-1].right<=b.left+1))}"), (engine, label, width, "actual time glyph collision")
-                                    assert axis.evaluate("e => getComputedStyle(e).fontSize") == "12px"
-                                    assert axis.evaluate("e => {const r=e.getBoundingClientRect();const t=[...e.querySelectorAll('.ub-tick')].filter(x=>getComputedStyle(x).display!=='none');return t.every((x,i)=>{const b=x.querySelector('span').getBoundingClientRect();return b.left>=r.left-1 && b.right<=r.right+1 && (!i || t[i-1].querySelector('span').getBoundingClientRect().right<=b.left+1)})}"), (engine, label, width)
-                                    assert axis.evaluate("e => { const start=+e.dataset.start,end=+e.dataset.end,w=e.clientWidth,left=e.getBoundingClientRect().left; return [...e.querySelectorAll('.ub-tick')].filter(t=>getComputedStyle(t).display!=='none').every(t=>Math.abs(t.getBoundingClientRect().left-left-(+t.dataset.at-start)/Math.max(.000001,end-start)*w)<2) }")
-                                for group in section.locator(".ub-controls").all():
-                                    assert group.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
-                                summary = section.locator("details > summary").last
-                                before = section.locator("details").last.get_attribute("open")
-                                summary.focus()
-                                summary.press("Enter")
-                                assert section.locator("details").last.get_attribute("open") != before, (engine, label, width)
-                                summary.press("Enter")
-                                if engine == "chromium" and width in (1440, 360):
-                                    section.screenshot(path=str(args.output / f"{label}-{theme}-{width}.png"))
-                                evidence["views"].append({"engine": engine, "scenario": label, "theme": theme,
-                                    "width": width, "state": report.breakdown_navigation["state"], "script_disabled": True,
-                                    "exact_table_keyboard": True, "fixed_axes": True, "axis_text_contained": True, "aligned_collision_free_time_ticks": True})
+                                with audit.case(page, identity(engine, label, theme, width)):
+                                    page.set_viewport_size({"width": width, "height": 900})
+                                    page.goto(document.resolve().as_uri())
+                                    assert_layout(page.evaluate(SNAPSHOT), label, report.breakdown_navigation["state"])
+                                    section = page.locator(".usage-breakdown")
+                                    summary = section.locator("details > summary").last
+                                    details = section.locator("details").last
+                                    before = details.get_attribute("open")
+                                    summary.focus()
+                                    summary.press("Enter")
+                                    assert details.get_attribute("open") != before, (engine, label, width)
+                                    summary.press("Enter")
+                                    assert details.get_attribute("open") == before, (engine, label, width)
+                                    if engine == "chromium" and width in (1440, 360):
+                                        section.screenshot(path=str(args.output / f"{label}-{theme}-{width}.png"))
+                                    evidence["views"].append({"engine": engine, "scenario": label, "theme": theme,
+                                        "width": width, "state": report.breakdown_navigation["state"], "script_disabled": True,
+                                        "exact_table_keyboard": True, "fixed_axes": True, "axis_text_contained": True, "aligned_collision_free_time_ticks": True})
                 finally:
                     context.close()
                     browser.close()

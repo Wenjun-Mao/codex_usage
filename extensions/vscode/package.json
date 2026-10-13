@@ -159,6 +159,7 @@
     "build": "npm run clean && tsc -p .",
     "watch": "tsc -watch -p .",
     "test": "npm run build && node --test test/*.test.js",
+    "test:qualification": "node scripts/test-qualification.js",
     "test:package:mac": "npm run build && node scripts/verify-package.js --target darwin-arm64",
     "test:package:win": "npm run build && node scripts/verify-package.js --target win32-x64",
     "build:agent:mac": "bash scripts/build-agent-macos-arm64.sh",

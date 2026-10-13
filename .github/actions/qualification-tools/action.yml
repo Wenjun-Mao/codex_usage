@@ -1,0 +1,16 @@
+name: Qualification tools
+description: Locked Python and Node tools; no publisher credentials
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+    - uses: astral-sh/setup-uv@v8.2.0
+      with:
+        enable-cache: true
+    - uses: actions/setup-node@v6
+      with:
+        node-version: "24"
+        cache: npm
+        cache-dependency-path: extensions/vscode/package-lock.json

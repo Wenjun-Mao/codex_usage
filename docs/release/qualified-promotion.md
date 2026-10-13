@@ -1,0 +1,156 @@
+# Qualified VSIX Promotion
+
+Status: implementation candidate; durable journal implemented locally, with
+bootstrap pins and hosted acceptance pending. Production promotion is source-disabled. Hosted normal,
+failure/retry and dry-run pilots must pass before release use. This guide does not
+authorize commits, CI, tags, publisher credentials or publication by itself.
+Authority: [ADR 0061](../adr/0061-qualified-artifact-promotion.md),
+[implementation plan](../plans/verification-and-release-efficiency.md) and
+[historical release receipts](../release.md).
+
+## Candidate Preparation
+
+Use the retained checkout serially. Preserve unrelated owner changes and `apps/`.
+Review the diff, run local focused checks then complete Python/extension tests,
+Ruff, monetary parity/work checks and all visual/native/package gates. Use only
+synthetic data and disposable profiles with in-memory secret storage.
+
+A future release needs a separately approved new version in Python/extension
+metadata, both lockfiles, changelogs and the independent release-history registry.
+Do not reuse, move or overwrite the published `v2.12.2` tag/version. Source or
+qualification-contract changes require fresh qualification of the exact new SHA.
+Only authorized, scoped commits/pushes may establish that candidate on `main`.
+
+## Nonpublishing Qualification
+
+After scoped owner approval, initialize the fixed journals once and review/pin the
+returned genesis/workflow IDs in `scripts/release/journal-origins.json`:
+
+```sh
+uv run python scripts/publication_journal.py bootstrap --domain production \
+  --output output/releases/journal-production-origin.json
+uv run python scripts/publication_journal.py bootstrap --domain pilot \
+  --output output/releases/journal-pilot-origin.json
+```
+
+Bootstrap requires registered workflows and refuses any existing exact ref.
+Never reset or recreate missing pinned history. The retained branches are data,
+not checkouts or release tags. Commit the inspected pins, then qualify that exact
+source SHA. The synthetic journal pilot is a separate nonpublishing action:
+
+```sh
+gh workflow run journal-pilot.yml --ref main
+```
+
+It writes only the synthetic journal, proves server refusal of a stale sibling,
+and checks replay rejection. No Marketplace PAT, release tag or settings change
+is involved. Production events start at 2.12.3, not previously published versions.
+
+```sh
+gh workflow run package-vsix.yml --ref main
+```
+
+Record the actual run ID, source SHA and successful current attempt. Check early
+metadata; complete core/accounting; both platform packages; screenshot/allowance,
+speed, breakdown, overlay and hover suites; frozen hosted proof; and native macOS.
+An overall green run without the complete expected gate/case inventories is not
+proof. Native Windows UI remains an explicit coverage gap; Windows packaging,
+collector smoke/archive/handoff checks remain required.
+
+Producer payload and receipt uploads have unique run/attempt names, immutable IDs
+and digests, with original-job markers. Failed-job reruns may reuse earlier
+successful executions only when this association and the selected job's execution
+remain verifiable. Deleted/expired artifacts, absent markers, ambiguous origins,
+changed bytes or newer executions with stale proof fail closed.
+
+To inspect a completed normal candidate locally, without credentials or upload:
+
+```sh
+uv run python scripts/qualification.py inspect \
+  --run RUN_ID --attempt ATTEMPT --output output/releases/inspection
+```
+
+This downloads and validates the exact packages and trusted native receipt.
+`qualified-not-published` is not tag/publication approval. Artifacts currently
+expire after 14 days; renew qualification instead of rebuilding on promotion.
+
+## Failure And Retry Pilot
+
+An explicitly synthetic, non-release probe can fail one named case on its first
+attempt. The same input stays marked as a probe on every attempt, even though
+the deliberate injection is disabled for retries:
+
+```sh
+gh workflow run package-vsix.yml --ref main \
+  -f fail_case=chromium/single-day/night/1440
+gh run rerun RUN_ID --failed
+```
+
+Inspect the failed case's completed inventory, current tuple, bounded DOM/focus/
+hover diagnostics and screenshot. Prove only the failing visual job and required
+dependents execute again; healthy platform packages must retain their original
+producer identity. A failure remains a failure; no timeout is relaxed or blind
+test retry added. Probe runs are permanently rejected as release candidates.
+
+## Dry-Run Promotion
+
+Before creating any tag or exposing publisher credentials:
+
+```sh
+gh workflow run promote-vsix.yml --ref main \
+  -f qualification_run=RUN_ID -f qualification_attempt=ATTEMPT -F dry_run=true
+```
+
+The trusted publisher definitions on `main` inspect the selected exact proof.
+The publish job is skipped and receives no `VSCE_PAT`. Keep the inspection
+artifact, selected run/attempt, required case inventories and package hashes.
+No package build or full test rerun belongs on the promotion path.
+
+## Authorized Publication
+
+This procedure is not currently enabled. `validate-publication` and `check-files`
+fail before credentials while `PROMOTION_ENABLED` is false in the trusted source.
+An independent retained receipt journal and hosted qualification are prerequisites
+to enabling it; no environment/input flag bypasses that gate. Do not delete run
+history or infer safe retries from surviving run counters/catalog absence.
+
+Only after the new process is accepted and the owner explicitly authorizes a
+release, create the matching version tag at the qualified SHA and dispatch:
+
+```sh
+git tag vNEW_VERSION QUALIFIED_SHA
+git push origin vNEW_VERSION
+gh workflow run promote-vsix.yml --ref vNEW_VERSION \
+  -f qualification_run=RUN_ID -f qualification_attempt=ATTEMPT -F dry_run=false
+```
+
+Tag creation does nothing by itself. Validation requires immutable dispatch
+SHA/ref/attempt as well as peeled tag/source/version
+and main ancestry, approved workflow/contract, complete gates/cases, every original
+receipt association, exact artifact/package/collector/assets, and trusted pinned
+native replay. The fresh publisher revalidates actual upload bytes before its
+credential-bearing step. Candidate artifact code is never executed by publishing.
+
+The two targets are not atomically uploaded. A matching occupied target can be
+reused only after its official hash is verified. An occupied mismatching target
+stops; unvalidated catalog entries remain pending, not a reason to re-upload.
+`publication.json` records partial uploads and failures without calling them
+public success. There is no `--skip-duplicate` shortcut or rebuild fallback.
+Never rerun preflight in an existing publication directory: it must not overwrite
+possible side effects using stale cached history.
+
+## Public Verification
+
+```sh
+node scripts/verify_marketplace_release.cjs \
+  --qualification-run RUN_ID --qualification-attempt ATTEMPT \
+  --promotion-run PROMOTION_ID --promotion-attempt PROMOTION_ATTEMPT \
+  --output output/releases/public-verification
+```
+
+Verify the successful explicit-promotion workflow and original publisher marker,
+revalidate qualified proof/tag identity, poll official validated entries, download
+both versioned target packages, and compare to the qualified hashes and catalog
+declarations. A successful upload is not a verified release; preserve pending
+external propagation rather than republishing. Keep receipts/artifacts immutable
+and use a newly approved higher version for corrections.

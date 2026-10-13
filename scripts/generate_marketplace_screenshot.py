@@ -18,6 +18,8 @@ from codex_usage.reporting import render_html_report
 
 from allowance_fixture import allowance_fixture
 from observed_speed_fixture import AT, chart_home
+from verification.visual_cases import identity
+from verification.visual_evidence import VisualEvidence, case_context
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTENSION_ROOT = ROOT / "extensions" / "vscode"
@@ -96,6 +98,7 @@ def capture_marketplace_screenshots(
     documents: dict[tuple[str, str], Path],
     usage_paths: dict[tuple[str, str], Path],
     storage_path: Path,
+    audit=None,
 ) -> None:
     for output in (*usage_paths.values(), storage_path):
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -106,24 +109,26 @@ def capture_marketplace_screenshots(
             backgrounds: dict[tuple[str, str], str] = {}
             for theme in ("day", "night"):
                 for size, viewport in (("wide", VIEWPORT), ("narrow", NARROW_VIEWPORT)):
-                    _open_document(page, documents[(theme, "usage")], viewport)
-                    _check_usage(page, theme)
-                    _check_layout(page, viewport)
-                    backgrounds[(theme, "usage")] = page.locator("body").evaluate(
-                        "element => getComputedStyle(element).backgroundColor"
-                    )
-                    page.evaluate("() => { document.activeElement?.blur(); window.scrollTo(0, 0); }")
-                    page.mouse.move(0, 0)
-                    page.screenshot(path=str(usage_paths[(theme, size)]), full_page=False)
+                    with case_context(audit, page, identity("chromium", "usage", theme, viewport["width"])):
+                        _open_document(page, documents[(theme, "usage")], viewport)
+                        _check_usage(page, theme)
+                        _check_layout(page, viewport)
+                        backgrounds[(theme, "usage")] = page.locator("body").evaluate(
+                            "element => getComputedStyle(element).backgroundColor"
+                        )
+                        page.evaluate("() => { document.activeElement?.blur(); window.scrollTo(0, 0); }")
+                        page.mouse.move(0, 0)
+                        page.screenshot(path=str(usage_paths[(theme, size)]), full_page=False)
                 for viewport in (VIEWPORT, NARROW_VIEWPORT):
-                    _open_document(page, documents[(theme, "storage")], viewport)
-                    _check_storage(page, theme)
-                    _check_layout(page, viewport)
-                    backgrounds[(theme, "storage")] = page.locator("body").evaluate(
-                        "element => getComputedStyle(element).backgroundColor"
-                    )
-                    if theme == "night" and viewport == VIEWPORT:
-                        page.screenshot(path=str(storage_path), full_page=False)
+                    with case_context(audit, page, identity("chromium", "storage", theme, viewport["width"])):
+                        _open_document(page, documents[(theme, "storage")], viewport)
+                        _check_storage(page, theme)
+                        _check_layout(page, viewport)
+                        backgrounds[(theme, "storage")] = page.locator("body").evaluate(
+                            "element => getComputedStyle(element).backgroundColor"
+                        )
+                        if theme == "night" and viewport == VIEWPORT:
+                            page.screenshot(path=str(storage_path), full_page=False)
             for view in ("usage", "storage"):
                 if backgrounds[("day", view)] == backgrounds[("night", view)]:
                     raise RuntimeError(f"{view} Day and Night themes render the same background")
@@ -203,7 +208,7 @@ def _check_layout(page: Page, viewport: dict[str, int]) -> None:
             raise RuntimeError(f"extension {key} escapes {width}px viewport: {metrics[key]}")
 
 
-def capture_speed_screenshots(paths: dict[str, Path]) -> None:
+def capture_speed_screenshots(paths: dict[str, Path], audit=None) -> None:
     """Render the production timing view from the shared public synthetic fixture."""
     with TemporaryDirectory(prefix="speed-marketplace-") as raw:
         home = Path(raw)
@@ -214,21 +219,22 @@ def capture_speed_screenshots(paths: dict[str, Path]) -> None:
             try:
                 page = context.new_page()
                 for theme, output in paths.items():
-                    report = render_ledger_report(
-                        home, range_name="all", project_keys=[], theme=theme,
-                        timezone_name="UTC", now=AT, speed_granularity="daily",
-                    )
-                    document = home / f"speed-{theme}.html"
-                    document.write_text(report.html, encoding="utf-8")
-                    page.goto(document.as_uri())
-                    assert page.locator("script").count() == 0
-                    section = page.locator(".observed-speed")
-                    assert section.locator("svg a").count() > 0
-                    assert section.locator(".speed-legend span").count() == 3
-                    text = section.inner_text()
-                    assert not any(marker.casefold() in text.casefold() for marker in PRIVATE_MARKERS)
-                    output.parent.mkdir(parents=True, exist_ok=True)
-                    section.screenshot(path=str(output))
+                    with case_context(audit, page, identity("chromium", "speed", theme, 1440)):
+                        report = render_ledger_report(
+                            home, range_name="all", project_keys=[], theme=theme,
+                            timezone_name="UTC", now=AT, speed_granularity="daily",
+                        )
+                        document = home / f"speed-{theme}.html"
+                        document.write_text(report.html, encoding="utf-8")
+                        page.goto(document.as_uri())
+                        assert page.locator("script").count() == 0
+                        section = page.locator(".observed-speed")
+                        assert section.locator("svg a").count() > 0
+                        assert section.locator(".speed-legend span").count() == 3
+                        text = section.inner_text()
+                        assert not any(marker.casefold() in text.casefold() for marker in PRIVATE_MARKERS)
+                        output.parent.mkdir(parents=True, exist_ok=True)
+                        section.screenshot(path=str(output))
             finally:
                 context.close()
                 browser.close()
@@ -237,28 +243,36 @@ def capture_speed_screenshots(paths: dict[str, Path]) -> None:
 def _render_capture_and_validate(
     usage_paths: dict[tuple[str, str], Path], storage_path: Path,
     speed_paths: dict[str, Path],
+    audit=None,
 ) -> None:
     with TemporaryDirectory() as temporary_directory:
         documents = render_fixture(Path(temporary_directory))
-        capture_marketplace_screenshots(documents, usage_paths, storage_path)
-    for (_theme, size), path in usage_paths.items():
-        validate_screenshot(path, NARROW_VIEWPORT if size == "narrow" else VIEWPORT)
-    validate_screenshot(storage_path, VIEWPORT)
-    capture_speed_screenshots(speed_paths)
+        capture_marketplace_screenshots(documents, usage_paths, storage_path, audit)
+    for (theme, size), path in usage_paths.items():
+        viewport = NARROW_VIEWPORT if size == "narrow" else VIEWPORT
+        with case_context(audit, None, identity("pillow", "image-usage", theme, viewport["width"])):
+            validate_screenshot(path, viewport)
+    with case_context(audit, None, identity("pillow", "image-storage", "night", 1440)):
+        validate_screenshot(storage_path, VIEWPORT)
+    capture_speed_screenshots(speed_paths, audit)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Validate temporary captures without changing tracked images")
+    parser.add_argument("--output", type=Path, help="Persist synthetic qualification cases and failure diagnostics")
     args = parser.parse_args(argv)
     if args.check:
         with TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
-            _render_capture_and_validate(
-                {key: temporary / path.name for key, path in USAGE_SCREENSHOT_PATHS.items()},
+            inputs = ({key: temporary / path.name for key, path in USAGE_SCREENSHOT_PATHS.items()},
                 temporary / STORAGE_SCREENSHOT_PATH.name,
-                {key: temporary / path.name for key, path in SPEED_SCREENSHOT_PATHS.items()},
-            )
+                {key: temporary / path.name for key, path in SPEED_SCREENSHOT_PATHS.items()})
+            if args.output is not None:
+                with VisualEvidence(args.output, "screenshots") as audit:
+                    _render_capture_and_validate(*inputs, audit=audit)
+            else:
+                _render_capture_and_validate(*inputs)
     else:
         _render_capture_and_validate(
             USAGE_SCREENSHOT_PATHS, STORAGE_SCREENSHOT_PATH, SPEED_SCREENSHOT_PATHS,
