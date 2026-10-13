@@ -283,6 +283,14 @@ hosted input scheduling/processing latency. The
 [pilot receipt](../release/2026-10-13-qualification-pilot.md) names the held runs
 and remaining source-bound normal, controlled-retry and dry-run gates.
 
+The first bounded SDK/host-marker diagnostic on `63c032c7` retained a 310ms
+failure: real mouse motion returned in 3.16ms, while the style-query round trip
+took 306.98ms. The correlated target reply arrived 306ms after its immediate
+outer ACK. This is not measured CSS computation or paint delay; browser/IPC
+scheduling remains inside that round trip. A targeted diagnostic-only renderer
+clock around the unchanged expression is the next causal split. No deadline
+relaxation, overhead subtraction or passing retry is accepted.
+
 ## Evidence And Reproduction
 
 - [2.12.2 nonpublishing run](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38348832206)

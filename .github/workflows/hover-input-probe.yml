@@ -26,7 +26,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p output/diagnostic/hover
-          uv run python scripts/probes/hover_input_latency.py --output output/diagnostic/hover \
+          uv run python scripts/probes/hover_input_latency.py --renderer-clock --output output/diagnostic/hover \
             2>&1 | tee output/diagnostic/hover/protocol.log
       - name: Preserve diagnostic output, never producer receipts
         if: always()

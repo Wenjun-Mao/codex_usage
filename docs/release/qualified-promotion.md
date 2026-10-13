@@ -88,6 +88,8 @@ gh workflow run hover-input-probe.yml --ref main
 ```
 
 This records original input/style markers plus the pinned SDK protocol sequence.
+The diagnostic wraps each original test-side style expression with two renderer
+performance-clock reads, without extra DOM/input calls or enabling product scripts.
 The strict 250ms guard, complete harness sequence and script-disabled product
 remain unchanged. Marker/debug overhead is uncalibrated and never subtracted.
 Output is diagnostic-only, including any passing harness journal; no producer,

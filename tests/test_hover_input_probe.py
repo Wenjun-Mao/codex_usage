@@ -67,12 +67,38 @@ def test_real_observer_rejects_action_only_overrun_before_timed_style(monkeypatc
         "baseline-entry", "baseline-return", "input-entry", "input-return", "observation-return"]
 
 
+def test_renderer_clock_wraps_original_expression_without_extra_read_or_changed_value():
+    calls, rows = [], []
+    value = {"visible": True, "hover": True}
+
+    def evaluate(expression, *args, **kwargs):
+        calls.append((expression, args, kwargs))
+        return {"value": value, "elapsed_ms": .02}
+
+    def original(page, tooltip, action, **kwargs):
+        action()
+        return tooltip.evaluate("tip => ({visible: true, hover: true})", "arg", argument=7)
+
+    module = SimpleNamespace(observe_input=original)
+    with probe.observation_trace(module, rows, renderer_clock=True):
+        assert module.observe_input(None, SimpleNamespace(evaluate=evaluate),
+            lambda: None, phase="hover") is value
+    assert len(calls) == 1
+    expression, args, kwargs = calls[0]
+    assert "(tip => ({visible: true, hover: true}))(tip, arg)" in expression
+    assert expression.count("performance.now()") == 2
+    assert args == ("arg",) and kwargs == {"argument": 7}
+    assert rows[0]["renderer_reads"] == [{"stage": "style", "elapsed_ms": .02}]
+    assert module.observe_input is original
+
+
 @pytest.mark.parametrize("fails", (False, True))
-def test_main_restores_argv_and_records_original_failure(monkeypatch, tmp_path, fails):
+@pytest.mark.parametrize("renderer_clock", (False, True))
+def test_main_restores_argv_and_records_original_failure(monkeypatch, tmp_path, fails, renderer_clock):
     import json
     import sys
 
-    args = ["probe", "--output", str(tmp_path)]
+    args = ["probe", "--output", str(tmp_path)] + (["--renderer-clock"] if renderer_clock else [])
     monkeypatch.setattr(sys, "argv", args)
     observation = load_tool("verification.hover_observation")
     original = observation.observe_input
@@ -92,7 +118,8 @@ def test_main_restores_argv_and_records_original_failure(monkeypatch, tmp_path, 
     assert sys.argv is args and observation.observe_input is original
     evidence = json.loads((tmp_path / "input-timings.json").read_text())
     assert evidence["diagnostic_only"] is True and evidence["deadline_ms"] == 250
-    assert evidence["extra_dom_reads"] == 0 and evidence["script_injection"] is False
+    assert evidence["extra_dom_reads"] == 0 and evidence["script_injection"] is renderer_clock
+    assert evidence["product_scripts_disabled"] is True
     assert evidence["instrumentation_overhead_calibrated"] is False
     assert evidence["replay_passed"] is not fails
     if fails:

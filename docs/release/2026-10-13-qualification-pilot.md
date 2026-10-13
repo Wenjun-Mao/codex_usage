@@ -211,3 +211,35 @@ without adding DOM reads or inputs. The separate workflow records SDK protocol
 timestamps. Both keep original failures and the unchanged guard; debug-marker
 overhead remains charged and uncalibrated. Fresh hosted diagnosis/qualification
 is still pending, not inferred from these local passes.
+
+## Hosted Input Diagnostic
+
+[Bounded diagnostic at `63c032c7`, attempt 1](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38461396621)
+is terminal and failed the unchanged guard at 310ms in WebKit's first view after
+24 completed Chromium cases. Original input markers report 3.16ms for mouse
+motion and 306.98ms for the style-query round trip. The baseline was hidden;
+the returned state was visible, late, and correctly rejected.
+
+The raw protocol independently correlates page-proxy 7 input command 365 with
+its 2ms reply. Style command 366 was sent through outer command 367 at
+20:16:32.365 UTC; the outer ACK returned immediately, but the correlated target
+reply arrived at 20:16:32.671 UTC. This localizes this sample to the target
+style-query round trip, not pointer delivery or Python post-reply polling.
+It does not separate CSS computation from browser/IPC scheduling or establish
+visibility onset/paint timing. Marker/debug overhead is uncalibrated.
+
+Raw retained evidence: `output/qualification/hosted-input-diagnostic/`.
+No rerun until green is planned. One targeted diagnostic revision adds renderer
+performance-clock markers around the original style expression; it makes no
+extra DOM/input calls, keeps product scripts disabled, declares test-side
+evaluation instrumentation, and cannot produce qualification/publication proof.
+Its result remains pending; current-source qualification is held.
+
+Local verification of the renderer-clock diagnostic passes all 72 views with
+648 unchanged observation calls and 1,080 original baseline/style reads.
+Recorded renderer expression times are 0ms median and 1ms maximum, subject to
+browser clock resolution; this is not paint timing or hosted evidence.
+The full suite passes 2,146 cases plus the approved skip in 63.62 seconds;
+all 2,147 unique identities reconcile. Ruff and focused diagnostic guards pass.
+Raw evidence is `output/qualification/renderer-clock-local/` and
+`output/qualification/renderer-clock-core/`.
