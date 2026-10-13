@@ -1,7 +1,8 @@
 # ADR 0061: Qualified Artifact Promotion
 
-Status: Accepted for implementation on 2026-10-13; local implementation and
-qualification in progress, production promotion disabled, not released. Owner selected explicit promotion; see the
+Status: Accepted for implementation on 2026-10-13; local, journal, normal hosted
+and dry-run qualification pass; controlled retry in progress. Production promotion
+is disabled, not released. Owner selected explicit promotion; see the
 [implementation plan](../plans/verification-and-release-efficiency.md).
 
 ## Context
@@ -13,7 +14,7 @@ fresh native proof. Source equality is not artifact equality. The visual gate
 also couples otherwise independent checks and loses case diagnostics on failure.
 See the [measured profile](../research/2026-10-13-verification-and-release-profile.md).
 
-## Proposed Decision
+## Decision
 
 Build each supported platform VSIX once per candidate qualification. Separate
 early metadata checks, complete core checks, platform packaging, and independently
@@ -112,7 +113,8 @@ Native replay extracts the qualified VSIX. Its only declared metadata patch is
 removing activation events, plus the approved acceptance harness; shipped runtime
 assets remain identical. Hosted replay uses a hash-pinned, disposable VS Code
 1.141.0 ARM64 download, not a user's profile. A trusted hosted receipt, rather
-than locally uploaded JSON, is the selected native-proof path pending a hosted pilot.
+than locally uploaded JSON, is the selected native-proof path. The normal hosted
+pilot passed that path against exact qualified VSIX/collector/assets.
 
 Source authority is independently checked against GitHub's actual source Git
 tree, not a claimed digest. Both promotion jobs use one frozen trusted publisher
@@ -130,9 +132,9 @@ inventories retain their independent tuple/assertion contracts.
 
 Both public targets are preflighted before any upload. Each possible upload gets
 an immutable, original-job-stamped intent before its credential-bearing step.
-All prior promotion attempts for the release are inspected, including failed
-publisher jobs. Missing/expired intent history or unexplained executions block
-automatic retries. A previously attempted but catalog-invisible target remains
+All retained possible-upload events for the release are inspected, independently
+of deleted/expired Actions evidence. Missing/malformed pinned journal history
+blocks automatic retries. A previously attempted but catalog-invisible target remains
 pending until validated public bytes establish safe reuse; absence is not proof
 that an upload never happened. Intent/outcome recording uses no publisher secret.
 

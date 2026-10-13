@@ -4,7 +4,8 @@ Date: 2026-10-13. Status: baseline assessment plus measured local implementation
 Release authority: 2.12.2 at `11908ab947c4dc4eac9a991c144d8b6e1601ff35`.
 The baseline assessment was read-only. Follow-up changes affect verification and
 qualification tooling only; product accounting/rendering, deadlines, installed
-extensions and live data remain unchanged. Hosted qualification is still pending.
+extensions and live data remain unchanged. Normal hosted qualification and dry-run
+promotion pass; the controlled failure/retry pilot is still in progress.
 
 ## Method And Limits
 
@@ -13,8 +14,9 @@ unchanged 720-case breakdown browser matrix; timed public synchronous browser
 calls around their original implementations; and measured existing HTTP server
 cleanup in 31 focused tests. Browser and lifecycle timers do not skip assertions
 or replace behavior. Their small instrumentation overhead was not calibrated.
-Local measurements are single runs on this Apple Silicon machine, not hosted CI
-predictions. Async/greenlet switches made cProfile's per-API cumulative timings
+Baseline local observations are single runs; the follow-up includes three
+alternating complete wall-time pairs. Neither predicts hosted CI universally.
+Async/greenlet switches made cProfile's per-API cumulative timings
 misleading, so browser attribution uses explicit wall-clock timers instead.
 
 Hosted timings come from the actual GitHub job/step timestamps and timestamped
@@ -181,25 +183,75 @@ The hover deadlines remain 250ms. An injected first-case failure retained the
 exact tuple, original exception, DOM diagnostics and screenshot; aggregation
 rejected the partial failed journal. Python collection/raw results and extension
 test events reconcile with independent preserved-case inventories.
-The final complete Python run passed 2,068 cases with exactly one expected
-non-Windows junction skip in 64.66 seconds; all 2,069 unique collected identities
+The final complete Python run passed 2,101 cases with exactly one expected
+non-Windows junction skip in 65.96 seconds; all 2,102 unique collected identities
 matched raw JUnit and preserved the independent historical baseline. Extension
-qualification passed 48 cases; the early metadata gate passed 35. Ruff, frozen
+qualification passed 48 cases; the early metadata gate passed 36. Ruff, frozen
 monetary parity and bounded-work checks passed.
 
 Early metadata and independent visual jobs, immutable original-attempt receipts,
-exact-VSIX native inputs and explicit promotion are implemented as candidates.
-No hosted normal/failure-retry/dry-run pilot or new release has run. Production
-promotion is intentionally disabled: deleted later Actions runs can hide earlier
-upload uncertainty from an older-run retry. Surviving run-number continuity is
-an omission detector, not complete publication-history authority. An independent
-durable receipt journal is a pending scope/qualification gate, not a solved risk.
+exact-VSIX native inputs and explicit promotion pass normal hosted qualification
+and dry-run inspection. Production promotion remains intentionally disabled.
+Deleted later Actions runs can hide earlier upload uncertainty from an older-run
+retry; surviving run-number continuity is only an omission detector. The approved
+independent Git journal is implemented and pinned, with its hosted synthetic
+append/conflict/replay pilot passed. Publication remains separately authorized.
 
 Raw pair evidence remains under `output/performance/verification-efficiency/`
 and `output/playwright/verification-efficiency/`; current visual/failure reports
 are under `output/qualification/`. The reusable instrumented entrypoint is
 `scripts/profile_visual_gate.py`; the bounded resize trial is
 `verification.resize_probe`.
+
+## Hosted Follow-Up
+
+Accepted nonpublishing source: `dc79adb616601959748480f8fac118fd9455e69f`.
+[Normal qualification](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38442424276)
+passed every required gate, including the pinned isolated native macOS host using
+the exact qualified VSIX. Independent inspection validates original-job markers,
+complete case inventories, actual archive digests and package/collector/assets.
+[Dry-run promotion](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38444551516)
+passed; the publish job was skipped. Its qualified JSON equals local inspection.
+
+| Measurement | Earlier 2.12.2 Tag Run | New Nonpublishing Pilot |
+| --- | ---: | ---: |
+| First job start to last job completion | 17m 46s | 12m 27s |
+| Dispatch to last job completion | 17m 48s | 14m 53s |
+| Initial waiting before first job | 2s | 2m 26s |
+| Summed job elapsed work, not billing | 19m 15s | 24m 41s |
+| Separate promotion inspection | Full tag rebuild/qualification | 35s, no rebuild/upload |
+
+These are single hosted samples with different contracts, not matched benchmark
+pairs. The new pilot adds hosted native replay (2m 19s), result-inventory evidence
+and five isolated visual job setups; the old workflow includes a 23s publisher
+job and external native evidence. The roughly 30% shorter execution span costs
+more summed runner work. Initial waiting includes retention of the preceding
+failed pilot under same-ref concurrency, not slow test execution.
+
+New job elapsed times: metadata 16s, core 2m 46s, macOS package 1m 43s, Windows
+package 1m 51s, screenshot/allowance 2m 40s, speed 2m 56s, breakdown 6m 08s,
+overlay 1m 38s, hover 1m 45s, aggregation 39s and native 2m 19s. The breakdown
+script itself took 5m 13s; remaining job time is setup/evidence/cleanup. Native
+package fetch took 30s, pinned host download 6s and real replay 71s. Job elapsed
+work is not a dollar-cost estimate or a claim about overlapping step totals.
+
+The first pilot exposed two owning verification-contract mistakes, now corrected:
+the core checkout lacked the frozen parity baseline; Node rejected a Windows
+drive-letter reporter path as a URL scheme. Full core history and `pathToFileURL`
+are regression-guarded; no baseline, case, timeout or product behavior was weakened.
+
+One WebKit focus-tooltip observation timed out in that first run. The retained
+post-timeout DOM is visible but does not establish deadline compliance. A read-only
+sidecar's bounded local probes did not reproduce the failure; hosted scheduling/
+transport remains a hypothesis, not root-cause proof. The normal hosted hover run
+passes unchanged 250ms guards. This is not a flake fix: retain exact input/phase,
+focus-visible, hover, geometry and action timing in a bounded hosted diagnostic
+before changing its keyboard-modality or latency-observation contract. The older
+hide timeout is a separate unresolved observation.
+
+The [pilot receipt](../release/2026-10-13-qualification-pilot.md) records journal
+pins, qualified bytes and controlled-retry status. Current raw hosted job metadata
+and inspection artifacts remain under `output/qualification/hosted-*`.
 
 ## Evidence And Reproduction
 
@@ -227,4 +279,5 @@ uv run python output/performance/test-release-profile/analyze.py
 ```
 
 The last three commands use retained one-off diagnostic tools, not shipped APIs.
-No CI run or new release was dispatched for the assessment or local follow-up.
+The initial assessment and local wall-time pairs dispatched no CI or release.
+The explicitly approved hosted follow-up above is nonpublishing only.

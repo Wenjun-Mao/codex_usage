@@ -1,0 +1,58 @@
+name: Native Hover Diagnostic
+on:
+  workflow_dispatch:
+    inputs:
+      qualification_run:
+        description: Existing normal qualification run, never rebuilt
+        required: true
+        type: string
+      qualification_attempt:
+        description: Current attempt of that qualification
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnostic:
+    name: Native transport (${{ matrix.arm }})
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [plain, traced]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Require nonpublishing main context
+        run: |
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/main
+      - uses: ./.github/actions/qualification-tools
+      - name: Fetch original qualified package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN: ${{ inputs.qualification_run }}
+          QUALIFICATION_ATTEMPT: ${{ inputs.qualification_attempt }}
+        run: >-
+          uv run python scripts/qualification.py fetch-native --run "$QUALIFICATION_RUN"
+          --attempt "$QUALIFICATION_ATTEMPT" --output output/native-input
+      - name: Download original pinned isolated host
+        run: uv run python scripts/download_native_host.py --output "$RUNNER_TEMP/qualified-code"
+      - name: Replay without changing input or deadlines
+        env:
+          ARM: ${{ matrix.arm }}
+        run: >-
+          uv run python scripts/probes/native_hover_latency.py --arm "$ARM"
+          --code "$RUNNER_TEMP/qualified-code/Visual Studio Code.app/Contents/MacOS/Code"
+          --vsix output/native-input/qualified.vsix --qualification-input output/native-input/qualification-input.json
+          --output "output/diagnostic/$ARM"
+      - name: Preserve diagnostic evidence, never producer receipts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-hover-diagnostic-${{ matrix.arm }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: output/diagnostic
+          if-no-files-found: warn
+          retention-days: 14

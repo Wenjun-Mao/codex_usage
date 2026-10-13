@@ -1,8 +1,8 @@
 # Qualified VSIX Promotion
 
-Status: implementation candidate; durable journal origins are pinned and its
-hosted synthetic pilot passed. Production promotion is source-disabled. Hosted normal,
-failure/retry and dry-run pilots must pass before release use. This guide does not
+Status: durable journal, normal hosted qualification and dry-run inspection pass;
+controlled failure/retry is in progress. Production promotion is source-disabled.
+All pilots must pass before release use. This guide does not
 authorize commits, CI, tags, publisher credentials or publication by itself.
 Authority: [ADR 0061](../adr/0061-qualified-artifact-promotion.md),
 [implementation plan](../plans/verification-and-release-efficiency.md) and

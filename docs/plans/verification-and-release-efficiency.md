@@ -1,7 +1,7 @@
 # Verification And Release Efficiency
 
-Date: 2026-10-13. Status: local candidate verified; hosted and independent-history
-authority gates remain open. Production promotion is source-disabled.
+Date: 2026-10-13. Status: local, journal, normal hosted and dry-run gates pass;
+controlled failure/retry remains in progress. Production promotion is source-disabled.
 Scope agreed: faster failure-local gates, exact qualified-artifact promotion,
 and fewer browser round trips without reducing coverage.
 
@@ -229,7 +229,8 @@ the repository; this plan does not prescribe an oversized generic runner.
 ## Permissions And Rollback
 
 Owner subsequently authorized implementation: retained-checkout code/workflow/
-test/documentation edits and synthetic local verification are in progress.
+test/documentation edits, synthetic local verification, scoped commits/pushes,
+the durable Git journal and bounded nonpublishing hosted pilots.
 No new release tag, Marketplace publication or secret/settings change is authorized.
 
 Implementation approval should explicitly cover retained-checkout source/test/
@@ -255,7 +256,8 @@ corrections; never overwrite a published version or retag it.
 
 - [x] Owner selected explicit promotion; tag creation alone will not publish.
 - [x] Owner reviewed the plan and authorized implementation with Relay Direct.
-- [ ] Required gate/case inventory and run-attempt/native trust probes are resolved.
+- [x] Required gate/case inventories and the trusted exact-VSIX native path pass.
+- [ ] Hosted failed-job reuse retains original-attempt authority.
 - [x] Owner authorized local implementation and scoped commit/push/nonpublishing pilots.
 - [ ] D1-D3 retain every coverage, accounting, security and artifact safeguard.
 - [ ] D4 records actual savings, retry evidence and remaining latency.
@@ -271,17 +273,19 @@ Local milestones (not hosted acceptance):
 - [x] Independent pinned publication history retains possible-upload uncertainty
   outside the Actions lifecycle; hosted synthetic append/conflict/replay passes.
 - [x] Scoped commit/push and hosted-pilot permission is granted.
-- [ ] Hosted normal, controlled failure/retry, pinned native/platform and dry-run
-  pilots pass at the exact accepted source SHA.
+- [x] Hosted normal qualification, pinned native/platform and dry-run inspection
+  pass at `dc79adb616601959748480f8fac118fd9455e69f`.
+- [ ] Controlled failure/retry passes with unchanged healthy-package proof.
 
 ## Implementation Checkpoint
 
-Implemented locally, not yet hosted-qualified: early metadata gate, five isolated
+Implemented and normal-hosted qualified: early metadata gate, five isolated
 visual suites with bounded concurrency and always-upload failure journals;
 batched breakdown snapshots; immutable producer receipts and original-attempt
 log markers; frozen hosted manifests; exact-VSIX native input; pinned isolated
 VS Code download; explicit promotion with separate credential exposure; and
-public/occupied-version hash verification. Default browser navigation remains
+public/occupied-version hash guards. Actual publishing/public-download verification
+of a new release remains unexecuted. Default browser navigation remains
 fresh; resize-only optimization is not assumed equivalent.
 
 The read-only provenance review and independent REST readback confirmed that
@@ -302,10 +306,10 @@ with unchanged 250ms guards. Raw outputs remain ignored under
 
 Earlier broad runs exposed an obsolete direct-command integration assertion and
 a stale partial-upload expectation; both owning contracts were corrected before
-fresh verification. The final complete run passed 2,100 cases with exactly the
-named non-Windows junction skip in 69.62 seconds. Collection and raw JUnit match
-all 2,101 unique cases and retain every independent 2.12.2 required identity.
-The early metadata gate passed 35 cases. Extension qualification passed all 48
+fresh verification. The final complete run passed 2,101 cases with exactly the
+named non-Windows junction skip in 65.96 seconds. Collection and raw JUnit match
+all 2,102 unique cases and retain every independent 2.12.2 required identity.
+The early metadata gate passed 36 cases. Extension qualification passed all 48
 named tests with matching structured event collection and successful completion.
 Ruff, frozen monetary parity, bounded-work checks and all five visual suites pass
 locally; their complete tuple/assertion inventories were independently read back.
@@ -337,6 +341,6 @@ event kinds. Local regressions cover lost responses, replay, malformed/missing
 history and deletion of all Actions evidence. Production cutover begins at 2.12.3;
 the bootstrap pins and hosted synthetic append/conflict/replay pilot now pass.
 Independent readback confirms two pilot entries and no production entries.
-Full platform/native qualification, controlled retry and dry-run promotion remain
-in progress; see the [pilot receipt](../release/2026-10-13-qualification-pilot.md).
+Full platform/native qualification and dry-run inspection pass. Controlled retry
+remains in progress; see the [pilot receipt](../release/2026-10-13-qualification-pilot.md).
 Publication/new tags still require separate release approval.
