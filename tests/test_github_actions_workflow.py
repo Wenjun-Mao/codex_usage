@@ -146,6 +146,8 @@ def test_metadata_gates_expensive_jobs_without_replacing_full_coverage() -> None
     metadata = extract_workflow_job(workflow, "metadata")
     assert "tests/test_release_history.py tests/test_github_actions_workflow.py" in metadata
     core = extract_workflow_job(workflow, "core")
+    assert "fetch-depth: 0" in core
+    assert "scripts/check_speed_parity.py" in core and "scripts/check_speed_work.py" in core
     assert "uv run pytest -q -p verification.pytest_inventory" in core
     assert "--qualification-scope core" in core and "--junitxml=" in core and "--qualification-inventory" in core
     for name in ("core", "package", "visual"):

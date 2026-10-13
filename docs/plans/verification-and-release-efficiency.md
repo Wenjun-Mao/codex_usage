@@ -268,7 +268,8 @@ Local milestones (not hosted acceptance):
   three measured wall-time pairs plus a separate 720-tuple resize-state trial.
 - [x] Complete local core/extension suites and independent result inventories pass.
 - [x] Read-only promotion-safety review is collected, closed and unregistered.
-- [ ] Independent publication-history authority closes deleted-run uncertainty.
+- [x] Independent pinned publication history retains possible-upload uncertainty
+  outside the Actions lifecycle; hosted synthetic append/conflict/replay passes.
 - [x] Scoped commit/push and hosted-pilot permission is granted.
 - [ ] Hosted normal, controlled failure/retry, pinned native/platform and dry-run
   pilots pass at the exact accepted source SHA.
@@ -301,9 +302,9 @@ with unchanged 250ms guards. Raw outputs remain ignored under
 
 Earlier broad runs exposed an obsolete direct-command integration assertion and
 a stale partial-upload expectation; both owning contracts were corrected before
-fresh verification. The final complete run passed 2,068 cases with exactly the
-named non-Windows junction skip in 64.66 seconds. Collection and raw JUnit match
-all 2,069 unique cases and retain every independent 2.12.2 required identity.
+fresh verification. The final complete run passed 2,100 cases with exactly the
+named non-Windows junction skip in 69.62 seconds. Collection and raw JUnit match
+all 2,101 unique cases and retain every independent 2.12.2 required identity.
 The early metadata gate passed 35 cases. Extension qualification passed all 48
 named tests with matching structured event collection and successful completion.
 Ruff, frozen monetary parity, bounded-work checks and all five visual suites pass
@@ -321,7 +322,7 @@ gaps. Focused regression tests exercise the actual per-target publishing entrypo
 with network/credential effects stubbed. The fixes were reviewed without claiming
 effective model settings confirmed by the host.
 
-One deeper authority gap remains: a deleted later Actions run can hide a possibly
+The review identified a deeper authority gap: a deleted later Actions run can hide a possibly
 accepted upload when an older run retries. Pagination/run-number checks detect
 some omissions, not an independently retained lifetime high-water mark. Production
 `validate-publication` and `check-files` therefore fail before network/credentials
@@ -334,5 +335,8 @@ Scoped Contents-write is job-scoped, not a ref-restricted credential. Production
 and synthetic pilot namespaces have separate fixed refs, workflow IDs, roots and
 event kinds. Local regressions cover lost responses, replay, malformed/missing
 history and deletion of all Actions evidence. Production cutover begins at 2.12.3;
-the bootstrap pins and hosted qualification remain open. Publication/new tags
-still require separate release approval.
+the bootstrap pins and hosted synthetic append/conflict/replay pilot now pass.
+Independent readback confirms two pilot entries and no production entries.
+Full platform/native qualification, controlled retry and dry-run promotion remain
+in progress; see the [pilot receipt](../release/2026-10-13-qualification-pilot.md).
+Publication/new tags still require separate release approval.

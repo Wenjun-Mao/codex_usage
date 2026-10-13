@@ -183,8 +183,10 @@ Trust includes approved repository maintainers and unchanged trusted publisher
 code. It does not claim protection against a privileged administrator deliberately
 rewriting trusted code, secrets or journal refs. Do not force, delete or manually
 rewind journal refs; protection-policy changes are outside this authorization.
-Local tests pass; bootstrap pins and hosted append/conflict qualification are
-pending. Production remains source-disabled until a separately approved release.
+Local tests pass. Both origins are bootstrapped and pinned; the hosted synthetic
+append/conflict/replay pilot passed, with independent Git readback confirming no
+production events. See the [pilot receipt](../release/2026-10-13-qualification-pilot.md).
+Production remains source-disabled until a separately approved release.
 
 Marketplace captures retain their original browser scripting setting because the
 driver waits for two animation frames before painted capture. A bounded probe

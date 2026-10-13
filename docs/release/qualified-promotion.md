@@ -1,12 +1,13 @@
 # Qualified VSIX Promotion
 
-Status: implementation candidate; durable journal implemented locally, with
-bootstrap pins and hosted acceptance pending. Production promotion is source-disabled. Hosted normal,
+Status: implementation candidate; durable journal origins are pinned and its
+hosted synthetic pilot passed. Production promotion is source-disabled. Hosted normal,
 failure/retry and dry-run pilots must pass before release use. This guide does not
 authorize commits, CI, tags, publisher credentials or publication by itself.
 Authority: [ADR 0061](../adr/0061-qualified-artifact-promotion.md),
 [implementation plan](../plans/verification-and-release-efficiency.md) and
-[historical release receipts](../release.md).
+[historical release receipts](../release.md). Current nonpublishing evidence:
+[2026-10-13 pilot receipt](2026-10-13-qualification-pilot.md).
 
 ## Candidate Preparation
 
@@ -23,8 +24,9 @@ Only authorized, scoped commits/pushes may establish that candidate on `main`.
 
 ## Nonpublishing Qualification
 
-After scoped owner approval, initialize the fixed journals once and review/pin the
-returned genesis/workflow IDs in `scripts/release/journal-origins.json`:
+The fixed journals have already been initialized and pinned in
+`scripts/release/journal-origins.json`. The following commands document that
+one-time operation, not a normal release step; do not rerun them:
 
 ```sh
 uv run python scripts/publication_journal.py bootstrap --domain production \
