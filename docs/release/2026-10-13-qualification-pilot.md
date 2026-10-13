@@ -229,11 +229,11 @@ It does not separate CSS computation from browser/IPC scheduling or establish
 visibility onset/paint timing. Marker/debug overhead is uncalibrated.
 
 Raw retained evidence: `output/qualification/hosted-input-diagnostic/`.
-No rerun until green is planned. One targeted diagnostic revision adds renderer
+No rerun until green is planned. One targeted diagnostic revision added renderer
 performance-clock markers around the original style expression; it makes no
 extra DOM/input calls, keeps product scripts disabled, declares test-side
 evaluation instrumentation, and cannot produce qualification/publication proof.
-Its result remains pending; current-source qualification is held.
+Its completed result follows; current-source qualification is held.
 
 Local verification of the renderer-clock diagnostic passes all 72 views with
 648 unchanged observation calls and 1,080 original baseline/style reads.
@@ -243,3 +243,24 @@ The full suite passes 2,146 cases plus the approved skip in 63.62 seconds;
 all 2,147 unique identities reconcile. Ruff and focused diagnostic guards pass.
 Raw evidence is `output/qualification/renderer-clock-local/` and
 `output/qualification/renderer-clock-core/`.
+
+[Targeted renderer-clock diagnostic at `7f690510`, attempt 1](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38462435683)
+is terminal and fails the unchanged guard at 379ms in the same WebKit case.
+Mouse input takes 1.73ms and the style round trip 377.21ms. Both baseline and
+visible-state expression clocks report 0ms at the browser's available resolution;
+the returned visible state remains late and rejected. Protocol command 366's
+immediate outer ACK arrives at 20:24:27.168 UTC and target reply at 27.543 UTC,
+independently retaining the 375ms target-response interval.
+
+This sample excludes expensive execution of the synchronous style expression
+as the source of that measured round trip. It does not locate the delay before
+versus after expression execution, prove paint timing, or explain all earlier
+keyboard stalls. Browser/IPC scheduling and observer delivery need further
+causal investigation; no product CSS change or deadline relaxation is justified.
+Debug/clock instrumentation overhead is uncalibrated and not subtracted.
+Raw evidence: `output/qualification/hosted-renderer-clock-diagnostic/`.
+
+Both bounded diagnostic runs and all qualification pilots are terminal. Current
+source is not fully hosted/native-qualified, and no fresh dry-run promotion is
+borrowed from older receipts. The pinned production journal remains empty;
+source promotion remains false. No workers, tags, uploads or live-data changes.

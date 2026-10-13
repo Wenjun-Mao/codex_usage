@@ -371,3 +371,11 @@ passes 2,143 cases plus the approved skip, with complete 2,144-case reconciliati
 all 72 hover views and parity/work/Ruff guards pass. Diagnostic wrappers preserve
 original input/read counts, deadline failures and cleanup. The read-only reviewer
 is collected and closed. Hosted latency causality and D4 acceptance remain open.
+
+Two bounded diagnostics preserve strict failed guards. The latter separates a
+377ms style-query round trip from a renderer expression reporting 0ms at clock
+resolution; it does not prove paint or event-state onset timing. Current local
+verification passes 2,146 cases plus the approved skip with full reconciliation,
+but WebKit observer/scheduling latency remains unresolved. D4, current-source
+normal/retry/native qualification and fresh dry-run inspection are not complete.
+Production promotion stays source-disabled; no further run until green is used.

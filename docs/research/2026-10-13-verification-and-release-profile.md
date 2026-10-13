@@ -288,8 +288,19 @@ failure: real mouse motion returned in 3.16ms, while the style-query round trip
 took 306.98ms. The correlated target reply arrived 306ms after its immediate
 outer ACK. This is not measured CSS computation or paint delay; browser/IPC
 scheduling remains inside that round trip. A targeted diagnostic-only renderer
-clock around the unchanged expression is the next causal split. No deadline
+clock around the unchanged expression was the next causal split. No deadline
 relaxation, overhead subtraction or passing retry is accepted.
+
+That targeted hosted sample on `7f690510` also fails, at 379ms: real mouse
+motion returns in 1.73ms, and the style round trip takes 377.21ms. The expression
+itself records 0ms at browser clock resolution, while the correlated target
+reply is delayed 375ms after its immediate outer ACK. Expensive synchronous
+CSS-state computation is not the measured cause in this sample; scheduling or
+delivery before/after the expression remains unresolved. This is not proof of
+visibility onset or paint timing. Original failures and raw protocol/clock
+evidence are retained. Fresh full core verification passes 2,146 cases plus
+the approved skip, with 2,147-case reconciliation; the renderer-clock local
+diagnostic passes the complete 72 views. Current source acceptance remains held.
 
 ## Evidence And Reproduction
 
