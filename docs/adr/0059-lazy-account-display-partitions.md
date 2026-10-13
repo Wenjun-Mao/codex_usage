@@ -1,6 +1,6 @@
 # ADR 0059: Lazy Account Display Partitions
 
-Status: Implemented locally; not released.
+Status: Released in 2.12.2. Publication evidence: [release receipt](../release.md#2122-published-receipt).
 
 ## Context
 
@@ -79,8 +79,8 @@ day pays its display-reduction cost rather than having it prepaid on Today.
 defects; its additional DST, timezone and concurrent-capture test suggestions
 were added and passed. No installed extension or live ledger was changed.
 
-Open follow-up: can exact historical allowance-window/continuity preparation be
-reused incrementally across captures? Any design must account for late recovered
+Follow-up: ADR 0060 implements guarded historical window-fit reuse. Full-history
+continuity preparation remains recurring work. Reuse must account for late recovered
 readings, changed provenance, replaced trusted generations, pricing and plan
 changes, and capture-causal cutoffs. A latest-timestamp or append-only shortcut is
-not sufficient. This larger optimization is not implemented by this decision.
+not sufficient. Window-fit reuse is defined by ADR 0060, not by this decision.

@@ -1,6 +1,6 @@
 # ADR 0058: Post-Capture Preparation Work
 
-Status: Implemented locally; not released.
+Status: Released in 2.12.2. Publication evidence: [release receipt](../release.md#2122-published-receipt).
 
 ## Context
 
@@ -85,4 +85,5 @@ user's 5.01-second screenshot and should not be presented as its direct replay.
 
 Local verification: `pytest -q` passed 1,822 tests with one expected skip;
 Ruff and `git diff --check` passed. A read-only independent review found no
-actionable issues. No installed collector, live ledger or release was changed.
+actionable issues. Those local checks did not change an installed collector or
+live ledger; subsequent release qualification is recorded in the release receipt.

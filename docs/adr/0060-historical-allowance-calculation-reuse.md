@@ -1,6 +1,6 @@
 # ADR 0060: Historical Allowance Calculation Reuse
 
-Status: Implemented and qualified locally. Not released.
+Status: Released in 2.12.2. Publication evidence: [release receipt](../release.md#2122-published-receipt).
 
 ## Context
 
@@ -157,5 +157,6 @@ continuity/pace preparation, fresh segmentation, exact-reading presentation and
 prefix accumulation remain recurring work. First setup still performs all fits;
 late historical corrections may correctly require all fits again. Multi-process
 writer contention and real native VS Code capture/painting are not qualified by
-these backend benchmarks. No live ledger, installed extension, version, release
-or unrelated `apps/` files were changed.
+these backend benchmarks. During those measurements, no live ledger, installed
+extension, version, release or unrelated `apps/` files were changed. Subsequent
+release qualification is recorded in the release receipt.

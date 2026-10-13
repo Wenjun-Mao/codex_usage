@@ -5,30 +5,56 @@ Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
 
-## 2.12.2 Candidate
+## 2.12.2 Published Receipt
 
 Owner authorized publication on 2026-10-13. ADRs 0058-0060 define scoped capture
-bookkeeping, lazy visible-day chart reductions and guarded historical allowance
-fit reuse. The patch preserves source events, prices, account evidence and
-capture scheduling. Report storage has its own format key; existing event
-prices are retained on first tracking installation. Partial tracking resets
-are repaired before capture, and late historical evidence invalidates affected
-fits conservatively.
+bookkeeping, lazy visible-day reductions and guarded historical allowance reuse.
+Source events, prices, account evidence and capture scheduling are unchanged;
+late evidence and damaged tracking invalidate derived calculations conservatively.
 
-Local core verification passed 1,884 tests with one expected skip. Three matched
-backend runs against the preceding local preparation checkpoint reduced
-revision-only reloads from 4.69 to 4.34 seconds and append reloads from 4.59 to
-4.32 seconds; first setup was effectively unchanged at 4.97/4.99 seconds. Full
-HTML hashes matched, including late corrections. Report storage dropped from
-95.23 to 48.46 MB without dropping readings. These are workload-specific backend
-measurements, not native painting or total capture/network latency. Synthetic
-inserts add about 0.17 seconds of tracking work per 10,000 new events.
+Released as `v2.12.2` at `11908ab947c4dc4eac9a991c144d8b6e1601ff35` on `main`.
+Exact [nonpublishing CI](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38348832206)
+passed before the tag; the [tag publication workflow](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38351303141)
+passed all gates and published both targets. Public entries were validated at
+2026-10-13 05:50 UTC (01:50 EDT), without duplicate publication.
 
-Publication requires the exact-commit nonpublishing platform gate, then tag
-publication, public catalog validation and official-download hash equality for
-both targets. The release receipt will record the actual commit, run URLs and
-hashes after those gates complete. Private corpus and benchmark evidence stay
-ignored; public screenshots and hosted verification use synthetic data.
+Official downloads passed independent archive audits and exactly match both the
+tag-built artifacts and catalog SHA-256 declarations:
+
+- macOS Apple Silicon: `31a036264e9ddaa8fdcfa37d984d3f58835507f77b38925a5b283441bdf582c8`
+- Windows x64: `6684e3507276edc6d55a7f19d2166c39492120e0a0a32a6090ac0ab54cfb0d99`
+
+Core verification passed 1,884 tests with one expected skip, 48 extension tests,
+Ruff, smoke/handoff checks and frozen monetary parity. Tag-built visuals passed
+720 breakdown, 90 overlay, 72 hover/focus, 162 speed, 180 allowance and 36 meter cases.
+The exact tag-built macOS collector passed 21 real VS Code interactions with
+scripts disabled and in-memory credentials; sampled usage-bar hover took 25-26 ms.
+Native Windows UI, live capture/network latency and writer contention remain unmeasured.
+
+An unchanged 250 ms tooltip-hide CI guard timed out once in the preflight.
+Two local 72-case checks, the unchanged macOS rerun and the fresh tag run passed;
+no renderer or timing threshold was changed. Its cause remains unconfirmed.
+Open verification follow-up: collect per-engine hover/focus state if this recurs.
+
+Three alternating frozen-ledger runs compared the complete patch against 2.12.1;
+all transition and full-report HTML hashes matched. Median backend measurements:
+
+| Operation | 2.12.1 | 2.12.2 |
+| --- | ---: | ---: |
+| Repository and transition bookkeeping | 1.87 s | 0.20 s |
+| First Today after revision | 8.04 s | 4.56 s |
+| Switch to Yesterday | 1.27 s | 1.17 s |
+| Cached Today | 0.087 s | 0.038 s |
+
+These are workload-specific backend timings, not a replay of the owner's screenshot
+or a promise of total capture/painting latency. ADR 0060 separately measures the
+reuse stage: revision-only 4.69 to 4.34 s, append 4.59 to 4.32 s, and report storage
+95.23 to 48.46 MB. First installation and late corrections can still require all fits.
+
+No live ledger, installed extension, service, Keychain or unrelated `apps/` was
+modified for qualification. Private evidence stays ignored; hosted visuals are synthetic.
+Proof remains under `output/releases/2.12.2/`, reproducible with
+`scripts/verify_marketplace_release.cjs COMMIT PREFLIGHT_RUN TAG_RUN ARTIFACT_DIR OUTPUT_DIR`.
 
 ## 2.12.1 Published Receipt
 
