@@ -115,7 +115,7 @@ def aggregate(valued, timezone, evidence, *, start, end, complete, causal=False)
     partitions = {}
     for day, rows in days.items():
         hour_calibrations = {}
-        for hour in local_hours(day, timezone):
+        for hour in calendars[day][0]:
             values = total(r for r in rows if r["hour"] == hour["key"])
             hour_calibrations[hour["key"]] = calibrate(interval.clip(hour["start"], hour["end"]), values)
         partitions["day:" + day] = {"rows": rows, "calibrations": hour_calibrations}

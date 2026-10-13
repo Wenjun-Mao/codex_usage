@@ -156,9 +156,9 @@ def test_compact_cache_key_preserves_snapshot_pricing_and_coverage(tmp_path):
     point = QuotaObservation(datetime(2026, 9, 30, tzinfo=UTC).isoformat(), "codex", "primary", "pro", 10, 300, None)
     with open_ledger(ledger) as connection:
         store_observations(connection, [point], source_key="fixture", provenance="live")
-        from codex_usage.allowance_index import ALLOWANCE_REPORT_REVISION
+        from codex_usage.allowance_index import ALLOWANCE_REPORT_REVISION, REPORT_CACHE_FORMAT_REVISION
         connection.execute("insert into allowance_report_cache values (?,?,?,?)",
-                           (4, f"p1:allowance-index-2:report-{ALLOWANCE_REPORT_REVISION}:pace-state", 1,
+                           (4, f"p1:allowance-index-2:report-{ALLOWANCE_REPORT_REVISION}:cache-format-{REPORT_CACHE_FORMAT_REVISION}:pace-state", 1,
                             json.dumps({"paces": [[{"fixture": True}]]})))
         assert cached_allowance_pace(connection, revision=4, pricing_revision="p1", coverage_complete=True) == {"paces": [[{"fixture": True}]]}
         for revision, pricing, coverage in ((5, "p1", True), (4, "p2", True), (4, "p1", False)):

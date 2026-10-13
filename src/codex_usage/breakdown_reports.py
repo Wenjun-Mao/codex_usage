@@ -14,6 +14,7 @@ from codex_usage.breakdown_aggregation import aggregate
 from codex_usage.breakdown_evidence import prepare_evidence, weekly_anchors
 from codex_usage.breakdown_intervals import BreakdownInterval
 from codex_usage.breakdown_preparation import prepare_account
+from codex_usage.breakdown_readings import display_day
 from codex_usage.breakdown_commands import BreakdownScopeExpired, issued_action, receipt, prune_receipts, RECEIPT_PREFIX
 from codex_usage.breakdown_state import validate_state
 from codex_usage.ledger_queries import query_ledger_records, query_ledger_status, query_ledger_transitions
@@ -21,7 +22,7 @@ from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.parser import finalize_session_records
 from codex_usage.project_transitions import apply_project_transitions
 
-BREAKDOWN_REVISION = 7
+BREAKDOWN_REVISION = 8
 
 
 def digest(value):
@@ -135,6 +136,8 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
         connection.execute("begin")
         status = query_ledger_status(connection, now=kwargs["now"])
         sink["status"] = status
+        from codex_usage.allowance_preparation import AllowancePreparation
+        sink["quota"] = AllowancePreparation(connection)
         from codex_usage.allowance_index import ALLOWANCE_INDEX_REVISION, ALLOWANCE_REPORT_REVISION
         live = dict(status.plan_allowance)
         live["now"] = kwargs["now"].timestamp()
@@ -167,9 +170,11 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
             if account is None:
                 report = sink.get("allowance") or indexed_allowance_report(connection, path,
                     revision=status.revision, pricing_revision=PRICING_REVISION,
-                    coverage_complete=status.coverage.complete)
+                    coverage_complete=status.coverage.complete, status=status.plan_allowance,
+                    preparation=sink["quota"])
                 report["status"] = live
-                account, partitions = prepare_account(prepare_evidence(connection, report, kwargs["now"]), timezone)
+                account, partitions = prepare_account(prepare_evidence(connection, report, kwargs["now"],
+                    preparation=sink["quota"]), timezone)
                 writes.update({account_prefix + k: v for k, v in partitions.items()})
                 writes[account_prefix + "metadata"] = account
             metadata, partitions = prepare(connection, path, report_range, keys, timezone, status, kwargs, sink, account, account_prefix)
@@ -183,7 +188,18 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
             state = validate_state(args["state"])
         def partition(name, default):
             nonlocal cold_seconds
-            if name.startswith(("meter:", "meter-display:", "balance:", "balance-display:")):
+            if name.startswith(("meter-display:", "balance-display:")):
+                def account_read(suffix):
+                    key = metadata["account_prefix"] + suffix
+                    return writes[key] if key in writes else load(connection, key)
+                cached = account_read(name)
+                if cached is None:
+                    display_start = monotonic()
+                    cached = display_day(name, timezone, account_read)
+                    writes[metadata["account_prefix"] + name] = cached
+                    cold_seconds += monotonic() - display_start
+                return cached
+            if name.startswith(("meter:", "balance:")):
                 key = metadata["account_prefix"] + name
             elif name.startswith(("window:", "cycle:")):
                 basis = name.rsplit(":summary", 1)[0]

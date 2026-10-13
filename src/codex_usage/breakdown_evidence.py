@@ -3,8 +3,7 @@ from datetime import datetime
 from math import isclose
 
 from codex_usage.allowance_models import QuotaObservation
-from codex_usage.allowance_pace_evidence import prepare_pace_evidence
-from codex_usage.allowance_queries import load_quota_evidence
+from codex_usage.allowance_preparation import AllowancePreparation
 from codex_usage.breakdown_windows import observed_windows
 from codex_usage.breakdown_balances import prepare_balances
 
@@ -16,11 +15,11 @@ def weekly_anchors(status):
                      p.resets_at, p.reset_credits): p for p in anchors}.values())
 
 
-def prepare_evidence(connection, report, now):
-    points, provenance, live = load_quota_evidence(connection)
+def prepare_evidence(connection, report, now, *, preparation=None):
+    preparation = preparation or AllowancePreparation(connection)
+    points, provenance, _ = preparation.raw
     anchors = weekly_anchors(report["status"])
-    prepared = prepare_pace_evidence(points, live,
-        series_keys={(p.limit_id, 10080) for p in points if p.duration_minutes == 10080})
+    prepared = preparation.pace({(p.limit_id, 10080) for p in points if p.duration_minutes == 10080})
     reason = "weekly live evidence unavailable"
     cycle = None
     if len(anchors) > 1:

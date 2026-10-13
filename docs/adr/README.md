@@ -71,3 +71,6 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0055: Range-Independent Breakdown Preparation](0055-range-independent-breakdown-preparation.md)
 - [0056: Readable Script-Free Chart Inspection](0056-readable-script-free-chart-inspection.md)
 - [0057: Presentation And Accounting Cache Identities](0057-presentation-and-accounting-cache-identities.md)
+- [0058: Post-Capture Preparation Work](0058-post-capture-preparation-work.md)
+- [0059: Lazy Account Display Partitions](0059-lazy-account-display-partitions.md)
+- [0060: Historical Allowance Calculation Reuse](0060-historical-allowance-calculation-reuse.md)

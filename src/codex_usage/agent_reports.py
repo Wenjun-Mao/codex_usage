@@ -122,6 +122,7 @@ def _render_base_ledger_report(
             allowance_report = indexed_allowance_report(
                 connection, ledger_path, revision=status.revision,
                 pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
+                status=status.plan_allowance, preparation=(_prepared_sink or {}).get("quota"),
             )
             pace_report = allowance_report
         from codex_usage.allowance_pace import presentation_identity
@@ -159,7 +160,8 @@ def _render_base_ledger_report(
             if allowance_report is None:
                 allowance_report = indexed_allowance_report(
                     connection, ledger_path, revision=status.revision,
-                    pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete)
+                    pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
+                    status=status.plan_allowance, preparation=(_prepared_sink or {}).get("quota"))
             allowance_report["status"] = pace_report["status"]
             from codex_usage.report_allowance import render_allowance_section
             allowance_html = render_allowance_section(allowance_report, timezone=timezone, now=now)

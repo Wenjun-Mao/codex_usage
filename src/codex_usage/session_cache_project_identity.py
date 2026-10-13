@@ -15,6 +15,8 @@ def refresh_cached_project_identities(
 ) -> frozenset[str]:
     """Reattribute unchanged cached rows after a verified local remote change."""
     affected_task_ids: set[str] = set()
+    # Re-read checkout origins on every reconciliation, once per distinct cwd.
+    checkout_cache = {}
     connection.execute("begin immediate")
     try:
         for entry in inventory:
@@ -22,7 +24,7 @@ def refresh_cached_project_identities(
             if checkpoint is None:
                 continue
             metadata = checkpoint.state.root_metadata or checkpoint.state.metadata
-            identity = resolve_project_identity(metadata)
+            identity = resolve_project_identity(metadata, checkout_cache=checkout_cache)
             if not identity.uses_current_checkout_origin:
                 continue
             aliases_json = json.dumps(list(identity.aliases))

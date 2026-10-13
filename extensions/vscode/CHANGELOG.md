@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 2.12.2 - 2026-10-13
+
+- Reduce capture bookkeeping by querying only relevant repository-transition
+  predecessors, sharing checkout discovery and indexing role validation.
+- Prepare account chart reductions only for visible days, preserving exact
+  historical readings, cross-day boundaries, conflicts and DST behavior.
+- Reuse unchanged historical allowance fits across captures. Late usage, quota
+  corrections, source replacements, pricing changes and lost tracking rebuild
+  affected results safely; cache repair occurs before the next capture.
+- Store historical report windows once instead of duplicating their readings
+  in summaries. Keep pricing identity separate from the report storage format.
+- Avoid exporting unused historical reading dictionaries for causal pace
+  references. Preserve token totals, monetary values, account evidence and
+  capture scheduling. Cold loads still prepare history; speed gains depend on
+  the local workload and do not imply instant dashboard loading.
+
 ## 2.12.1 - 2026-10-11
 
 - Speed up calendar-range changes by sharing account preparation, valuing

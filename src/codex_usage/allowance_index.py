@@ -4,6 +4,7 @@ import sqlite3
 
 from codex_usage.allowance_queries import _build_from_costs, build_allowance_report
 from codex_usage.allowance_costs import allowance_cost_components
+from codex_usage.allowance_report_codec import REPORT_CACHE_FORMAT_REVISION, decode_report, encode_report
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.models import TokenUsage
 from codex_usage.parser import parse_timestamp
@@ -14,15 +15,17 @@ ALLOWANCE_REPORT_REVISION = 6
 
 
 def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revision,
-                             coverage_complete):
+                             coverage_complete, status=None, preparation=None):
     """Use a revision-pinned result or build it from priced trusted events.
 
     A simultaneous capture may advance the writer beyond the caller's read
     snapshot. In that case the snapshot's full estimator is the safe fallback.
     """
     pricing_revision, report_revision = _revisions(pricing_revision)
+    status = _status(snapshot) if status is None else status
     if snapshot.execute("select 1 from quota_observations limit 1").fetchone() is None:
-        return _build_from_costs(snapshot, (), coverage_complete=coverage_complete)
+        return _build_from_costs(snapshot, (), coverage_complete=coverage_complete,
+                                 status=status, preparation=preparation)
     key = (revision, report_revision, int(coverage_complete))
     try:
         cached = snapshot.execute("""select report_json from allowance_report_cache
@@ -31,20 +34,24 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
         if "no such table: allowance_report_cache" not in str(error):
             raise
         # A read-only report can precede the next capture's schema migration.
-        return build_allowance_report(snapshot, coverage_complete=coverage_complete)
+        return build_allowance_report(snapshot, coverage_complete=coverage_complete,
+                                      status=status, preparation=preparation)
     if cached:
         report = _decode_cached_report(cached[0])
-        report["status"] = _status(snapshot)
+        report["status"] = status
         return report
     with open_ledger(ledger_path) as writer:
         writer.execute("begin immediate")
         if ledger_revision(writer) != revision:
             writer.rollback()
-            return build_allowance_report(snapshot, coverage_complete=coverage_complete)
+            return build_allowance_report(snapshot, coverage_complete=coverage_complete,
+                                          status=status, preparation=preparation)
         # Pricing revisions change the meaning of every cached dollar. The
         # replacement occurs atomically with the new report materialization.
         writer.execute("delete from allowance_event_costs where pricing_revision != ?",
                        (pricing_revision,))
+        from codex_usage.allowance_window_cache import WindowCalculationCache
+        calculations = WindowCalculationCache(writer, pricing_revision, report_revision, coverage_complete)
         _price_missing_events(writer, pricing_revision)
         rows = writer.execute("""
             select e.timestamp_us, c.total_usd, c.unpriced_tokens
@@ -57,9 +64,11 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
         """, (pricing_revision,))
         report = _build_from_costs(writer, (
             (row[0] / 1_000_000, row[1], row[2]) for row in rows
-        ), coverage_complete=coverage_complete)
+        ), coverage_complete=coverage_complete, status=status, preparation=preparation,
+            window_cache=calculations)
+        calculations.finish()
         writer.execute("""insert or replace into allowance_report_cache values (?,?,?,?)""",
-                       (*key, json.dumps(report)))
+                       (*key, encode_report(report)))
         writer.execute("""insert or replace into allowance_report_cache values (?,?,?,?)""",
                        (revision, report_revision + ":pace-state", int(coverage_complete),
                         json.dumps({"paces": report.get("paces", [])})))
@@ -67,13 +76,13 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
                        or pricing_revision not in (?, ?)""",
                        (revision, report_revision, report_revision + ":pace-state"))
         writer.commit()
-    report["status"] = _status(snapshot)
+    report["status"] = status
     return report
 
 
 def _revisions(pricing_revision):
     pricing = f"{pricing_revision}:allowance-index-{ALLOWANCE_INDEX_REVISION}"
-    return pricing, f"{pricing}:report-{ALLOWANCE_REPORT_REVISION}"
+    return pricing, f"{pricing}:report-{ALLOWANCE_REPORT_REVISION}:cache-format-{REPORT_CACHE_FORMAT_REVISION}"
 
 
 def cached_allowance_pace(snapshot, *, revision, pricing_revision, coverage_complete):
@@ -98,7 +107,7 @@ def cached_allowance_pace(snapshot, *, revision, pricing_revision, coverage_comp
 
 def _decode_cached_report(payload):
     """Keep derived-cache decoding inspectable separately from evidence loading."""
-    return json.loads(payload)
+    return decode_report(payload)
 
 
 def _decode_cached_pace(payload):

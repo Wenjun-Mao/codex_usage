@@ -45,6 +45,13 @@ _LANGUAGE_SQLITE_MASTER: tuple[SchemaObject, ...] = (
     ),
     (
         "index",
+        "storage_files_invalid_role_idx",
+        "storage_files",
+        "CREATE INDEX storage_files_invalid_role_idx on storage_files(usage_role) "
+        "where coalesce(usage_role, '') not in ('root', 'subagent')",
+    ),
+    (
+        "index",
         "storage_files_project_idx",
         "storage_files",
         "CREATE INDEX storage_files_project_idx on storage_files (project_key)",
@@ -60,6 +67,13 @@ _LANGUAGE_SQLITE_MASTER: tuple[SchemaObject, ...] = (
         "transition_candidates_thread_idx",
         "transition_candidates",
         "CREATE INDEX transition_candidates_thread_idx on transition_candidates (thread_id)",
+    ),
+    (
+        "index",
+        "usage_records_invalid_role_idx",
+        "usage_records",
+        "CREATE INDEX usage_records_invalid_role_idx on usage_records(usage_role) "
+        "where coalesce(usage_role, '') not in ('root', 'subagent')",
     ),
     (
         "index",

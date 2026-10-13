@@ -107,3 +107,72 @@ def test_html_fragments_check_revision_inside_one_writer_transaction(tmp_path, m
     base._store_cached_reports(path, revision - 1, {"stale": "rejected"})
     with open_ledger(path, read_only=True) as connection:
         assert base._load_cached_report(connection, "stale") is None
+
+
+def test_post_capture_cold_report_expands_raw_quota_and_each_series_once(tmp_path):
+    import codex_usage.allowance_queries as queries
+    import codex_usage.allowance_pace_evidence as evidence
+    import codex_usage.ledger_queries as ledger
+    from codex_usage.ledger_schema import increment_ledger_revision
+    path = breakdown_home(tmp_path, extended=True)
+    render(tmp_path)
+    with open_ledger(path) as connection:
+        increment_ledger_revision(connection)
+        connection.commit()
+    with patch.object(queries, 'load_quota_evidence', wraps=queries.load_quota_evidence) as raw, \
+         patch.object(ledger, 'allowance_status', wraps=ledger.allowance_status) as status, \
+         patch.object(queries, 'allowance_status', side_effect=AssertionError('Duplicate account status')), \
+         patch.object(evidence.Series, 'prepare', wraps=evidence.Series.prepare) as series:
+        result = render(tmp_path)
+    assert not result.cache_hit
+    assert raw.call_count == 1
+    assert status.call_count == 1
+    keys = [next(iter(call.args[0])) for call in series.call_args_list]
+    identities = [(p.limit_id, p.duration_minutes) for p in keys]
+    assert len(identities) == len(set(identities))
+
+
+def test_request_preparation_reuses_series_without_losing_other_duration_plan_changes(tmp_path):
+    from codex_usage.allowance_preparation import AllowancePreparation
+    from codex_usage.allowance_queries import load_quota_evidence
+    from codex_usage.allowance_pace_evidence import prepare_pace_evidence
+    path = breakdown_home(tmp_path, extended=True)
+    with open_ledger(path, read_only=True) as connection:
+        connection.execute('begin')
+        points, _, live = load_quota_evidence(connection)
+        keys = {(p.limit_id, p.duration_minutes) for p in points}
+        preparation = AllowancePreparation(connection)
+        first = preparation.pace({('codex', 10080)})
+        all_series = preparation.pace(keys)
+        assert all_series == prepare_pace_evidence(points, live, series_keys=keys)
+        assert first.series[('codex', 10080)] is all_series.series[('codex', 10080)]
+        assert tuple(points) == preparation.raw[0]
+
+
+def test_display_partition_converts_each_raw_point_only_once():
+    import codex_usage.breakdown_display as display
+    from datetime import UTC
+    points = [{'timestamp': (AT + timedelta(hours=i)).isoformat(), 'limit_id': 'codex',
+        'slot': 'secondary', 'duration_minutes': 10080, 'plan': 'pro',
+        'used_percent': i % 10, 'resets_at': int(AT.timestamp()) + 86400 * (i // 12 + 1)}
+        for i in range(30)]
+    original = json.dumps(points, sort_keys=True)
+    with patch.object(display._DisplayPoint, 'prepare', wraps=display._DisplayPoint.prepare) as prepare:
+        partitions = display.display_partitions(points, 'weekly', UTC)
+    assert prepare.call_count == len(points)
+    assert sum(p['count'] for p in partitions.values()) == len(points)
+    assert json.dumps(points, sort_keys=True) == original
+
+
+def test_hour_calendars_are_built_once_per_observed_day(tmp_path):
+    from datetime import UTC
+    from codex_usage.aggregation import value_records
+    from codex_usage.ledger_queries import query_ledger_records
+    import codex_usage.breakdown_aggregation as aggregation
+    path = breakdown_home(tmp_path, extended=True)
+    with open_ledger(path, read_only=True) as connection:
+        valued = value_records(query_ledger_records(connection))
+    with patch.object(aggregation, 'local_hours', wraps=aggregation.local_hours) as calendars:
+        summary, _ = aggregation.aggregate(valued, UTC, {'cycle': None, 'paces': []},
+            start=(AT - timedelta(days=60)).timestamp(), end=(AT + timedelta(days=1)).timestamp(), complete=True)
+    assert calendars.call_count == len(summary['daily']) > 0

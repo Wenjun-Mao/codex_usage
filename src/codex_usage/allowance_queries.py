@@ -90,32 +90,34 @@ def allowance_status(connection, *, now=None):
     }
 
 
-def build_allowance_report(connection, *, coverage_complete=True):
+def build_allowance_report(connection, *, coverage_complete=True, status=None, preparation=None):
     from codex_usage.aggregation import value_records
     from codex_usage.ledger_queries import query_ledger_records
 
     if connection.execute("select 1 from quota_observations limit 1").fetchone() is None:
-        return _build_from_costs(connection, (), coverage_complete=coverage_complete)
+        return _build_from_costs(connection, (), coverage_complete=coverage_complete,
+                                 status=status, preparation=preparation)
     valued = sorted(value_records(query_ledger_records(connection)), key=lambda v: v.record.timestamp)
     return _build_from_costs(connection, (
         (item.record.timestamp.timestamp(), *allowance_cost_components(
             item.summary.cost, model=item.record.model, at=item.record.timestamp,
             total_tokens=item.record.usage.total_tokens,
         )) for item in valued
-    ), coverage_complete=coverage_complete)
+    ), coverage_complete=coverage_complete, status=status, preparation=preparation)
 
 
-def _build_from_costs(connection, priced_events, *, coverage_complete=True):
+def _build_from_costs(connection, priced_events, *, coverage_complete=True, status=None, preparation=None,
+                      window_cache=None):
     """Keep the full estimator and indexed estimator on the same window path."""
-    status = allowance_status(connection)
+    from codex_usage.allowance_preparation import AllowancePreparation
+    status = allowance_status(connection) if status is None else status
+    preparation = preparation or AllowancePreparation(connection)
     credits = credit_history(connection)
-    points, provenance, live_points = load_quota_evidence(connection)
+    points, provenance, _ = preparation.raw
     from codex_usage.allowance_pace import fit_paces
-    from codex_usage.allowance_pace_evidence import prepare_pace_evidence
     anchors = [QuotaObservation(**{key: bucket[key] for key in QuotaObservation.__dataclass_fields__})
                for bucket in status["active_buckets"]]
-    prepared = prepare_pace_evidence(points, live_points,
-        series_keys={(p.limit_id, p.duration_minutes) for p in anchors}) if anchors else None
+    prepared = preparation.pace({(p.limit_id, p.duration_minutes) for p in anchors}) if anchors else None
     paces = [fit_paces(prepared, anchor) for anchor in anchors]
     if not points:
         return {"status": status, "credits": credits, "paces": paces, "windows": [], "qualified": [], "headline": None,
@@ -125,7 +127,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
         times.append(timestamp)
         costs.append(costs[-1] + cost)
         unpriced.append(unpriced[-1] + unpriced_tokens)
-    windows = _cost_windows(points, provenance, times, costs, unpriced, coverage_complete)
+    windows = _cost_windows(points, provenance, times, costs, unpriced, coverage_complete, cache=window_cache)
     from codex_usage.allowance_cost_pace import CostPrefix, PaceReferences, calibrated_paces
     prefix = CostPrefix(times, costs, unpriced)
     references = {}
@@ -138,7 +140,8 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
             available = windows
             if latest_evidence > origin:
                 causal = [p for p in points if datetime.fromisoformat(p.timestamp).timestamp() <= origin]
-                available = _cost_windows(causal, provenance, times, costs, unpriced, coverage_complete)
+                available = _cost_windows(causal, provenance, times, costs, unpriced, coverage_complete,
+                                          cache=window_cache, scope=origin, references_only=True)
             references[origin] = PaceReferences(available)
         paces[index] = calibrated_paces(prepared, anchor, paces[index], prefix, references[origin],
                                         coverage_complete=coverage_complete)
@@ -152,57 +155,79 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True):
     }
 
 
-def _cost_windows(points, provenance, times, costs, unpriced, coverage_complete):
+def _cost_windows(points, provenance, times, costs, unpriced, coverage_complete, *, cache=None, scope="full", references_only=False):
     """Preserve the monetary estimator; optionally prepare a causal prefix."""
     windows = []
     for window in segment_windows(points):
-        indices = [bisect_right(times, datetime.fromisoformat(p.timestamp).timestamp()) for p in window.points]
-        cumulative = [costs[i] - costs[indices[0]] for i in indices]
-        fit_points = allowance_fit_points(window)
-        fully_priced = not fit_points or unpriced[indices[len(fit_points) - 1]] == unpriced[indices[0]]
-        estimate = estimate_window(window, cumulative,
-            fully_priced=fully_priced,
-            coverage_complete=coverage_complete)
-        first = window.points[0]
-        windows.append({
-            "limit_id": first.limit_id, "plan": window.identity_plan, "duration_minutes": first.duration_minutes,
-            "start": first.timestamp, "end": window.points[-1].timestamp,
-            "completed": window.completed, "closure": window.closure,
-            "fit_end": fit_points[-1].timestamp if fit_points else None,
-            "reported_full_at": window.reported_full_at,
-            "excluded_observations": len(window.points) - len(fit_points),
-            "corrections": window.corrections, "estimate": estimate.to_dict(),
-            "fully_priced": fully_priced, "coverage_complete": coverage_complete,
-            "points": [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in window.points],
-        })
+        def build():
+            stamps = [datetime.fromisoformat(p.timestamp).timestamp() for p in window.points]
+            indices = [bisect_right(times, stamp) for stamp in stamps]
+            cumulative = [costs[i] - costs[indices[0]] for i in indices]
+            unknown = [unpriced[i] - unpriced[indices[0]] for i in indices]
+            return _fit_window(window, cumulative, unknown, coverage_complete), min(stamps), max(stamps)
+        fitted = cache.result(window, scope, build) if cache else build()[0]
+        summary = _window_summary(window, fitted, coverage_complete)
+        if not references_only:
+            summary["points"] = [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in window.points]
+        windows.append(summary)
     windows.sort(key=lambda w: w["end"])
     return windows
 
 
+def _fit_window(window, cumulative, unpriced, coverage_complete):
+    fit_points = allowance_fit_points(window)
+    fully_priced = not fit_points or unpriced[len(fit_points) - 1] == 0
+    estimate = estimate_window(window, cumulative,
+        fully_priced=fully_priced, coverage_complete=coverage_complete)
+    return {
+        "estimate": estimate.to_dict(), "fully_priced": fully_priced,
+        "fit_end": fit_points[-1].timestamp if fit_points else None,
+        "excluded_observations": len(window.points) - len(fit_points),
+    }
+
+
+def _window_summary(window, fitted, coverage_complete):
+    first = window.points[0]
+    return {
+        "limit_id": first.limit_id, "plan": window.identity_plan, "duration_minutes": first.duration_minutes,
+        "start": first.timestamp, "end": window.points[-1].timestamp,
+        "completed": window.completed, "closure": window.closure,
+        "reported_full_at": window.reported_full_at,
+        "corrections": window.corrections, **fitted, "coverage_complete": coverage_complete,
+    }
+
+
 def load_quota_evidence(connection):
     """Load raw, timestamp-expanded quota evidence once for both analytics paths."""
+    fields = tuple(QuotaObservation.__dataclass_fields__)
     rows = connection.execute(
-        """select o.*, p.origins from quota_observations o
-        left join (
-            select observation_key, json_group_array(distinct provenance) origins
-            from quota_provenance group by observation_key
-        ) p using(observation_key)
+        f"""select {', '.join('o.' + field for field in fields)}, o.timestamps_blob,
+            (select json_group_array(distinct provenance) from quota_provenance p
+             where p.observation_key = o.observation_key) origins
+        from quota_observations o
         order by o.timestamp, o.rowid"""
     ).fetchall()
     points = []
     provenance = {}
     live_points = set()
+    origin_labels = {}
     for row in rows:
-        point = QuotaObservation(**{key: row[key] for key in QuotaObservation.__dataclass_fields__})
+        point = QuotaObservation(*row[:len(fields)])
         times = json.loads(zlib.decompress(row["timestamps_blob"])) if row["timestamps_blob"] else [point.timestamp]
-        origins = json.loads(row["origins"]) if row["origins"] else []
-        sources = {_SOURCE_LABELS.get(origin, "Unknown source") for origin in origins} or {"Unknown source"}
+        encoded = row["origins"] or "[]"
+        if encoded not in origin_labels:
+            # Origin combinations repeat across history; decode each once per
+            # snapshot, independently of the exact observation/timestamp.
+            origins = json.loads(encoded)
+            sources = frozenset(_SOURCE_LABELS.get(origin, "Unknown source") for origin in origins)
+            origin_labels[encoded] = (sources or frozenset({"Unknown source"}), "live" in origins)
+        sources, is_live = origin_labels[encoded]
         for stamp in times:
             selected = point if stamp == point.timestamp else QuotaObservation(
                 stamp, point.limit_id, point.slot, point.plan, point.used_percent,
                 point.duration_minutes, point.resets_at, point.reset_credits)
             points.append(selected)
-            if "live" in origins:
+            if is_live:
                 live_points.add(selected)
             provenance.setdefault(selected, set()).update(sources)
     return points, provenance, live_points

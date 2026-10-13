@@ -116,7 +116,7 @@ def test_zero_warm_historical_work_all_windows_metrics_groups_drills(tmp_path):
     with ExitStack() as stack:
         for name in ("breakdown_reports.prepare", "breakdown_reports.value_records", "breakdown_reports.query_ledger_records",
             "allowance_queries.load_quota_evidence", "allowance_index._decode_cached_report", "allowance_estimation.estimate_window",
-            "agent_reports.materialize_ledger", "pricing.estimate_cost", "breakdown_evidence.prepare_pace_evidence",
+            "agent_reports.materialize_ledger", "pricing.estimate_cost", "allowance_preparation.prepare_pace_evidence",
             "breakdown_evidence.prepare_balances", "breakdown_preparation.balance_partitions"):
             stack.enter_context(patch("codex_usage."+name, forbidden))
         from codex_usage.breakdown_reports import load as original_load

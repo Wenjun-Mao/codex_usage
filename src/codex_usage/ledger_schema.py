@@ -43,6 +43,8 @@ def open_ledger(
         ensure_private_file(path)
         configure_ledger_connection(connection)
         ensure_ledger_schema(connection, path=path)
+        from codex_usage.allowance_window_tracking import repair_existing_tracking
+        repair_existing_tracking(connection)
     try:
         yield connection
     finally:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from codex_usage.session_cache_image_schema import _create_image_operations_schema
+from codex_usage.session_cache_validation import ensure_role_validation_indexes
 from dataclasses import dataclass
 
 CACHE_SCHEMA_VERSION = 11
@@ -50,6 +51,7 @@ class CacheSchemaState:
 
 def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
     if _schema_matches(connection):
+        ensure_role_validation_indexes(connection)
         from codex_usage.speed_schema import create_speed_cache
         create_speed_cache(connection)
         return CacheSchemaState()
@@ -68,6 +70,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
                 create_quota_cache(connection)
             from codex_usage.speed_schema import create_speed_cache
             create_speed_cache(connection)
+            ensure_role_validation_indexes(connection)
             connection.executemany(
                 "insert or replace into schema_meta (key, value) values (?, ?)",
                 (
@@ -79,6 +82,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
             return CacheSchemaState()
         _drop_cache_schema(connection)
         _create_cache_schema(connection)
+        ensure_role_validation_indexes(connection)
         connection.executemany(
             "insert into schema_meta (key, value) values (?, ?)",
             [
@@ -327,7 +331,7 @@ def _schema_matches(connection: sqlite3.Connection, *, predecessor=False, timing
         invalid_role = connection.execute(
             """
             select 1 from usage_records
-            where usage_role is null or usage_role not in ('root', 'subagent')
+            where coalesce(usage_role, '') not in ('root', 'subagent')
             limit 1
             """
         ).fetchone()
@@ -365,7 +369,7 @@ def _schema_matches(connection: sqlite3.Connection, *, predecessor=False, timing
         invalid_storage_role = connection.execute(
             """
             select 1 from storage_files
-            where usage_role is null or usage_role not in ('root', 'subagent')
+            where coalesce(usage_role, '') not in ('root', 'subagent')
             limit 1
             """
         ).fetchone()

@@ -30,10 +30,15 @@ class _GitCheckout:
 _EXTERNAL_PROJECT_PARENT_NAMES = frozenset({"external_projects", "zz_external_projects", "third_party", "vendor"})
 
 
-def resolve_project_identity(metadata: SessionMetadata) -> ProjectIdentity:
+def resolve_project_identity(metadata: SessionMetadata, *, checkout_cache=None) -> ProjectIdentity:
     cwd_key = _normalize_path_text(metadata.cwd) if metadata.cwd else ""
     recorded_repo_url = metadata.git_repository_url.strip()
-    checkout = _checkout_from_cwd(metadata.cwd)
+    if checkout_cache is None:
+        checkout = _checkout_from_cwd(metadata.cwd)
+    else:
+        if metadata.cwd not in checkout_cache:
+            checkout_cache[metadata.cwd] = _checkout_from_cwd(metadata.cwd)
+        checkout = checkout_cache[metadata.cwd]
     current_origin_url = checkout.origin_url if checkout is not None else ""
     recorded_key = normalize_repository_key(recorded_repo_url)
     current_origin_key = normalize_repository_key(current_origin_url)

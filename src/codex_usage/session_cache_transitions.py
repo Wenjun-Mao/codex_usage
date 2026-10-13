@@ -14,8 +14,8 @@ from codex_usage.project_transitions import ProjectTransition
 from codex_usage.session_cache_queries import (
     load_all_raw_candidates,
     load_raw_candidates_for_task_ids,
-    load_records_for_task_ids,
 )
+from codex_usage.session_transition_records import load_transition_predecessors
 
 
 def refresh_dirty_task_transitions(
@@ -86,9 +86,9 @@ def replace_dirty_task_transitions(
         )
         if observation.thread_id in ordered_task_ids
     )
+    observations = evidence_module._dedupe_observations(observations)
     transitions = transitions_module.infer_project_transitions(
-        load_records_for_task_ids(connection, ordered_task_ids),
-        evidence_module._dedupe_observations(observations),
+        load_transition_predecessors(connection, observations), observations,
     )
     _replace_dirty_task_transitions(connection, ordered_task_ids, transitions)
 

@@ -1,5 +1,6 @@
 """Actual-point display reduction; raw observations remain in day partitions."""
 from collections import defaultdict
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -18,7 +19,28 @@ def series(point, kind):
     return (point["limit_id"], point["duration_minutes"]) if kind == "weekly" else ("balance",)
 
 
+@dataclass(frozen=True, slots=True)
+class _DisplayPoint:
+    raw: dict
+    at: datetime
+    stamp: float
+    signature: tuple
+    metric: Decimal | None
+    series: tuple
+
+    @classmethod
+    def prepare(cls, point, kind):
+        at = datetime.fromisoformat(point["timestamp"])
+        return cls(point, at, at.timestamp(), identity(point), value(point, kind), series(point, kind))
+
+
 def reduce_points(points, kind, start, end, *, buckets=180, detect_boundaries=False):
+    prepared = [_DisplayPoint.prepare(p, kind) for p in points]
+    return [p.raw for p in _reduce_points(prepared, kind, start, end,
+        buckets=buckets, detect_boundaries=detect_boundaries)]
+
+
+def _reduce_points(points, kind, start, end, *, buckets, detect_boundaries=False):
     """Keep bucket endpoints/extrema plus both sides of every evidence boundary.
 
     Boundaries are exempt from the ordinary mark budget. In adversarial histories
@@ -26,43 +48,43 @@ def reduce_points(points, kind, start, end, *, buckets=180, detect_boundaries=Fa
     """
     groups = defaultdict(list)
     for point in points:
-        groups[series(point, kind)].append(point)
+        groups[point.series].append(point)
     retained = {}
     for group in groups.values():
-        ordered = sorted(group, key=lambda p: datetime.fromisoformat(p["timestamp"]).timestamp())
+        ordered = sorted(group, key=lambda p: p.stamp)
         bins = defaultdict(list)
         previous = None
         for p in ordered:
-            at = datetime.fromisoformat(p["timestamp"]).timestamp()
+            at = p.stamp
             if start <= at < end:
                 index = min(buckets-1, int((at-start)/max(.000001, end-start)*buckets))
                 bins[index].append(p)
-            boundary = p.get("_boundary", False)
+            boundary = p.raw.get("_boundary", False)
             if previous and detect_boundaries:
-                old = value(previous, kind)
-                current = value(p, kind)
-                same_time = datetime.fromisoformat(previous["timestamp"]) == datetime.fromisoformat(p["timestamp"])
-                boundary |= (p["plan"] != previous["plan"] or old is None or current is None or
-                    (kind == "weekly" and (p["resets_at"] != previous["resets_at"] or current < old)) or
-                    (same_time and (p["plan"], current, p.get("resets_at"), p.get("reset_credits")) !=
-                        (previous["plan"], old, previous.get("resets_at"), previous.get("reset_credits"))) or
-                    (kind == "balance" and p["change"] is None))
+                old, current = previous.metric, p.metric
+                a, b = previous.raw, p.raw
+                same_time = previous.at == p.at
+                boundary |= (b["plan"] != a["plan"] or old is None or current is None or
+                    (kind == "weekly" and (b["resets_at"] != a["resets_at"] or current < old)) or
+                    (same_time and (b["plan"], current, b.get("resets_at"), b.get("reset_credits")) !=
+                        (a["plan"], old, a.get("resets_at"), a.get("reset_credits"))) or
+                    (kind == "balance" and b["change"] is None))
                 if boundary:
                     for candidate in (previous, p):
-                        candidate = {**candidate, "_boundary": True}
-                        retained[identity(candidate)] = candidate
+                        candidate = replace(candidate, raw={**candidate.raw, "_boundary": True})
+                        retained[candidate.signature] = candidate
             previous = p
-            if p.get("_boundary"):
-                retained[identity(p)] = p
+            if p.raw.get("_boundary"):
+                retained[p.signature] = p
         for items in bins.values():
-            finite = [p for p in items if value(p, kind) is not None]
+            finite = [p for p in items if p.metric is not None]
             selected = [items[0], items[-1]]
             if finite:
-                selected += [min(finite, key=lambda p: value(p, kind)), max(finite, key=lambda p: value(p, kind))]
+                selected += [min(finite, key=lambda p: p.metric), max(finite, key=lambda p: p.metric)]
             for p in selected:
-                if identity(p) not in retained:
-                    retained[identity(p)] = p
-    return sorted(retained.values(), key=lambda p: datetime.fromisoformat(p["timestamp"]).timestamp())
+                if p.signature not in retained:
+                    retained[p.signature] = p
+    return sorted(retained.values(), key=lambda p: p.stamp)
 
 
 def display_partitions(points, kind, timezone):
@@ -70,24 +92,28 @@ def display_partitions(points, kind, timezone):
     # Mark boundaries before splitting days, preserving cross-midnight neighbors.
     if not points:
         return {}
-    first = min(datetime.fromisoformat(p["timestamp"]).timestamp() for p in points)
-    last = max(datetime.fromisoformat(p["timestamp"]).timestamp() for p in points)
-    reduced = reduce_points(points, kind, first, last + .000001, buckets=1, detect_boundaries=True)
-    boundaries = {identity({k: v for k, v in p.items() if k != "_boundary"}) for p in reduced if p.get("_boundary")}
+    prepared = [_DisplayPoint.prepare(p, kind) for p in points]
+    first = min(p.stamp for p in prepared)
+    last = max(p.stamp for p in prepared)
+    reduced = _reduce_points(prepared, kind, first, last + .000001, buckets=1, detect_boundaries=True)
+    boundaries = {p.signature for p in reduced if p.raw.get("_boundary")}
     signatures = defaultdict(set)
     if kind == "weekly":
-        for p in points:
-            signatures[(datetime.fromisoformat(p["timestamp"]).timestamp(), p["limit_id"])].add(
+        for item in prepared:
+            p = item.raw
+            signatures[(item.stamp, p["limit_id"])].add(
                 (p["plan"], p["duration_minutes"], p["used_percent"], p["resets_at"], p.get("reset_credits")))
-    for p in points:
-        day = datetime.fromisoformat(p["timestamp"]).astimezone(timezone).date().isoformat()
-        annotated = {**p, "_boundary": True} if identity(p) in boundaries else p
-        if kind == "weekly" and len(signatures[(datetime.fromisoformat(p["timestamp"]).timestamp(), p["limit_id"])]) > 1:
+    for item in prepared:
+        p = item.raw
+        day = item.at.astimezone(timezone).date().isoformat()
+        annotated = {**p, "_boundary": True} if item.signature in boundaries else p
+        if kind == "weekly" and len(signatures[(item.stamp, p["limit_id"])]) > 1:
             annotated = {**annotated, "_boundary": True, "_conflict": True}
-        days[day].append(annotated)
+        days[day].append(replace(item, raw=annotated) if annotated is not p else item)
     partitions = {}
     prefix = "meter-display:" if kind == "weekly" else "balance-display:"
     for day, raw in days.items():
         local = datetime.fromisoformat(day).replace(tzinfo=timezone)
-        partitions[prefix + day] = {"count": len(raw), "points": reduce_points(raw, kind, local.timestamp(), (local+timedelta(days=1)).timestamp(), buckets=24)}
+        partitions[prefix + day] = {"count": len(raw), "points": [p.raw for p in _reduce_points(
+            raw, kind, local.timestamp(), (local+timedelta(days=1)).timestamp(), buckets=24)]}
     return partitions

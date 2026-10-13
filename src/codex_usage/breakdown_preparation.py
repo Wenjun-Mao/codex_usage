@@ -2,7 +2,7 @@
 from datetime import datetime
 
 from codex_usage.breakdown_balances import balance_partitions
-from codex_usage.breakdown_display import display_partitions
+from codex_usage.breakdown_readings import partition_readings
 from codex_usage.breakdown_intervals import BreakdownInterval
 
 
@@ -23,15 +23,11 @@ def prepare_account(evidence, timezone):
     partitions = {}
     for kind, name in (("weekly", "points"), ("balance", "balances")):
         points = evidence.pop(name)
-        partitions.update(display_partitions(points, kind, timezone))
-        for point in points:
-            at = datetime.fromisoformat(point["timestamp"])
-            stamp = at.timestamp()
-            day = at.astimezone(timezone).date().isoformat()
-            times.append(stamp)
+        point_days, extent, raw = partition_readings(points, kind, timezone)
+        partitions.update(raw)
+        times.extend(extent)
+        for day, stamp in point_days.items():
             days[day] = max(days.get(day, stamp), stamp)
-            if kind == "weekly":
-                partitions.setdefault("meter:" + day, []).append(point)
         if kind == "balance":
             partitions.update(balance_partitions(points, timezone))
     ranges = {key: {**interval_directory(window, timezone), "partition_basis": key}

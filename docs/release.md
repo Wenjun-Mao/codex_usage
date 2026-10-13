@@ -1,9 +1,34 @@
-# 2.12.1 VSIX Release Checklist
+# 2.12.2 VSIX Release Checklist
 
-Codex Usage 2.12.1 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.12.2 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
+
+## 2.12.2 Candidate
+
+Owner authorized publication on 2026-10-13. ADRs 0058-0060 define scoped capture
+bookkeeping, lazy visible-day chart reductions and guarded historical allowance
+fit reuse. The patch preserves source events, prices, account evidence and
+capture scheduling. Report storage has its own format key; existing event
+prices are retained on first tracking installation. Partial tracking resets
+are repaired before capture, and late historical evidence invalidates affected
+fits conservatively.
+
+Local core verification passed 1,884 tests with one expected skip. Three matched
+backend runs against the preceding local preparation checkpoint reduced
+revision-only reloads from 4.69 to 4.34 seconds and append reloads from 4.59 to
+4.32 seconds; first setup was effectively unchanged at 4.97/4.99 seconds. Full
+HTML hashes matched, including late corrections. Report storage dropped from
+95.23 to 48.46 MB without dropping readings. These are workload-specific backend
+measurements, not native painting or total capture/network latency. Synthetic
+inserts add about 0.17 seconds of tracking work per 10,000 new events.
+
+Publication requires the exact-commit nonpublishing platform gate, then tag
+publication, public catalog validation and official-download hash equality for
+both targets. The release receipt will record the actual commit, run URLs and
+hashes after those gates complete. Private corpus and benchmark evidence stay
+ignored; public screenshots and hosted verification use synthetic data.
 
 ## 2.12.1 Published Receipt
 
@@ -419,13 +444,13 @@ cannot be run is a release blocker, not an implicit pass.
 
 ## Marketplace Publication
 
-Confirm Python and extension metadata and lockfiles all say `2.12.0`, both
+Confirm Python and extension metadata and lockfiles all say `2.12.2`, both
 changelogs contain a dated entry, and the candidate commit is in `origin/main`.
-Only after the non-publishing platform gate succeeds, create and push `v2.12.0`:
+Only after the non-publishing platform gate succeeds, create and push `v2.12.2`:
 
 ```bash
-git tag v2.12.0
-git push origin v2.12.0
+git tag v2.12.2
+git push origin v2.12.2
 ```
 
 The tag reruns all platform gates and publishes
@@ -434,7 +459,7 @@ The tag reruns all platform gates and publishes
 Marketplace versions, and package hashes. The workflow does not create a GitHub
 Release; VSCE uses `--skip-duplicate` on a rerun.
 
-Query the public Marketplace catalog for version 2.12.0 on both `darwin-arm64`
+Query the public Marketplace catalog for version 2.12.2 on both `darwin-arm64`
 and `win32-x64`, download each official versioned target VSIX, and require its
 SHA-256 to equal the corresponding artifact from the exact tag workflow. Retain
 run URLs, catalog metadata and public hashes under ignored release evidence;

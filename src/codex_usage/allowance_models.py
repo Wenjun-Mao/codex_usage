@@ -19,7 +19,12 @@ class QuotaObservation:
     reset_credits: int | None = None
 
     def to_dict(self):
-        return {key: getattr(self, key) for key in self.__dataclass_fields__}
+        return {
+            "timestamp": self.timestamp, "limit_id": self.limit_id, "slot": self.slot,
+            "plan": self.plan, "used_percent": self.used_percent,
+            "duration_minutes": self.duration_minutes, "resets_at": self.resets_at,
+            "reset_credits": self.reset_credits,
+        }
 
 
 def identifier(value: object) -> str:
