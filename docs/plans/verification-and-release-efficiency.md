@@ -3,11 +3,13 @@
 Date: 2026-10-13. Status: local and journal gates pass. Earlier normal/dry-run
 evidence is retained; current source qualification is held by hosted WebKit
 input/observation latency. Production promotion is source-disabled.
+Remaining-work revision: owner approved stages A-F through the active goal,
+starting from `1032b715`; A is in progress, dependent gates remain unmet.
 Scope agreed: faster failure-local gates, exact qualified-artifact promotion,
 and fewer browser round trips without reducing coverage.
 
 Authority: [measured profile](../research/2026-10-13-verification-and-release-profile.md),
-[proposed ADR 0061](../adr/0061-qualified-artifact-promotion.md), and the existing
+[ADR 0061](../adr/0061-qualified-artifact-promotion.md), and the existing
 [release checklist and receipts](../release.md).
 The published 2.12.2 release is complete and is not reopened by this plan.
 
@@ -62,8 +64,12 @@ authorized. On 2026-10-13 the owner explicitly approved scoped commit/push and
 nonpublishing hosted pilots, plus the durable Git journal and its job-scoped
 Contents-write access. Release tags, Marketplace uploads and secret/settings
 changes remain excluded.
+The subsequent explicit goal authorizes implementation of stages 1-6, including
+source enablement and publication after their gates. Actual selected version,
+final SHA and normal run/attempt must be recorded before the authorized release;
+no permission to bypass gates or change credentials/settings is inferred.
 
-## Proposed Qualification Graph
+## Qualification Graph
 
 1. A fast, nonpublishing metadata gate checks version/lock/changelog consistency,
    the independent release-history registry, supported targets, workflow
@@ -190,27 +196,127 @@ invalidate qualification. Both public target hashes equal the qualified hashes.
 
 ### D4: Qualify And Measure The New Process
 
-- Run focused contract/harness tests first, then complete core/extension suites,
-  Ruff, parity/work guards and all original visual/native/package gates.
-- Run nonpublishing hosted pilots at the exact candidate SHA. Deliberately fail
-  one bounded visual case and demonstrate the retry/aggregation provenance rules.
-  No secret exposure or Marketplace upload during negative/dry-run tests.
-- Capture per-job queued/start/end times, setup cost, suite wall times, API call
-  counts, case inventories, artifact sizes and runner minutes. Compare at least
-  three controlled local pairs; label limited hosted sampling honestly.
-- Refresh the profile with before/after results. Target roughly 20% lower local
-  breakdown runtime and 30% lower hosted qualification critical-path time as
-  investigation goals, not guarantees or reasons to weaken gates. Promotion
-  should remove the duplicate full tag pass by construction, measured separately
-  from native replay, manual handoffs, runner queues and external propagation.
-- Update release operating instructions and link a concise receipt. The existing
-  495-line `docs/release.md` should not absorb another long workflow description:
-  extract the active procedure into a cohesive release guide if needed, retaining
-  historical receipt anchors and links.
+The remaining critical path is A -> B -> C -> D. E and F require separate owner
+authority. Preserve ADR 0063's strict input-to-observation budget; neither a late
+visible result nor a diagnostic-only passing run qualifies the candidate.
 
-Acceptance: correctness and authority gates pass; measured savings and remaining
-costs are disclosed. Workflow readiness is not proof of a new published release.
-Actual publication remains a separately authorized final canary.
+#### D4A: Locate The Hosted WebKit Delay
+
+- Freeze source, fixture hashes, SDK and actual browser-binary revision/digest,
+  OS/runner, viewport, scripts-disabled state and the original input history.
+  Reproduce the first WebKit view through the affected second usage bucket;
+  minimize only after the relevant input/state history is shown equivalent.
+- Reuse the existing protocol/host/renderer-clock diagnostic. Compare the original
+  style query with a minimal non-DOM control query on the same page. Record
+  foreground/visibility/focus and lifecycle state outside the acceptance timer.
+  Add one hypothesis-specific control only when prior evidence justifies it.
+- Correlate input send/reply, target-query send/reply and expression execution
+  by session/command ID. Distinguish driver/host delay, target scheduling, expression
+  work and reply delivery. Do not subtract cross-process clocks, adjust acceptance
+  times or claim paint timing from these markers.
+- Every extra diagnostic read/listener must be declared and remain outside
+  qualification authority. Preserve the original failed guard and raw evidence.
+  Product scripts/CSP and acceptance inputs remain unchanged.
+- Bound each diagnostic job to five minutes and each investigation batch to two
+  new dispatches with prespecified hypotheses/controls. Repetition solely to get
+  green is excluded. If the batch does not discriminate, report the remaining
+  hypotheses and revise the next probe before further dispatch or full qualification.
+
+Acceptance: a root-cause note identifies the failed stage, supporting controls,
+and why the proposed correction belongs at that layer. A causal intervention
+must change the predicted delayed stage; eventual visible DOM is insufficient.
+
+#### D4B: Correct The Owning Layer
+
+- Implement the evidence-backed correction with existing public APIs/patterns;
+  do not silently patch the SDK, migrate runners or add engine-specific tolerance.
+  Preserve readiness/hit checks, genuine hidden baselines, real Tab/hover/hide,
+  scripts-disabled behavior and strict rejection at or beyond 250ms.
+- Regression tests cover the diagnosed failure, late input/style replies,
+  cancellation/cleanup, trial-hover priming and absence of corrective target focus.
+  Add the root-specific guard to existing cohesive modules and ADR 0062/0063.
+- Verify prespecified cold launches and warm passes of the affected input history,
+  including at least three of each on the hosted authority, then all 72 local
+  hover views. Stop on an unexpected failure; do not retry it into acceptance.
+- Use one bounded independent read-only review of the causal correction and
+  measurement contract. Collect and close any reviewer before ending the work.
+
+Default: repair the current observation path without changing its requirement.
+If evidence instead establishes that the requirement needs a different measurement
+contract or toolchain/runner, present that alternative and its lost/new guarantees
+for owner review before implementation. That is not an implicit fallback.
+
+#### D4C: Fresh Normal, Retry And Native Qualification
+
+- Run focused regressions, complete core/extension suites, Ruff, frozen monetary
+  parity/work and complete visual inventories. Reconcile every original required
+  identity with raw results; retain the exact platform-skip policy and real inputs.
+- Commit/push only the approved slice and run one fresh normal qualification at
+  the exact candidate SHA. Require every core/platform/visual gate, frozen manifest
+  and hash-pinned native macOS replay of the actual qualified VSIX.
+- Separately run the controlled first-case hover failure at the same SHA. Attempt 1
+  must fail exactly the injected case, retain diagnostics and skip dependents;
+  rerun failed jobs once with injection disabled. Any unexpected failure stops
+  the pilot for diagnosis, not repeated reruns.
+- Prove eight healthy producer origins remain attempt 1, the rerun hover origin
+  is attempt 2, and aggregation/native evidence is fresh. Compare each probe
+  package's IDs/digests/bytes across its own attempts, not against the normal run's
+  independently built bytes. Probe runs remain permanently ineligible for release.
+- Native replay uses disposable profiles, synthetic data and in-memory secrets;
+  no Keychain or user-window changes. Native Windows UI remains an explicit gap;
+  Windows package/archive/collector/handoff gates remain mandatory.
+
+Acceptance: normal inspection validates complete source-bound proof; the probe
+independently proves failure-local reuse without rebuilding healthy packages.
+No old source's receipts qualify a changed execution closure.
+
+#### D4D: Dry-Run And Process Acceptance
+
+- Dispatch dry-run promotion on main selecting C's normal run/attempt. Require
+  local/hosted inspection equality, unchanged exact package/collector/asset hashes,
+  no build, a skipped publisher job, no PAT exposure and no production-journal write.
+- Retain negative tests for malformed/stale/swapped proof, tag/dispatch drift,
+  deleted Actions history, partial publication uncertainty and pinned-journal loss.
+  Dry-run inspection is not positive proof of the disabled publication-only path.
+- Refresh the existing profile/receipt/guide with queue/setup/execution times,
+  original versus reused work, complete cases, artifact retention and runner-work
+  cost. Retain the three local baseline pairs; label limited hosted sampling.
+  The 20% local/30% hosted goals never override correctness or become promises.
+
+Acceptance: A-D pass; readiness is explicitly nonpublishing. Expired artifacts
+require renewed qualification, never a promotion-time rebuild or stale-proof reuse.
+
+#### D4E: Separately Approved Production Enablement
+
+- Obtain owner approval for source enablement and new-version preparation, not
+  tag creation/upload. Select an unused eligible version at least 2.12.3; synchronize
+  Python/extension metadata, locks, changelogs and independent release history.
+- Review the complete retained journal and publisher trust boundary. Preserve
+  pinned roots, job-scoped Contents-write, before-credential proof/intent checks,
+  two-target preflight, ambiguous-upload refusal and public hash verification.
+- Test both explicit disabled and enabled policy states. Preserve the disabled
+  pre-network guard test; add enabled-path regressions with publication effects
+  stubbed. No real PAT/upload or environment override belongs in these tests.
+- Enable only in the reviewed fingerprinted source. Then repeat C and D for the
+  final enabled/versioned SHA: policy/version edits invalidate earlier proof.
+  This is one-time activation qualification, not a routine second tag rebuild.
+  Keep publication undispatched and create no eligible release tag in this stage.
+
+Acceptance: the final enabled source is freshly qualified/inspected and separately
+approved for enablement. No flag/version/workflow edit occurs after qualification;
+any such change starts a new candidate. Enablement is not publication authority.
+
+#### D4F: Separately Approved Publication Canary
+
+- Obtain release authority naming version, final SHA, normal run/attempt, both
+  targets and existing publisher-credential use. Secret/settings changes are excluded.
+- Create the matching tag and explicitly promote the exact qualified bytes.
+  Revalidate original proof and fresh journal state before per-target intent/PAT;
+  no rebuilding, forced ref update, tag movement or duplicate-upload shortcut.
+- Verify both official public downloads/catalog hashes against qualified packages
+  and retained promotion receipts. Partial/ambiguous uploads or catalog propagation
+  remain pending; preserve possible-upload intents and never infer safe re-upload
+  from absence. Record a verified release only after both target hashes match.
 
 ## Files And Responsibilities
 
@@ -219,163 +325,79 @@ Actual publication remains a separately authorized final canary.
 | Gate graph | `.github/workflows/package-vsix.yml`; dedicated explicitly dispatched promotion workflow |
 | Metadata contracts | `tests/test_github_actions_workflow.py`, `tests/test_release_history.py`; small focused early gate |
 | Browser harness | `scripts/check_usage_breakdown_ui.py`, `check_speed_ui.py`, `check_allowance_ui.py`, `check_breakdown_overlay_ui.py`, `check_breakdown_hover_ui.py`, `generate_marketplace_screenshot.py`; cohesive snapshot/evidence helpers |
+| WebKit diagnosis | `scripts/probes/hover_input_latency.py`, `scripts/verification/hover_observation.py`, `.github/workflows/hover-input-probe.yml`, `tests/test_hover_input_probe.py`, `tests/test_hover_observation.py` |
 | Package authority | `extensions/vscode/scripts/package-vsix.js`, `scripts/verify-vsix-archive.py`; small manifest and qualification validators |
 | Native proof | `scripts/check_usage_breakdown_webview.py` and its existing native helpers; exact VSIX extraction and trusted receipt |
 | Public verification | `scripts/verify_marketplace_release.cjs`; promotion negative tests in a cohesive new test module |
+| Production enablement | `scripts/release/policy.py`, pinned journal validators, `scripts/qualification.py`, `tests/test_qualification_transport.py`, `.github/workflows/promote-vsix.yml`; source-bound policy transition |
 | Documentation | ADR 0061, this plan, profiling report, release guide/receipt links |
-
-Implementer chooses concise helper names and structured parsers consistent with
-the repository; this plan does not prescribe an oversized generic runner.
 
 ## Permissions And Rollback
 
-Owner subsequently authorized implementation: retained-checkout code/workflow/
-test/documentation edits, synthetic local verification, scoped commits/pushes,
-the durable Git journal and bounded nonpublishing hosted pilots.
-No new release tag, Marketplace publication or secret/settings change is authorized.
+Earlier granted permissions cover retained-checkout code/workflow/test/docs,
+synthetic verification, scoped commit/push, isolated non-Keychain hosts, the durable
+journal and bounded nonpublishing pilots. Carry these into approved A-D work
+without renewed approval for each covered checkpoint. The active user goal now
+explicitly approves all six remaining stages, subject to their acceptance gates.
 
-Implementation approval should explicitly cover retained-checkout source/test/
-workflow edits, synthetic local verification, isolated VS Code hosts without
-Keychain access, and bounded nonpublishing hosted pilots/necessary commit-push.
-Absent that operational scope, hosted pilots or native launch stay named gates.
-Do not add workers/worktrees or concurrent writers by default. A bounded
-read-only review of promotion authority is useful before the hosted canary;
-if delegated after approval, collect and close it before ending the work.
+Default to serial main work and no concurrent writers. A bounded independent
+read-only review is useful after diagnosis and before source enablement. Choose
+and announce model/effort at native dispatch using Relay Direct; follow reviewers
+until results are collected and they are closed. No tasks are created by planning.
 
-Marketplace publication, new release tag and publisher-secret use need separate
-release authority; existing 2.12.2 release approval is not reused. No repository
-or organization settings/secret changes are included. If native proof requires
-new trusted infrastructure, present that scope before applying it.
+The current stages 1-6 instruction covers E source/new-version and F tag,
+publication and existing publisher-secret-use authority. Record the final named
+candidate before those effects; no earlier-release approval is reused. No secret/repository settings,
+live ledger, installed extension, services, user windows or unrelated apps changes.
+Measurement-contract redesign, runner migration, SDK patching or new trusted
+infrastructure requires review of the uncovered scope before implementation.
 
 Before publication, revert only our changes or retain the current full
 qualification workflow if probes/pilots fail. Do not silently fall back from
 promotion to publishing freshly rebuilt, unqualified bytes. After publication,
 preserve tags/artifacts/receipts and use a newly approved higher version for
 corrections; never overwrite a published version or retag it.
+If E fails, keep publication undispatched and restore the disabled source gate
+through a new scoped commit; its changed fingerprint invalidates earlier proof.
+Never reset/rebootstrap journal refs or erase possible-upload entries. After any
+possible upload, stop automatic retries and reconcile public bytes/history first.
 
 ## Review Checklist
 
 - [x] Owner selected explicit promotion; tag creation alone will not publish.
-- [x] Owner reviewed the plan and authorized implementation with Relay Direct.
-- [x] Required gate/case inventories and the trusted exact-VSIX native path pass.
-- [ ] Hosted failed-job reuse retains original-attempt authority.
+- [x] Owner approved the original implementation with Relay Direct.
+- [x] Required inventories and exact-VSIX native path passed at historical `dc79adb6`.
 - [x] Owner authorized local implementation and scoped commit/push/nonpublishing pilots.
-- [ ] D1-D3 retain every coverage, accounting, security and artifact safeguard.
-- [ ] D4 records actual savings, retry evidence and remaining latency.
-- [ ] Separate release approval precedes any publishing canary.
-
-Local milestones (not hosted acceptance):
-
-- [x] D1 journals complete visual tuples and preserves failed-case diagnostics.
-- [x] D2 batches DOM reads, preserves assertions and fresh navigation, and records
-  three measured wall-time pairs plus a separate 720-tuple resize-state trial.
-- [x] Complete local core/extension suites and independent result inventories pass.
-- [x] Read-only promotion-safety review is collected, closed and unregistered.
-- [x] Independent pinned publication history retains possible-upload uncertainty
-  outside the Actions lifecycle; hosted synthetic append/conflict/replay passes.
-- [x] Scoped commit/push and hosted-pilot permission is granted.
-- [x] Hosted normal qualification, pinned native/platform and dry-run inspection
-  pass at `dc79adb616601959748480f8fac118fd9455e69f`.
-- [ ] Controlled failure/retry passes with unchanged healthy-package proof.
+- [x] Owner explicitly approved all six remaining stages through the active goal.
+- [ ] A-B establish and fix the root cause with retained measurement guarantees.
+- [ ] C-D pass current-source normal/retry/native/dry-run gates and update measures.
+- [ ] E is separately approved and final enabled/versioned source is requalified.
+- [ ] F is separately approved and both public target hashes are verified.
 
 ## Implementation Checkpoint
 
-Implemented and normal-hosted qualified: early metadata gate, five isolated
-visual suites with bounded concurrency and always-upload failure journals;
-batched breakdown snapshots; immutable producer receipts and original-attempt
-log markers; frozen hosted manifests; exact-VSIX native input; pinned isolated
-VS Code download; explicit promotion with separate credential exposure; and
-public/occupied-version hash guards. Actual publishing/public-download verification
-of a new release remains unexecuted. Default browser navigation remains
-fresh; resize-only optimization is not assumed equivalent.
+Current source: `1032b715`; promotion false, no active workers or new publication.
+Early gates, isolated visual jobs, batched snapshots, exact-artifact promotion,
+original-attempt receipts and the independently pinned Git journal are implemented.
+The journal pilot passes; production history remains empty and starts at 2.12.3.
+Normal/native and dry-run gates passed at historical `dc79adb6`, not current source.
 
-The read-only provenance review and independent REST readback confirmed that
-GitHub copies successful jobs into newer attempts while retaining original
-execution times. Artifact REST records lack originating job/attempt association.
-Producer receipts therefore bind actual upload outputs and original-job log
-markers, not reconstructed timestamps alone. The reviewer was collected, closed
-and unregistered; there are no active workers or concurrent writers.
+Local median breakdown runtime is 150.13 -> 95.29 seconds across three alternating
+pairs, with 720 tuples/80 byte-identical documents and zero forbidden warm work.
+Reads fall from 11,628 to 720 snapshots; fresh navigation, 1,440 real keyboard
+presses and 160 screenshots remain. Resize-only equivalence is not accepted.
+Latest core evidence: 2,146 passed, one approved skip, 2,147 unique identities;
+all 72 local hover views and Ruff/parity/work guards pass.
 
-Three alternating unchanged/candidate local breakdown pairs retained all 720
-case/state tuples, 80 byte-identical HTML documents per pair and zero forbidden
-warm work. Wall times were 151.37/96.80, 150.13/94.72 and 144.94/95.29 seconds:
-median 150.13 -> 95.29 seconds, approximately 36.5% lower. Single-machine workload
-evidence, not hosted or universal predictions. The 72-case hover suite passed
-with unchanged 250ms guards. Raw outputs remain ignored under
-`output/performance/verification-efficiency/`,
-`output/playwright/verification-efficiency/` and `output/qualification/`.
+Native polling/deadline defects were corrected under
+[ADR 0062](../adr/0062-native-observation-transport.md). Trial-hover priming and
+real-input baselines are guarded under
+[ADR 0063](../adr/0063-real-input-observation-budget.md). Hosted diagnostics still
+fail: a 377ms style-query round trip includes an expression reporting 0ms at clock
+resolution. That does not prove visibility onset/paint or explain every keyboard
+stall. Current-source qualification and controlled retry remain incomplete.
 
-Earlier broad runs exposed an obsolete direct-command integration assertion and
-a stale partial-upload expectation; both owning contracts were corrected before
-fresh verification. The final complete run passed 2,101 cases with exactly the
-named non-Windows junction skip in 65.96 seconds. Collection and raw JUnit match
-all 2,102 unique cases and retain every independent 2.12.2 required identity.
-The early metadata gate passed 36 cases. Extension qualification passed all 48
-named tests with matching structured event collection and successful completion.
-Ruff, frozen monetary parity, bounded-work checks and all five visual suites pass
-locally; their complete tuple/assertion inventories were independently read back.
-
-An instrumented complete breakdown run recorded 720 snapshots in 7.93 seconds,
-replacing 11,628 separate DOM evaluate/count reads measured at 54.8 seconds.
-All 720 fresh navigations, 1,440 real keyboard presses and 160 screenshots remain.
-The separate resize probe matched fresh state/layout for 720 tuples, but does not
-substitute for painted/native proof and has not changed default navigation.
-
-Explicit GPT-6.1 Sol / High read-only review identified source/tag drift, immutable
-dispatch binding, copied-job log resolution and same-directory preflight-reset
-gaps. Focused regression tests exercise the actual per-target publishing entrypoint
-with network/credential effects stubbed. The fixes were reviewed without claiming
-effective model settings confirmed by the host.
-
-The review identified a deeper authority gap: a deleted later Actions run can hide a possibly
-accepted upload when an older run retries. Pagination/run-number checks detect
-some omissions, not an independently retained lifetime high-water mark. Production
-`validate-publication` and `check-files` therefore fail before network/credentials
-under a source-owned, fingerprinted false gate. No inputs/environment can bypass
-it. Nonpublishing qualification and inspection remain available.
-
-The owner approved this follow-up: an independently pinned Git-backed append-only
-receipt journal, with non-forced sibling updates before possible side effects.
-Scoped Contents-write is job-scoped, not a ref-restricted credential. Production
-and synthetic pilot namespaces have separate fixed refs, workflow IDs, roots and
-event kinds. Local regressions cover lost responses, replay, malformed/missing
-history and deletion of all Actions evidence. Production cutover begins at 2.12.3;
-the bootstrap pins and hosted synthetic append/conflict/replay pilot now pass.
-Independent readback confirms two pilot entries and no production entries.
-Earlier platform/native qualification and dry-run inspection pass. Current
-source qualification is held; see the [pilot receipt](../release/2026-10-13-qualification-pilot.md).
-Publication/new tags still require separate release approval.
-
-The controlled retry independently confirmed unchanged package receipts/bytes
-and reused eight healthy gate origins, but its native guard failed at 273ms.
-Separate plain/traced samples pass without relaxing that guard. Proven transport
-polling/timeout defects are corrected under [ADR 0062](../adr/0062-native-observation-transport.md),
-not presented as renderer root-cause proof. The new source `b2814244` has 2,118
-passing local tests, one approved skip and a passing isolated 21-input native smoke.
-Its fresh normal, controlled-retry and dry-run gates remain open; earlier source
-receipts cannot authorize the changed execution closure.
-
-The guarded source `8f6eb9d0` retained every real input and all three engines;
-normal/retry attempts failed hosted WebKit latency, including a 472ms keyboard
-call before the first style read. Pointer readiness is now separate setup with
-the original actionability and exact hit checks; local 72-view and full core
-verification pass. The root of the hosted keyboard stall remains unresolved.
-One bounded read-only SDK protocol diagnostic is authorized under the existing
-nonpublishing pilot scope. D4, current-source hosted/native acceptance and
-fresh dry-run inspection remain open; no prior receipt is borrowed.
-
-The pinned SDK's trial hover was independently reviewed and runtime-proven to
-move the pointer and prime CSS hover. The fixture now resets pointer/focus and
-checks a genuinely hidden baseline before timing. Fresh full local verification
-passes 2,143 cases plus the approved skip, with complete 2,144-case reconciliation;
-all 72 hover views and parity/work/Ruff guards pass. Diagnostic wrappers preserve
-original input/read counts, deadline failures and cleanup. The read-only reviewer
-is collected and closed. Hosted latency causality and D4 acceptance remain open.
-
-Two bounded diagnostics preserve strict failed guards. The latter separates a
-377ms style-query round trip from a renderer expression reporting 0ms at clock
-resolution; it does not prove paint or event-state onset timing. Current local
-verification passes 2,146 cases plus the approved skip with full reconciliation,
-but WebKit observer/scheduling latency remains unresolved. D4, current-source
-normal/retry/native qualification and fresh dry-run inspection are not complete.
-Production promotion stays source-disabled; no further run until green is used.
+The complete chronology, immutable identities, failed evidence, trust-boundary
+reviews and measured costs remain in the
+[pilot receipt](../release/2026-10-13-qualification-pilot.md) and
+[profile](../research/2026-10-13-verification-and-release-profile.md).

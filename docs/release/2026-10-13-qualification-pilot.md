@@ -264,3 +264,34 @@ Both bounded diagnostic runs and all qualification pilots are terminal. Current
 source is not fully hosted/native-qualified, and no fresh dry-run promotion is
 borrowed from older receipts. The pinned production journal remains empty;
 source promotion remains false. No workers, tags, uploads or live-data changes.
+
+## Prespecified Non-DOM Control Batch
+
+The next investigation batch is two new, five-minute diagnostic dispatches:
+one scalar control and one five-boolean object control, each immediately before
+the unchanged real style read. Controls never replace style results, execute
+only after the real input, and remain inside the original strict 250ms budget.
+Document visibility/focus/readiness is sampled in untimed setup. Marker/clock
+overhead is uncalibrated and never subtracted. No producer or publication proof
+is emitted. Stop after each original failure, with no passing rerun.
+
+Hypotheses: a delayed scalar followed by fast style would exclude DOM/style work
+as necessary for the stall, but not distinguish target scheduling from transport
+delivery. Consistently fast scalar versus delayed object in equivalent history
+would support a serialization hypothesis; command position and host provenance
+must be checked before inferring causality or changing the owning observer.
+Actual launch logs will be correlated with the configured binary-tree digest,
+SDK manifest, runner OS and viewport; configured identity alone is not loaded
+process attestation. Independent Sol/High read-only review caught and corrected
+timed document introspection and acceptance of a missing launcher before dispatch.
+Combined control/clock tests reject exact-250ms overruns; missing and dangling
+launchers are explicitly unavailable. All later qualification gates stay held.
+
+Pre-dispatch verification: 2,155 core tests pass with the one approved skip in
+65.36s; independent raw result/collection validation reconciles 2,156 identities.
+The corrected scalar diagnostic passes all 72 views and 648 observations locally,
+with a 14.25ms maximum including diagnostic overhead. No timed extra DOM reads
+remain. Ruff, frozen monetary parity and bounded-work guards pass. Raw evidence
+is `output/qualification/control-probe-core/` and
+`output/qualification/control-scalar-corrected-local/`. These local diagnostic
+passes are not hosted correction or release acceptance.

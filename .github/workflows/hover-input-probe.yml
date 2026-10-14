@@ -1,6 +1,12 @@
 name: WebKit Input Diagnostic
 on:
   workflow_dispatch:
+    inputs:
+      control:
+        description: Extra diagnostic-only non-DOM query before the real style read
+        type: choice
+        options: [none, scalar, object]
+        default: none
 permissions:
   contents: read
 jobs:
@@ -21,12 +27,13 @@ jobs:
         run: uv run playwright install chromium firefox webkit
       - name: Trace one bounded original input sequence without changing its guard
         env:
-          DEBUG: pw:protocol,pw:api
+          DEBUG: pw:protocol,pw:api,pw:browser
+          CONTROL: ${{ inputs.control }}
         shell: bash
         run: |
           set -o pipefail
           mkdir -p output/diagnostic/hover
-          uv run python scripts/probes/hover_input_latency.py --renderer-clock --output output/diagnostic/hover \
+          uv run python scripts/probes/hover_input_latency.py --renderer-clock --control "$CONTROL" --output output/diagnostic/hover \
             2>&1 | tee output/diagnostic/hover/protocol.log
       - name: Preserve diagnostic output, never producer receipts
         if: always()
