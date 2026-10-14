@@ -3,11 +3,19 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from codex_usage.aggregation import summarize_valued_records, value_records
+from codex_usage.aggregation import (
+    UsageSummary,
+    ValuedUsageRecord,
+    summarize_valued_records,
+    value_records,
+)
 from codex_usage.models import TokenUsage, UsageRecord
 from codex_usage.project_economics import build_project_economics
+from codex_usage.pricing import CostBreakdown, CreditBreakdown
 from codex_usage.report_breakdown import build_report_breakdown_from_valued
+from codex_usage.report_numbers import adaptive_usd, compact_token_count
 from codex_usage.reporting import render_html_report
+from codex_usage.report_tables import render_project_economics_section
 
 
 def test_report_renders_compact_accessible_project_economics_from_precomputed_ledger(
@@ -46,6 +54,14 @@ def test_report_renders_compact_accessible_project_economics_from_precomputed_le
     assert '<details class="project-economics-project">' in html
     assert '<th scope="col">Model</th>' in html
     assert '<th scope="row">gpt-5.6-sol</th>' in html
+    assert "Average API-equivalent cost / response" in html
+    assert "Responses / turn" in html
+    assert "Tokens / turn" in html
+    assert "Measured turns" in html
+    assert "Totals, shares, coverage and priceability" in html
+    assert "Response coverage" in html
+    assert "Token coverage" in html
+    assert "Average cost / turn" in html
     assert "Priceable turns only" in html
     assert '<details class="token-accounting">' in html
     assert '<summary>Token Accounting</summary>' in html
@@ -54,6 +70,59 @@ def test_report_renders_compact_accessible_project_economics_from_precomputed_le
     assert "fetch(" not in html
     assert "XMLHttpRequest" not in html
     assert "<script" not in html
+
+
+def test_project_model_comparison_preserves_model_grain_and_secondary_evidence() -> None:
+    report = build_project_economics(
+        (
+            _valued_record("turn-a", "gpt-6.1-sol", 1_200, 0.00001234),
+            _valued_record("turn-a", "gpt-6.1-sol", 1_200, 0.00001234),
+            _valued_record("turn-a", "gpt-6-astra", 500, 0.00001235),
+            _valued_record("turn-b", "gpt-6-astra", 500, 0.00001235),
+            _valued_record("turn-c", "gpt-6-luna", 100, 0.0),
+            _valued_record("turn-unpriced", "unknown-model-no-price", 80, 0.0, unpriced=80),
+            _valued_record("", "unknown-model-no-turn", 40, 0.0, unpriced=40),
+        )
+    )
+
+    markup = render_project_economics_section(report)
+
+    assert '<table class="project-economics-models"' in markup
+    assert 'aria-label="Per-model comparison for Research &amp; Tools"' in markup
+    assert "$0.00001234" in markup
+    assert "$0.00001235" in markup
+    assert "$0.0000" in markup
+    assert "2.0" in markup and "2.4K" in markup
+    assert "1.0" in markup and ">500<" in markup
+    assert "Unavailable" in markup
+    assert "Small sample" in markup
+    assert "2 / 2 responses; 1 / 1 turns" in markup
+    assert "0 / 1 responses; 0 / 1 turns" in markup
+    assert "0 / 1 (0%); 1 missing turn IDs" in markup
+    assert "0 / 40 (0%); 40 missing-turn tokens" in markup
+    assert 'Exact: $0.00001234' in markup
+    assert "Totals, shares, coverage and priceability" in markup
+
+
+def test_economics_display_numbers_distinguish_zero_and_tiny_costs() -> None:
+    labels = adaptive_usd((0, 0.00001234, 0.00001235, None))
+    assert labels == ("$0.00000000", "$0.00001234", "$0.00001235", "Unavailable")
+    assert adaptive_usd((0.00000012,)) == ("$0.00000012",)
+
+    subnano = adaptive_usd((0, 1e-13, 2e-13))
+    assert subnano[0] != subnano[1]
+    assert subnano[1] != subnano[2]
+
+    assert compact_token_count(999) == "999"
+    assert compact_token_count(2_400) == "2.4K"
+    assert compact_token_count(1_250_000) == "1.25M"
+    assert compact_token_count(None) == "Unavailable"
+
+
+def test_project_economics_empty_populations_remain_inspectable() -> None:
+    markup = render_project_economics_section(build_project_economics(()))
+    assert "No positive ledger usage is available for project economics." in markup
+    assert render_project_economics_section(None) == ""
 
 
 def _record(
@@ -80,4 +149,34 @@ def _record(
         model=model,
         project_key=project,
         project_label=project,
+    )
+
+
+def _valued_record(
+    turn_id: str,
+    model: str,
+    tokens: int,
+    cost_usd: float,
+    *,
+    unpriced: int = 0,
+) -> ValuedUsageRecord:
+    usage = TokenUsage(input_tokens=tokens, total_tokens=tokens)
+    return ValuedUsageRecord(
+        record=UsageRecord(
+            timestamp=datetime(2026, 9, 10, tzinfo=UTC),
+            usage=usage,
+            session_id="research-session",
+            turn_id=turn_id,
+            file_path=Path("synthetic.jsonl"),
+            usage_role="root",
+            model=model,
+            project_key="research-tools",
+            project_label="Research & Tools",
+        ),
+        summary=UsageSummary(
+            usage=usage,
+            cost=CostBreakdown(total_usd=cost_usd, unpriced_tokens=unpriced),
+            credits=CreditBreakdown(unpriced_tokens=unpriced),
+            record_count=1,
+        ),
     )
