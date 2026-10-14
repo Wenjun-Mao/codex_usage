@@ -5,7 +5,7 @@ on:
       control:
         description: Extra diagnostic-only non-DOM query before the real style read
         type: choice
-        options: [none, scalar, object]
+        options: [none, scalar, object, clock]
         default: none
 permissions:
   contents: read

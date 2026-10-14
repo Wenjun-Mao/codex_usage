@@ -295,3 +295,57 @@ remain. Ruff, frozen monetary parity and bounded-work guards pass. Raw evidence
 is `output/qualification/control-probe-core/` and
 `output/qualification/control-scalar-corrected-local/`. These local diagnostic
 passes are not hosted correction or release acceptance.
+
+### Hosted Control Results
+
+Both prespecified runs at `32b7b510` are terminal, with no retries:
+[scalar 38498780902](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38498780902)
+fails at 362.45ms; [object 38498782946](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38498782946)
+passes all 72 views but reaches 228.68ms at the same second usage bucket in the
+first WebKit view, after 24 Chromium cases. The scalar control itself takes
+356.84ms, followed by a 3.17ms real style query (renderer expression 1ms). The
+object control takes 217.20ms, followed by 5.14ms real style (renderer 0ms).
+No passing diagnostic is adopted as qualification.
+
+Protocol correlation retains scalar input 379 at 02:01:46.986/.987 UTC, control
+380 through outer 381 at .988 with outer ACK .989 and target reply 47.343;
+style 382 through 383 at 47.345 with target reply .347. The delay follows the
+first post-input query, even when it has no DOM access and returns a scalar.
+CSS computation and object serialization are therefore not necessary for this
+observed stall; JSON-string conversion is not an evidence-backed correction.
+Before-input snapshots are visible/focused/complete in both arms. This does not
+exclude OS process throttling or separate execution scheduling from reply delivery.
+
+Both SDKs are 1.62.0, browser version 26.5, macOS 26.6.2 arm64, and launch logs
+use the inventoried `webkit-2336/pw_run.sh`. Their configured WebKit-tree digest
+`2e7611d2510e3215fcb38883a5c88a2ea50f06e8c055a0f6b147e61e9698d5ee`
+also equals the local tree. This excludes different bundled tree bytes, not all
+environment or loaded-library differences. Raw artifacts are retained in
+`output/qualification/hosted-scalar-control/` and
+`output/qualification/hosted-object-control/`. The two-dispatch batch is exhausted;
+any further probe needs a new causal hypothesis and control before dispatch.
+Production journal/tag refs are unchanged; promotion remains source-disabled.
+
+### Next Clock-Entry Discriminator
+
+New two-dispatch batch: stamped original style without a control, and a stamped
+non-DOM clock control before real style. The existing wrapper retains execution
+duration and adds expression-entry `performance.now()`/`timeOrigin`; no timed DOM
+read, event listener, extra input or post-observation RPC is added. Page URL is
+recorded before timing. The strict original failure/result remains unchanged.
+
+Hypotheses: a large same-renderer baseline-to-query-entry gap with fast baseline
+and input protocol replies supports waiting before expression entry. A short
+entry gap with a long correlated query round trip supports a post-entry delay.
+The clock-control-to-real-style-entry interval can additionally bound the latter,
+but includes delivery/driver work and following-query scheduling. Compare stamps
+only when time origin, page/frame/context and original history agree in raw
+protocol; missing/reset clocks stop interpretation. No cross-process subtraction,
+paint conclusion, shape-based fix or passing-run adoption is permitted.
+
+Pre-dispatch: all 72 local clock-control views and 648 observations pass;
+33 focused probe/provenance/workflow tests plus Ruff and diff checks pass.
+Baseline exclusion and exact-250ms overrun tests include the clock arm. Read-only
+review found no implementation defect after those coverage additions. The
+earlier 2,155-test full result belongs to the preceding scalar/object revision;
+fresh complete qualification remains necessary after any causal correction.

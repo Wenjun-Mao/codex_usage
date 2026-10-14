@@ -10,7 +10,8 @@ import sys
 from time import perf_counter
 
 SCRIPTS = Path(__file__).resolve().parents[1]
-CONTROLS = {"scalar": "() => 1", "object": "() => ({visible:true,hidden:false,active:false,focusVisible:false,hover:true})"}
+CONTROLS = {"scalar": "() => 1", "object": "() => ({visible:true,hidden:false,active:false,focusVisible:false,hover:true})",
+    "clock": "() => ({entry_ms: performance.now(), time_origin: performance.timeOrigin})"}
 DOCUMENT_STATE = "() => ({visibility: document.visibilityState, focused: document.hasFocus(), ready: document.readyState})"
 
 
@@ -27,6 +28,7 @@ def observation_trace(observation, rows, *, renderer_clock=False, control="none"
         row = {"phase": kwargs["phase"], "utc": datetime.now(timezone.utc).isoformat(), "calls": []}
         if renderer_clock and page is not None and hasattr(page, "evaluate"):
             row["document_state_before_observation"] = page.evaluate(DOCUMENT_STATE)
+            row["page_url_before_observation"] = page.url
         started = perf_counter()
         input_started = False
 
@@ -50,11 +52,13 @@ def observation_trace(observation, rows, *, renderer_clock=False, control="none"
                         wrapped = """(tip, arg) => {
                             const before = performance.now();
                             const value = (EXPRESSION)(tip, arg);
-                            return {value, elapsed_ms: performance.now() - before};
+                            return {value, entry_ms: before, time_origin: performance.timeOrigin,
+                                elapsed_ms: performance.now() - before};
                         }""".replace("EXPRESSION", expression)
                         result = tooltip.evaluate(wrapped, *arguments, **options)
                         row.setdefault("renderer_reads", []).append({
-                            "stage": stage, "elapsed_ms": result["elapsed_ms"]})
+                            "stage": stage, "elapsed_ms": result["elapsed_ms"],
+                            "entry_ms": result.get("entry_ms"), "time_origin": result.get("time_origin")})
                         return result["value"]
                     return tooltip.evaluate(*args, **options)
                 finally:

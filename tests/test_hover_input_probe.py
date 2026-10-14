@@ -89,7 +89,8 @@ def test_renderer_clock_wraps_original_expression_without_extra_read_or_changed_
     assert expression.count("performance.now()") == 2
     assert "document.visibilityState" not in expression
     assert args == ("arg",) and kwargs == {"argument": 7}
-    assert rows[0]["renderer_reads"] == [{"stage": "style", "elapsed_ms": .02}]
+    assert rows[0]["renderer_reads"] == [{"stage": "style", "elapsed_ms": .02,
+        "entry_ms": None, "time_origin": None}]
     assert module.observe_input is original
 
 
@@ -130,7 +131,7 @@ def test_main_restores_argv_and_records_original_failure(monkeypatch, tmp_path, 
         assert evidence["failure"] == "AssertionError: original failure"
 
 
-@pytest.mark.parametrize("control", ("scalar", "object"))
+@pytest.mark.parametrize("control", ("scalar", "object", "clock"))
 def test_control_queries_do_not_replace_real_style_or_run_during_baseline(control):
     calls, rows = [], []
     state = {"visible": True}
@@ -152,7 +153,7 @@ def test_control_queries_do_not_replace_real_style_or_run_during_baseline(contro
     assert module.observe_input is original
 
 
-@pytest.mark.parametrize("control", ("scalar", "object"))
+@pytest.mark.parametrize("control", ("scalar", "object", "clock"))
 def test_control_overrun_and_real_state_read_share_the_original_deadline(monkeypatch, control):
     observation = load_tool("verification.hover_observation")
     now, calls, rows = [0.0], [], []
@@ -167,10 +168,32 @@ def test_control_overrun_and_real_state_read_share_the_original_deadline(monkeyp
         calls.append("real style")
         return {"value": state, "elapsed_ms": 0}
 
-    page = SimpleNamespace(evaluate=lambda expression: calls.append("untimed document"))
+    page = SimpleNamespace(evaluate=lambda expression: calls.append("untimed document"), url="file:///synthetic.html")
     with probe.observation_trace(observation, rows, control=control, renderer_clock=True):
         with pytest.raises(AssertionError, match="seconds.*0.25"):
             observation.observe_input(page, SimpleNamespace(evaluate=evaluate),
                 lambda: calls.append("real input"), visible=True, phase="hover")
     assert calls == ["untimed document", "real style", "real input", "control", "real style"]
-    assert rows[0]["renderer_reads"][-1] == {"stage": "style", "elapsed_ms": 0}
+    assert rows[0]["renderer_reads"][-1] == {"stage": "style", "elapsed_ms": 0,
+        "entry_ms": None, "time_origin": None}
+
+
+def test_renderer_entry_stamps_preserve_results_and_clock_domain():
+    rows, state = [], {"visible": True}
+    values = iter((100, 103))
+
+    def evaluate(expression):
+        assert "performance.timeOrigin" in expression
+        return {"value": state, "elapsed_ms": 0, "entry_ms": next(values), "time_origin": 12345}
+
+    def original(page, tooltip, action, **kwargs):
+        assert tooltip.evaluate("baseline") is state
+        action()
+        return tooltip.evaluate("real style")
+
+    module = SimpleNamespace(observe_input=original)
+    with probe.observation_trace(module, rows, renderer_clock=True):
+        assert module.observe_input(None, SimpleNamespace(evaluate=evaluate), lambda: None, phase="hover") is state
+    assert rows[0]["renderer_reads"] == [
+        {"stage": "baseline", "elapsed_ms": 0, "entry_ms": 100, "time_origin": 12345},
+        {"stage": "style", "elapsed_ms": 0, "entry_ms": 103, "time_origin": 12345}]
