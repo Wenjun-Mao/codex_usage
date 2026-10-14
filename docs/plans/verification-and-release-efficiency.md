@@ -405,3 +405,6 @@ The complete chronology, immutable identities, failed evidence, trust-boundary
 reviews and measured costs remain in the
 [pilot receipt](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md).
+The proposed temporal-tracing extension and its tool/scope limitations are
+captured in a [review note](../research/2026-10-13-webkit-temporal-probe.md);
+it is not implemented or dispatched, and scope approval remains pending.
