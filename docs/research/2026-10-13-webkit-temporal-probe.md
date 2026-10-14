@@ -134,3 +134,8 @@ One separable diagnostic defect is corrected on main: evidence-write failure in
 test checks both preservation of the original guard and rejection of a missing
 evidence file after an otherwise successful replay. This preserves failure
 identity; it does not repair or explain the WebKit delay.
+
+An independent protocol identity audit exposed the old scalar control's remaining
+tooltip-handle argument and unmeasured UtilityScript preparation. The next
+[handle-free-query batch](2026-10-14-handle-free-query-probe.md) uses a public page
+literal control without the held attachment path. It remains diagnostic-only.

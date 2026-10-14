@@ -220,3 +220,49 @@ def test_renderer_entry_stamps_preserve_results_and_clock_domain():
     assert rows[0]["renderer_reads"] == [
         {"stage": "baseline", "elapsed_ms": 0, "entry_ms": 100, "time_origin": 12345},
         {"stage": "style", "elapsed_ms": 0, "entry_ms": 103, "time_origin": 12345}]
+
+
+@pytest.mark.parametrize("control_seconds", (0.0, .25))
+def test_page_scalar_passes_no_handle_and_shares_the_strict_budget(monkeypatch, control_seconds):
+    observation = load_tool("verification.hover_observation")
+    now, calls, rows = [0.0], [], []
+    hidden = {"visible": False, "hidden": True, "active": False, "focusVisible": False, "hover": False}
+    visible = {**hidden, "visible": True, "hidden": False, "hover": True}
+    monkeypatch.setattr(observation, "perf_counter", lambda: now[0])
+
+    def page_evaluate(*args, **kwargs):
+        assert args == ("1",) and kwargs == {}
+        calls.append("page literal")
+        now[0] += control_seconds
+        return 1
+
+    def style_evaluate(*_args, **_kwargs):
+        calls.append("real style")
+        return hidden if len(calls) == 1 else visible
+
+    page, tip = SimpleNamespace(evaluate=page_evaluate), SimpleNamespace(evaluate=style_evaluate)
+    with probe.observation_trace(observation, rows, control="page-scalar"):
+        if control_seconds:
+            with pytest.raises(AssertionError, match="seconds.*0.25"):
+                observation.observe_input(page, tip, lambda: calls.append("real input"), visible=True, phase="hover")
+        else:
+            observation.observe_input(page, tip, lambda: calls.append("real input"), visible=True, phase="hover")
+    assert calls == ["real style", "real input", "page literal", "real style"]
+    assert rows[0]["control_value"] == 1 and rows[0]["control_target"] == "page-literal"
+
+
+def test_page_scalar_failure_is_not_replaced_by_a_style_result():
+    rows, calls = [], []
+    def unavailable(*_args, **_kwargs):
+        raise RuntimeError("literal evaluation unavailable")
+    def original(page, tip, action, **_kwargs):
+        tip.evaluate("baseline")
+        action()
+        return tip.evaluate("real style")
+    module = SimpleNamespace(observe_input=original)
+    with probe.observation_trace(module, rows, control="page-scalar"):
+        with pytest.raises(RuntimeError, match="literal evaluation unavailable"):
+            module.observe_input(SimpleNamespace(evaluate=unavailable),
+                SimpleNamespace(evaluate=lambda expression: calls.append(expression)), lambda: None, phase="hover")
+    assert calls == ["baseline"] and module.observe_input is original
+    assert rows[0]["failure"] == "RuntimeError: literal evaluation unavailable"

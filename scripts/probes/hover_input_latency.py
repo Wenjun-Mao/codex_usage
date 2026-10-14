@@ -11,7 +11,7 @@ from time import perf_counter
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 CONTROLS = {"scalar": "() => 1", "object": "() => ({visible:true,hidden:false,active:false,focusVisible:false,hover:true})",
-    "clock": "() => ({entry_ms: performance.now(), time_origin: performance.timeOrigin})"}
+    "clock": "() => ({entry_ms: performance.now(), time_origin: performance.timeOrigin})", "page-scalar": "1"}
 DOCUMENT_STATE = "() => ({visibility: document.visibilityState, focused: document.hasFocus(), ready: document.readyState})"
 
 
@@ -43,7 +43,9 @@ def observation_trace(observation, rows, *, renderer_clock=False, control="none"
                     if input_started and control != "none":
                         mark("control-entry")
                         try:
-                            row["control_value"] = tooltip.evaluate(CONTROLS[control])
+                            row["control_target"] = "page-literal" if control == "page-scalar" else "tooltip-handle"
+                            target = page if control == "page-scalar" else tooltip
+                            row["control_value"] = target.evaluate(CONTROLS[control])
                         finally:
                             mark("control-return")
                     mark("real-" + stage + "-entry")
@@ -107,6 +109,8 @@ def main():
         "extra_dom_reads_per_expression": 0,
         "untimed_document_state_reads_per_observation": 3 if args.renderer_clock else 0,
         "extra_control_queries_per_timed_read": 0 if args.control == "none" else 1,
+        "control_target": "none" if args.control == "none" else (
+            "page-literal" if args.control == "page-scalar" else "tooltip-handle"),
         "script_injection": args.renderer_clock or args.control != "none", "product_scripts_disabled": True,
         "instrumentation_overhead_calibrated": False,
         "external_process_sampling": args.process_sample,

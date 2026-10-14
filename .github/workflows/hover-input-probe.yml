@@ -1,11 +1,12 @@
 name: WebKit Input Diagnostic
+run-name: "WebKit input diagnostic control=${{ inputs.control }} preflight=${{ inputs.profiler_preflight }} sample=${{ inputs.process_sample }}"
 on:
   workflow_dispatch:
     inputs:
       control:
         description: Extra diagnostic-only non-DOM query before the real style read
         type: choice
-        options: [none, scalar, object, clock]
+        options: [none, scalar, object, clock, page-scalar]
         default: none
       process_sample:
         description: Held sampler; true fails before attachment until ownership contract is reviewed
