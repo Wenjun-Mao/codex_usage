@@ -50,6 +50,34 @@ def test_allowance_history_markup_invalidates_revision_eleven_cache(tmp_path, mo
         assert reports_module._load_cached_report(connection, current_key) is None
 
 
+def test_model_comparison_upgrade_invalidates_old_html_and_keeps_warm_cache(tmp_path, monkeypatch):
+    home = tmp_path / ".codex"
+    _write_session(home, "model-comparison", total=100)
+    assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
+    arguments = dict(range_name="all", project_keys=[], theme="night", timezone_name="UTC")
+    original_render = reports_module.render_html_report
+
+    def old_render(*args, **kwargs):
+        path = original_render(*args, **kwargs)
+        path.write_text(path.read_text().replace("Cost / resp.", "Legacy cost / turn"))
+        return path
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reports_module, "REPORT_RENDER_REVISION", 34)
+        patch.setattr(reports_module, "render_html_report", old_render)
+        old = render_ledger_report(home, **arguments)
+        assert "Legacy cost / turn" in old.html
+        assert render_ledger_report(home, **arguments).cache_hit
+
+    assert reports_module.REPORT_RENDER_REVISION > 34
+    upgraded = render_ledger_report(home, **arguments)
+    assert not upgraded.cache_hit
+    assert "Cost / resp." in upgraded.html and "Legacy cost / turn" not in upgraded.html
+    assert upgraded.ledger_revision == old.ledger_revision
+    warm = render_ledger_report(home, **arguments)
+    assert warm.cache_hit and warm.html == upgraded.html
+
+
 def test_capture_populates_durable_ledger_and_reports_without_jsonl_reads(
     tmp_path: Path,
     monkeypatch,

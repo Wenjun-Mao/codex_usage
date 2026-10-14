@@ -55,3 +55,21 @@ small economics injection is not a substitute for stage C's hosted retry pilot.
 exists from this work and no publication was dispatched. Owner UI acceptance is
 required before publication. A prepared local preview is not an eligible release
 package, and no new user window is opened while the owner is away.
+
+## Upgrade Follow-Up
+
+Preview preparation identified unchanged `REPORT_RENDER_REVISION=34` despite
+the new primary table. Package version is not part of the HTML cache identity,
+so a version bump alone would not invalidate that markup. Advance the existing
+render revision to 35, without changing valued/account partitions. The integration
+regression warms old revision-34 HTML, requires new primary columns with unchanged
+ledger revision after upgrade, and requires an identical warm result afterward.
+The table above predates this extra case; renewed verification is recorded next.
+
+Renewed complete core: 2,193 passed, one approved skip, 63.68 seconds; all 2,194
+identities reconciled with the preserved baseline through `validate_python`.
+Evidence: `output/qualification/model-economics-upgrade-core/`. The focused
+cache/economics/work/speed selection passes 62 tests. Ruff, whitespace checks,
+exact monetary parity and bounded-work checks pass after the render revision
+change. The rebuilt local macOS collector passes its packaged synthetic smoke
+test; packaging is preview-only, not hosted/native release qualification.

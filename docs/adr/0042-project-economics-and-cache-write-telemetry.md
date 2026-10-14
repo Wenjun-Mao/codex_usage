@@ -68,4 +68,7 @@ while preserving meaningful tiny costs and exact source values in details.
 The renderer consumes existing `ModelEconomics.metrics`; no schema, query,
 repricing or population change is permitted. Require script-disabled browser
 inventory evidence in the existing screenshot/allowance gate and owner UI review
-before publication. Technical verification does not imply owner acceptance.
+before publication. Advance the existing HTML render revision so unchanged
+ledger data cannot reuse the prior table; an upgrade regression requires a cold
+new table followed by an identical warm cache hit. Technical verification does
+not imply owner acceptance.

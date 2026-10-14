@@ -463,8 +463,8 @@ all 72 local hover views and Ruff/parity/work guards passed at that checkpoint.
 U is integrated serially on main: per-model cost/response, responses/turn and
 compact tokens/turn, with exact values/coverage in details. Its 18 inventory-bound
 browser cases pass and controlled injection fails at the required first case.
-They are now mandatory in `screenshots-allowance`; integrated core passes 2,192
-tests with one approved skip and 2,193 reconciled identities; all 48 extension
+They are now mandatory in `screenshots-allowance`; integrated core passes 2,193
+tests with one approved skip and 2,194 reconciled identities; all 48 extension
 tests, Ruff, monetary parity/work and 72 local hover identities pass. Owner
 acceptance and the full-dashboard preview remain pending. No data schema,
 accounting population or extra query was added.
