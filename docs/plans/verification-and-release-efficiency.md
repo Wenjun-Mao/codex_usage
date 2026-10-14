@@ -446,7 +446,7 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 
 ## Implementation Checkpoint
 
-Latest hosted diagnostic source: `7d40d3c5`; promotion false, no new publication.
+Latest hosted diagnostic source: `352895d6`; promotion false, no new publication.
 Stage A identifies a reproduced pre-expression wait but not its owning cause;
 stages B-F remain gated. The read-only reviewer is collected, closed and unregistered.
 Early gates, isolated visual jobs, batched snapshots, exact-artifact promotion,
@@ -492,4 +492,7 @@ not establish a safe supported target association. Autonomy remains approved,
 but owner UI acceptance is still required before publication.
 The public [handle-free-query pair](../research/2026-10-14-handle-free-query-probe.md)
 completed batch 2: both arms fail the same original guard, including a 476ms
-literal query. One approved batch remains; the owning cause is still unresolved.
+literal query. A local [public AX check](../research/2026-10-14-public-ax-association.md)
+finds the fixture but reports the UI PID, not a distinct renderer. The held
+prototype now refuses all collection entrypoints. One approved batch remains;
+the owning cause is still unresolved.
