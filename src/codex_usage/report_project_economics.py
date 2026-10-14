@@ -192,10 +192,7 @@ def _render_model_detail(model: ModelEconomics, turn_cost: str) -> str:
 def _primary_money(label: str, metrics: TurnMetrics) -> str:
     if metrics.average_cost_per_response is None:
         return html.escape(label)
-    title = (
-        f"Exact average API-equivalent USD: ${_exact_number(metrics.average_cost_per_response)}; "
-        f"{_priced_response_detail(metrics)}"
-    )
+    title = _priced_response_detail(metrics)
     return f'<span title="{html.escape(title, quote=True)}">{html.escape(label)}</span>'
 
 

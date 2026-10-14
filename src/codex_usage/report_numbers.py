@@ -11,7 +11,7 @@ def format_int(value: int) -> str:
 
 
 def adaptive_usd(values: Sequence[float | None]) -> tuple[str, ...]:
-    """Format related USD values distinctly with bounded fixed precision."""
+    """Distinguish related USD values within a bounded precision, then collapse noise."""
     numbers = tuple(None if value is None else Decimal(str(value)) for value in values)
     required_places = max(
         [4]
@@ -25,10 +25,7 @@ def adaptive_usd(values: Sequence[float | None]) -> tuple[str, ...]:
         labels = tuple(_fixed_usd(value, places) for value in numbers)
         if _distinct_usd_labels(numbers, labels):
             return labels
-    return tuple(
-        "Unavailable" if value is None else "$" + format(value.normalize(), "g")
-        for value in numbers
-    )
+    return tuple(_bounded_usd(value) for value in numbers)
 
 
 def compact_token_count(value: float | int | None) -> str:
@@ -46,7 +43,25 @@ def _fixed_usd(value: Decimal | None, places: int) -> str:
         return "Unavailable"
     if value == 0:
         value = Decimal(0)
-    return "$" + format(value, f",.{places}f")
+    amount = format(value, f",.{places}f")
+    whole, fraction = amount.split(".")
+    fraction = fraction.rstrip("0")
+    fraction += "0" * max(0, 4 - len(fraction))
+    return f"${whole}.{fraction}"
+
+
+def _bounded_usd(value: Decimal | None) -> str:
+    if value is None:
+        return "Unavailable"
+    label = _fixed_usd(value, MAX_ECONOMICS_USD_DECIMALS)
+    rounded = Decimal(format(value, f".{MAX_ECONOMICS_USD_DECIMALS}f"))
+    if value > 0 and rounded == 0:
+        threshold = Decimal(1).scaleb(-MAX_ECONOMICS_USD_DECIMALS)
+        return f"<${format(threshold, f'.{MAX_ECONOMICS_USD_DECIMALS}f')}"
+    if value < 0 and rounded == 0:
+        threshold = Decimal(1).scaleb(-MAX_ECONOMICS_USD_DECIMALS)
+        return f">-${format(threshold, f'.{MAX_ECONOMICS_USD_DECIMALS}f')}"
+    return label
 
 
 def _distinct_usd_labels(

@@ -33,12 +33,16 @@ def main() -> None:
     )
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
+    screenshot_dir = args.output / "screenshots"
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
     report = render_project_economics_section(build_project_economics(_records()))
+    screenshot_paths: list[str] = []
     evidence: dict[str, object] = {
         "synthetic_only": True,
         "live_access": "none",
         "scenario": SCENARIO,
         "cases": [],
+        "screenshots": screenshot_paths,
     }
 
     with TemporaryDirectory(prefix="project-economics-ui-") as raw:
@@ -46,8 +50,21 @@ def main() -> None:
         with sync_playwright() as playwright:
             for engine in ("chromium", "webkit", "firefox"):
                 browser = getattr(playwright, engine).launch()
+                context = None
                 try:
-                    page = browser.new_page()
+                    context = browser.new_context(java_script_enabled=False)
+                    page = context.new_page()
+                    probe = documents / "javascript-disabled.html"
+                    probe.write_text(
+                        '<!doctype html><html><head><script>'
+                        'document.documentElement.dataset.scriptRan="true"'
+                        '</script></head><body></body></html>',
+                        encoding="utf-8",
+                    )
+                    page.goto(probe.resolve().as_uri())
+                    assert page.context == context
+                    assert page.locator("html").get_attribute("data-script-ran") is None
+
                     for theme in ("day", "night"):
                         path = documents / f"{theme}.html"
                         path.write_text(_document(theme, report), encoding="utf-8")
@@ -79,7 +96,7 @@ def main() -> None:
                                 "gpt-6-luna",
                                 "$0.00001234",
                                 "$0.00001235",
-                                "$0.00000000",
+                                "$0.0000",
                                 "2.4K",
                                 "Unavailable",
                             ):
@@ -128,12 +145,30 @@ def main() -> None:
                                     "e => { e.scrollLeft = 100; return e.scrollLeft > 0; }"
                                 )
                             assert layout["textColor"] != layout["background"]
+                            if engine == "chromium" and width in (1440, 360):
+                                page.locator(".project-economics-table-wrap").first.evaluate(
+                                    "e => { e.scrollLeft = 0; }"
+                                )
+                                screenshot = screenshot_dir / f"{theme}-{width}.png"
+                                page.screenshot(path=str(screenshot), full_page=True)
+                                screenshot_paths.append(str(screenshot))
+                                if width == 360:
+                                    primary_wrap = page.locator(
+                                        ".project-economics-table-wrap"
+                                    ).first
+                                    primary_wrap.evaluate("e => { e.scrollLeft = 150; }")
+                                    scrolled = screenshot_dir / f"{theme}-{width}-table-scrolled.png"
+                                    page.screenshot(path=str(scrolled), full_page=True)
+                                    screenshot_paths.append(str(scrolled))
+                                    primary_wrap.evaluate("e => { e.scrollLeft = 0; }")
                             evidence["cases"].append(
                                 {
                                     "engine": engine,
                                     "scenario": SCENARIO,
                                     "theme": theme,
                                     "width": width,
+                                    "java_script_enabled": False,
+                                    "inline_script_blocked": True,
                                     "keyboard_disclosures": True,
                                     "table_local_scroll": all(layout["tableScrolls"]),
                                     "page_overflow": False,
@@ -141,11 +176,22 @@ def main() -> None:
                                 }
                             )
                 finally:
+                    if context is not None:
+                        context.close()
                     browser.close()
 
     evidence_path = args.output / "evidence.json"
     evidence_path.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"scenario": SCENARIO, "passed_cases": len(evidence["cases"]), "live_access": "none"}))
+    print(
+        json.dumps(
+            {
+                "scenario": SCENARIO,
+                "passed_cases": len(evidence["cases"]),
+                "screenshots": screenshot_paths,
+                "live_access": "none",
+            }
+        )
+    )
 
 
 def _document(theme: str, report: str) -> str:

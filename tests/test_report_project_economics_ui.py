@@ -104,14 +104,43 @@ def test_project_model_comparison_preserves_model_grain_and_secondary_evidence()
     assert "Totals, shares, coverage and priceability" in markup
 
 
+def test_aggregated_response_cohorts_hide_float_noise_but_keep_exact_details() -> None:
+    report = build_project_economics(
+        (
+            _valued_record("single-turn", "single-response", 100, 0.10),
+            _valued_record("three-turn-a", "three-responses", 100, 0.10),
+            _valued_record("three-turn-b", "three-responses", 100, 0.10),
+            _valued_record("three-turn-c", "three-responses", 100, 0.10),
+        )
+    )
+    models = {model.key: model for model in report.projects[0].models}
+
+    assert models["single-response"].metrics.average_cost_per_response == 0.1
+    assert models["three-responses"].metrics.average_cost_per_response == 0.10000000000000002
+
+    markup = render_project_economics_section(report)
+    primary = markup.split('<table class="project-economics-models"', 1)[1].split(
+        "</table>", 1
+    )[0]
+    assert primary.count("$0.1000") == 2
+    assert "0.10000000000000002" not in primary
+    assert "Exact: $0.1" in markup
+    assert "Exact: $0.10000000000000002" in markup
+
+
 def test_economics_display_numbers_distinguish_zero_and_tiny_costs() -> None:
     labels = adaptive_usd((0, 0.00001234, 0.00001235, None))
-    assert labels == ("$0.00000000", "$0.00001234", "$0.00001235", "Unavailable")
+    assert labels == ("$0.0000", "$0.00001234", "$0.00001235", "Unavailable")
     assert adaptive_usd((0.00000012,)) == ("$0.00000012",)
+    assert adaptive_usd((0, 0.00000012, 0.00000013)) == (
+        "$0.0000",
+        "$0.00000012",
+        "$0.00000013",
+    )
+    assert adaptive_usd((0.1, 0.10000000000000002)) == ("$0.1000", "$0.1000")
 
     subnano = adaptive_usd((0, 1e-13, 2e-13))
-    assert subnano[0] != subnano[1]
-    assert subnano[1] != subnano[2]
+    assert subnano == ("$0.0000", "<$0.000000001", "<$0.000000001")
 
     assert compact_token_count(999) == "999"
     assert compact_token_count(2_400) == "2.4K"
