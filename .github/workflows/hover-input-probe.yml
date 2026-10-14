@@ -11,6 +11,10 @@ on:
         description: External process sampling, diagnostic only
         type: boolean
         default: false
+      profiler_preflight:
+        description: Read-only installed profiler capability discovery; no attachment
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -29,6 +33,9 @@ jobs:
       - uses: ./.github/actions/qualification-tools
       - name: Install original styling engines
         run: uv run playwright install chromium firefox webkit
+      - name: Inspect profiler capabilities outside every input timer
+        if: inputs.profiler_preflight == true
+        run: uv run python scripts/probes/profiler_capabilities.py --output output/diagnostic/hover/profiler-capabilities
       - name: Trace one bounded original input sequence without changing its guard
         env:
           DEBUG: pw:protocol,pw:api,pw:browser

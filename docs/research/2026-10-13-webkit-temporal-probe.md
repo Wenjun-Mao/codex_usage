@@ -1,8 +1,8 @@
 # WebKit Temporal Probe Review Note
 
 Date: 2026-10-13 (America/Toronto). Status: bounded batch approved by the owner,
-not implemented or dispatched. Implementation resumes separately after the
-autonomy review/Goal restart. This approval does not change the measurement
+not implemented or dispatched. The owner also approved the autonomy bundle and
+restarted the Goal without a wall-time constraint. Approval does not change the measurement
 contract or authorize publication before the newly required owner UI review.
 
 ## Established Bound And Missing Evidence
@@ -70,6 +70,18 @@ The post-ACK rendering mechanism remains a hypothesis until temporal evidence
 and a causal intervention support it.
 
 The owner has approved this bounded extension. Tool privilege/system-wide scope
-exceptions, additional batches and official toolchain updates are proposed in
+exceptions, additional batches and official toolchain updates are approved in
 the [autonomy review](../plans/verification-and-release-efficiency.md#autonomy-approval-review),
-not granted here. Stages B-F remain gated; `PROMOTION_ENABLED` remains false.
+subject to its boundaries. Stages B-F remain gated; `PROMOTION_ENABLED` remains false.
+
+## Resumed Batch 1: Capability Before Collection
+
+This batch first checks hosted `xctrace` location/version, recording/export help
+and installed templates, with no attachment. Each command is bounded to ten
+seconds and receives no repository/publisher token. Original input/style replay
+remains unchanged. Missing tools or truncated help are explicitly unavailable,
+not a reason to guess a trace schema or enable a broader instrument.
+This feasibility dispatch consumes batch 1 of the three approved new batches;
+its second slot need not be used. It cannot establish a causal correction.
+The next collection/control pair will be prespecified at one source after
+the tool output establishes a supported temporal collection contract.

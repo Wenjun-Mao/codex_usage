@@ -9,7 +9,8 @@ Scope agreed: faster failure-local gates, exact qualified-artifact promotion,
 and fewer browser round trips without reducing coverage.
 Owner's latest revision approves bounded temporal tracing, adds within-project
 model comparison, and requires owner UI acceptance before publication. This is
-a planning pass; the Goal will be restarted separately after autonomy review.
+a reviewed plan; the owner has now approved the autonomy bundle and restarted
+the Goal without a wall-time constraint. Publication still awaits UI acceptance.
 
 Authority: [measured profile](../research/2026-10-13-verification-and-release-profile.md),
 [ADR 0061](../adr/0061-qualified-artifact-promotion.md), and the existing
@@ -383,27 +384,26 @@ Earlier granted permissions cover retained-checkout code/workflow/test/docs,
 synthetic verification, scoped commit/push, isolated non-Keychain hosts, the durable
 journal, nonpublishing qualification/native/dry-run pilots and conditional source
 enablement. Do not ask again for those routine checkpoints. The owner now approves
-the bounded temporal-tracing batch in the linked review note. Additional permissions
-below are proposals, not granted by this planning pass.
+the bounded temporal-tracing batch in the linked review note and every recommended
+preapproval below. The restarted Goal carries these permissions into implementation.
 
 | Foreseeable action | Current authority / proposed decision |
 | --- | --- |
-| Hypothesis-led diagnostics beyond the approved batch | Proposed: at most three two-job batches total, including the approved one; each job <=5 minutes, fixed hypothesis/control, no reruns for green |
-| Profiler tool access on the isolated CI VM | Proposed: preinstalled Apple tools and process-local `DEVELOPER_DIR`; optional noninteractive elevation solely for the approved tracing scope, never persistent security changes |
-| Scheduling tools requiring system-wide collection | Proposed narrow exception: <=30 seconds of scheduling metadata on that disposable VM, filtered to owned PIDs; artifact <=100 MiB, retention <=14 days; no memory, file contents, environment, command-line arguments or network payload capture; refuse a tool unable to meet this boundary |
-| Official Playwright/browser update | Proposed: a pinned official patch/minor update only if upstream or controlled evidence identifies an owning SDK/browser defect; update locks/provenance, retain failing baseline and requalify all original assertions; no vendored SDK patch |
-| Additional corrective qualification and stale-job cancellation | Proposed: up to two evidence-backed repair iterations beyond mandatory C/E cycles; diagnose unexpected failures, cancel only this assignment's verified live stale/hung jobs, never retry unexplained failure into acceptance |
+| Hypothesis-led diagnostics beyond the approved batch | Approved: at most three two-job batches total, including the approved one; each job <=5 minutes, fixed hypothesis/control, no reruns for green |
+| Profiler tool access on the isolated CI VM | Approved: preinstalled Apple tools and process-local `DEVELOPER_DIR`; optional noninteractive elevation solely for the approved tracing scope, never persistent security changes |
+| Scheduling tools requiring system-wide collection | Approved narrow exception: <=30 seconds of scheduling metadata on that disposable VM, filtered to owned PIDs; artifact <=100 MiB, retention <=14 days; no memory, file contents, environment, command-line arguments or network payload capture; refuse a tool unable to meet this boundary |
+| Official Playwright/browser update | Approved: a pinned official patch/minor update only if upstream or controlled evidence identifies an owning SDK/browser defect; update locks/provenance, retain failing baseline and requalify all original assertions; no vendored SDK patch |
+| Additional corrective qualification and stale-job cancellation | Approved: up to two evidence-backed repair iterations beyond mandatory C/E cycles; diagnose unexpected failures, cancel only this assignment's verified live stale/hung jobs, never retry unexplained failure into acceptance |
 | UI concurrency | Owner permits concurrent work; use an isolated managed worktree and attended subagent, not concurrent writers in main; integrate only owned commits serially |
-| Delegation selector unavailable | Proposed: do that assignment locally rather than spawn an inherited/default-model agent; do not bypass native restrictions or change global defaults |
+| Delegation selector unavailable | Approved: do that assignment locally rather than spawn an inherited/default-model agent; do not bypass native restrictions or change global defaults |
 | Stage E and release candidate selection | Already conditionally authorized; choose an unused eligible version >=2.12.3 and record exact source/proof; no release tag while UI acceptance is pending |
-| Local full-dashboard review window | Proposed: one new disposable Local Preview VS Code profile with in-memory secrets, reading a private local ledger snapshot only; no capture, production installation/profile change or private-data upload; open when owner is ready, not while asleep |
+| Local full-dashboard review window | Approved: one new disposable Local Preview VS Code profile with in-memory secrets, reading a private local ledger snapshot only; no capture, production installation/profile change or private-data upload; open when owner is ready, not while asleep |
 | Stage F publication | Held by the latest instruction until owner UI acceptance; prior Goal approval cannot bypass this review |
 
-Proposed unattended timebox: ten hours from Goal restart, standard existing hosted
-runners only, visual concurrency <=2. Every new diagnostic batch requires evidence
-that changes its hypothesis; two successive non-discriminating batches stop diagnosis.
-At the timebox, start no new work; collect or cancel this assignment's remaining
-bounded jobs and report the exact checkpoint. No larger runners, paid services or
+The owner removed the proposed ten-hour timebox. Retain standard existing hosted
+runners, visual concurrency <=2 and the job/batch/repair ceilings above. Every new
+diagnostic batch needs evidence that changes its hypothesis; two successive
+non-discriminating batches stop diagnosis. No larger runners, paid services or
 new infrastructure. Limits are execution ceilings, not a narrower completion claim.
 
 Keep the <250ms guard, scripts-disabled product, genuine inputs, all case identities,
@@ -436,7 +436,7 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 - [x] Owner authorized local implementation and scoped commit/push/nonpublishing pilots.
 - [x] Owner explicitly approved all six remaining stages through the active goal.
 - [x] Owner approved the bounded temporal-tracing extension.
-- [ ] Owner accepts the proposed unattended autonomy bundle.
+- [x] Owner accepts the unattended autonomy bundle without a wall-time constraint.
 - [ ] U passes technical verification and owner UI review.
 - [ ] A-B establish and fix the root cause with retained measurement guarantees.
 - [ ] C-D pass current-source normal/retry/native/dry-run gates and update measures.
@@ -477,5 +477,5 @@ reviews and measured costs remain in the
 The proposed temporal-tracing extension and its tool/scope limitations are
 captured in a [review note](../research/2026-10-13-webkit-temporal-probe.md);
 the owner has now approved that bounded batch, but it is not implemented or
-dispatched. The additional autonomy requests above and owner UI acceptance are
-still pending. Planning does not restart the currently blocked Goal.
+dispatched. The additional autonomy permissions above are approved and the Goal
+is restarted. Owner UI acceptance remains pending before publication.
