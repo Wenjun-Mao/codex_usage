@@ -376,7 +376,9 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 
 ## Implementation Checkpoint
 
-Current source: `1032b715`; promotion false, no active workers or new publication.
+Latest diagnostic source: `1b6325af`; promotion false, no new publication.
+Stage A identifies a reproduced pre-expression wait but not its owning cause;
+stages B-F remain gated. The read-only reviewer is collected, closed and unregistered.
 Early gates, isolated visual jobs, batched snapshots, exact-artifact promotion,
 original-attempt receipts and the independently pinned Git journal are implemented.
 The journal pilot passes; production history remains empty and starts at 2.12.3.
@@ -386,16 +388,18 @@ Local median breakdown runtime is 150.13 -> 95.29 seconds across three alternati
 pairs, with 720 tuples/80 byte-identical documents and zero forbidden warm work.
 Reads fall from 11,628 to 720 snapshots; fresh navigation, 1,440 real keyboard
 presses and 160 screenshots remain. Resize-only equivalence is not accepted.
-Latest core evidence: 2,146 passed, one approved skip, 2,147 unique identities;
+Latest core evidence: 2,178 passed, one approved skip, 2,179 unique identities;
 all 72 local hover views and Ruff/parity/work guards pass.
 
 Native polling/deadline defects were corrected under
 [ADR 0062](../adr/0062-native-observation-transport.md). Trial-hover priming and
 real-input baselines are guarded under
 [ADR 0063](../adr/0063-real-input-observation-budget.md). Hosted diagnostics still
-fail: a 377ms style-query round trip includes an expression reporting 0ms at clock
-resolution. That does not prove visibility onset/paint or explain every keyboard
-stall. Current-source qualification and controlled retry remain incomplete.
+fail: a 345ms observation has a same-renderer 342ms baseline-to-expression-entry
+gap with a fast input ACK and a body reporting 0ms at clock resolution. Sampling
+changed timing and did not reproduce that failure. The cause is not established;
+visibility onset/paint and every keyboard stall are still unproven. Current-source
+qualification and controlled retry remain incomplete.
 
 The complete chronology, immutable identities, failed evidence, trust-boundary
 reviews and measured costs remain in the

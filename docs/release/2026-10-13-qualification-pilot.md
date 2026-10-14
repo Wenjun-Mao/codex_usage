@@ -407,3 +407,57 @@ replay passes all 72 views. Monetary parity/work guards pass. Evidence is
 `output/qualification/process-probe-final-core/` and
 `output/qualification/process-probe-unsampled-local/`. No user/local process was
 sampled; a self-only libproc ABI read verified the installed 136-byte structure.
+
+### External Sampling Results
+
+Both runs at `1b6325af` are terminal:
+[unsampled 38501590699](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38501590699)
+fails the original guard at 345.45ms in the same second WebKit usage bucket;
+[sampled 38501592271](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38501592271)
+passes all 72 views/648 observations, at maximum 150.80ms. No run is retried or
+adopted as a correction. Document digests and bundled tree identities agree.
+
+The failing renderer stamps are baseline 578ms and style entry 920ms in time
+origin 1791945229105; expression duration is 0ms at clock resolution. Protocol
+baseline 371 returns at 02:33:49.684 UTC, mouse 373 sends .686/returns .687,
+style 374 through outer 375 sends/ACKs .688 and its target reply arrives 50.029.
+This localizes this sample before expression entry, not to its synchronous body
+or exclusively post-expression reply delivery. It does not identify preceding
+input/render work, inspector dispatch/VM work or scheduling individually.
+The nearby network-idle event at .690 is correlation, not a cause.
+
+Four collected reports have successful exits/nonempty output and kernel-bound
+identities: owned Node driver, Playwright UI process, Networking and WebContent.
+Actual executable paths/hashes are retained in `samples/processes.json`. Loaded
+WebKit, JavaScriptCore and WebCore UUIDs in both browser-process reports match
+the same hashed local/pinned bundle, verified with `dwarfdump --uuid`.
+The sampled affected hover is only 7.79ms input-to-observation; its later keyboard
+sample is 146.41ms, not the original >250ms failure. Aggregate reports cannot
+identify the culprit from a missing reproduced failure. UI/driver nominal
+eight-second windows cover earlier startup; WebContent covers the affected view.
+No individual stack is attributed to the failed unsampled run.
+
+Raw evidence is `output/qualification/hosted-unsampled-process-control/` and
+`output/qualification/hosted-sampled-process-control/`. The batch is exhausted.
+Owning-layer correction, cold/warm qualification and stages C-F remain held.
+Promotion is still false; pinned production journal and v2.12.2 tag are unchanged,
+and v2.12.3 remains absent. Unrelated `apps/` and user windows/data are untouched.
+
+Independent Sol/High review is collected, closed and unregistered; effective
+settings remain unverified. It confirms the pre-expression bound and incomplete
+temporal sampling, with no B correction established. Image paths are redacted;
+matching loaded UUIDs do not independently attest exact loaded paths. No GPU
+sample was captured. Missing completion timestamps and aggregate teardown stacks
+prevent attribution to a particular interval.
+
+A reviewed next hypothesis is post-ACK WebContent rendering/transaction work:
+pinned [WebPage finalization](https://raw.githubusercontent.com/WebKit/WebKit/343e13bf22dca9d0ec227801419aab0f9001a32f/Source/WebKit/WebProcess/WebPage/WebPage.cpp)
+flushes deferred hover acknowledgement before the later transaction/backing-store
+work in the [drawing area](https://raw.githubusercontent.com/WebKit/WebKit/343e13bf22dca9d0ec227801419aab0f9001a32f/Source/WebKit/WebProcess/WebPage/RemoteLayerTree/RemoteLayerTreeDrawingArea.mm).
+That is a source-supported mechanism, not attribution of the observed failure.
+The next diagnostic refinement needs actual capture start/end bounds and
+failure-aligned temporal evidence separating rendering, compilation/GC and
+waiting, without DOM primers or measurement changes. A prearmed normal-world
+JavaScript listener/rAF is not substituted for the script-disabled fixture;
+script enablement, private-world use or runner redesign needs owner review.
+No further dispatch or requirement relaxation is inferred from this checkpoint.
