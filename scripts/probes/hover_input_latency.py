@@ -96,6 +96,8 @@ def main():
         help="Diagnostic-only test-side performance clock around each original style expression")
     parser.add_argument("--control", choices=("none", *CONTROLS), default="none",
         help="Extra non-DOM query before each timed style read; never qualification")
+    parser.add_argument("--process-sample", action="store_true",
+        help="Bounded external sampling on the ephemeral macOS diagnostic runner only")
     args = parser.parse_args()
     sys.path.insert(0, str(SCRIPTS))
     from verification import hover_observation
@@ -107,12 +109,15 @@ def main():
         "extra_control_queries_per_timed_read": 0 if args.control == "none" else 1,
         "script_injection": args.renderer_clock or args.control != "none", "product_scripts_disabled": True,
         "instrumentation_overhead_calibrated": False,
+        "external_process_sampling": args.process_sample,
         "platform": platform.platform(), "calls": rows}
     original_argv = sys.argv
     sys.argv = [str(SCRIPTS / "check_breakdown_hover_ui.py"), "--output", str(args.output)]
     try:
-        with observation_trace(hover_observation, rows, renderer_clock=args.renderer_clock,
-            control=args.control, browsers=browsers):
+        from probes.webkit_process_sample import sampling
+        with sampling(args.output / "samples", args.process_sample) as sample_status, observation_trace(
+            hover_observation, rows, renderer_clock=args.renderer_clock, control=args.control, browsers=browsers):
+            evidence["process_sampling_status"] = sample_status
             runpy.run_path(sys.argv[0], run_name="__main__")
         evidence["replay_passed"] = True
     except BaseException as error:

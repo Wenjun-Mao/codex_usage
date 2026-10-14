@@ -349,3 +349,61 @@ Baseline exclusion and exact-250ms overrun tests include the clock arm. Read-onl
 review found no implementation defect after those coverage additions. The
 earlier 2,155-test full result belongs to the preceding scalar/object revision;
 fresh complete qualification remains necessary after any causal correction.
+
+Both stamped runs at `b3d5a48d` are terminal:
+[direct style 38499551235](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38499551235)
+and [clock control 38499552504](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38499552504)
+each pass all 72 views/648 observations, at maximum 91.24ms and 150.89ms.
+The original affected bucket is now 8.89ms/15.49ms, not a reproduced failure.
+Those greens establish no causal correction. All eight document digests agree
+across both batches, and bundled WebKit-tree digests agree.
+
+The clock arm's longest interval is WebKit keyboard observation 278: baseline
+entry 765ms, control entry 838ms and style entry 913ms share time origin
+1791943862342. The host control round trip is 138.45ms and real style 4.95ms.
+Delay appears on both sides of control entry in this shorter sample; it does not
+uniquely locate the process or explain the earlier 357ms failure. Protocol/frame
+correlation is still required before stronger attribution. Debug instrumentation
+can perturb startup/scheduling, and the failure was not reproduced in this batch.
+
+Fresh full core verification of the stamped source passes 2,158 cases plus the
+approved skip in 66.85s, with 2,159 independently reconciled identities. Raw
+local evidence is `output/qualification/renderer-entry-core/`; hosted evidence
+is `output/qualification/hosted-stamped-style/` and
+`output/qualification/hosted-clock-control/`. Owning-layer correction, cold/warm
+acceptance and fresh release qualification are still held.
+
+### Prespecified External Sampling Batch
+
+Hypothesis: identifiable CPU work, blocking, or pipe/driver delivery work in the
+owned driver/browser/WebContent path explains delayed intervals beyond the DOM
+expression. Next batch has two five-minute jobs at one source: direct stamped
+style with no sampler, and the same harness with a background OS sampler. No
+observer callback or DOM primer starts collection. Sampler work/overhead cannot
+count as qualification or be subtracted from the original 250ms guard.
+
+Sampling is restricted to the GitHub-hosted macOS main diagnostic job. Discover
+the owner's bundled WebKit process by ancestry, then bind reparented XPC services
+by that verified executable-root affinity; sample only the owner's installed
+driver. Retain executable hashes and loaded-image paths, recheck PID identity
+before attachment, and capture each process once for eight seconds at 2ms.
+The monitor is bounded to 90s and all sampler children are collected. Local/user
+process sampling is refused. Sampler failure cannot mask the original observer
+exception. Empty/missing samples and an absent reproduced stall are inconclusive.
+
+CPU-active rendering/GC/JIT, lock/synchronous-wait or pipe-writer stacks will
+guide the next owning-layer intervention; idle stacks alone do not establish
+causality. The matched unsampled arm checks profiler perturbation. No activation,
+SDK patch, runner change, waiting primer or timeout relaxation is introduced.
+
+Pre-dispatch review corrected shared cleanup deadlines/process-group containment,
+preservation of original failures across cleanup errors, and exact revision-2336
+XPC `.Development` executable mapping. Kernel BSD creation timestamps, parent
+and canonical executable paths are rechecked along with binary hashes before
+attachment; the final PID-only attachment race remains a diagnostic limitation.
+Fifty-three focused tests and Ruff pass. Full core passes 2,178 plus the approved
+skip in 68.10s; 2,179 raw identities reconcile independently. Local unsampled
+replay passes all 72 views. Monetary parity/work guards pass. Evidence is
+`output/qualification/process-probe-final-core/` and
+`output/qualification/process-probe-unsampled-local/`. No user/local process was
+sampled; a self-only libproc ABI read verified the installed 136-byte structure.

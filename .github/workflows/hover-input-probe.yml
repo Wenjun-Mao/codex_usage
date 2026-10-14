@@ -7,6 +7,10 @@ on:
         type: choice
         options: [none, scalar, object, clock]
         default: none
+      process_sample:
+        description: External process sampling, diagnostic only
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -29,11 +33,14 @@ jobs:
         env:
           DEBUG: pw:protocol,pw:api,pw:browser
           CONTROL: ${{ inputs.control }}
+          PROCESS_SAMPLE: ${{ inputs.process_sample }}
         shell: bash
         run: |
           set -o pipefail
           mkdir -p output/diagnostic/hover
-          uv run python scripts/probes/hover_input_latency.py --renderer-clock --control "$CONTROL" --output output/diagnostic/hover \
+          sample=""
+          if [[ "$PROCESS_SAMPLE" == true ]]; then sample="--process-sample"; fi
+          uv run python scripts/probes/hover_input_latency.py --renderer-clock --control "$CONTROL" $sample --output output/diagnostic/hover \
             2>&1 | tee output/diagnostic/hover/protocol.log
       - name: Preserve diagnostic output, never producer receipts
         if: always()
