@@ -62,7 +62,7 @@ clang -std=c11 -Wall -Wextra -Werror \
   -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
   -framework ApplicationServices scripts/probes/public_ax_fixture.c \
   -o output/diagnostic/public-metadata/ax-fixture-check
-uv run python scripts/probes/check_public_ax_fixture.py \
+env PYTHONPATH=scripts uv run python -m probes.check_public_ax_fixture \
   --helper output/diagnostic/public-metadata/ax-fixture-check \
   --output output/diagnostic/public-ax-fixture-reviewed
 ```

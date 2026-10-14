@@ -493,6 +493,7 @@ but owner UI acceptance is still required before publication.
 The public [handle-free-query pair](../research/2026-10-14-handle-free-query-probe.md)
 completed batch 2: both arms fail the same original guard, including a 476ms
 literal query. A local [public AX check](../research/2026-10-14-public-ax-association.md)
-finds the fixture but reports the UI PID, not a distinct renderer. The held
-prototype now refuses all collection entrypoints. One approved batch remains;
-the owning cause is still unresolved.
+finds the fixture but reports the UI PID, not a distinct renderer. Further
+[session/event checks and readiness review](../research/2026-10-14-public-observability-limits.md)
+supply no usable renderer marker. The held prototype refuses collection;
+one approved batch remains and the owning cause is still unresolved.
