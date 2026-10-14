@@ -83,24 +83,35 @@ def main() -> None:
                             primary = project.locator(".project-economics-models")
                             for header in (
                                 "Model",
-                                "Average API-equivalent cost / response",
+                                "Cost / resp.",
                                 "Responses / turn",
                                 "Tokens / turn",
                                 "Measured turns",
                             ):
                                 assert header in primary.inner_text(), (engine, theme, width, header)
+                            assert primary.locator("thead th:nth-child(2)").get_attribute(
+                                "aria-label"
+                            ) == "Average API-equivalent cost per response"
                             primary_text = primary.inner_text()
                             for value in (
                                 "gpt-6.1-sol",
                                 "gpt-6-astra",
                                 "gpt-6-luna",
-                                "$0.00001234",
-                                "$0.00001235",
+                                "$0.0000123",
+                                "$0.0000124",
                                 "$0.0000",
+                                "$0.0261",
+                                "$0.2426",
                                 "2.4K",
                                 "Unavailable",
                             ):
                                 assert value in primary_text, (engine, theme, width, value)
+                            assert "Response cost averages use fully priced responses" in page.locator(
+                                ".project-economics-heading p"
+                            ).inner_text()
+                            assert "turn cost averages use fully priced turns" in page.locator(
+                                ".project-economics-heading p"
+                            ).inner_text()
 
                             secondary = project.locator(".project-economics-secondary")
                             secondary_summary = secondary.locator(":scope > summary")
@@ -130,6 +141,8 @@ def main() -> None:
                                         .map(e => e.scrollWidth > e.clientWidth + 1),
                                     cellsFit: [...document.querySelectorAll('.project-economics-table-wrap th, .project-economics-table-wrap td')]
                                         .every(e => e.scrollWidth <= e.clientWidth + 1),
+                                    modelColumnWidth: document.querySelector('.project-economics-models thead th:first-child')
+                                        .getBoundingClientRect().width,
                                     textColor: getComputedStyle(document.body).color,
                                     background: getComputedStyle(document.body).backgroundColor
                                 })"""
@@ -137,13 +150,33 @@ def main() -> None:
                             assert layout["pageFits"], (engine, theme, width, layout)
                             assert len(layout["tableScrolls"]) == 2
                             assert layout["cellsFit"], (engine, theme, width, layout)
+                            assert layout["modelColumnWidth"] >= 180, (engine, theme, width, layout)
+                            sticky_identity_verified = False
                             if width <= 760:
                                 assert any(layout["tableScrolls"]), (engine, theme, width, layout)
-                            if width == 360:
-                                assert all(layout["tableScrolls"]), (engine, theme, width, layout)
-                                assert page.locator(".project-economics-table-wrap").first.evaluate(
+                                primary_wrap = page.locator(".project-economics-table-wrap").first
+                                assert primary_wrap.evaluate(
                                     "e => { e.scrollLeft = 100; return e.scrollLeft > 0; }"
                                 )
+                                sticky_row = page.locator(
+                                    ".project-economics-models tbody th[scope=row]"
+                                ).first
+                                assert sticky_row.inner_text() == "gpt-6.1-sol"
+                                assert sticky_row.evaluate(
+                                    "e => getComputedStyle(e).position"
+                                ) == "sticky"
+                                sticky_x = sticky_row.bounding_box()["x"]
+                                wrap_x = primary_wrap.bounding_box()["x"]
+                                assert abs(sticky_x - wrap_x) <= 1, (
+                                    engine,
+                                    theme,
+                                    width,
+                                    sticky_x,
+                                    wrap_x,
+                                )
+                                sticky_identity_verified = True
+                            if width == 360:
+                                assert all(layout["tableScrolls"]), (engine, theme, width, layout)
                             assert layout["textColor"] != layout["background"]
                             if engine == "chromium" and width in (1440, 360):
                                 page.locator(".project-economics-table-wrap").first.evaluate(
@@ -156,9 +189,21 @@ def main() -> None:
                                     primary_wrap = page.locator(
                                         ".project-economics-table-wrap"
                                     ).first
-                                    primary_wrap.evaluate("e => { e.scrollLeft = 150; }")
+                                    primary_wrap.scroll_into_view_if_needed()
+                                    primary_wrap.evaluate("e => { e.scrollLeft = 110; }")
+                                    sticky_box = page.locator(
+                                        ".project-economics-models tbody th[scope=row]"
+                                    ).first.bounding_box()
+                                    amount_box = page.locator(
+                                        ".project-economics-models tbody tr:first-child td:nth-child(2) span"
+                                    ).bounding_box()
+                                    wrap_box = primary_wrap.bounding_box()
+                                    assert amount_box["x"] >= sticky_box["x"] + sticky_box["width"] - 1
+                                    assert amount_box["x"] + amount_box["width"] <= (
+                                        wrap_box["x"] + wrap_box["width"] + 1
+                                    )
                                     scrolled = screenshot_dir / f"{theme}-{width}-table-scrolled.png"
-                                    page.screenshot(path=str(scrolled), full_page=True)
+                                    page.screenshot(path=str(scrolled))
                                     screenshot_paths.append(str(scrolled))
                                     primary_wrap.evaluate("e => { e.scrollLeft = 0; }")
                             evidence["cases"].append(
@@ -171,6 +216,7 @@ def main() -> None:
                                     "inline_script_blocked": True,
                                     "keyboard_disclosures": True,
                                     "table_local_scroll": all(layout["tableScrolls"]),
+                                    "sticky_model_identity_verified": sticky_identity_verified,
                                     "page_overflow": False,
                                     "synthetic_only": True,
                                 }
@@ -215,6 +261,8 @@ def _records() -> tuple[ValuedUsageRecord, ...]:
         _valued("turn-d", "gpt-6-luna", 100, 0.0),
         _valued("turn-unpriced", "unknown-model-no-price", 80, 0.0, unpriced=80),
         _valued("", "unknown-model-no-turn", 40, 0.0, unpriced=40),
+        _valued("turn-computed-low", "computed-average-low", 12, 0.0261312345),
+        _valued("turn-computed-high", "computed-average-high", 12, 0.24255351),
     )
 
 

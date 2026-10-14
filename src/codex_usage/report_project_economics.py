@@ -35,8 +35,9 @@ def render_project_economics_section(report: ProjectEconomicsReport | None) -> s
         '<div class="project-economics-heading">'
         '<div><h2 id="project-economics-heading">Project Economics</h2>'
         '<p class="muted">Turn measures use selected responses with a non-empty turn ID. '
-        "Per-model measures use that model's own usage; average API-equivalent costs use "
-        'fully priced responses. Token totals include input (including cached input) and output.</p>'
+        "Per-model measures use that model's own usage. Response cost averages use fully "
+        'priced responses; turn cost averages use fully priced turns. Token totals include '
+        'input (including cached input) and output.</p>'
         "</div>"
         '<span class="project-economics-source">Ledger only</span>'
         "</div>"
@@ -65,7 +66,16 @@ def project_economics_css() -> str:
     .project-economics-projects { display: grid; gap: 6px; min-width: 0; }.project-economics-project { border: 1px solid var(--border); border-radius: 7px; background: var(--surface); padding: 0 10px; min-width: 0; }.project-economics-project[open] { padding-bottom: 10px; }
     .project-economics-project > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 42px; }.project-economics-project-summary { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }.project-economics-project-body { padding: 2px 0 0; min-width: 0; }
     .project-economics-table-wrap { max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; }
-    .project-economics-models { margin: 8px 0 0; min-width: 660px; }.project-economics-models th[scope="row"] { color: var(--text); font-weight: 500; overflow-wrap: anywhere; }.project-economics-models th[scope="col"] { white-space: nowrap; }.project-economics-models .num { white-space: nowrap; }
+    .project-economics-models { margin: 8px 0 0; min-width: 840px; table-layout: fixed; }
+    .project-economics-models th:first-child, .project-economics-models td:first-child { width: 190px; }
+    .project-economics-models th:nth-child(2), .project-economics-models td:nth-child(2) { width: 220px; }
+    .project-economics-models th:nth-child(3), .project-economics-models td:nth-child(3) { width: 145px; }
+    .project-economics-models th:nth-child(4), .project-economics-models td:nth-child(4) { width: 145px; }
+    .project-economics-models th:nth-child(5), .project-economics-models td:nth-child(5) { width: 140px; }
+    .project-economics-models thead th:first-child, .project-economics-models tbody th[scope="row"] { position: sticky; left: 0; box-shadow: 1px 0 0 var(--border); }
+    .project-economics-models thead th:first-child { z-index: 2; background: var(--surface-soft); }
+    .project-economics-models tbody th[scope="row"] { z-index: 1; background: var(--surface); color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
+    .project-economics-models th[scope="col"] { white-space: nowrap; }.project-economics-models .num { white-space: nowrap; }
     .project-economics-secondary { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }.project-economics-secondary > summary:focus-visible, .project-economics-project > summary:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 3px; }
     .project-economics-secondary-help { margin: 7px 0; max-width: 900px; }.project-economics-legacy { min-width: 1120px; font-size: 12px; }.project-economics-legacy .num { white-space: nowrap; }.project-economics-exact { display: block; color: var(--muted); font-size: 11px; font-weight: 400; margin-top: 2px; }
     @media (max-width: 720px) { .project-economics-heading, .project-economics-project > summary { align-items: flex-start; flex-direction: column; gap: 4px; padding: 9px 0; }.project-economics-project > summary { min-height: 0; }.project-economics-project-summary { text-align: left; }.project-economics-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -128,7 +138,8 @@ def _render_project(project: ProjectEconomics) -> str:
         '</dl><div class="table-wrap project-economics-table-wrap">'
         f'<table class="project-economics-models" aria-label="Per-model comparison for {html.escape(project.label, quote=True)}">'
         '<thead><tr><th scope="col">Model</th>'
-        '<th scope="col" class="num">Average API-equivalent cost / response</th>'
+        '<th scope="col" class="num" aria-label="Average API-equivalent cost per response" '
+        'title="Average API-equivalent cost per response">Cost / resp.</th>'
         '<th scope="col" class="num">Responses / turn</th>'
         '<th scope="col" class="num">Tokens / turn</th>'
         '<th scope="col" class="num">Measured turns</th>'

@@ -13,19 +13,55 @@ def format_int(value: int) -> str:
 def adaptive_usd(values: Sequence[float | None]) -> tuple[str, ...]:
     """Distinguish related USD values within a bounded precision, then collapse noise."""
     numbers = tuple(None if value is None else Decimal(str(value)) for value in values)
-    required_places = max(
-        [4]
-        + [
-            min(MAX_ECONOMICS_USD_DECIMALS, max(0, -value.as_tuple().exponent))
-            for value in numbers
-            if value is not None
-        ]
-    )
-    for places in range(required_places, MAX_ECONOMICS_USD_DECIMALS + 1):
-        labels = tuple(_fixed_usd(value, places) for value in numbers)
-        if _distinct_usd_labels(numbers, labels):
-            return labels
-    return tuple(_bounded_usd(value) for value in numbers)
+    unique_values = tuple(dict.fromkeys(value for value in numbers if value is not None))
+    places_by_value = {value: 4 for value in unique_values}
+    max_precision_labels = {
+        value: _fixed_usd(value, MAX_ECONOMICS_USD_DECIMALS)
+        for value in unique_values
+    }
+
+    while True:
+        labels_by_value = {
+            value: _fixed_usd(value, places_by_value[value]) for value in unique_values
+        }
+        values_by_label: dict[str, dict[str, set[Decimal]]] = {}
+        values_to_increase: set[Decimal] = set()
+        for value in unique_values:
+            label = labels_by_value[value]
+            max_label = max_precision_labels[value]
+            values_by_label.setdefault(label, {}).setdefault(max_label, set()).add(value)
+            rounded = Decimal(label[1:].replace(",", ""))
+            if (
+                value != 0
+                and rounded == 0
+                and places_by_value[value] < MAX_ECONOMICS_USD_DECIMALS
+            ):
+                values_to_increase.add(value)
+
+        for distinct_values in values_by_label.values():
+            if len(distinct_values) > 1:
+                for related_values in distinct_values.values():
+                    values_to_increase.update(
+                        value
+                        for value in related_values
+                        if value != 0
+                        and places_by_value[value] < MAX_ECONOMICS_USD_DECIMALS
+                    )
+
+        if not values_to_increase:
+            break
+        for value in values_to_increase:
+            places_by_value[value] += 1
+
+    labels = []
+    for value in numbers:
+        if value is None:
+            labels.append("Unavailable")
+            continue
+        label = labels_by_value[value]
+        rounded = Decimal(label[1:].replace(",", ""))
+        labels.append(_bounded_usd(value) if value != 0 and rounded == 0 else label)
+    return tuple(labels)
 
 
 def compact_token_count(value: float | int | None) -> str:
@@ -62,26 +98,6 @@ def _bounded_usd(value: Decimal | None) -> str:
         threshold = Decimal(1).scaleb(-MAX_ECONOMICS_USD_DECIMALS)
         return f">-${format(threshold, f'.{MAX_ECONOMICS_USD_DECIMALS}f')}"
     return label
-
-
-def _distinct_usd_labels(
-    values: tuple[Decimal | None, ...], labels: tuple[str, ...]
-) -> bool:
-    by_value: dict[Decimal, str] = {}
-    by_label: dict[str, Decimal] = {}
-    for value, label in zip(values, labels, strict=True):
-        if value is None:
-            continue
-        rounded = Decimal(label[1:].replace(",", ""))
-        if value != 0 and rounded == 0:
-            return False
-        previous_label = by_value.setdefault(value, label)
-        if previous_label != label:
-            return False
-        previous_value = by_label.setdefault(label, value)
-        if previous_value != value:
-            return False
-    return True
 
 
 def decimal_text(value, *, places=2, trim=False):

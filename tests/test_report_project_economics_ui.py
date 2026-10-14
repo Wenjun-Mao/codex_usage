@@ -49,12 +49,14 @@ def test_report_renders_compact_accessible_project_economics_from_precomputed_le
     assert 'aria-labelledby="project-economics-heading"' in html
     assert "Weighted all-project benchmark" in html
     assert "Ledger only" in html
+    assert "Response cost averages use fully priced responses; turn cost averages use fully priced turns." in html
     assert "alpha" in html and "beta" in html
     assert "Small sample" in html
     assert '<details class="project-economics-project">' in html
     assert '<th scope="col">Model</th>' in html
     assert '<th scope="row">gpt-5.6-sol</th>' in html
-    assert "Average API-equivalent cost / response" in html
+    assert 'aria-label="Average API-equivalent cost per response"' in html
+    assert "Cost / resp." in html
     assert "Responses / turn" in html
     assert "Tokens / turn" in html
     assert "Measured turns" in html
@@ -89,6 +91,11 @@ def test_project_model_comparison_preserves_model_grain_and_secondary_evidence()
 
     assert '<table class="project-economics-models"' in markup
     assert 'aria-label="Per-model comparison for Research &amp; Tools"' in markup
+    primary = markup.split('<table class="project-economics-models"', 1)[1].split(
+        "</table>", 1
+    )[0]
+    assert "$0.0000123" in primary
+    assert "$0.0000124" in primary
     assert "$0.00001234" in markup
     assert "$0.00001235" in markup
     assert "$0.0000" in markup
@@ -130,13 +137,14 @@ def test_aggregated_response_cohorts_hide_float_noise_but_keep_exact_details() -
 
 def test_economics_display_numbers_distinguish_zero_and_tiny_costs() -> None:
     labels = adaptive_usd((0, 0.00001234, 0.00001235, None))
-    assert labels == ("$0.0000", "$0.00001234", "$0.00001235", "Unavailable")
-    assert adaptive_usd((0.00000012,)) == ("$0.00000012",)
+    assert labels == ("$0.0000", "$0.0000123", "$0.0000124", "Unavailable")
+    assert adaptive_usd((0.00000012,)) == ("$0.0000001",)
     assert adaptive_usd((0, 0.00000012, 0.00000013)) == (
         "$0.0000",
         "$0.00000012",
         "$0.00000013",
     )
+    assert adaptive_usd((0.0261312345, 0.24255351)) == ("$0.0261", "$0.2426")
     assert adaptive_usd((0.1, 0.10000000000000002)) == ("$0.1000", "$0.1000")
 
     subnano = adaptive_usd((0, 1e-13, 2e-13))
