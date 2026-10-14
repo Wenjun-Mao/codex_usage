@@ -1,5 +1,5 @@
 name: WebKit Input Diagnostic
-run-name: "WebKit input diagnostic control=${{ inputs.control }} preflight=${{ inputs.profiler_preflight }} sample=${{ inputs.process_sample }}"
+run-name: "WebKit input diagnostic control=${{ inputs.control }} preflight=${{ inputs.profiler_preflight }} sample=${{ inputs.process_sample }} lookup=${{ inputs.eval_lookup }}"
 on:
   workflow_dispatch:
     inputs:
@@ -16,6 +16,11 @@ on:
         description: Read-only installed profiler capability discovery; no attachment
         type: boolean
         default: false
+      eval_lookup:
+        description: Diagnostic public eval lookup clock or unchanged data-descriptor control
+        type: choice
+        options: [none, descriptor, clock]
+        default: none
 permissions:
   contents: read
 jobs:
@@ -28,9 +33,19 @@ jobs:
         with:
           persist-credentials: false
       - name: Require nonpublishing main context
+        env:
+          EVAL_LOOKUP: ${{ inputs.eval_lookup }}
+          CONTROL: ${{ inputs.control }}
+          PROCESS_SAMPLE: ${{ inputs.process_sample }}
+          PROFILER_PREFLIGHT: ${{ inputs.profiler_preflight }}
         run: |
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF" = refs/heads/main
+          if [ "$EVAL_LOOKUP" != none ]; then
+            test "$CONTROL" = none
+            test "$PROCESS_SAMPLE" = false
+            test "$PROFILER_PREFLIGHT" = false
+          fi
       - uses: ./.github/actions/qualification-tools
       - name: Install original styling engines
         run: uv run playwright install chromium firefox webkit
@@ -42,13 +57,14 @@ jobs:
           DEBUG: pw:protocol,pw:api,pw:browser
           CONTROL: ${{ inputs.control }}
           PROCESS_SAMPLE: ${{ inputs.process_sample }}
+          EVAL_LOOKUP: ${{ inputs.eval_lookup }}
         shell: bash
         run: |
           set -o pipefail
           mkdir -p output/diagnostic/hover
           sample=""
           if [[ "$PROCESS_SAMPLE" == true ]]; then sample="--process-sample"; fi
-          uv run python scripts/probes/hover_input_latency.py --renderer-clock --control "$CONTROL" $sample --output output/diagnostic/hover \
+          uv run python scripts/probes/hover_input_latency.py --renderer-clock --control "$CONTROL" $sample --output output/diagnostic/hover --eval-lookup "$EVAL_LOOKUP" \
             2>&1 | tee output/diagnostic/hover/protocol.log
       - name: Preserve diagnostic output, never producer receipts
         if: always()

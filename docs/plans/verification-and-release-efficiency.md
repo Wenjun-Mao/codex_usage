@@ -495,5 +495,5 @@ completed batch 2: both arms fail the same original guard, including a 476ms
 literal query. A local [public AX check](../research/2026-10-14-public-ax-association.md)
 finds the fixture but reports the UI PID, not a distinct renderer. Further
 [session/event checks and readiness review](../research/2026-10-14-public-observability-limits.md)
-supply no usable renderer marker. The held prototype refuses collection;
-one approved batch remains and the owning cause is still unresolved.
+supply no native renderer marker. The [public eval-lookup pair](../research/2026-10-14-public-eval-lookup-probe.md)
+is locally verified for the last batch; the held collector still refuses and cause is unresolved.

@@ -181,6 +181,10 @@ def test_input_probe_is_bounded_read_only_and_cannot_emit_release_proofs() -> No
     assert "timeout-minutes: 5" in text and "set -o pipefail" in text
     assert "DEBUG: pw:protocol,pw:api,pw:browser" in text
     assert "options: [none, scalar, object, clock, page-scalar]" in text
+    assert "options: [none, descriptor, clock]" in text
+    assert '--eval-lookup "$EVAL_LOOKUP"' in text
+    assert 'test "$CONTROL" = none' in text and 'test "$PROCESS_SAMPLE" = false' in text
+    assert 'test "$PROFILER_PREFLIGHT" = false' in text
     assert "if: inputs.profiler_preflight == true" in text
     assert "scripts/probes/profiler_capabilities.py --output output/diagnostic/hover/profiler-capabilities" in text
     assert 'scripts/probes/hover_input_latency.py --renderer-clock --control "$CONTROL" $sample --output output/diagnostic/hover' in text

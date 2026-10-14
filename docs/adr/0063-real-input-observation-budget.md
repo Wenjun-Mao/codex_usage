@@ -56,3 +56,24 @@ hover masking and hidden results with lingering input triggers. Complete 72-case
 three-engine qualification and fresh hosted normal/failure-retry/dry-run pilots
 remain required. Earlier failed evidence is preserved; renderer root cause and
 general hosted reliability are not inferred from a passing sample.
+
+## Diagnostic Document Lifetime
+
+The public eval-lookup probe may bracket a freshly navigated synthetic document
+with explicitly injected setup/cleanup, before original preparation and outside
+all acceptance timers. Normal qualification supplies no such context. Both
+diagnostic arms retain every original input, hidden baseline and strict guard;
+fixture bytes, product scripts and CSP remain unchanged. One arm redefines the
+unchanged public data descriptor; the other timestamps public `eval` property
+lookup while returning its original function. Neither is a fix or release proof.
+
+Bind marks to the page/frame, a unique document token, exact Performance object
+and `now` method identities, and increasing sequence; disclose ring overflow.
+Capture epoch origin once as label metadata, not realm proof: the pinned engine
+reprojects its monotonic origin through wall time on each read. Use only same-
+domain relative timestamps, rejecting nonfinite, boolean and negative values.
+The marker is after the pinned evaluator's
+argument reconstruction and before native eval, not target receipt, input
+delivery, VM dispatch or paint. Reflection/JIT/recording perturbation remains
+uncalibrated. Diagnostic validation and cleanup errors cannot replace an original
+guard failure, and a passing instrumented run cannot authorize a warming change.
