@@ -37,7 +37,7 @@ def test_only_owned_driver_and_verified_browser_root_affinity_are_selected():
 invalid line
 """)
     selected = sampler.selected_processes(rows, 100, Path("/sdk/driver/node"))
-    assert set(selected) == {101, 102, 103}
+    assert set(selected) == {101, 102}
     assert sampler.selected_processes({k: v for k, v in rows.items() if k != 102},
         100, Path("/sdk/driver/node")) == {}
 
@@ -48,6 +48,7 @@ def test_sampler_failure_cannot_mask_original_observation(monkeypatch, tmp_path,
     child = SimpleNamespace(pid=99999, poll=lambda: None, terminate=lambda: events.append("terminate"),
         wait=lambda **kwargs: (events.append("collected"), 2)[1])
     monkeypatch.setattr(sampler, "require_ephemeral_host", lambda: None)
+    monkeypatch.setattr(sampler, "require_sampling_contract", lambda: None)
     def launch(command, **kwargs):
         assert command[1:3] == ["-m", "probes.webkit_process_sample"]
         assert kwargs["env"]["PYTHONPATH"] == str(Path(sampler.__file__).resolve().parents[1])
@@ -127,6 +128,7 @@ def test_cleanup_errors_are_separate_from_original_failure(monkeypatch, tmp_path
         terminate=fail if fault == "terminate" else lambda: None,
         wait=(lambda **_: fail()) if fault == "wait" else lambda **_: 0)
     monkeypatch.setattr(sampler, "require_ephemeral_host", lambda: None)
+    monkeypatch.setattr(sampler, "require_sampling_contract", lambda: None)
     monkeypatch.setattr(sampler.subprocess, "Popen", lambda *_, **__: child)
     monkeypatch.setattr(sampler.os, "killpg", lambda *_: None)
     if fault == "status":
@@ -135,3 +137,19 @@ def test_cleanup_errors_are_separate_from_original_failure(monkeypatch, tmp_path
         with sampler.sampling(tmp_path, True) as status:
             raise AssertionError("original deadline failure")
     assert status["cleanup_error"] == "synthetic cleanup error"
+
+
+@pytest.mark.parametrize("entrypoint", ("context", "monitor"))
+def test_live_sampler_is_held_before_filesystem_sdk_or_attachment(monkeypatch, tmp_path, entrypoint):
+    monkeypatch.setattr(sampler, "require_ephemeral_host", lambda: None)
+    monkeypatch.setattr(sampler.subprocess, "Popen", lambda *_args, **_kwargs: pytest.fail("No child launch"))
+    monkeypatch.setattr(sampler.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("No process discovery"))
+    monkeypatch.setattr(sampler, "process_identity", lambda *_: pytest.fail("No private ABI read"))
+    output = tmp_path / "absent"
+    with pytest.raises(RuntimeError, match="public process identity and fixture association"):
+        if entrypoint == "context":
+            with sampler.sampling(output, True):
+                pytest.fail("No replay under unsupported sampling")
+        else:
+            sampler.monitor(output, 100, Path("/sdk/driver/node"))
+    assert not output.exists()

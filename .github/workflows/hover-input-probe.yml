@@ -8,7 +8,7 @@ on:
         options: [none, scalar, object, clock]
         default: none
       process_sample:
-        description: External process sampling, diagnostic only
+        description: Held sampler; true fails before attachment until ownership contract is reviewed
         type: boolean
         default: false
       profiler_preflight:

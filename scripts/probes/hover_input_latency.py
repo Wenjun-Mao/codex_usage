@@ -113,6 +113,7 @@ def main():
         "platform": platform.platform(), "calls": rows}
     original_argv = sys.argv
     sys.argv = [str(SCRIPTS / "check_breakdown_hover_ui.py"), "--output", str(args.output)]
+    primary_error = None
     try:
         from probes.webkit_process_sample import sampling
         with sampling(args.output / "samples", args.process_sample) as sample_status, observation_trace(
@@ -121,17 +122,23 @@ def main():
             runpy.run_path(sys.argv[0], run_name="__main__")
         evidence["replay_passed"] = True
     except BaseException as error:
+        primary_error = error
         evidence["replay_passed"] = False
         evidence["failure"] = type(error).__name__ + ": " + str(error)[:4000]
         raise
     finally:
         sys.argv = original_argv
-        from probes.browser_provenance import collect
         try:
-            evidence["provenance"] = collect(browsers)
-        except Exception as error:
-            evidence["provenance_failure"] = str(error)[:1000]
-        (args.output / "input-timings.json").write_text(json.dumps(evidence, indent=2) + "\n")
+            from probes.browser_provenance import collect
+            try:
+                evidence["provenance"] = collect(browsers)
+            except Exception as error:
+                evidence["provenance_failure"] = str(error)[:1000]
+            (args.output / "input-timings.json").write_text(json.dumps(evidence, indent=2) + "\n")
+        except BaseException as diagnostic_error:
+            if primary_error is None:
+                raise
+            primary_error.add_note("Diagnostic evidence could not be retained: " + str(diagnostic_error)[:1000])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Read-only libproc identity from the installed macOS SDK's public BSD ABI."""
+"""Historical private libproc ABI; live sampler attachment is held pending replacement."""
 import ctypes
 
 

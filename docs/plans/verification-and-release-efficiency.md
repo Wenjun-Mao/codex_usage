@@ -437,7 +437,8 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 - [x] Owner explicitly approved all six remaining stages through the active goal.
 - [x] Owner approved the bounded temporal-tracing extension.
 - [x] Owner accepts the unattended autonomy bundle without a wall-time constraint.
-- [ ] U passes technical verification and owner UI review.
+- [x] U passes integrated renderer/core/extension and inventory-bound browser checks.
+- [ ] U receives owner acceptance in the full-dashboard Local Preview.
 - [ ] A-B establish and fix the root cause with retained measurement guarantees.
 - [ ] C-D pass current-source normal/retry/native/dry-run gates and update measures.
 - [ ] E's final enabled/versioned source is requalified under existing authority.
@@ -445,7 +446,7 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 
 ## Implementation Checkpoint
 
-Latest diagnostic source: `1b6325af`; promotion false, no new publication.
+Latest hosted diagnostic source: `7d40d3c5`; promotion false, no new publication.
 Stage A identifies a reproduced pre-expression wait but not its owning cause;
 stages B-F remain gated. The read-only reviewer is collected, closed and unregistered.
 Early gates, isolated visual jobs, batched snapshots, exact-artifact promotion,
@@ -457,8 +458,16 @@ Local median breakdown runtime is 150.13 -> 95.29 seconds across three alternati
 pairs, with 720 tuples/80 byte-identical documents and zero forbidden warm work.
 Reads fall from 11,628 to 720 snapshots; fresh navigation, 1,440 real keyboard
 presses and 160 screenshots remain. Resize-only equivalence is not accepted.
-Latest core evidence: 2,178 passed, one approved skip, 2,179 unique identities;
-all 72 local hover views and Ruff/parity/work guards pass.
+Historical core evidence: 2,178 passed, one approved skip, 2,179 unique identities;
+all 72 local hover views and Ruff/parity/work guards passed at that checkpoint.
+U is integrated serially on main: per-model cost/response, responses/turn and
+compact tokens/turn, with exact values/coverage in details. Its 18 inventory-bound
+browser cases pass and controlled injection fails at the required first case.
+They are now mandatory in `screenshots-allowance`; integrated core passes 2,192
+tests with one approved skip and 2,193 reconciled identities; all 48 extension
+tests, Ruff, monetary parity/work and 72 local hover identities pass. Owner
+acceptance and the full-dashboard preview remain pending. No data schema,
+accounting population or extra query was added.
 
 Native polling/deadline defects were corrected under
 [ADR 0062](../adr/0062-native-observation-transport.md). Trial-hover priming and
@@ -474,8 +483,10 @@ The complete chronology, immutable identities, failed evidence, trust-boundary
 reviews and measured costs remain in the
 [pilot receipt](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md).
-The proposed temporal-tracing extension and its tool/scope limitations are
+The temporal-tracing extension and its tool/scope limitations are
 captured in a [review note](../research/2026-10-13-webkit-temporal-probe.md);
-the owner has now approved that bounded batch, but it is not implemented or
-dispatched. The additional autonomy permissions above are approved and the Goal
-is restarted. Owner UI acceptance remains pending before publication.
+batch 1's hosted read-only capability job passed. The privileged prototype is
+held in an isolated checkout after ownership, child-containment and export-bound
+review findings; no collection arm was dispatched. Further approval alone does
+not establish a safe supported target association. Autonomy remains approved,
+but owner UI acceptance is still required before publication.

@@ -8,6 +8,29 @@ from release_tooling_support import load_tool
 probe = load_tool("probes.hover_input_latency")
 
 
+@pytest.mark.parametrize("replay_fails", (False, True))
+def test_evidence_disk_failure_preserves_original_guard(monkeypatch, tmp_path, replay_fails):
+    import sys
+    from pathlib import Path
+    original_argv = ["probe", "--output", str(tmp_path)]
+    monkeypatch.setattr(sys, "argv", original_argv)
+    def run(*_args, **_kwargs):
+        if replay_fails:
+            raise AssertionError("original 250ms guard")
+    def refuse(*_args, **_kwargs):
+        raise OSError("synthetic disk failure")
+    monkeypatch.setattr(probe.runpy, "run_path", run)
+    monkeypatch.setattr(Path, "write_text", refuse)
+    if replay_fails:
+        with pytest.raises(AssertionError, match="original 250ms guard") as error:
+            probe.main()
+        assert any("synthetic disk failure" in note for note in error.value.__notes__)
+    else:
+        with pytest.raises(OSError, match="synthetic disk failure"):
+            probe.main()
+    assert sys.argv is original_argv
+
+
 @pytest.mark.parametrize("fails", (False, True))
 def test_observation_trace_retains_each_original_call_and_restores_guard(fails):
     calls = []

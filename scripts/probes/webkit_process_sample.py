@@ -1,4 +1,4 @@
-"""Bounded ephemeral-CI sampling of the owned driver and bundled WebKit only."""
+"""Held diagnostic sampler; attachment requires a reviewed public ownership contract."""
 import argparse
 from contextlib import contextmanager
 import json
@@ -25,6 +25,10 @@ def require_ephemeral_host(env=os.environ):
         raise ValueError("Process sampling is restricted to the ephemeral main diagnostic job")
 
 
+def require_sampling_contract():
+    raise RuntimeError("Process sampling unavailable: public process identity and fixture association are not established")
+
+
 def process_table(text):
     rows = {}
     for line in text.splitlines():
@@ -49,11 +53,10 @@ def selected_processes(rows, owner, driver):
         for root in Path(row["executable"]).resolve().parents if root.name.startswith("webkit-")}
     webkit = {pid: row for pid, row in rows.items()
         if any(Path(row["executable"]).resolve().is_relative_to(root) for root in roots)
-        and (pid in owned or is_xpc(Path(row["executable"]).resolve()))}
+        and pid in owned}
     if not webkit:
         return {}
-    # WebContent XPC services can be reparented; executable containment on this
-    # isolated runner, not ancestry alone, binds them to the bundled browser.
+    # Bundle affinity alone cannot associate a reparented XPC service with this run.
     return {**webkit, **{pid: row for pid, row in rows.items()
         if pid in owned and row["executable"] == str(driver)}}
 
@@ -98,6 +101,7 @@ def finish_samples(jobs):
 
 def monitor(output, owner, driver):
     require_ephemeral_host()
+    require_sampling_contract()
     output.mkdir(parents=True, exist_ok=True)
     stopped, jobs, records = [False], {}, {}
     signal.signal(signal.SIGTERM, lambda *_: stopped.__setitem__(0, True))
@@ -138,6 +142,7 @@ def sampling(output, enabled):
         yield status
         return
     require_ephemeral_host()
+    require_sampling_contract()
     import playwright
     driver = Path(playwright.__file__).parent / "driver/node"
     process = subprocess.Popen([sys.executable, "-m", "probes.webkit_process_sample",

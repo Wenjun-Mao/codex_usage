@@ -51,3 +51,21 @@ model ordering, and disclose coverage. Cached report HTML must be invalidated
 when the shared renderer adopts these semantics. Focused tests cover mixed
 models, transitions, roles, blank IDs, unpriced models, zero-cost records, and
 the weighted benchmark.
+
+## Per-Model Presentation Candidate: 2026-10-14
+
+The primary within-project comparison exposes average API-equivalent cost per
+response, responses per turn, compact tokens per turn and measured model turns.
+Response cost averages use fully priced measured responses; turn cost averages
+still use fully priced measured turns. A mixed-model turn participates once in
+each model's population, so model turn counts must not be added to infer project
+turns. These are observational workload measures, not controlled model-quality
+or efficiency comparisons.
+
+Keep totals, shares, exact values and denominators in secondary inspection.
+Bound monetary display precision to suppress floating-point arithmetic noise,
+while preserving meaningful tiny costs and exact source values in details.
+The renderer consumes existing `ModelEconomics.metrics`; no schema, query,
+repricing or population change is permitted. Require script-disabled browser
+inventory evidence in the existing screenshot/allowance gate and owner UI review
+before publication. Technical verification does not imply owner acceptance.

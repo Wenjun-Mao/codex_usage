@@ -1,7 +1,8 @@
 # WebKit Temporal Probe Review Note
 
-Date: 2026-10-13 (America/Toronto). Status: bounded batch approved by the owner,
-not implemented or dispatched. The owner also approved the autonomy bundle and
+Date: 2026-10-13 (America/Toronto); checkpoint updated 2026-10-14.
+Status: hosted capability preflight complete; privileged collection prototype held.
+The owner also approved the autonomy bundle and
 restarted the Goal without a wall-time constraint. Approval does not change the measurement
 contract or authorize publication before the newly required owner UI review.
 
@@ -85,3 +86,51 @@ This feasibility dispatch consumes batch 1 of the three approved new batches;
 its second slot need not be used. It cannot establish a causal correction.
 The next collection/control pair will be prespecified at one source after
 the tool output establishes a supported temporal collection contract.
+
+## Capability Result And Collection Hold
+
+Read-only capability run
+[38507547887](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38507547887),
+attempt 1, source `7d40d3c587bfd074c73f196a5a724cbfd53b3d4f`, completed successfully.
+All five commands returned exit 0 with untruncated output. The host supplies
+`/Applications/Xcode_26.6.app/Contents/Developer/usr/bin/xctrace`, version
+`16.0 (17F113)`, including Time Profiler and System Trace templates. Original
+72-view/648-observation replay passed; no process was attached. All eight fixture
+hashes match the retained failed baseline. A passing capability replay does not
+establish target ownership, readiness, clock alignment or a causal correction.
+
+Artifact `11868880833`, `hover-input-diagnostic-r38507547887-a1`, digest
+`sha256:a8d70673f2e6bbc3b1261cecbcd98a8aa679c01a4bbf4e1e08e50d4a9c431abf`
+retains the capability report and replay. This used one job in batch 1 of the
+three approved batches; no temporal collection/control pair has been dispatched.
+
+Independent review rejected the uncommitted collection prototype: unprivileged
+signals cannot reliably contain root-owned recorder/export descendants; bundle
+affinity does not prove which reparented WebContent belongs to the fixture; and
+raw cleanup failure can bypass independent export bounds. Preserve it only in
+the isolated `temporal-trace-prototype` checkout with its hold note. Main has no
+temporal attachment option. Owner approval of tool privilege does not fix these
+implementation and ownership gaps.
+
+The older optional aggregate sampler shared those ownership assumptions. Both
+its context and direct monitor now refuse live work before filesystem, SDK or
+process activity, even on the approved CI host. Selection excludes reparented
+same-bundle services. Historical cleanup/identity tests remain; synthetic refusal
+regressions cover both entrypoints. Its private ABI is explicitly labeled as
+historical, not public. This is a temporary safety hold pending a reviewed public
+identity/fixture-association contract, not a completed replacement. Default
+unsampled replay and read-only capability discovery remain available.
+
+The local macOS 26.5 SDK explicitly labels `libproc.h` private. Public Endpoint
+Security responsibility tokens require an approved entitlement and Full Disk
+Access beyond this scope. An external probe has no public handle to WebKit's
+existing XPC connection. No approved supported association mechanism is yet
+established; no security changes or private-interface fallback were made. This
+limit is not evidence of a Playwright defect. The strict measurement contract
+and source-disabled promotion remain unchanged; stages A-B are unresolved.
+
+One separable diagnostic defect is corrected on main: evidence-write failure in
+`finally` must not replace an original input assertion. A synthetic disk-failure
+test checks both preservation of the original guard and rejection of a missing
+evidence file after an otherwise successful replay. This preserves failure
+identity; it does not repair or explain the WebKit delay.
