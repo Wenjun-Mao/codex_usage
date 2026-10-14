@@ -7,6 +7,9 @@ Remaining-work revision: owner approved stages A-F through the active goal,
 starting from `1032b715`; A is in progress, dependent gates remain unmet.
 Scope agreed: faster failure-local gates, exact qualified-artifact promotion,
 and fewer browser round trips without reducing coverage.
+Owner's latest revision approves bounded temporal tracing, adds within-project
+model comparison, and requires owner UI acceptance before publication. This is
+a planning pass; the Goal will be restarted separately after autonomy review.
 
 Authority: [measured profile](../research/2026-10-13-verification-and-release-profile.md),
 [ADR 0061](../adr/0061-qualified-artifact-promotion.md), and the existing
@@ -25,7 +28,8 @@ bounded-work guards, screenshot acceptance, all browser scenarios/themes/widths/
 engines, both supported platform packages, collector smoke/archive/handoff
 checks, hash-bound native macOS verification, and public Marketplace hash checks.
 Existing native Windows acceptance gaps remain explicit, not newly claimed proof.
-No product accounting, pricing, dashboard rendering or timeout change is planned.
+No product accounting, pricing or timeout change is planned. The additional
+Project Economics presentation change below reuses existing model metrics.
 
 Exclude Python fixture/shutdown tuning, Python test sharding, duplicate
 TypeScript build cleanup, runner-platform migration, new distribution targets,
@@ -68,6 +72,9 @@ The subsequent explicit goal authorizes implementation of stages 1-6, including
 source enablement and publication after their gates. Actual selected version,
 final SHA and normal run/attempt must be recorded before the authorized release;
 no permission to bypass gates or change credentials/settings is inferred.
+The latest instruction supersedes unattended publication authority: prepare and
+qualify the combined candidate, then wait for owner acceptance of its new UI.
+Do not create its release tag or dispatch publication before that acceptance.
 
 ## Qualification Graph
 
@@ -196,9 +203,10 @@ invalidate qualification. Both public target hashes equal the qualified hashes.
 
 ### D4: Qualify And Measure The New Process
 
-The remaining critical path is A -> B -> C -> D. E and F require separate owner
-authority. Preserve ADR 0063's strict input-to-observation budget; neither a late
-visible result nor a diagnostic-only passing run qualifies the candidate.
+The remaining critical path is A -> B -> C -> D -> E, with U integrated before
+final qualification and F held for owner UI acceptance. Preserve ADR 0063's strict
+input-to-observation budget; neither a late visible result nor a diagnostic-only
+passing run qualifies the candidate.
 
 #### D4A: Locate The Hosted WebKit Delay
 
@@ -286,10 +294,10 @@ No old source's receipts qualify a changed execution closure.
 Acceptance: A-D pass; readiness is explicitly nonpublishing. Expired artifacts
 require renewed qualification, never a promotion-time rebuild or stale-proof reuse.
 
-#### D4E: Separately Approved Production Enablement
+#### D4E: Production Enablement After Technical Gates
 
-- Obtain owner approval for source enablement and new-version preparation, not
-  tag creation/upload. Select an unused eligible version at least 2.12.3; synchronize
+- Existing authority covers source enablement and new-version preparation, not
+  bypassing UI review. Select an unused eligible version at least 2.12.3; synchronize
   Python/extension metadata, locks, changelogs and independent release history.
 - Review the complete retained journal and publisher trust boundary. Preserve
   pinned roots, job-scoped Contents-write, before-credential proof/intent checks,
@@ -303,13 +311,14 @@ require renewed qualification, never a promotion-time rebuild or stale-proof reu
   Keep publication undispatched and create no eligible release tag in this stage.
 
 Acceptance: the final enabled source is freshly qualified/inspected and separately
-approved for enablement. No flag/version/workflow edit occurs after qualification;
+authorized for enablement. No flag/version/workflow edit occurs after qualification;
 any such change starts a new candidate. Enablement is not publication authority.
 
-#### D4F: Separately Approved Publication Canary
+#### D4F: Publication After Owner UI Acceptance
 
-- Obtain release authority naming version, final SHA, normal run/attempt, both
-  targets and existing publisher-credential use. Secret/settings changes are excluded.
+- Require owner UI acceptance, then record version, final SHA, normal run/attempt,
+  both targets and existing publisher-credential authority. Any post-review source
+  edit requires renewed matching qualification. Secret/settings changes are excluded.
 - Create the matching tag and explicitly promote the exact qualified bytes.
   Revalidate original proof and fresh journal state before per-target intent/PAT;
   no rebuilding, forced ref update, tag movement or duplicate-upload shortcut.
@@ -317,6 +326,41 @@ any such change starts a new candidate. Enablement is not publication authority.
   and retained promotion receipts. Partial/ambiguous uploads or catalog propagation
   remain pending; preserve possible-upload intents and never infer safe re-upload
   from absence. Record a verified release only after both target hashes match.
+
+### U: Within-Project Model Comparison
+
+The backend already supplies `ModelEconomics.metrics`; the renderer currently
+shows the requested measures only at project level. This is a presentation gap,
+not a reason for a schema migration, backfill, extra valuation or raw-log scan.
+
+- Make each project's primary model table show Model, Average cost / response,
+  Responses / turn, Tokens / turn, and Measured turns. Apply it to all models,
+  including Sol/Astra/Luna, using the selected project/date scope.
+- Preserve total tokens, token/cost shares and average cost / turn in secondary
+  inspectable details. Expose model-specific response/turn counts, priceability,
+  missing-turn coverage, unavailable values and small samples.
+- Reuse existing measured populations: positive ledger responses with non-empty
+  turn IDs; cost averages use priced responses. A mixed-model turn contributes
+  once per participating model, using only that model's usage. Do not silently
+  turn these observational comparisons into model-quality/efficiency claims.
+- Use compact token units, one decimal for response ratios and bounded monetary
+  precision that distinguishes small model costs from each other and zero, not
+  just a shared `<$0.01` label. Keep exact values and denominators inspectable;
+  use existing domain formatters where suitable. Cost is API-equivalent USD;
+  tokens include input (including cached input) and output, not output alone.
+- Scope renderer changes to `report_tables.py` or a cohesive extracted economics
+  renderer if needed. Preserve precomputed economics, one valuation per record,
+  monetary parity and bounded warm-report work; no new data query is required.
+- Test mixed-model turns, missing IDs/prices, tiny values, zero/empty populations
+  and unequal sample sizes. Add named, inventory-validated synthetic economics
+  browser subcases to the report/screenshot qualification unit, retaining every
+  existing case. Check both themes, all three engines and widths 1440/760/360,
+  readable table headers/values, keyboard disclosures and no page-level overflow.
+
+U can proceed alongside A/B in an isolated worktree with a disjoint renderer/test
+write set. Integrate serially before final C/E qualification; never qualify one
+branch and publish another. Produce the full-dashboard preview and exact VSIX
+for owner review. U is not accepted merely because synthetic checks pass.
 
 ## Files And Responsibilities
 
@@ -330,27 +374,49 @@ any such change starts a new candidate. Enablement is not publication authority.
 | Native proof | `scripts/check_usage_breakdown_webview.py` and its existing native helpers; exact VSIX extraction and trusted receipt |
 | Public verification | `scripts/verify_marketplace_release.cjs`; promotion negative tests in a cohesive new test module |
 | Production enablement | `scripts/release/policy.py`, pinned journal validators, `scripts/qualification.py`, `tests/test_qualification_transport.py`, `.github/workflows/promote-vsix.yml`; source-bound policy transition |
+| Model comparison | `src/codex_usage/report_tables.py`, existing `project_economics.py` metrics; economics rendering/oracle tests and inventory-validated report browser subcases |
 | Documentation | ADR 0061, this plan, profiling report, release guide/receipt links |
 
-## Permissions And Rollback
+## Autonomy Approval Review
 
 Earlier granted permissions cover retained-checkout code/workflow/test/docs,
 synthetic verification, scoped commit/push, isolated non-Keychain hosts, the durable
-journal and bounded nonpublishing pilots. Carry these into approved A-D work
-without renewed approval for each covered checkpoint. The active user goal now
-explicitly approves all six remaining stages, subject to their acceptance gates.
+journal, nonpublishing qualification/native/dry-run pilots and conditional source
+enablement. Do not ask again for those routine checkpoints. The owner now approves
+the bounded temporal-tracing batch in the linked review note. Additional permissions
+below are proposals, not granted by this planning pass.
 
-Default to serial main work and no concurrent writers. A bounded independent
-read-only review is useful after diagnosis and before source enablement. Choose
-and announce model/effort at native dispatch using Relay Direct; follow reviewers
-until results are collected and they are closed. No tasks are created by planning.
+| Foreseeable action | Current authority / proposed decision |
+| --- | --- |
+| Hypothesis-led diagnostics beyond the approved batch | Proposed: at most three two-job batches total, including the approved one; each job <=5 minutes, fixed hypothesis/control, no reruns for green |
+| Profiler tool access on the isolated CI VM | Proposed: preinstalled Apple tools and process-local `DEVELOPER_DIR`; optional noninteractive elevation solely for the approved tracing scope, never persistent security changes |
+| Scheduling tools requiring system-wide collection | Proposed narrow exception: <=30 seconds of scheduling metadata on that disposable VM, filtered to owned PIDs; artifact <=100 MiB, retention <=14 days; no memory, file contents, environment, command-line arguments or network payload capture; refuse a tool unable to meet this boundary |
+| Official Playwright/browser update | Proposed: a pinned official patch/minor update only if upstream or controlled evidence identifies an owning SDK/browser defect; update locks/provenance, retain failing baseline and requalify all original assertions; no vendored SDK patch |
+| Additional corrective qualification and stale-job cancellation | Proposed: up to two evidence-backed repair iterations beyond mandatory C/E cycles; diagnose unexpected failures, cancel only this assignment's verified live stale/hung jobs, never retry unexplained failure into acceptance |
+| UI concurrency | Owner permits concurrent work; use an isolated managed worktree and attended subagent, not concurrent writers in main; integrate only owned commits serially |
+| Delegation selector unavailable | Proposed: do that assignment locally rather than spawn an inherited/default-model agent; do not bypass native restrictions or change global defaults |
+| Stage E and release candidate selection | Already conditionally authorized; choose an unused eligible version >=2.12.3 and record exact source/proof; no release tag while UI acceptance is pending |
+| Local full-dashboard review window | Proposed: one new disposable Local Preview VS Code profile with in-memory secrets, reading a private local ledger snapshot only; no capture, production installation/profile change or private-data upload; open when owner is ready, not while asleep |
+| Stage F publication | Held by the latest instruction until owner UI acceptance; prior Goal approval cannot bypass this review |
 
-The current stages 1-6 instruction covers E source/new-version and F tag,
-publication and existing publisher-secret-use authority. Record the final named
-candidate before those effects; no earlier-release approval is reused. No secret/repository settings,
-live ledger, installed extension, services, user windows or unrelated apps changes.
-Measurement-contract redesign, runner migration, SDK patching or new trusted
-infrastructure requires review of the uncovered scope before implementation.
+Proposed unattended timebox: ten hours from Goal restart, standard existing hosted
+runners only, visual concurrency <=2. Every new diagnostic batch requires evidence
+that changes its hypothesis; two successive non-discriminating batches stop diagnosis.
+At the timebox, start no new work; collect or cancel this assignment's remaining
+bounded jobs and report the exact checkpoint. No larger runners, paid services or
+new infrastructure. Limits are execution ceilings, not a narrower completion claim.
+
+Keep the <250ms guard, scripts-disabled product, genuine inputs, all case identities,
+accounting and publication trust contracts. Measurement-contract redesign, runner
+migration, lost guarantees, secret/settings changes, Keychain operations, live-data
+writes, journal/tag rewriting and ambiguous re-upload remain unapproved. Stop the
+affected path for review; continue independent permitted UI/preparation work.
+
+Choose and announce subagent model/effort at native dispatch under Relay Direct;
+collect, review and close them before ending work. Planning creates no agents or
+worktrees. Human UI review is the unavoidable final gate, not a technical failure.
+
+## Rollback
 
 Before publication, revert only our changes or retain the current full
 qualification workflow if probes/pilots fail. Do not silently fall back from
@@ -369,10 +435,13 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 - [x] Required inventories and exact-VSIX native path passed at historical `dc79adb6`.
 - [x] Owner authorized local implementation and scoped commit/push/nonpublishing pilots.
 - [x] Owner explicitly approved all six remaining stages through the active goal.
+- [x] Owner approved the bounded temporal-tracing extension.
+- [ ] Owner accepts the proposed unattended autonomy bundle.
+- [ ] U passes technical verification and owner UI review.
 - [ ] A-B establish and fix the root cause with retained measurement guarantees.
 - [ ] C-D pass current-source normal/retry/native/dry-run gates and update measures.
-- [ ] E is separately approved and final enabled/versioned source is requalified.
-- [ ] F is separately approved and both public target hashes are verified.
+- [ ] E's final enabled/versioned source is requalified under existing authority.
+- [ ] F follows owner UI acceptance and both public target hashes are verified.
 
 ## Implementation Checkpoint
 
@@ -407,4 +476,6 @@ reviews and measured costs remain in the
 [profile](../research/2026-10-13-verification-and-release-profile.md).
 The proposed temporal-tracing extension and its tool/scope limitations are
 captured in a [review note](../research/2026-10-13-webkit-temporal-probe.md);
-it is not implemented or dispatched, and scope approval remains pending.
+the owner has now approved that bounded batch, but it is not implemented or
+dispatched. The additional autonomy requests above and owner UI acceptance are
+still pending. Planning does not restart the currently blocked Goal.

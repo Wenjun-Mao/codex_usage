@@ -1,8 +1,9 @@
 # WebKit Temporal Probe Review Note
 
-Date: 2026-10-13 (America/Toronto). Status: proposed, not implemented or
-dispatched. Temporal tracing scope approval is pending; this note does not
-authorize another diagnostic batch, a measurement change or publication.
+Date: 2026-10-13 (America/Toronto). Status: bounded batch approved by the owner,
+not implemented or dispatched. Implementation resumes separately after the
+autonomy review/Goal restart. This approval does not change the measurement
+contract or authorize publication before the newly required owner UI review.
 
 ## Established Bound And Missing Evidence
 
@@ -41,7 +42,7 @@ Both runs are terminal; there is no live job to await or rerun for acceptance.
 
 ## Proposed Batch Contract
 
-After scope approval, retain the existing maximum of two new five-minute jobs:
+Owner-approved batch: retain the existing maximum of two new five-minute jobs:
 an unchanged unsampled control and one temporal-tracing arm at the same source.
 Neither arm is qualification evidence. Preserve all 72 views, fixture hashes,
 input history, scripts-disabled state and the original strict 250ms guard.
@@ -68,6 +69,7 @@ is inconclusive. It does not qualify a passing run or justify a product fix.
 The post-ACK rendering mechanism remains a hypothesis until temporal evidence
 and a causal intervention support it.
 
-Next decision: approve this bounded tracing extension, or retain the current
-scope and review an explicitly proposed alternative. Stages B-F remain gated;
-`PROMOTION_ENABLED` remains false.
+The owner has approved this bounded extension. Tool privilege/system-wide scope
+exceptions, additional batches and official toolchain updates are proposed in
+the [autonomy review](../plans/verification-and-release-efficiency.md#autonomy-approval-review),
+not granted here. Stages B-F remain gated; `PROMOTION_ENABLED` remains false.
