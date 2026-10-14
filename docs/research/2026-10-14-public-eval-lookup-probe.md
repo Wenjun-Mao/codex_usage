@@ -1,7 +1,7 @@
 # Public Eval Lookup Probe
 
-Status: final approved two-job diagnostic batch prepared, not dispatched.
-No product correction, release qualification or publication is claimed.
+Status: final approved two-job batch completed at `c1ac6983`; both arms pass but
+do not reproduce the retained stall. No correction or qualification is claimed.
 
 ## New Discriminating Boundary
 
@@ -93,3 +93,54 @@ Evidence directories: `output/qualification/eval-lookup-final-core/`,
 The separate capability-only logging/eval source is preserved locally at
 `e0acec9` in the held worktree, not merged/pushed. Its five focused tests and Ruff
 pass; empty logging still does not establish propagation or absence of collection.
+
+## Hosted Batch 3 Result
+
+Both runs are terminal, attempt 1, workflow-dispatch on main, exact source
+`c1ac6983f5becd47e3e47430621e3e6e74a9f728`, standard macOS 26.6.2 ARM64.
+No extra timed control, process sampling, profiler preflight, privilege, producer
+receipt, SDK/runner change or publication occurred.
+
+| Arm | Run / job | Job duration | Outcome |
+| --- | --- | --- | --- |
+| Descriptor | [38541865502](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38541865502) / 115778309012 | 1m50s | 72 views / 648 observations pass |
+| Clock | [38541867765](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38541867765) / 115778318891 | 2m22s | 72 views / 648 observations pass |
+
+Observation 219, the retained failing second usage hover in the first WebKit
+view, now has a trace span of 5.906ms / 22.016ms respectively. These trace spans
+include baseline/diagnostic work and are not replacements for the strict guard.
+The maximum trace spans across all original observations are 62.027ms / 60.680ms.
+The clock arm provides 360 attributable WebKit reads; lookup-to-body gaps range
+from 0 to 1ms at clock resolution. There is no failed interval to localize.
+Same-protocol-clock setup roundtrips range 0-6ms / 0-14ms at log resolution;
+there is no observed hundreds-of-milliseconds stall relocated into installation.
+This does not exclude warming, changed evaluation shape, recording perturbation
+or runner variation, and does not identify their effects.
+
+Downloaded ZIP digests were independently recomputed and match GitHub metadata:
+
+- Descriptor artifact `11882468134`, 13,290,227 bytes,
+  `sha256:bebb7593942c0ae0ccd9e7bdc88154b2f05fd750cf3b5f1338f818a369fd3043`.
+- Clock artifact `11881999801`, 13,354,536 bytes,
+  `sha256:6f87102930b362df1e3bf1bb353243fabae401f6980ac09550e99cbf42654750`.
+
+Both are nonexpired at collection, retained for 14 days. Local expanded directories
+are approximately 80.2 / 80.8MiB, below 100MiB. Retained ZIPs and unpacked evidence:
+`output/qualification/hosted-eval-lookup-{descriptor,clock}.zip` and corresponding
+directories. The prior failed uninstrumented/literal artifacts remain intact.
+
+Requested GPT-6 Luna / Max read-only audit independently validates the 72-case/
+10-assertion inventories, eight file hashes, source/attempt/browser provenance,
+24 exact restorations and 360 same-return reads (24 document tokens, 15 each).
+Clock sequences are fresh and increasing per token; timestamp/domain/anchor
+checks pass, with no validation failures. Final document readbacks disclose four
+dropped historical ring records each; latest timed marks remain present. The
+manager verifies artifact digests and interprets timing/protocol separately.
+Reviewer collected, closed and Relay unregistered; effective settings unverified.
+
+Both arms add document setup and change the diagnostic returned expression.
+Their passing result cannot qualify the setup-free production path or establish
+a causal correction. The final approved batch is spent; further hosted diagnostic
+dispatch needs revised authority and a prespecified discriminating design.
+Stages A-B remain unresolved, dependent C-F gates remain unachieved, promotion
+stays disabled, and U awaits owner review in a full-dashboard Local Preview.

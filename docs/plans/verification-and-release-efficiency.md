@@ -446,7 +446,7 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 
 ## Implementation Checkpoint
 
-Latest hosted diagnostic source: `352895d6`; promotion false, no new publication.
+Latest hosted diagnostic source: `c1ac6983`; promotion false, no new publication.
 Stage A identifies a reproduced pre-expression wait but not its owning cause;
 stages B-F remain gated. The read-only reviewer is collected, closed and unregistered.
 Early gates, isolated visual jobs, batched snapshots, exact-artifact promotion,
@@ -463,8 +463,8 @@ all 72 local hover views and Ruff/parity/work guards passed at that checkpoint.
 U is integrated serially on main: per-model cost/response, responses/turn and
 compact tokens/turn, with exact values/coverage in details. Its 18 inventory-bound
 browser cases pass and controlled injection fails at the required first case.
-They are now mandatory in `screenshots-allowance`; integrated core passes 2,193
-tests with one approved skip and 2,194 reconciled identities; all 48 extension
+They are now mandatory in `screenshots-allowance`; latest core passes 2,234
+tests with one approved skip and 2,235 reconciled identities; all 48 extension
 tests, Ruff, monetary parity/work and 72 local hover identities pass. Owner
 acceptance and the full-dashboard preview remain pending. No data schema,
 accounting population or extra query was added.
@@ -496,4 +496,4 @@ literal query. A local [public AX check](../research/2026-10-14-public-ax-associ
 finds the fixture but reports the UI PID, not a distinct renderer. Further
 [session/event checks and readiness review](../research/2026-10-14-public-observability-limits.md)
 supply no native renderer marker. The [public eval-lookup pair](../research/2026-10-14-public-eval-lookup-probe.md)
-is locally verified for the last batch; the held collector still refuses and cause is unresolved.
+completes batch 3 without the stall. Budget is exhausted; cause and dependent gates stay unresolved.
