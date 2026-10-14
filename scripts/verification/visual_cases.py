@@ -38,6 +38,9 @@ ASSERTIONS = {
         "native-meter-semantics", "theme-contrast", "painted-meter-pixels"),
     "screenshots": ("synthetic-private-markers", "no-script-elements", "theme-layout",
         "real-controls-tooltips", "capture-validation"),
+    "economics": ("script-disabled", "per-model-metrics", "bounded-display-precision",
+        "coverage-priceability-details", "real-keyboard-disclosures", "table-local-scroll",
+        "sticky-model-identity", "no-page-overflow", "theme-layout"),
 }
 
 
@@ -84,6 +87,8 @@ def expected_cases(suite):
         cases += [identity("chromium", "speed", t, 1440) for t in THEMES]
         cases += [identity("pillow", "image-usage", t, w) for t, w in product(THEMES, (1440, 760))]
         return cases + [identity("pillow", "image-storage", "night", 1440)]
+    elif suite == "economics":
+        scenarios = ("within-project-model-comparison",)
     else:
         raise ValueError(f"Unknown visual suite: {suite}")
     return [identity(e, s, t, w) for e, s, t, w in product(ENGINES, scenarios, THEMES, WIDTHS)]

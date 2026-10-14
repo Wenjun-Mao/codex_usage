@@ -9,6 +9,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from playwright.sync_api import sync_playwright
+from verification.visual_cases import identity
+from verification.visual_evidence import VisualEvidence
 
 from codex_usage.aggregation import UsageSummary, ValuedUsageRecord
 from codex_usage.models import TokenUsage, UsageRecord
@@ -45,7 +47,7 @@ def main() -> None:
         "screenshots": screenshot_paths,
     }
 
-    with TemporaryDirectory(prefix="project-economics-ui-") as raw:
+    with VisualEvidence(args.output, "economics") as audit, TemporaryDirectory(prefix="project-economics-ui-") as raw:
         documents = Path(raw)
         with sync_playwright() as playwright:
             for engine in ("chromium", "webkit", "firefox"):
@@ -67,160 +69,163 @@ def main() -> None:
 
                     for theme in ("day", "night"):
                         path = documents / f"{theme}.html"
-                        path.write_text(_document(theme, report), encoding="utf-8")
+                        contents = _document(theme, report)
+                        path.write_text(contents, encoding="utf-8")
+                        audit.document(theme, contents)
                         for width in (1440, 760, 360):
-                            page.set_viewport_size({"width": width, "height": 900})
-                            page.goto(path.resolve().as_uri())
-                            assert page.locator("script").count() == 0
-                            assert page.locator("html").get_attribute("data-codex-theme") == theme
-                            assert page.locator("h2#project-economics-heading").is_visible()
-                            project = page.locator(".project-economics-project")
-                            project_summary = project.locator(":scope > summary")
-                            project_summary.focus()
-                            project_summary.press("Enter")
-                            assert project.get_attribute("open") is not None
+                            with audit.case(page, identity(engine, SCENARIO, theme, width)):
+                                page.set_viewport_size({"width": width, "height": 900})
+                                page.goto(path.resolve().as_uri())
+                                assert page.locator("script").count() == 0
+                                assert page.locator("html").get_attribute("data-codex-theme") == theme
+                                assert page.locator("h2#project-economics-heading").is_visible()
+                                project = page.locator(".project-economics-project")
+                                project_summary = project.locator(":scope > summary")
+                                project_summary.focus()
+                                project_summary.press("Enter")
+                                assert project.get_attribute("open") is not None
 
-                            primary = project.locator(".project-economics-models")
-                            for header in (
-                                "Model",
-                                "Cost / resp.",
-                                "Responses / turn",
-                                "Tokens / turn",
-                                "Measured turns",
-                            ):
-                                assert header in primary.inner_text(), (engine, theme, width, header)
-                            assert primary.locator("thead th:nth-child(2)").get_attribute(
-                                "aria-label"
-                            ) == "Average API-equivalent cost per response"
-                            primary_text = primary.inner_text()
-                            for value in (
-                                "gpt-6.1-sol",
-                                "gpt-6-astra",
-                                "gpt-6-luna",
-                                "$0.0000123",
-                                "$0.0000124",
-                                "$0.0000",
-                                "$0.0261",
-                                "$0.2426",
-                                "2.4K",
-                                "Unavailable",
-                            ):
-                                assert value in primary_text, (engine, theme, width, value)
-                            assert "Response cost averages use fully priced responses" in page.locator(
-                                ".project-economics-heading p"
-                            ).inner_text()
-                            assert "turn cost averages use fully priced turns" in page.locator(
-                                ".project-economics-heading p"
-                            ).inner_text()
+                                primary = project.locator(".project-economics-models")
+                                for header in (
+                                    "Model",
+                                    "Cost / resp.",
+                                    "Responses / turn",
+                                    "Tokens / turn",
+                                    "Measured turns",
+                                ):
+                                    assert header in primary.inner_text(), (engine, theme, width, header)
+                                assert primary.locator("thead th:nth-child(2)").get_attribute(
+                                    "aria-label"
+                                ) == "Average API-equivalent cost per response"
+                                primary_text = primary.inner_text()
+                                for value in (
+                                    "gpt-6.1-sol",
+                                    "gpt-6-astra",
+                                    "gpt-6-luna",
+                                    "$0.0000123",
+                                    "$0.0000124",
+                                    "$0.0000",
+                                    "$0.0261",
+                                    "$0.2426",
+                                    "2.4K",
+                                    "Unavailable",
+                                ):
+                                    assert value in primary_text, (engine, theme, width, value)
+                                assert "Response cost averages use fully priced responses" in page.locator(
+                                    ".project-economics-heading p"
+                                ).inner_text()
+                                assert "turn cost averages use fully priced turns" in page.locator(
+                                    ".project-economics-heading p"
+                                ).inner_text()
 
-                            secondary = project.locator(".project-economics-secondary")
-                            secondary_summary = secondary.locator(":scope > summary")
-                            secondary_summary.focus()
-                            secondary_summary.press("Enter")
-                            assert secondary.get_attribute("open") is not None
-                            detail_text = secondary.inner_text()
-                            for value in (
-                                "Total tokens",
-                                "Token share",
-                                "Cost share",
-                                "Average cost / turn",
-                                "Response coverage",
-                                "Token coverage",
-                                "Priceability",
-                                "Exact: $0.00001234",
-                                "0 / 1 responses",
-                                "missing turn IDs",
-                            ):
-                                assert value in detail_text, (engine, theme, width, value)
+                                secondary = project.locator(".project-economics-secondary")
+                                secondary_summary = secondary.locator(":scope > summary")
+                                secondary_summary.focus()
+                                secondary_summary.press("Enter")
+                                assert secondary.get_attribute("open") is not None
+                                detail_text = secondary.inner_text()
+                                for value in (
+                                    "Total tokens",
+                                    "Token share",
+                                    "Cost share",
+                                    "Average cost / turn",
+                                    "Response coverage",
+                                    "Token coverage",
+                                    "Priceability",
+                                    "Exact: $0.00001234",
+                                    "0 / 1 responses",
+                                    "missing turn IDs",
+                                ):
+                                    assert value in detail_text, (engine, theme, width, value)
 
-                            layout = page.evaluate(
-                                """() => ({
-                                    pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
-                                        && document.body.scrollWidth <= document.documentElement.clientWidth + 1,
-                                    tableScrolls: [...document.querySelectorAll('.project-economics-table-wrap')]
-                                        .map(e => e.scrollWidth > e.clientWidth + 1),
-                                    cellsFit: [...document.querySelectorAll('.project-economics-table-wrap th, .project-economics-table-wrap td')]
-                                        .every(e => e.scrollWidth <= e.clientWidth + 1),
-                                    modelColumnWidth: document.querySelector('.project-economics-models thead th:first-child')
-                                        .getBoundingClientRect().width,
-                                    textColor: getComputedStyle(document.body).color,
-                                    background: getComputedStyle(document.body).backgroundColor
-                                })"""
-                            )
-                            assert layout["pageFits"], (engine, theme, width, layout)
-                            assert len(layout["tableScrolls"]) == 2
-                            assert layout["cellsFit"], (engine, theme, width, layout)
-                            assert layout["modelColumnWidth"] >= 180, (engine, theme, width, layout)
-                            sticky_identity_verified = False
-                            if width <= 760:
-                                assert any(layout["tableScrolls"]), (engine, theme, width, layout)
-                                primary_wrap = page.locator(".project-economics-table-wrap").first
-                                assert primary_wrap.evaluate(
-                                    "e => { e.scrollLeft = 100; return e.scrollLeft > 0; }"
+                                layout = page.evaluate(
+                                    """() => ({
+                                        pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+                                            && document.body.scrollWidth <= document.documentElement.clientWidth + 1,
+                                        tableScrolls: [...document.querySelectorAll('.project-economics-table-wrap')]
+                                            .map(e => e.scrollWidth > e.clientWidth + 1),
+                                        cellsFit: [...document.querySelectorAll('.project-economics-table-wrap th, .project-economics-table-wrap td')]
+                                            .every(e => e.scrollWidth <= e.clientWidth + 1),
+                                        modelColumnWidth: document.querySelector('.project-economics-models thead th:first-child')
+                                            .getBoundingClientRect().width,
+                                        textColor: getComputedStyle(document.body).color,
+                                        background: getComputedStyle(document.body).backgroundColor
+                                    })"""
                                 )
-                                sticky_row = page.locator(
-                                    ".project-economics-models tbody th[scope=row]"
-                                ).first
-                                assert sticky_row.inner_text() == "gpt-6.1-sol"
-                                assert sticky_row.evaluate(
-                                    "e => getComputedStyle(e).position"
-                                ) == "sticky"
-                                sticky_x = sticky_row.bounding_box()["x"]
-                                wrap_x = primary_wrap.bounding_box()["x"]
-                                assert abs(sticky_x - wrap_x) <= 1, (
-                                    engine,
-                                    theme,
-                                    width,
-                                    sticky_x,
-                                    wrap_x,
-                                )
-                                sticky_identity_verified = True
-                            if width == 360:
-                                assert all(layout["tableScrolls"]), (engine, theme, width, layout)
-                            assert layout["textColor"] != layout["background"]
-                            if engine == "chromium" and width in (1440, 360):
-                                page.locator(".project-economics-table-wrap").first.evaluate(
-                                    "e => { e.scrollLeft = 0; }"
-                                )
-                                screenshot = screenshot_dir / f"{theme}-{width}.png"
-                                page.screenshot(path=str(screenshot), full_page=True)
-                                screenshot_paths.append(str(screenshot))
-                                if width == 360:
-                                    primary_wrap = page.locator(
-                                        ".project-economics-table-wrap"
-                                    ).first
-                                    primary_wrap.scroll_into_view_if_needed()
-                                    primary_wrap.evaluate("e => { e.scrollLeft = 110; }")
-                                    sticky_box = page.locator(
-                                        ".project-economics-models tbody th[scope=row]"
-                                    ).first.bounding_box()
-                                    amount_box = page.locator(
-                                        ".project-economics-models tbody tr:first-child td:nth-child(2) span"
-                                    ).bounding_box()
-                                    wrap_box = primary_wrap.bounding_box()
-                                    assert amount_box["x"] >= sticky_box["x"] + sticky_box["width"] - 1
-                                    assert amount_box["x"] + amount_box["width"] <= (
-                                        wrap_box["x"] + wrap_box["width"] + 1
+                                assert layout["pageFits"], (engine, theme, width, layout)
+                                assert len(layout["tableScrolls"]) == 2
+                                assert layout["cellsFit"], (engine, theme, width, layout)
+                                assert layout["modelColumnWidth"] >= 180, (engine, theme, width, layout)
+                                sticky_identity_verified = False
+                                if width <= 760:
+                                    assert any(layout["tableScrolls"]), (engine, theme, width, layout)
+                                    primary_wrap = page.locator(".project-economics-table-wrap").first
+                                    assert primary_wrap.evaluate(
+                                        "e => { e.scrollLeft = 100; return e.scrollLeft > 0; }"
                                     )
-                                    scrolled = screenshot_dir / f"{theme}-{width}-table-scrolled.png"
-                                    page.screenshot(path=str(scrolled))
-                                    screenshot_paths.append(str(scrolled))
-                                    primary_wrap.evaluate("e => { e.scrollLeft = 0; }")
-                            evidence["cases"].append(
-                                {
-                                    "engine": engine,
-                                    "scenario": SCENARIO,
-                                    "theme": theme,
-                                    "width": width,
-                                    "java_script_enabled": False,
-                                    "inline_script_blocked": True,
-                                    "keyboard_disclosures": True,
-                                    "table_local_scroll": all(layout["tableScrolls"]),
-                                    "sticky_model_identity_verified": sticky_identity_verified,
-                                    "page_overflow": False,
-                                    "synthetic_only": True,
-                                }
-                            )
+                                    sticky_row = page.locator(
+                                        ".project-economics-models tbody th[scope=row]"
+                                    ).first
+                                    assert sticky_row.inner_text() == "gpt-6.1-sol"
+                                    assert sticky_row.evaluate(
+                                        "e => getComputedStyle(e).position"
+                                    ) == "sticky"
+                                    sticky_x = sticky_row.bounding_box()["x"]
+                                    wrap_x = primary_wrap.bounding_box()["x"]
+                                    assert abs(sticky_x - wrap_x) <= 1, (
+                                        engine,
+                                        theme,
+                                        width,
+                                        sticky_x,
+                                        wrap_x,
+                                    )
+                                    sticky_identity_verified = True
+                                if width == 360:
+                                    assert all(layout["tableScrolls"]), (engine, theme, width, layout)
+                                assert layout["textColor"] != layout["background"]
+                                if engine == "chromium" and width in (1440, 360):
+                                    page.locator(".project-economics-table-wrap").first.evaluate(
+                                        "e => { e.scrollLeft = 0; }"
+                                    )
+                                    screenshot = screenshot_dir / f"{theme}-{width}.png"
+                                    page.screenshot(path=str(screenshot), full_page=True)
+                                    screenshot_paths.append(str(screenshot))
+                                    if width == 360:
+                                        primary_wrap = page.locator(
+                                            ".project-economics-table-wrap"
+                                        ).first
+                                        primary_wrap.scroll_into_view_if_needed()
+                                        primary_wrap.evaluate("e => { e.scrollLeft = 110; }")
+                                        sticky_box = page.locator(
+                                            ".project-economics-models tbody th[scope=row]"
+                                        ).first.bounding_box()
+                                        amount_box = page.locator(
+                                            ".project-economics-models tbody tr:first-child td:nth-child(2) span"
+                                        ).bounding_box()
+                                        wrap_box = primary_wrap.bounding_box()
+                                        assert amount_box["x"] >= sticky_box["x"] + sticky_box["width"] - 1
+                                        assert amount_box["x"] + amount_box["width"] <= (
+                                            wrap_box["x"] + wrap_box["width"] + 1
+                                        )
+                                        scrolled = screenshot_dir / f"{theme}-{width}-table-scrolled.png"
+                                        page.screenshot(path=str(scrolled))
+                                        screenshot_paths.append(str(scrolled))
+                                        primary_wrap.evaluate("e => { e.scrollLeft = 0; }")
+                                evidence["cases"].append(
+                                    {
+                                        "engine": engine,
+                                        "scenario": SCENARIO,
+                                        "theme": theme,
+                                        "width": width,
+                                        "java_script_enabled": False,
+                                        "inline_script_blocked": True,
+                                        "keyboard_disclosures": True,
+                                        "table_local_scroll": all(layout["tableScrolls"]),
+                                        "sticky_model_identity_verified": sticky_identity_verified,
+                                        "page_overflow": False,
+                                        "synthetic_only": True,
+                                    }
+                                )
                 finally:
                     if context is not None:
                         context.close()

@@ -83,6 +83,7 @@ def test_release_checklist_locks_extension_visual_gate() -> None:
     assert load_tool("run_visual_suite").SCRIPTS["screenshots-allowance"] == (
         ("screenshots", "generate_marketplace_screenshot.py", "--check"),
         ("allowance", "check_allowance_ui.py"),
+        ("economics", "check_project_economics_ui.py"),
     )
 
 

@@ -18,7 +18,7 @@ def evidence(suite):
 
 
 @pytest.mark.parametrize("suite,count", [("breakdown", 720), ("speed", 162),
-    ("overlay", 90), ("hover", 72), ("allowance", 216), ("screenshots", 15)])
+    ("overlay", 90), ("hover", 72), ("allowance", 216), ("screenshots", 15), ("economics", 18)])
 def test_independent_complete_tuple_inventory(suite, count):
     sample = evidence(suite)
     assert len(sample["completed"]) == count

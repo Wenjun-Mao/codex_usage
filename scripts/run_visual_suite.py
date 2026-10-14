@@ -10,7 +10,7 @@ from verification.visual_cases import validate_inventory
 
 SCRIPTS = {
     "screenshots-allowance": (("screenshots", "generate_marketplace_screenshot.py", "--check"),
-        ("allowance", "check_allowance_ui.py")),
+        ("allowance", "check_allowance_ui.py"), ("economics", "check_project_economics_ui.py")),
     "speed": (("speed", "check_speed_ui.py"),),
     "breakdown": (("breakdown", "check_usage_breakdown_ui.py"),),
     "overlay": (("overlay", "check_breakdown_overlay_ui.py"),),

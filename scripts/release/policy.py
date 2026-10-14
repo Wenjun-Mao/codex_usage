@@ -70,6 +70,7 @@ def contract_files(root=ROOT):
     files += ["scripts/" + file for file in ("check_usage_breakdown_ui.py", "check_speed_ui.py",
         "check_allowance_ui.py", "check_breakdown_overlay_ui.py", "check_breakdown_hover_ui.py",
         "generate_marketplace_screenshot.py", "breakdown_native_hover.py", "vscode_breakdown_acceptance.js")]
+    files += ["scripts/check_project_economics_ui.py"]
     return sorted(set(files))
 
 
