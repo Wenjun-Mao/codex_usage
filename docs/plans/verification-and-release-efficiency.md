@@ -490,6 +490,6 @@ held in an isolated checkout after ownership, child-containment and export-bound
 review findings; no collection arm was dispatched. Further approval alone does
 not establish a safe supported target association. Autonomy remains approved,
 but owner UI acceptance is still required before publication.
-The next diagnostic is the prespecified public
-[handle-free-query pair](../research/2026-10-14-handle-free-query-probe.md), not
-the held privileged prototype. Its passing local replay is not causal proof.
+The public [handle-free-query pair](../research/2026-10-14-handle-free-query-probe.md)
+completed batch 2: both arms fail the same original guard, including a 476ms
+literal query. One approved batch remains; the owning cause is still unresolved.
