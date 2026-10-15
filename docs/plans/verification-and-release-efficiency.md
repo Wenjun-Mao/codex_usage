@@ -484,7 +484,7 @@ frozen monetary/work guards and the renewed 252-case allowance browser inventory
 P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
 Replicas cover compatible longest copies, missing canonical retention and partial handoffs; staged semantic repairs preserve evidence and install atomically across source-key changes.
 [Retained accounting](../adr/0065-retained-accounting-authority.md) selects whole proven projections; [runtime compatibility](../adr/0066-accounting-capability-handshake.md) passes 74 inventory-validated extension cases.
-[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md), dependent invalidation and [writer fencing](../adr/0068-ledger-writer-fencing.md) are implemented. [Alternate replay inputs](../adr/0069-missing-source-replay-authority.md) preserve captured authority. Disposable/live repair, stage retention/rollback qualification and owner preview remain unfinished.
+[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md), dependent invalidation and [writer fencing](../adr/0068-ledger-writer-fencing.md) are implemented. [Alternate replay inputs](../adr/0069-missing-source-replay-authority.md) pass targeted frozen-prefix repair, derived-oracle and private ledger/stage restore checks. Live cutover is held by an active old writer; fresh backup/CAS, pre-repair stage archive, compatible runtime and owner preview remain required.
 
 The [pilot](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md) retain chronology/costs.

@@ -1,6 +1,6 @@
 # ADR 0069: Alternate Replay Inputs Do Not Move Retained Checkpoints
 
-Status: Implemented; disposable/live repair qualification pending.
+Status: Implemented; targeted disposable repair and restore qualified, live/release gates pending.
 
 ## Problem
 
@@ -59,3 +59,14 @@ short/conflicting/foreign copies, sibling obligations, bounded/fair discovery,
 no-read warm reuse, changed inputs/receipts, distinct stages and atomic rollback.
 Private snapshot validation, fresh backup/CAS and owner UI/release gates remain
 required. This decision authorizes no new service controls or publication.
+
+## Qualification Checkpoint
+
+Frozen-prefix disposable replay used the production discovery and staged-install
+paths without widening budgets. Available-base targets matched independent full
+parses and normalized/cache facts; unavailable bases remained named gaps. Other
+retained financial projections and official quota evidence were unchanged.
+The indexed allowance oracle and an independent pre-upgrade restore passed.
+Failed private stages were preserved and restored separately. These checks do
+not establish a fresh live backup or admit migration under an active old writer;
+compatible runtime cutover and the live maintenance checks remain required.
