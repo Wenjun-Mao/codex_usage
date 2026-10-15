@@ -21,7 +21,10 @@ import codex_usage.session_cache_store as _store
 import codex_usage.session_cache_transitions as _cache_transitions
 import codex_usage.storage_insights as _storage_insights
 import codex_usage.storage_metadata as _storage_metadata
-from codex_usage.cache_refresh_lock import acquire_cache_refresh_lock
+from codex_usage.cache_refresh_lock import (
+    acquire_cache_refresh_lock,
+    validate_owned_cache_refresh_lock,
+)
 from codex_usage.aggregation import RangeBounds
 from codex_usage.models import UsageRecord
 from codex_usage.parallel.execution import EMPTY_PARALLEL_RUN_REPORT
@@ -157,9 +160,14 @@ def _collect_locked_inventory(
     cache_database_path: Path,
     session_dirs: list[Path],
     timer: PhaseTimer | None,
+    *,
+    owned_cache_refresh_lock=None,
 ) -> Iterator[list[SessionFileInventoryEntry]]:
     """Capture the source snapshot only after this process owns the refresh."""
-    with acquire_cache_refresh_lock(cache_database_path):
+    with acquire_cache_refresh_lock(
+        cache_database_path,
+        owned_cache_refresh_lock=owned_cache_refresh_lock,
+    ):
         if timer is None:
             inventory = collect_session_file_inventory(
                 session_dirs, read_metadata=False
@@ -348,11 +356,19 @@ def refresh_cached_session_data(
     refresh_storage_metadata: bool = True,
     defer_full_fallback: bool = False,
     preferred_paths: tuple[str, ...] = (),
+    owned_cache_refresh_lock=None,
 ) -> _refresh.CacheRefreshOutcome:
     """Refresh parser state without materializing report rows in memory."""
+    if owned_cache_refresh_lock is not None:
+        validate_owned_cache_refresh_lock(cache_database_path, owned_cache_refresh_lock)
     cache_database_path.parent.mkdir(parents=True, exist_ok=True)
     with (
-        _collect_locked_inventory(cache_database_path, session_dirs, None) as inventory,
+        _collect_locked_inventory(
+            cache_database_path,
+            session_dirs,
+            None,
+            owned_cache_refresh_lock=owned_cache_refresh_lock,
+        ) as inventory,
         _open_cache_connection(cache_database_path) as connection,
     ):
         connection.row_factory = sqlite3.Row

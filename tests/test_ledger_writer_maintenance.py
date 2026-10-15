@@ -3,12 +3,13 @@ import sqlite3
 from time import monotonic
 
 import pytest
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
+import codex_usage.session_cache as session_cache
 import codex_usage.ledger_schema as schema
 from codex_usage.agent_paths import agent_lock_path, ledger_database_path
 from codex_usage.cache_refresh_lock import cache_refresh_lock_path
-from codex_usage.ledger_maintenance import LedgerMaintenanceBusyError
+from codex_usage.ledger_maintenance import LedgerMaintenanceBusyError, acquire_ledger_maintenance
 from codex_usage.ledger_repair_snapshot import verify_repair_snapshot
 from codex_usage.ledger_writer_contract import PROTECTED_TABLES, TRIGGER_PREFIX
 from codex_usage.ledger_writer_contract import LedgerCompatibilityError
@@ -24,6 +25,21 @@ def legacy(tmp_path):
 def version(path):
     with schema.open_ledger(path, read_only=True) as connection:
         return connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0]
+
+
+def add_synthetic_session(home):
+    from test_paginated_history import meta, rollout_name, tokens, write_rows
+
+    sessions = home / "sessions"
+    write_rows(sessions / rollout_name(), [meta(), tokens(100, ordinal=1)])
+    return sessions
+
+
+def assert_lock_excluded(lock_path):
+    contender = FileLock(lock_path)
+    with pytest.raises(Timeout):
+        contender.acquire(timeout=0)
+    assert not contender.is_locked
 
 
 @pytest.mark.parametrize("owner", ["agent", "parser"])
@@ -66,6 +82,197 @@ def test_startup_may_borrow_only_its_held_home_agent_lock(tmp_path, state):
             assert version(path) == "6"
     finally:
         lock.release()
+
+
+def test_held_locks_cover_legacy_migration_and_parser_refresh(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    path = ledger_database_path(home)
+    make_legacy_writer_fixture(path)
+    sessions = add_synthetic_session(home)
+    agent_lock = FileLock(agent_lock_path(home))
+    refresh_lock = FileLock(cache_refresh_lock_path(path))
+    original_acquire = session_cache.acquire_cache_refresh_lock
+
+    def require_borrowed_lock(database_path, *, owned_cache_refresh_lock=None):
+        assert owned_cache_refresh_lock is refresh_lock
+        return original_acquire(
+            database_path,
+            owned_cache_refresh_lock=owned_cache_refresh_lock,
+        )
+
+    monkeypatch.setattr(session_cache, "acquire_cache_refresh_lock", require_borrowed_lock)
+    with agent_lock, refresh_lock:
+        with acquire_ledger_maintenance(
+            path,
+            owned_agent_lock=agent_lock,
+            owned_cache_refresh_lock=refresh_lock,
+        ):
+            with schema.open_ledger(
+                path,
+                maintenance_agent_lock=agent_lock,
+                maintenance_cache_refresh_lock=refresh_lock,
+            ):
+                pass
+            assert version(path) == "7"
+            assert agent_lock.is_locked and refresh_lock.is_locked
+            assert_lock_excluded(agent_lock_path(home))
+            assert_lock_excluded(cache_refresh_lock_path(path))
+
+            outcome = session_cache.refresh_cached_session_data(
+                [sessions],
+                cache_database_path=path,
+                auto_transitions=False,
+                max_workers=1,
+                refresh_storage_metadata=False,
+                owned_cache_refresh_lock=refresh_lock,
+            )
+            assert outcome.stats.files_total == 1
+            assert outcome.stats.files_parsed == 1
+            assert agent_lock.is_locked and refresh_lock.is_locked
+            assert_lock_excluded(agent_lock_path(home))
+            assert_lock_excluded(cache_refresh_lock_path(path))
+
+        assert agent_lock.is_locked and refresh_lock.is_locked
+        assert_lock_excluded(agent_lock_path(home))
+        assert_lock_excluded(cache_refresh_lock_path(path))
+
+    with schema.open_ledger(path, read_only=True) as connection:
+        assert connection.execute("select count(*) from usage_records").fetchone()[0] > 0
+
+
+@pytest.mark.parametrize("failure", ["migration", "refresh"])
+def test_borrowed_locks_remain_owned_after_inner_failure(tmp_path, monkeypatch, failure):
+    home = tmp_path / "home"
+    path = ledger_database_path(home)
+    make_legacy_writer_fixture(path)
+    sessions = add_synthetic_session(home)
+    agent_lock = FileLock(agent_lock_path(home))
+    refresh_lock = FileLock(cache_refresh_lock_path(path))
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError(f"synthetic {failure} failure")
+
+    with agent_lock, refresh_lock:
+        with acquire_ledger_maintenance(
+            path,
+            owned_agent_lock=agent_lock,
+            owned_cache_refresh_lock=refresh_lock,
+        ):
+            if failure == "migration":
+                monkeypatch.setattr(schema, "_backup_before_migration", fail)
+                with pytest.raises(RuntimeError, match="synthetic migration failure"):
+                    with schema.open_ledger(
+                        path,
+                        maintenance_agent_lock=agent_lock,
+                        maintenance_cache_refresh_lock=refresh_lock,
+                    ):
+                        pass
+                assert version(path) == "6"
+            else:
+                with schema.open_ledger(
+                    path,
+                    maintenance_agent_lock=agent_lock,
+                    maintenance_cache_refresh_lock=refresh_lock,
+                ):
+                    pass
+                monkeypatch.setattr(session_cache, "_refresh_files_with_stale_checkpoint_retry", fail)
+                original_acquire = session_cache.acquire_cache_refresh_lock
+
+                def require_borrowed_lock(database_path, *, owned_cache_refresh_lock=None):
+                    assert owned_cache_refresh_lock is refresh_lock
+                    return original_acquire(
+                        database_path,
+                        owned_cache_refresh_lock=owned_cache_refresh_lock,
+                    )
+
+                monkeypatch.setattr(session_cache, "acquire_cache_refresh_lock", require_borrowed_lock)
+                with pytest.raises(RuntimeError, match="synthetic refresh failure"):
+                    session_cache.refresh_cached_session_data(
+                        [sessions],
+                        cache_database_path=path,
+                        max_workers=1,
+                        owned_cache_refresh_lock=refresh_lock,
+                    )
+                assert version(path) == "7"
+            assert agent_lock.is_locked and refresh_lock.is_locked
+            assert_lock_excluded(agent_lock_path(home))
+            assert_lock_excluded(cache_refresh_lock_path(path))
+        assert agent_lock.is_locked and refresh_lock.is_locked
+        assert_lock_excluded(agent_lock_path(home))
+        assert_lock_excluded(cache_refresh_lock_path(path))
+
+
+@pytest.mark.parametrize("state", ["not-filelock", "unlocked", "wrong-path"])
+def test_borrowed_refresh_lock_rejects_unheld_or_wrong_path_handles(tmp_path, state):
+    home = tmp_path / "home"
+    path = ledger_database_path(home)
+    make_legacy_writer_fixture(path)
+    sessions = add_synthetic_session(home)
+    lock_path = cache_refresh_lock_path(path) if state == "unlocked" else tmp_path / "wrong.lock"
+    lock = object() if state == "not-filelock" else FileLock(lock_path)
+    if state == "wrong-path":
+        lock.acquire(timeout=0)
+    try:
+        with pytest.raises(ValueError, match="borrowed cache refresh lock"):
+            with schema.open_ledger(path, maintenance_cache_refresh_lock=lock):
+                pass
+        with pytest.raises(ValueError, match="borrowed cache refresh lock"):
+            session_cache.refresh_cached_session_data(
+                [sessions],
+                cache_database_path=path,
+                owned_cache_refresh_lock=lock,
+            )
+        assert version(path) == "6"
+        assert not list(path.parent.glob("*backup*"))
+    finally:
+        if isinstance(lock, FileLock):
+            lock.release()
+
+
+@pytest.mark.parametrize("state", ["not-filelock", "unlocked", "wrong-path"])
+def test_invalid_borrowed_refresh_lock_does_not_create_database(tmp_path, state):
+    path = ledger_database_path(tmp_path / "absent-home")
+    lock = object() if state == "not-filelock" else FileLock(tmp_path / "borrowed.lock")
+    if state == "wrong-path":
+        lock.acquire(timeout=0)
+    try:
+        with pytest.raises(ValueError, match="borrowed cache refresh lock"):
+            with schema.open_ledger(path, maintenance_cache_refresh_lock=lock):
+                pass
+        with pytest.raises(ValueError, match="borrowed cache refresh lock"):
+            session_cache.refresh_cached_session_data(
+                [], cache_database_path=path, owned_cache_refresh_lock=lock,
+            )
+        assert not path.parent.parent.exists()
+    finally:
+        if isinstance(lock, FileLock):
+            lock.release()
+
+
+def test_failed_writer_install_preserves_borrowed_lock_ownership(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    path = ledger_database_path(home)
+    make_legacy_writer_fixture(path)
+    install = schema.install_writer_contract
+
+    def fail_after_guards(connection):
+        install(connection)
+        raise RuntimeError("synthetic failure after writer guards")
+
+    monkeypatch.setattr(schema, "install_writer_contract", fail_after_guards)
+    with FileLock(agent_lock_path(home)) as agent_lock, FileLock(cache_refresh_lock_path(path)) as refresh_lock:
+        with pytest.raises(RuntimeError, match="synthetic failure after writer guards"):
+            with schema.open_ledger(
+                path, maintenance_agent_lock=agent_lock, maintenance_cache_refresh_lock=refresh_lock,
+            ):
+                pass
+        assert version(path) == "6"
+        with schema.open_ledger(path, read_only=True) as reader:
+            assert not reader.execute("select 1 from sqlite_master where type='trigger' and name like ?", (TRIGGER_PREFIX+"%",)).fetchone()
+            assert not reader.execute("select 1 from ledger_meta where key='accounting_writer_epoch'").fetchone()
+        assert agent_lock.is_locked and refresh_lock.is_locked
+        assert_lock_excluded(agent_lock_path(home))
+        assert_lock_excluded(cache_refresh_lock_path(path))
 
 
 def test_failed_fence_install_rolls_back_version_epoch_and_every_guard(tmp_path, monkeypatch):

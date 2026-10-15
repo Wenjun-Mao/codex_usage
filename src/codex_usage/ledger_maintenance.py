@@ -4,7 +4,7 @@ from pathlib import Path
 from filelock import FileLock, Timeout
 
 from codex_usage.agent_paths import AGENT_DATA_DIR_NAME, LEDGER_DATABASE_NAME, agent_lock_path
-from codex_usage.cache_refresh_lock import cache_refresh_lock_path
+from codex_usage.cache_refresh_lock import acquire_cache_refresh_lock
 
 
 class LedgerMaintenanceBusyError(RuntimeError):
@@ -12,7 +12,12 @@ class LedgerMaintenanceBusyError(RuntimeError):
 
 
 @contextmanager
-def acquire_ledger_maintenance(path: Path, *, owned_agent_lock=None):
+def acquire_ledger_maintenance(
+    path: Path,
+    *,
+    owned_agent_lock=None,
+    owned_cache_refresh_lock=None,
+):
     path = path.expanduser().absolute()
     if path.is_symlink() or path.parent.is_symlink():
         raise LedgerMaintenanceBusyError("ledger maintenance requires a canonical nonsymlink database path")
@@ -29,10 +34,12 @@ def acquire_ledger_maintenance(path: Path, *, owned_agent_lock=None):
             lock = FileLock(expected_agent)
             lock.acquire(timeout=0)
             acquired.append(lock)
-        lock = FileLock(cache_refresh_lock_path(path))
-        lock.acquire(timeout=0)
-        acquired.append(lock)
-        yield
+        with acquire_cache_refresh_lock(
+            path,
+            owned_cache_refresh_lock=owned_cache_refresh_lock,
+            timeout=0,
+        ):
+            yield
     except Timeout as error:
         raise LedgerMaintenanceBusyError("ledger maintenance requires a stopped collector and idle parser") from error
     finally:

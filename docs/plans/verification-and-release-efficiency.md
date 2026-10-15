@@ -205,11 +205,10 @@ invalidate qualification. Both public target hashes equal the qualified hashes.
 ### D4: Qualify And Measure The New Process
 
 Next-release path: P/R/U -> C -> D -> E -> F, with owner UI acceptance before F.
-A/B move to the following release. On October 14 the owner explicitly accepted
-the existing hosted WebKit observation delay for the next release only.
+A/B move to the following release. On October 14 the owner accepted the existing hosted WebKit observation delay for the next release only.
 
 - Before qualification, record an ADR 0063/release-proof amendment binding the
-  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite; ADR 0070's journal, bound disposition and fresh-proof integration are implemented; explicit append authority and current-source hosted evidence remain pending.
+  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite; ADR 0070's journal, disposition and proof integration are implemented; bounded append authority was approved October 15, current-source hosted evidence remains pending.
   Preserve actual elapsed values and report `deferred-known-latency`, never passed.
 - Continue every original case/input and all functional assertions: hidden/hit
   baselines, visible/hidden state, real Tab modality, content, containment and
@@ -336,8 +335,8 @@ records the parser/lineage defect and guards; private usage figures stay outside
 - Reproduce the pinned private screenshot/counter reconciliation. Audit other
   affected continuations; a one-record what-if is not blanket clearance. Preserve
   unaffected monetary goldens, genuine spent branches and official quota data.
-- Integrate serially before C/E and rebuild the owner preview with corrected
-  data. P cannot waive owner UI acceptance or exact-package release gates.
+- Integrate source serially before C/E; source-only nonpublishing qualification
+  cannot claim live P completion. Owner leaves the active narrative-forge source's repair pending; do not stop its task or let startup silently repair it. Rebuild the preview from corrected private data; P/UI/release gates remain.
 
 ### R: Period-First Allowance History
 
@@ -415,7 +414,8 @@ preapproval below. The restarted Goal carries these permissions into implementat
 | Stage E and release candidate selection | Already conditionally authorized; choose an unused eligible version >=2.12.3 and record exact source/proof; no release tag while UI acceptance is pending |
 | Local full-dashboard review window | Approved: one new disposable Local Preview VS Code profile with in-memory secrets, reading a private local ledger snapshot only; no capture, production installation/profile change or private-data upload; open when owner is ready, not while asleep |
 | Stage F publication | Held by the latest instruction until owner UI acceptance; prior Goal approval cannot bypass this review |
-| P accounting repair | Approved: code/tests, disposable-snapshot validation and targeted live-ledger repair after a verified private backup and rollback procedure. This narrow exception supersedes the earlier live-write exclusion for P only; raw Codex logs remain untouched |
+| P accounting repair | Approved: targeted live repair after verified private backup/rollback, including old-collector cutover. Latest owner instruction leaves the active narrative-forge source pending; no task stop or silent startup repair. Raw logs remain untouched |
+| D4 candidate bindings | Approved October 15: at most four append-only source-bound records for reserved 2.12.3, C/E plus two corrective iterations; pinned journal/scope, no rewrite, blind retry or publication before UI acceptance |
 | Next-release revision | Owner requests period-first history R and defers A/B until after the next release; D4's explicit hosted WebKit timing exception is candidate-bound, not authority for other failed checks or more diagnostics |
 
 The owner removed the proposed ten-hour timebox. Retain standard existing hosted
@@ -484,7 +484,7 @@ frozen monetary/work guards and the renewed 252-case allowance browser inventory
 P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
 Replicas cover compatible longest copies, missing canonical retention and partial handoffs; staged semantic repairs preserve evidence and install atomically across source-key changes.
 [Retained accounting](../adr/0065-retained-accounting-authority.md) selects whole proven projections; [runtime compatibility](../adr/0066-accounting-capability-handshake.md) passes 74 inventory-validated extension cases.
-[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md), dependent invalidation and [writer fencing](../adr/0068-ledger-writer-fencing.md) are implemented. [Alternate replay inputs](../adr/0069-missing-source-replay-authority.md) pass targeted frozen-prefix repair, derived-oracle and private ledger/stage restore checks. Live cutover is held by an active old writer; fresh backup/CAS, pre-repair stage archive, compatible runtime and owner preview remain required.
+[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md), dependent invalidation and [writer fencing](../adr/0068-ledger-writer-fencing.md) are implemented, including explicit maintenance lock borrowing. [Alternate replay inputs](../adr/0069-missing-source-replay-authority.md) pass private frozen-prefix repair/oracle/restore checks. Cutover is approved but unchanged; owner defers the active narrative-forge source. Fresh bounded inputs, quiescent backup/CAS, stage archive and compatible handoff remain required.
 
 The [pilot](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md) retain chronology/costs.

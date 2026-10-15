@@ -39,6 +39,16 @@ protection against an adversarial filesystem owner racing directory replacement.
 Cleanup failures annotate an active primary refusal rather than replacing it;
 after a successful operation they remain surfaced failures, not silent warnings.
 
+A maintenance caller that already owns both locks may explicitly pass its parser
+`FileLock` through `maintenance_cache_refresh_lock` on ledger opening and
+`owned_cache_refresh_lock` on parser refresh. Borrowing requires a currently held
+`FileLock` whose resolved lock path exactly matches that database's refresh path.
+Helpers do not reacquire or release borrowed ownership, including on failure;
+omitting the argument preserves ordinary acquire/release behavior. This is explicit
+per-call ownership, not a reentrant or process-global locking policy. The caller
+must acquire the home-agent lock before the parser-refresh lock and keep both held
+through migration, discovery and repair.
+
 Before changing accounting/schema state, create a unique private backup directory
 and a coherent SQLite snapshot with hash, integrity, revision and count checks.
 The backup page-copy operation has a 300-second execution deadline; failed partial

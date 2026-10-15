@@ -9,6 +9,7 @@ from codex_usage.ledger_writer_contract import (
     validate_writer_contract, ledger_schema_version, assert_legacy_writer_metadata,
     admit_ledger_privacy_paths,
 )
+from codex_usage.cache_refresh_lock import validate_owned_cache_refresh_lock
 
 import codex_usage.session_cache_schema as parser_schema
 from codex_usage.agent_private_files import (
@@ -37,7 +38,10 @@ def open_ledger(
     *,
     read_only: bool = False,
     maintenance_agent_lock=None,
+    maintenance_cache_refresh_lock=None,
 ) -> Iterator[sqlite3.Connection]:
+    if maintenance_cache_refresh_lock is not None:
+        validate_owned_cache_refresh_lock(path, maintenance_cache_refresh_lock)
     if read_only:
         connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     else:
@@ -52,7 +56,12 @@ def open_ledger(
             connection.execute("pragma busy_timeout = 5000")
         else:
             ensure_private_file(path)
-            ensure_ledger_schema(connection, path=path, maintenance_agent_lock=maintenance_agent_lock)
+            ensure_ledger_schema(
+                connection,
+                path=path,
+                maintenance_agent_lock=maintenance_agent_lock,
+                maintenance_cache_refresh_lock=maintenance_cache_refresh_lock,
+            )
             from codex_usage.allowance_window_tracking import repair_existing_tracking
             repair_existing_tracking(connection)
         yield connection
@@ -83,7 +92,12 @@ def ensure_ledger_schema(
     *,
     path: Path | None = None,
     maintenance_agent_lock=None,
+    maintenance_cache_refresh_lock=None,
 ) -> None:
+    if maintenance_cache_refresh_lock is not None:
+        if path is None:
+            raise ValueError("borrowed cache refresh lock requires the ledger path")
+        validate_owned_cache_refresh_lock(path, maintenance_cache_refresh_lock)
     connection.row_factory = sqlite3.Row
     authorize_writer_connection(connection)
     version = _ledger_version(connection)
@@ -99,7 +113,11 @@ def ensure_ledger_schema(
     if version and path is not None:
         assert_legacy_writer_metadata(connection)
         from codex_usage.ledger_maintenance import acquire_ledger_maintenance
-        with acquire_ledger_maintenance(path, owned_agent_lock=maintenance_agent_lock):
+        with acquire_ledger_maintenance(
+            path,
+            owned_agent_lock=maintenance_agent_lock,
+            owned_cache_refresh_lock=maintenance_cache_refresh_lock,
+        ):
             if _ledger_version(connection) != version:
                 raise RuntimeError("ledger schema changed before maintenance admission")
             configure_ledger_connection(connection, journal_mode=False)

@@ -1,6 +1,6 @@
 # ADR 0070: Candidate-Bound Hosted Latency Dispositions
 
-Status: Implemented and locally qualified; explicit journal-append authority and hosted C-F qualification pending.
+Status: Implemented and locally qualified; bounded append authority approved October 15; hosted C-F qualification pending.
 
 ## Problem
 
@@ -28,9 +28,9 @@ must name the current predecessor commit, increment its revision and carry an
 explicit approval/reason. Preserve old bindings but make them ineligible for
 current qualification or promotion. Purpose may advance from `nonpublishing`
 to `release`, never back; release source version must equal the reserved version.
-The proposed cap is four bindings: required C/E plus the two already-authorized
-corrective iterations. New typed-event append authority is awaiting owner review;
-no journal write is authorized merely by this design record.
+The owner approved at most four bindings on October 15: required C/E plus the two
+already-authorized corrective iterations. Each append still requires its frozen
+candidate and actual approval reason; this record grants no publication authority.
 
 Either target's anchored possible-publication intent permanently freezes the
 slot, regardless of outcome, catalog visibility, acknowledgement or surviving
@@ -110,8 +110,8 @@ the separately approved `append-latency-binding` operation may append it after
 rechecking source and uncached mutable refs. Source/head drift or an unknown
 acknowledgement stops; never automatically regenerate or retry the preparation.
 
-No real binding has been appended, so the exception is not active. Explicit
-append approval and actual hosted qualification remain outstanding. Following
+No real binding has been appended at this checkpoint, so the exception is not
+active. Bounded append approval is granted; hosted qualification remains outstanding. Following
 the release, restoring strict hosted validation requires a reviewed source
 change, not a broader binding or version allowlist. Retain the historical typed
 journal validators and immutable scope so old retained records remain readable.
