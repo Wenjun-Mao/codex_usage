@@ -18,6 +18,7 @@ from codex_usage.session_generation_models import (
 )
 from codex_usage.session_inventory import SessionFileInventoryEntry
 from codex_usage.speed_store import cache_speed
+from codex_usage.history_upgrade_receipts import rekey_upgrade_decision
 
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
 
@@ -98,6 +99,7 @@ def rekey_file_generation(
 ) -> set[str]:
     affected = affected_task_ids_for_file(connection, entry.file_key)
     affected.update(affected_task_ids_for_file(connection, replacement.file_key))
+    rekey_upgrade_decision(connection, entry.file_key, replacement.file_key)
     delete_file_generation(connection, replacement.file_key)
     connection.execute("delete from files where file_key = ?", (replacement.file_key,))
     for table in (

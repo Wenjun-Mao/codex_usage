@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 
 from codex_usage.agent_capture import session_dirs_for_home
+from codex_usage.agent_rebuild_models import (
+    RebuildOutcome,
+    RebuildReason,
+    RebuildSliceResult,
+    checkpoint_advanced,
+    checkpoint_progress,
+)
 from codex_usage.agent_rebuild_authority import (
     assert_attached_stage,
     assert_installed_authority,
@@ -27,6 +34,7 @@ from codex_usage.parser import parse_session_append
 from codex_usage.session_cache_checkpoints import load_parser_checkpoint
 from codex_usage.session_cache_refresh import refresh_files
 from codex_usage.session_cache_schema import _ensure_schema
+from codex_usage.history_upgrade_receipts import pending_upgrade_keys
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     collect_session_file_inventory,
@@ -48,17 +56,9 @@ _WORKSET_TABLES = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class RebuildSliceResult:
-    source_key: str
-    complete: bool
-    captured_bytes: int
-    target_bytes: int
-    bytes_read: int
-
-
 def stale_source_keys(ledger_path: Path) -> tuple[str, ...]:
     with open_ledger(ledger_path, read_only=True) as connection:
+        excluded = pending_upgrade_keys(connection)
         rows = connection.execute(
             """
             select source_key from ledger_sources
@@ -66,7 +66,7 @@ def stale_source_keys(ledger_path: Path) -> tuple[str, ...]:
             order by size_bytes, source_key
             """
         ).fetchall()
-    return tuple(str(row["source_key"]) for row in rows)
+    return tuple(str(row["source_key"]) for row in rows if str(row["source_key"]) not in excluded)
 
 
 def pending_incremental_source_count(ledger_path: Path) -> int:
@@ -84,7 +84,8 @@ def pending_incremental_source_count(ledger_path: Path) -> int:
                   < ledger_sources.size_bytes
             """
         ).fetchone()
-    return int(row[0])
+        discovery_pending = len(pending_upgrade_keys(connection, budget_only=True))
+    return int(row[0]) + discovery_pending
 
 
 def rebuild_stale_source_slice(
@@ -124,6 +125,7 @@ def rebuild_stale_source_slice(
         authority = bind_rebuild_authority(connection, source)
         schema = _ensure_schema(connection)
         staged_entry = _staged_entry(connection, entry)
+        previous = checkpoint_progress(load_parser_checkpoint(connection, staged_entry.file_key, path))
         worklist = [staged_entry]
         outcome = refresh_files(
             connection,
@@ -143,6 +145,7 @@ def rebuild_stale_source_slice(
         ensure_private_sqlite_files(staging_path)
 
     complete = successful and checkpoint is not None and captured == entry.size_bytes
+    advanced = checkpoint_advanced(previous, checkpoint_progress(checkpoint))
     if complete:
         _install_completed_rebuild(
             ledger_path,
@@ -155,11 +158,23 @@ def rebuild_stale_source_slice(
         _remove_staging_files(staging_path)
     return RebuildSliceResult(
         source_key=source_key,
-        complete=complete,
+        outcome=(RebuildOutcome.COMPLETE if complete else
+                 RebuildOutcome.PROGRESS if advanced else RebuildOutcome.BLOCKED),
         captured_bytes=captured,
         target_bytes=entry.size_bytes,
         bytes_read=outcome.stats.source_bytes_read,
+        reason=RebuildReason.NO_PROGRESS if not complete and not advanced else RebuildReason.NONE,
     )
+
+
+def rebuild_source_fingerprint(ledger_path, source_key):
+    with open_ledger(ledger_path, read_only=True) as connection:
+        row = load_rebuild_source(connection, source_key)
+        observed = connection.execute("select size_bytes,mtime_ns from files where file_key=?", (source_key,)).fetchone()
+    if row is None:
+        return None
+    import json
+    return hashlib.sha256(json.dumps((dict(row), tuple(observed) if observed else None), sort_keys=True).encode()).hexdigest()
 
 
 def _staged_entry(connection, entry):

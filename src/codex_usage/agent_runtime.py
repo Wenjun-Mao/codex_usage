@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import threading
 import time
-from collections import deque
 from concurrent.futures import Future
 from dataclasses import replace
 from pathlib import Path
@@ -32,11 +31,12 @@ from codex_usage.agent_private_files import (
 from codex_usage.agent_protocol import AgentDescriptor, write_agent_descriptor
 from codex_usage.agent_reports import RenderedLedgerReport
 from codex_usage.agent_rebuild import (
-    RebuildSliceResult,
     pending_incremental_source_count,
     rebuild_stale_source_slice,
+    rebuild_source_fingerprint,
     stale_source_keys,
 )
+from codex_usage.agent_rebuild_queue import RebuildQueue
 from codex_usage.agent_schedule import CaptureSchedule
 from codex_usage.agent_status import runtime_status_payload
 from codex_usage.agent_settings import (
@@ -92,9 +92,12 @@ class CodexUsageAgent:
         self._lock = FileLock(str(agent_lock_path(self.codex_home)))
         self._capture_lock = threading.Lock()
         self._capture_future: Future[CaptureResult] | None = None
-        self._rebuild_lock = threading.Lock()
-        self._rebuild_queue: deque[str] = deque()
-        self._rebuild_future: Future[RebuildSliceResult] | None = None
+        self._rebuilds = RebuildQueue(
+            lane=lambda: self._lane, stopped=self._stop.is_set,
+            candidates=lambda: stale_source_keys(ledger_database_path(self.codex_home)),
+            fingerprint=lambda key: rebuild_source_fingerprint(ledger_database_path(self.codex_home), key),
+            rebuild=lambda key: rebuild_stale_source_slice(self.codex_home, key, max_bytes=64 * 1024 * 1024),
+        )
 
     @property
     def descriptor(self) -> AgentDescriptor:
@@ -398,6 +401,7 @@ class CodexUsageAgent:
         if self._stop.is_set():
             return
         if result.outcome == "success":
+            self._rebuilds.capture_completed(result.run_id, baseline=result.request_kind == "baseline")
             if result.request_kind != "baseline":
                 self._schedule.mark_success(self._clock())
             ledger_path = ledger_database_path(self.codex_home)
@@ -419,48 +423,7 @@ class CodexUsageAgent:
             self._schedule_wakeup.set()
 
     def _queue_stale_rebuilds(self) -> None:
-        keys = stale_source_keys(ledger_database_path(self.codex_home))
-        with self._rebuild_lock:
-            active = set(keys)
-            retained = [key for key in self._rebuild_queue if key in active]
-            queued = set(retained)
-            retained.extend(key for key in keys if key not in queued)
-            self._rebuild_queue = deque(retained)
-        self._submit_next_rebuild_slice()
-
-    def _submit_next_rebuild_slice(self) -> None:
-        with self._rebuild_lock:
-            if self._rebuild_future is not None and not self._rebuild_future.done():
-                return
-            if not self._rebuild_queue:
-                return
-            source_key = self._rebuild_queue.popleft()
-            future = self._lane.submit(
-                "baseline-rebuild",
-                JobPriority.BASELINE_REBUILD,
-                lambda: rebuild_stale_source_slice(
-                    self.codex_home,
-                    source_key,
-                    max_bytes=64 * 1024 * 1024,
-                ),
-            )
-            self._rebuild_future = future
-        future.add_done_callback(self._rebuild_completed)
-
-    def _rebuild_completed(
-        self,
-        future: Future[RebuildSliceResult],
-    ) -> None:
-        try:
-            result = future.result()
-        except BaseException:
-            return
-        if self._stop.is_set():
-            return
-        if not result.complete:
-            with self._rebuild_lock:
-                self._rebuild_queue.append(result.source_key)
-        self._queue_stale_rebuilds()
+        self._rebuilds.reconcile()
 
     def _capture_is_running(self) -> bool:
         with self._capture_lock:

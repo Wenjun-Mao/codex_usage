@@ -199,6 +199,11 @@ or withholds an unresolved family; it never supplies missing byte-prefix proof,
 rebinds checkpoints, or claims completeness against lost raw data. Upgrade,
 mixed-writer, disposable/live-repair and release qualification remain separate.
 
+[ADR 0067](0067-bounded-accounting-upgrade-discovery.md) discovers weak historical
+checkpoints before ownership changes, reserves their logical slots and bounds
+staged retries. Discovery is not repair authority or missing-source rebinding;
+dependent lineage invalidation and mixed-writer safety remain separate work.
+
 Regressions cover repeated/advanced counters, ordinary sessions, missing/history
 conflicts, chunked checkpoints, quota-only rows before/after opening, continued
 subagent forks, empty/multi-page/ancestor prefixes, explicit ordinal boundaries,

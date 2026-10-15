@@ -17,6 +17,22 @@ from unittest.mock import patch
 from observed_speed_fixture import AT, append_rows, response, write_source
 
 
+def assert_frozen_parity(expected, candidate):
+    """Preserve all original facts; name the one additive presentation contract."""
+    added = []
+    if "display_history" not in expected["allowance"] and "display_history" in candidate["allowance"]:
+        history = candidate["allowance"]["display_history"]
+        fields = {"captures", "periods", "uncertain", "cross_boundary_fit_indices"}
+        if not isinstance(history, dict) or set(history) != fields or any(type(value) is not list for value in history.values()):
+            raise AssertionError("invalid additive allowance display-history contract")
+        added.append("allowance.display_history")
+        candidate = dict(candidate, allowance={key: value for key, value in candidate["allowance"].items()
+                                               if key != "display_history"})
+    if expected != candidate:
+        raise AssertionError("candidate changed frozen evidence; inspect synthetic expected/candidate snapshots")
+    return added
+
+
 def snapshot(home):
     from codex_usage.agent_capture import capture_once
     from codex_usage.agent_paths import ledger_database_path
@@ -117,12 +133,15 @@ def main():
             completed = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--worker-home", str(root / label)],
                 env=environment, capture_output=True, text=True, check=True)
             results.append(json.loads(completed.stdout))
-        if results[0] != results[1]:
+        try:
+            added = assert_frozen_parity(*results)
+        except AssertionError:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             for label, result in zip(("expected", "candidate"), results):
                 args.output.with_suffix(f".{label}.json").write_text(json.dumps(result, indent=2, sort_keys=True))
-            raise AssertionError("candidate changed frozen evidence; inspect synthetic expected/candidate snapshots")
+            raise
         evidence = {"synthetic_only": True, "baseline": args.baseline_ref, "exact_parity": True,
+            "additive_presentation_fields": added,
             "language_records": len(results[0]["records"]), "range_project_cases": len(results[0]["monetary"]),
             "indexed_full_allowance_equal": True,
             "exact_image_facts_equal": True,

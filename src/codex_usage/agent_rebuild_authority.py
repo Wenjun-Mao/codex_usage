@@ -8,6 +8,10 @@ from codex_usage.session_history import source_identity
 from codex_usage.session_parser_models import parser_state_to_json
 
 
+class StagedCaptureUnavailableError(RuntimeError):
+    """A fresh ordinary capture may make the staged source readable again."""
+
+
 def load_rebuild_source(connection, source_key):
     return connection.execute("""select s.source_key, s.path, s.session_dir, s.storage_state,
         f.session_id, f.parsed_at, p.byte_offset, p.next_record_index,
@@ -83,7 +87,7 @@ def validate_staged_capture(connection, entry, checkpoint, authority):
         return False
     row = connection.execute("select * from files where file_key=?", (entry.file_key,)).fetchone()
     if row is None or row["error"] or row["is_missing"]:
-        raise RuntimeError("staged capture is unavailable or has a parse error")
+        raise StagedCaptureUnavailableError("staged capture is unavailable or has a parse error")
     if not _capture_header(connection, entry.file_key, checkpoint, authority):
         return False
     if (row["path"] != str(entry.path) or row["size_bytes"] != entry.size_bytes

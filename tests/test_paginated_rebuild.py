@@ -10,6 +10,7 @@ import codex_usage.agent_rebuild as rebuild_module
 from codex_usage.agent_capture import capture_once
 from codex_usage.agent_paths import ledger_database_path
 from codex_usage.agent_rebuild import _staging_path, rebuild_stale_source_slice
+from codex_usage.agent_rebuild_models import RebuildOutcome, RebuildReason
 from codex_usage.ledger_queries import load_ledger_records, load_ledger_status
 from codex_usage.session_files import read_session_metadata_bounded
 from codex_usage.session_history import source_identity
@@ -125,6 +126,8 @@ def test_paginated_rebuild_without_owned_ancestor_keeps_named_gap_and_trusted_ro
 
     assert not result.complete
     assert result.captured_bytes == 0
+    assert result.outcome == RebuildOutcome.BLOCKED
+    assert result.reason == RebuildReason.NO_PROGRESS
     assert _trusted_total(ledger) == 150
     assert load_ledger_status(ledger).coverage.stale_sources == 1
     with sqlite3.connect(_staging_path(home, source_key)) as connection:

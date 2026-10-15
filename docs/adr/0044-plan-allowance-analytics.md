@@ -588,3 +588,11 @@ Oracle tests enforce segmentation, pricing, confidence, and no cross-window
 consumption, unknown-plan bridges, explicit plan changes, real resets around
 metadata gaps, and genuine insufficient-window fallback; migration tests preserve
 usage; report tests forbid source reads and probes. Quota storage is independent of language and image accounting.
+
+The frozen monetary parity gate preserves every field in its original oracle.
+For an oracle predating period-first history, it permits only the explicitly
+named additive `allowance.display_history` presentation contract, records that
+addition in its receipt, and checks its exact top-level list shape. Unknown
+additions and changed financial fields still fail. An oracle already containing
+display history compares that field exactly too; period behavior itself remains
+covered by mandatory grouping, rendering and browser cases.

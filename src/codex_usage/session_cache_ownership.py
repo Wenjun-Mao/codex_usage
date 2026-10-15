@@ -42,6 +42,7 @@ def promote_cached_session_owners(
     *,
     rebuilt: bool,
     entry_priority: Callable[[SessionFileInventoryEntry], tuple[int, int, str]],
+    protected_keys: frozenset[str] = frozenset(),
 ) -> set[str]:
     """Promote a reusable current owner only when it has highest priority.
 
@@ -59,6 +60,8 @@ def promote_cached_session_owners(
 
     affected_task_ids: set[str] = set()
     for source_key, indexes in current_by_source.items():
+        if source_key in protected_keys or any(inventory[index].file_key in protected_keys for index in indexes):
+            continue
         winner_index = min(indexes, key=lambda index: entry_priority(inventory[index]))
         winner = inventory[winner_index]
         winner_cached = cached_rows[winner.file_key]

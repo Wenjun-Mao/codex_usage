@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
@@ -59,52 +59,51 @@ def _read_session_metadata_bounded_once(
     *,
     max_bytes: int,
 ) -> SessionMetadataRead:
-    consumed = 0
     with path.open("rb") as handle:
-        while consumed < max_bytes:
-            remaining = max_bytes - consumed
-            raw_line = handle.readline(remaining + 1)
-            if not raw_line:
-                break
-            consumed += len(raw_line)
-            if len(raw_line) > remaining:
-                return SessionMetadataRead(None, "session_meta_limit_exceeded", consumed)
-            try:
-                line = raw_line.decode("utf-8")
-            except UnicodeDecodeError:
-                continue
-            obj = _parse_json_line(line)
-            if obj is None or obj.get("type") != "session_meta":
-                continue
-            payload = (
-                obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
-            )
-            git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
-            return SessionMetadataRead(
-                SessionMetadata(
-                    session_id=str(payload.get("id") or path.stem),
-                    file_path=path,
-                    timestamp=parse_timestamp(payload.get("timestamp"))
-                    or parse_timestamp(obj.get("timestamp")),
-                    cwd=str(payload.get("cwd") or ""),
-                    originator=str(payload.get("originator") or ""),
-                    source=str(payload.get("source") or ""),
-                    cli_version=str(payload.get("cli_version") or ""),
-                    model_provider=str(payload.get("model_provider") or ""),
-                    forked_from_id=str(payload.get("forked_from_id") or ""),
-                    parent_thread_id=parent_thread_id_from_source(payload),
-                    memory_mode=str(payload.get("memory_mode") or ""),
-                    has_base_instructions=payload.get("base_instructions") is not None,
-                    git_repository_url=str(git.get("repository_url") or ""),
-                    git_branch=str(git.get("branch") or ""),
-                    git_commit_hash=str(git.get("commit_hash") or ""),
-                    is_subagent=is_structured_subagent(payload),
-                    history_mode=str(payload.get("history_mode") or ""),
-                    history_base=HistoryBoundary.from_mapping(payload.get("history_base")),
-                    history_ordinal=optional_ordinal(obj.get("ordinal")),
-                    forked_from_ordinal_exclusive=optional_ordinal(payload.get("forked_from_ordinal_exclusive")),
-                ), bytes_read=consumed,
-            )
+        return read_session_metadata_stream(path, handle, max_bytes=max_bytes)
+
+
+def read_session_metadata_stream(path: Path, handle: BinaryIO, *, max_bytes: int) -> SessionMetadataRead:
+    """Parse the same bounded header from a caller-owned frozen byte stream."""
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be positive")
+    consumed = 0
+    while consumed < max_bytes:
+        remaining = max_bytes - consumed
+        raw_line = handle.readline(remaining + 1)
+        if not raw_line:
+            break
+        consumed += len(raw_line)
+        if len(raw_line) > remaining:
+            return SessionMetadataRead(None, "session_meta_limit_exceeded", consumed)
+        try:
+            line = raw_line.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        obj = _parse_json_line(line)
+        if obj is None or obj.get("type") != "session_meta":
+            continue
+        payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+        git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
+        return SessionMetadataRead(
+            SessionMetadata(
+                session_id=str(payload.get("id") or path.stem), file_path=path,
+                timestamp=parse_timestamp(payload.get("timestamp")) or parse_timestamp(obj.get("timestamp")),
+                cwd=str(payload.get("cwd") or ""), originator=str(payload.get("originator") or ""),
+                source=str(payload.get("source") or ""), cli_version=str(payload.get("cli_version") or ""),
+                model_provider=str(payload.get("model_provider") or ""),
+                forked_from_id=str(payload.get("forked_from_id") or ""),
+                parent_thread_id=parent_thread_id_from_source(payload),
+                memory_mode=str(payload.get("memory_mode") or ""),
+                has_base_instructions=payload.get("base_instructions") is not None,
+                git_repository_url=str(git.get("repository_url") or ""), git_branch=str(git.get("branch") or ""),
+                git_commit_hash=str(git.get("commit_hash") or ""), is_subagent=is_structured_subagent(payload),
+                history_mode=str(payload.get("history_mode") or ""),
+                history_base=HistoryBoundary.from_mapping(payload.get("history_base")),
+                history_ordinal=optional_ordinal(obj.get("ordinal")),
+                forked_from_ordinal_exclusive=optional_ordinal(payload.get("forked_from_ordinal_exclusive")),
+            ), bytes_read=consumed,
+        )
     return SessionMetadataRead(None, "session_meta_missing", consumed)
 
 

@@ -56,6 +56,8 @@ from codex_usage.session_cache_work_plans import (
 )
 from codex_usage.session_replica_selection import select_replicas
 from codex_usage.replica_accounting import reconcile_accounting
+from codex_usage.history_upgrade_discovery import DISCOVERY_BYTES, discover_accounting_upgrades, defer_upgrade_dependency
+from codex_usage.session_history import source_identity
 
 _COMMIT_GROUP_SIZE = 8
 
@@ -76,14 +78,18 @@ def refresh_files(
     cached_rows = _load_cached_rows(connection)
     _reconcile_fallback_file_keys(inventory, cached_rows)
     physical_inventory = list(inventory) if history_inventory is None else history_inventory
+    discovery = discover_accounting_upgrades(connection, inventory,
+        max_bytes=min(DISCOVERY_BYTES, session_history_requests.HISTORY_EXTRA_READ_BUDGET))
     selection = select_replicas(connection, inventory, cached_rows,
-        max_bytes=session_history_requests.HISTORY_EXTRA_READ_BUDGET)
+        max_bytes=session_history_requests.HISTORY_EXTRA_READ_BUDGET-discovery.bytes_read,
+        protected_keys=discovery.blocked)
     cached_rows = _load_cached_rows(connection)
     parse_entries, reused, missing_marked, affected_task_ids = _commit_preflight(
         connection,
         inventory,
         cached_rows,
         rebuilt=rebuilt,
+        discovery=discovery,
     )
     affected_task_ids.update(selection.affected_task_ids)
     refreshed_rows = _load_cached_rows(connection)
@@ -97,7 +103,7 @@ def refresh_files(
         physical_inventory,
         requests,
         refreshed_rows,
-        extra_read_budget=session_history_requests.HISTORY_EXTRA_READ_BUDGET-selection.bytes_read,
+        extra_read_budget=session_history_requests.HISTORY_EXTRA_READ_BUDGET-selection.bytes_read-discovery.bytes_read,
     )
 
     worker_spans: list[WorkerSpan] = []
@@ -127,6 +133,7 @@ def refresh_files(
                     session_dirs,
                     inventory,
                     results,
+                    protected_keys=discovery.protected,
                 )
             )
             affected_task_ids.update(group_affected_task_ids)
@@ -164,7 +171,7 @@ def refresh_files(
             result.outcome in {"full_fallback", "stale"}
             for result in all_results
         ),
-        source_bytes_read=selection.bytes_read + history_metadata_bytes + sum(result.bytes_read for result in all_results),
+        source_bytes_read=discovery.bytes_read + selection.bytes_read + history_metadata_bytes + sum(result.bytes_read for result in all_results),
         pending_files=sum(
             1
             for entry in inventory
@@ -231,6 +238,7 @@ def _commit_preflight(
     cached_rows: dict[str, sqlite3.Row],
     *,
     rebuilt: bool,
+    discovery,
 ) -> tuple[list[tuple[int, SessionFileInventoryEntry]], int, int, set[str]]:
     now = datetime.now(UTC).isoformat()
     current_keys = {entry.file_key for entry in inventory}
@@ -248,9 +256,13 @@ def _commit_preflight(
                 cached_rows,
                 rebuilt=rebuilt,
                 entry_priority=_entry_priority,
+                protected_keys=discovery.blocked,
             )
         )
         _upsert_pending_inventory_rows(connection, inventory, now)
+        for entry in inventory:
+            if entry.file_key in discovery.dependents:
+                defer_upgrade_dependency(connection, entry)
         cached_rows = _load_cached_rows(connection)
         current_keys = {entry.file_key for entry in inventory}
         for file_key, row in cached_rows.items():
@@ -274,6 +286,8 @@ def _commit_preflight(
             missing_marked += 1
 
         for ordinal, entry in enumerate(inventory):
+            if entry.file_key in discovery.blocked:
+                continue
             cached = cached_rows.get(entry.file_key)
             if is_reusable(entry, cached, rebuilt=rebuilt):
                 connection.execute(
@@ -297,6 +311,8 @@ def _commit_result_group(
     session_dirs: list[Path],
     inventory: list[SessionFileInventoryEntry],
     results: tuple[UsageParseResult, ...],
+    *,
+    protected_keys: frozenset[str] = frozenset(),
 ) -> tuple[set[str], int]:
     affected_task_ids: set[str] = set()
     identity_replacements = 0
@@ -339,6 +355,9 @@ def _commit_result_group(
                     result.fallback_reason,
                 )
             else:
+                if source_identity(result.metadata) in protected_keys:
+                    defer_upgrade_dependency(connection, entry)
+                    continue
                 if result.appended is not None:
                     _assert_current_append_checkpoint(
                         connection,

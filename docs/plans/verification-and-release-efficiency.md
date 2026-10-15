@@ -1,6 +1,6 @@
 # Verification And Release Efficiency
 
-Date: 2026-10-13; revised 2026-10-14. Local and journal gates pass; production
+Date: 2026-10-13; revised 2026-10-15. Local and journal gates pass; production
 promotion is source-disabled. Earlier normal/dry-run proof is historical only.
 The owner defers A/B's hosted WebKit latency diagnosis/correction until after the
 next release, accepting that known limitation for that candidate only.
@@ -479,12 +479,12 @@ Local median breakdown runtime: 150.13 -> 95.29s across three alternating pairs;
 reads. Fresh navigation, 1,440 keyboard presses and 160 screenshots remain.
 U's 18 mandatory cases and controlled rejection pass. R is integrated through
 `186ad5d`: 252 mandatory allowance browser cases and all 51 extension tests pass.
-Core after staged-authority integration passes 2,475 tests/one approved
-skip; the renewed 252-case allowance browser inventory also passes.
+Core after bounded upgrade/retry integration passes 2,517 tests/one approved
+skip; frozen monetary/work guards and the renewed 252-case allowance browser inventory pass.
 P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
 Replicas cover compatible longest copies, missing canonical retention and partial handoffs; staged semantic repairs preserve evidence and install atomically across source-key changes.
 [Retained accounting](../adr/0065-retained-accounting-authority.md) selects whole proven projections; [runtime compatibility](../adr/0066-accounting-capability-handshake.md) passes 73 extension cases.
-Upgrades/dependencies, database-writer safety, disposable/live repair and owner preview remain unfinished.
+[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md) now reserves old captures and bounds retries; dependency invalidation, writer safety, disposable/live repair and owner preview remain unfinished.
 
 The [pilot](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md) retain chronology/costs.

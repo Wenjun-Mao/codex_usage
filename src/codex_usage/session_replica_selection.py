@@ -29,7 +29,7 @@ class ReplicaSelection:
     affected_task_ids: frozenset[str]
 
 
-def select_replicas(connection, inventory, cached_rows, *, max_bytes):
+def select_replicas(connection, inventory, cached_rows, *, max_bytes, protected_keys=frozenset()):
     """One parse source per physical ID; ordinary legacy ownership is unchanged."""
     groups = {}
     for entry in inventory:
@@ -46,6 +46,8 @@ def select_replicas(connection, inventory, cached_rows, *, max_bytes):
         for physical, entries in groups.items():
             hint = rollout_identity(entries[0].path)
             key_hint = hint.thread_id if hint.thread_id == physical else PAGE_KEY_PREFIX+physical
+            if key_hint in protected_keys or any(entry.file_key in protected_keys for entry in entries):
+                continue
             owner = cached_rows.get(key_hint)
             group_rows = cached_families.get(physical, {})
             pending = obligations.get(key_hint, ())

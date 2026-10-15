@@ -6,6 +6,7 @@ from pathlib import Path
 from codex_usage.session_cache_checkpoints import load_parser_checkpoint
 from codex_usage.session_inventory import SessionFileInventoryEntry
 from codex_usage.session_parser_models import SessionParseCheckpoint
+from codex_usage.checkpoint_history_contract import supports_history_resume
 
 
 class StaleAppendCheckpointError(RuntimeError):
@@ -57,7 +58,7 @@ def eligible_append_checkpoint(
     ):
         return None
     checkpoint = load_parser_checkpoint(connection, entry.file_key, entry.path)
-    if checkpoint is None:
+    if checkpoint is None or not supports_history_resume(connection, entry.file_key):
         return None
     if (
         entry.size_bytes < checkpoint.byte_offset
