@@ -8,15 +8,18 @@ history = load_tool("release.publication_history")
 
 
 class HistoryAPI(FixtureAPI):
-    def __init__(self, *, attempted=True, recorded=True):
+    def __init__(self, *, attempted=True, recorded=True, bound_timing=False):
         self.publisher_sha = "d" * 40
-        super().__init__()
+        super().__init__(version="2.12.3" if bound_timing else "2.12.2",
+            binding_purpose="release" if bound_timing else "nonpublishing")
         manifest = self.reader().freeze()
         self.qualified = {"schema": 1, "status": "validated-for-publication", "source": self.source,
-            "tag": "v2.12.2", "qualification_run": 77, "qualification_attempt": 1,
+            "tag": "v" + self.source["version"], "qualification_run": 77, "qualification_attempt": 1,
             "manifest_sha256": policy.fingerprint(manifest), "manifest": manifest}
+        if bound_timing:
+            self.qualified["latency_binding"] = manifest["latency_binding"]
         self.publication = {**self.run_data, "id": 88, "path": policy.PROMOTION_WORKFLOW,
-            "head_branch": "v2.12.2", "conclusion": "failure", "run_number": 1}
+            "head_branch": self.qualified["tag"], "conclusion": "failure", "run_number": 1}
         self.validation = {"id": 301, "name": "Validate qualification", "status": "completed", "conclusion": "success",
             "started_at": "2026-10-13T01:00:00Z", "completed_at": "2026-10-13T01:00:10Z"}
         self.publisher = {"id": 302, "name": "Publish qualified packages", "status": "completed", "conclusion": "failure",
@@ -28,10 +31,12 @@ class HistoryAPI(FixtureAPI):
         self.record = None
         if recorded:
             target = "darwin-arm64"
-            data = {"schema": 1, "kind": "publication-intent", "source": self.source, "tag": "v2.12.2",
+            data = {"schema": 1, "kind": "publication-intent", "source": self.source, "tag": self.qualified["tag"],
                 "qualification_run": 77, "qualification_attempt": 1, "manifest_sha256": self.qualified["manifest_sha256"],
                 "publisher_sha": self.publisher_sha, "target": target, "package": manifest["packages"][target],
                 "origin": {"run": 88, "attempt": 1, "job": "publish"}}
+            if bound_timing:
+                data["latency_binding"] = manifest["latency_binding"]
             self.record = self.upload("intent-darwin-arm64-r88-a1", {"intent.json": policy.canonical(data)})
             self.record["workflow_run"]["id"] = 88
             self.publisher_log = history.PREFIX + policy.canonical({"target": target, "run": 88,
@@ -147,18 +152,28 @@ def test_duplicate_run_numbers_are_not_a_complete_history():
         history.prior_intents(api, api.qualified, 99, 1, api.blobs)
 
 
-def completed_history():
-    api = HistoryAPI()
+def completed_history(*, bound_timing=False):
+    api = HistoryAPI(bound_timing=bound_timing)
     api.publication["conclusion"] = "success"
     api.publisher["conclusion"] = "success"
     api.publisher["steps"][0]["conclusion"] = "success"
     api.qualified["promotion"] = {"run": 88, "attempt": 1, "sha": api.source["sha"],
-        "ref": "refs/tags/v2.12.2", "publisher_sha": api.publisher_sha}
+        "ref": "refs/tags/" + api.qualified["tag"], "publisher_sha": api.publisher_sha}
     expected = {"qualification_run": 77, "qualification_attempt": 1, "source": api.source,
         "packages": api.qualified["manifest"]["packages"]}
+    if bound_timing:
+        expected["latency_binding"] = api.qualified["latency_binding"]
     api.publisher_log += "CODEX_PROMOTION_COMPLETE " + policy.canonical(expected).decode()
     api.retained = lambda: {"records": [{"event": {"kind": "publication-start", "intent": {"source": api.source,
         "target": "darwin-arm64", "package": api.qualified["manifest"]["packages"]["darwin-arm64"]}}}]}
+    if bound_timing:
+        import json
+        from qualification_fixture import archives
+        model = load_tool("release.journal_model")
+        files = archives.zip_files(api.bodies[f"{api.prefix}/actions/artifacts/{api.record['id']}/zip"])
+        body = json.loads(files["intent.json"])
+        api.journal.anchor(api.journal.candidate(model.event_for(body, api.journal.config)))
+        api.retained = api.journal.read
     return api
 
 
@@ -188,4 +203,29 @@ def test_public_completion_cannot_borrow_or_fabricate_an_upload(fault):
     else:
         api.qualified["manifest"]["packages"]["win32-x64"]["sha256"] = "e" * 64
     with pytest.raises(ValueError):
+        history.verify_complete(api, api.qualified, api.blobs, api.retained)
+
+
+def test_completed_promotion_preserves_exact_d4_reference_and_retained_intent():
+    api = completed_history(bound_timing=True)
+    result = history.verify_complete(api, api.qualified, api.blobs, api.retained)
+    assert result["completed"]["latency_binding"] == api.qualified["latency_binding"]
+    assert result["prior_intents"] == {"darwin-arm64": True}
+    assert len(api.journal.read()["records"]) == 2
+
+
+@pytest.mark.parametrize("fault", ["missing", "changed", "completion"])
+def test_completed_promotion_refuses_d4_reference_drift(fault):
+    import json
+    api = completed_history(bound_timing=True)
+    if fault == "missing":
+        api.qualified.pop("latency_binding")
+    elif fault == "changed":
+        api.qualified["latency_binding"] = {**api.qualified["latency_binding"], "commit": "e"*40}
+    else:
+        prefix = "CODEX_PROMOTION_COMPLETE "
+        body = json.loads(history.markers(api.publisher_log, prefix)[0])
+        body["latency_binding"]["commit"] = "e"*40
+        api.publisher_log = api.publisher_log.split(prefix)[0] + prefix + policy.canonical(body).decode()
+    with pytest.raises(ValueError, match="completion"):
         history.verify_complete(api, api.qualified, api.blobs, api.retained)

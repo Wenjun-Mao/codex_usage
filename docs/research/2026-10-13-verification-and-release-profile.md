@@ -1,12 +1,12 @@
 # Test And Release Profiling
 
-Date: 2026-10-13. Status: baseline assessment plus measured local implementation.
+Date: 2026-10-13; source-qualification follow-up 2026-10-15. Baseline plus measured local implementation.
 Release authority: 2.12.2 at `11908ab947c4dc4eac9a991c144d8b6e1601ff35`.
-The baseline assessment was read-only. Follow-up changes affect verification and
-qualification tooling only; product accounting/rendering, deadlines, installed
-extensions and live data remain unchanged. Earlier normal hosted qualification
-and dry-run receipts are retained. The current observation contract remains held
-by hosted WebKit input/observation latency; it is not fully qualified.
+The original assessment/tooling follow-up did not alter product accounting,
+rendering or deadlines. The later combined P/R/U candidate changes product code;
+installed extensions and live data are not modified by this work. [Source-only C/D at `f376c273`](../release/2026-10-15-source-qualification.md)
+now passes under the approved candidate-bound hosted WebKit timing disposition,
+not a cause correction. Stage E's enabled/versioned source needs fresh proof.
 
 ## Method And Limits
 

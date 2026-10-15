@@ -1,8 +1,8 @@
 # ADR 0061: Qualified Artifact Promotion
 
-Status: Accepted for implementation on 2026-10-13; local and journal gates pass.
-Earlier normal/dry-run receipts are retained; the current observation contract
-is not fully hosted-qualified. Production promotion is disabled, not released.
+Status: Accepted; disabled source `f376c273` passes current-source C/D on October 15.
+Stage E prepares source-level activation for 2.12.3; its changed source requires
+fresh complete qualification. Live P application, owner UI acceptance and F remain held.
 Owner selected explicit promotion; see the
 [implementation plan](../plans/verification-and-release-efficiency.md).
 
@@ -85,6 +85,26 @@ Browser batching changes test transport only; assertion inventories and real
 interaction/pixel checks must remain equivalent. Latency guards are unchanged.
 
 ## Verification And Rollback
+
+Activation is a reviewed source edit, never an environment/input override. Both
+disabled and enabled states are tested explicitly: disabled commands refuse
+before transport/file access; enabled commands retain real proof, tag, dispatch,
+binding, package-byte and retained-journal validators with synthetic transports.
+The intent CLI cannot emit upload authority before anchored readback, including
+accepted-write/lost-acknowledgement failures. The JavaScript publisher must stop
+before lookup/upload when its Python file validator rejects. Keeping the switch
+permanently false or relying only on stubbed publishing tests would not qualify
+the actual enabled entrypoints. Enabling source grants neither UI acceptance nor
+publication permission; absent matching tag/proof/intent, uploads still refuse.
+
+The 2.12.3 activation preparation passes 2,988 Python cases with the one approved
+Windows-only skip and 83 extension cases. Raw inventories reconcile and preserve
+every one of the previous candidate's 2,940 collected Python identities. Ruff,
+monetary parity and bounded-work checks pass; both lockfiles change only the
+project version. Read-only independent review finds no actionable issue in the
+enabled entrypoints, fixtures or authority boundaries. These local results do
+not qualify the new source: append its reviewed exact-source binding after
+commit/push, then renew all normal/retry/native/dry-run proof before E closes.
 
 Negative tests reject wrong source/version/tag/repository/target/trust context,
 missing or unsuccessful gates/cases, unknown contracts, ambiguous reruns,

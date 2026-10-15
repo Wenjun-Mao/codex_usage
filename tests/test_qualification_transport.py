@@ -55,7 +55,16 @@ def test_rest_inventory_is_complete_unique_and_typed(fault):
 
 def test_production_promotion_is_blocked_before_network_or_credentials(tmp_path, monkeypatch):
     qualification = load_tool("qualification")
+    monkeypatch.setattr(qualification, "PROMOTION_ENABLED", False)
     monkeypatch.setattr(qualification, "proof_reader", lambda *args, **kwargs: pytest.fail("Blocked promotion must not download proof"))
     with pytest.raises(ValueError, match="independently retained"):
         qualification.main(["validate-publication", "--run", "77", "--attempt", "1", "--ref", "refs/tags/v2.12.2",
             "--promotion-run", "99", "--promotion-attempt", "1", "--output", str(tmp_path)])
+
+
+def test_disabled_package_check_refuses_before_reading_proof(tmp_path, monkeypatch):
+    qualification = load_tool("qualification")
+    monkeypatch.setattr(qualification, "PROMOTION_ENABLED", False)
+    monkeypatch.setattr(type(tmp_path), "read_text", lambda *args, **kwargs: pytest.fail("Disabled check must not read proof"))
+    with pytest.raises(ValueError, match="independently retained"):
+        qualification.main(["check-files", "--directory", str(tmp_path)])

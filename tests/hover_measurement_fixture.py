@@ -24,11 +24,11 @@ def measurements(*, deferred=False, context=None):
     return result
 
 
-def hosted_measurements(source=None, *, attempt=1):
+def hosted_measurements(source=None, *, attempt=1, purpose="nonpublishing"):
     from journal_fixture import JournalFixture
     from latency_binding_fixture import anchor, binding
     fixture = JournalFixture(repository_id=123 if source is None else source["repository_id"])
-    value = binding(fixture)
+    value = binding(fixture, purpose=purpose)
     if source is not None:
         value["source"] = {key: source[key] for key in value["source"]}
     else:

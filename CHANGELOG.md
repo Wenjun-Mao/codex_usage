@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 2.12.3 - 2026-10-15
+
+- Resolve paginated-task accounting from validated physical-rollout lineage,
+  avoiding repeated inherited counters while preserving genuine new deltas and
+  uncertain historical evidence. Bound recovery and fence incompatible writers.
+- Compare models within a project by cost per response, responses per turn and
+  tokens per turn, with compact values, priceability and measured populations.
+- Group allowance history by evidence-backed periods, keeping uncertain readings
+  and exact capture details inspectable without merging or changing monetary fits.
+- Accept canonical background-collector descriptors and keep long report/capture
+  requests free from inherited socket idle timeouts.
+- Qualify platform packages once and explicitly promote those exact bytes.
+  Fail metadata early, isolate visual failures and verify original producer
+  attempts when reusing healthy artifacts. Tag creation alone does not publish.
+
 ## 2.12.2 - 2026-10-13
 
 - Reduce capture bookkeeping by querying only relevant repository-transition

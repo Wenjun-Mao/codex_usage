@@ -1,14 +1,15 @@
 # Qualified VSIX Promotion
 
-Status: durable journal pilot passes; earlier normal/dry-run receipts are retained.
-The current observation contract is not fully hosted-qualified. Production
-promotion is source-disabled; see the current gate in the pilot receipt below.
+Status: source-only C/D passes at `f376c273`; 2.12.3 activation is being prepared
+and must receive fresh matching qualification. Live repair and owner UI acceptance
+remain pending; no eligible tag or publication is authorized yet.
 All pilots must pass before release use. This guide does not
 authorize commits, CI, tags, publisher credentials or publication by itself.
 Authority: [ADR 0061](../adr/0061-qualified-artifact-promotion.md),
 [implementation plan](../plans/verification-and-release-efficiency.md) and
 [historical release receipts](../release.md). Current nonpublishing evidence:
-[2026-10-13 pilot receipt](2026-10-13-qualification-pilot.md).
+[October 15 source qualification](2026-10-15-source-qualification.md), with the
+[earlier pilot chronology](2026-10-13-qualification-pilot.md) retained.
 
 ## Candidate Preparation
 
@@ -112,6 +113,9 @@ hover diagnostics and screenshot. Prove only the failing visual job and required
 dependents execute again; healthy platform packages must retain their original
 producer identity. A failure remains a failure; no timeout is relaxed or blind
 test retry added. Probe runs are permanently rejected as release candidates.
+The command targets the runner's first case: Night precedes Day. The independent
+case inventory is a set, not an execution-order contract; verify the raw failed
+tuple and zero completed cases before the single approved failed-job rerun.
 
 ## Dry-Run Promotion
 
@@ -129,11 +133,12 @@ No package build or full test rerun belongs on the promotion path.
 
 ## Authorized Publication
 
-This procedure is not currently enabled. `validate-publication` and `check-files`
-fail before credentials while `PROMOTION_ENABLED` is false in the trusted source.
-An independent retained receipt journal and hosted qualification are prerequisites
-to enabling it; no environment/input flag bypasses that gate. Do not delete run
-history or infer safe retries from surviving run counters/catalog absence.
+Stage E changes `PROMOTION_ENABLED` only in reviewed, fingerprinted source. False
+still refuses before proof transport/file access; True is not sufficient authority.
+Require freshly qualified enabled/versioned source, its release-purpose D4 binding,
+completed live repair and owner UI acceptance before any tag or publishing action.
+No environment/input flag bypasses these gates. Do not delete retained history or
+infer safe retries from surviving run counters/catalog absence.
 
 Only after the new process is accepted and the owner explicitly authorizes a
 release, create the matching version tag at the qualified SHA and dispatch:

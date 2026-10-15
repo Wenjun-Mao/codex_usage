@@ -15,7 +15,7 @@ GATES = {"metadata": "Release metadata", "core": "Core and accounting",
     **{f"visual-{suite}": f"Visual ({suite})" for suite in VISUALS}}
 JOBS = {**GATES, "hosted": "Freeze hosted qualification", "native": "Native macOS"}
 SCHEMA = 1
-PROMOTION_ENABLED = False
+PROMOTION_ENABLED = True
 PROMOTION_BLOCKER = "Production promotion awaits full source-bound qualification of independently retained publication authority"
 MAX_ARCHIVE = 250 * 1024 * 1024
 HOST = {"version": "1.141.0", "commit": "2a59476c9bfcb90b3ddc372c36762471b7dfad1c",

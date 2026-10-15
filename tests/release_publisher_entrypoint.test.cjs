@@ -163,3 +163,18 @@ test('nonpublishing modes reject publisher credentials', async () => {
   for (const mode of ['prepare', 'complete']) await assert.rejects(runPublisher(f.directory, mode, f.options), /credentials/);
   assert.deepEqual(f.uploads, []);
 });
+
+test('rejected file validation prevents every read, lookup, upload and outcome write', async () => {
+  for (const mode of ['prepare', targets[0], 'complete']) {
+    const f = fixture(true), calls = [];
+    f.options.checkFiles = () => { calls.push('check-files'); throw Error('Rejected package authority'); };
+    f.options.files.readFile = async () => { calls.push('read'); throw Error('Unexpected file read'); };
+    f.options.lookup = async () => { calls.push('lookup'); throw Error('Unexpected catalog lookup'); };
+    f.options.upload = async () => { calls.push('upload'); throw Error('Unexpected upload'); };
+    await assert.rejects(runPublisher(f.directory, mode, f.options), /Rejected package authority/);
+    assert.deepEqual(calls, ['check-files']);
+    assert.deepEqual(f.uploads, []);
+    assert.deepEqual(f.saved, []);
+    assert.deepEqual(f.logs, []);
+  }
+});

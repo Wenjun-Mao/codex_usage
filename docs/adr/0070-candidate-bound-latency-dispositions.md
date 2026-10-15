@@ -1,6 +1,6 @@
 # ADR 0070: Candidate-Bound Hosted Latency Dispositions
 
-Status: Implemented and locally qualified; bounded append authority approved October 15; hosted C-F qualification pending.
+Status: Approved binding 1 and source-only C/D pass October 15; E's changed source needs a fresh binding and qualification. P/UI/F remain held.
 
 ## Problem
 
@@ -57,7 +57,9 @@ Producer receipts, frozen manifests and promotion retain the anchored binding
 reference. Freeze and promotion each resolve fresh canonical journal state and
 revalidate raw hover payloads, not only summaries. Keep successful-job/original-
 attempt markers, artifact digests, source closure, native proof and tag checks.
-`PROMOTION_ENABLED` stays false during this implementation and its pilots.
+`PROMOTION_ENABLED` stays false through initial C/D. Stage E may activate only
+reviewed/versioned source with enabled-path tests, then renew its binding and C/D.
+Activation and binding purpose do not grant owner UI acceptance or publication.
 
 Negative guards cover wrong source/version/contract/context, stale predecessor,
 duplicate slot, cap overflow, purpose regression, superseded/forged proof, both
@@ -110,9 +112,10 @@ the separately approved `append-latency-binding` operation may append it after
 rechecking source and uncached mutable refs. Source/head drift or an unknown
 acknowledgement stops; never automatically regenerate or retry the preparation.
 
-No real binding has been appended at this checkpoint, so the exception is not
-active. Bounded append approval is granted; hosted qualification remains outstanding. Following
-the release, restoring strict hosted validation requires a reviewed source
+The first approved nonpublishing binding is anchored at `ba93c29417e114155612f5ef8db514c3961e43fa`
+for `f376c273`; [normal/retry/native/dry-run proof](../release/2026-10-15-source-qualification.md) passes.
+Stage E's changed source requires its own release-purpose binding and fresh C/D,
+not a publication action. Following the release, restoring strict hosted validation requires a reviewed source
 change, not a broader binding or version allowlist. Retain the historical typed
 journal validators and immutable scope so old retained records remain readable.
 

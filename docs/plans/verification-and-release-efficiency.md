@@ -1,7 +1,7 @@
 # Verification And Release Efficiency
 
-Date: 2026-10-13; revised 2026-10-15. Local and journal gates pass; production
-promotion is source-disabled. Earlier normal/dry-run proof is historical only.
+Date: 2026-10-13; revised 2026-10-15. Source-only C/D passes at `f376c273`;
+Stage E prepares 2.12.3 activation, requiring fresh matching proof. P/UI/F remain held.
 The owner defers A/B's hosted WebKit latency diagnosis/correction until after the
 next release, accepting that known limitation for that candidate only.
 Scope agreed: faster failure-local gates, exact qualified-artifact promotion,
@@ -208,7 +208,7 @@ Next-release path: P/R/U -> C -> D -> E -> F, with owner UI acceptance before F.
 A/B move to the following release. On October 14 the owner accepted the existing hosted WebKit observation delay for the next release only.
 
 - Before qualification, record an ADR 0063/release-proof amendment binding the
-  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite; ADR 0070's journal, disposition and proof integration are implemented; bounded append authority was approved October 15, current-source hosted evidence remains pending.
+  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite; approved binding 1 at `ba93c294` qualifies `f376c273`. Stage E needs its own frozen-source binding and fresh proof, not reuse of that receipt.
   Preserve actual elapsed values and report `deferred-known-latency`, never passed.
 - Continue every original case/input and all functional assertions: hidden/hit
   baselines, visible/hidden state, real Tab modality, content, containment and
@@ -295,8 +295,8 @@ require renewed qualification, never a promotion-time rebuild or stale-proof reu
   This is one-time activation qualification, not a routine second tag rebuild.
   Keep publication undispatched and create no eligible release tag in this stage.
 
-Acceptance: the final enabled source is freshly qualified/inspected and separately
-authorized for enablement. No flag/version/workflow edit occurs after qualification;
+Acceptance: activation source is prepared for 2.12.3; fresh C/D is still required.
+No flag/version/workflow edit occurs after its matching qualification;
 any such change starts a new candidate. Enablement is not publication authority.
 
 #### D4F: Publication After Owner UI Acceptance
@@ -464,23 +464,23 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 - [ ] P/R/U receive owner acceptance in the full-dashboard Local Preview.
 - [ ] D4's candidate-bound exception is explicit and failure-local pilots remain strict.
 - [ ] A-B establish and fix the cause after the next release; not a current release gate.
-- [ ] C-D pass current-source normal/retry/native/dry-run gates and update measures.
+- [x] C-D passes at disabled `f376c273`; [receipt](../release/2026-10-15-source-qualification.md) records normal/retry/native/dry-run proof. E must repeat it.
 - [ ] E's final enabled/versioned source is requalified under existing authority.
 - [ ] F follows owner UI acceptance and both public target hashes are verified.
 
 ## Implementation Checkpoint
 
-Latest diagnostic source `c1ac6983`; promotion false, no new publication. Early
-gates, isolated visual jobs, batched snapshots, exact-artifact/original-attempt
-proof and pinned Git journal are implemented. The journal pilot passes; production
-history is empty and starts at 2.12.3. Historical `dc79adb6` proof is not current.
+Disabled source `f376c273` passes C/D; 2.12.3 source activation is being prepared.
+Early gates, isolated visual jobs, batched snapshots, exact-artifact/original-attempt
+proof and pinned Git journal pass. Production has one approved D4 binding and no
+possible-upload intent. Historical proof cannot qualify Stage E's changed source.
 Local median breakdown runtime: 150.13 -> 95.29s across three alternating pairs;
 720 tuples/80 identical documents, zero forbidden warm work and 11,628 -> 720
 reads. Fresh navigation, 1,440 keyboard presses and 160 screenshots remain.
 U's 18 mandatory cases and controlled rejection pass. R is integrated through
 `186ad5d`: 252 mandatory allowance browser cases and all 51 extension tests pass.
-Core after candidate-bound disposition and fresh-proof integration passes 2,926 tests/one approved skip with validated inventory;
-frozen monetary/work guards and the renewed 252-case allowance browser inventory pass.
+Core at `f376c273` passes 2,939 cases/one approved skip and 83 extension cases with validated inventories;
+all hosted suites/native and frozen monetary/work guards pass; E needs fresh complete verification.
 P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
 Replicas cover compatible longest copies, missing canonical retention and partial handoffs; staged semantic repairs preserve evidence and install atomically across source-key changes.
 [Retained accounting](../adr/0065-retained-accounting-authority.md) selects whole proven projections; [runtime compatibility](../adr/0066-accounting-capability-handshake.md) passes 74 inventory-validated extension cases.

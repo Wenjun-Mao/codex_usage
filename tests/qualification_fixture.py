@@ -45,13 +45,13 @@ def visual_evidence(suite, *, hover=None):
 
 
 class FixtureAPI(GitHub):
-    def __init__(self):
+    def __init__(self, *, version="2.12.2", binding_purpose="nonpublishing", probe=False):
         super().__init__()
         self.responses, self.bodies, self.uploads, self.job_rows = {}, {}, [], {}
         self.source = {"repository": policy.REPOSITORY, "repository_id": 123,
-            "sha": "a" * 40, "version": "2.12.2", "contract": "b" * 64,
-            "workflow": policy.WORKFLOW, "probe": False}
-        self.hover, self.journal = hosted_measurements(self.source)
+            "sha": "a" * 40, "version": version, "contract": "b" * 64,
+            "workflow": policy.WORKFLOW, "probe": probe}
+        self.hover, self.journal = hosted_measurements(self.source, purpose=binding_purpose)
         self.run_data = {"id": 77, "run_attempt": 1, "head_sha": self.source["sha"],
             "repository": {"id": 123, "full_name": policy.REPOSITORY}, "head_repository": {"id": 123},
             "event": "workflow_dispatch", "path": policy.WORKFLOW, "head_branch": "main",
@@ -99,7 +99,7 @@ class FixtureAPI(GitHub):
                 "cases": [{"identity": case, "outcome": "passed", "skipped": False, "todo": False} for case in identities],
                 "summaries": [{"success": True, "counts": {"tests": len(names), "passed": len(names),
                     "failed": 0, "cancelled": 0, "skipped": 0, "todo": 0, "suites": 0}}]}
-            return {"package.vsix": package_bytes(gate.removeprefix("package-")),
+            return {"package.vsix": package_bytes(gate.removeprefix("package-"), self.source["version"]),
                 "extension-tests.xml": ElementTree.tostring(xml), "extension-inventory.json": policy.canonical(inventory)}
         if gate in ("metadata", "core"):
             validator = load_tool("verification.test_inventory")
