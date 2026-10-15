@@ -17,6 +17,7 @@ from codex_usage.session_row_relevance import CHECKPOINT_DIGEST_BYTES
 from codex_usage.speed_store import synchronize_speed
 from codex_usage.ledger_source_relocations import retire_relocated_generations
 from codex_usage.ledger_source_mirrors import skip_proven_page_mirror
+from codex_usage.ledger_replica_receipts import retire_proven_replica_generations
 
 
 _NORMALIZED_OWNERSHIP_VERSION = 3
@@ -130,6 +131,7 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
     )
     changed |= removed.rowcount > 0
     changed |= retire_relocated_generations(connection)
+    changed |= retire_proven_replica_generations(connection)
     return changed
 
 

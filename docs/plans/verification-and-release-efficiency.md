@@ -481,9 +481,10 @@ U's 18 mandatory cases and controlled rejection pass. R is integrated through
 `186ad5d`: 252 mandatory allowance browser cases and all 51 extension tests pass.
 Core after staged-rebuild/prefix-guard refinements passes 2,393 tests/one approved
 skip; the renewed 252-case allowance browser inventory also passes.
-P's [foundation](../adr/0064-paginated-session-accounting.md) and read-only replay
-confirm the carried event; upgrade/dependency handling, mixed-writer safety,
-replica-prefix authority, disposable repair, live application and owner preview remain unfinished.
+P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
+Replicas cover compatible longest copies, missing canonical retention, partial handoffs,
+fallback adoption and zero-I/O warm reuse. Legacy overlaps, upgrades/dependencies,
+mixed-writer safety, disposable/live repair and owner preview remain unfinished.
 
 The [pilot](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md) retain chronology/costs.

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -14,7 +13,6 @@ from codex_usage.parallel.execution import (
     WorkerSpan,
 )
 from codex_usage.parallel.usage import (
-    UsageParseRequest,
     UsageParseResult,
     parse_usage_request,
 )
@@ -43,7 +41,6 @@ from codex_usage.session_cache_project_identity import (
 )
 from codex_usage.session_cache_requests import (
     assert_current_append_checkpoint as _assert_current_append_checkpoint,
-    eligible_append_checkpoint as _eligible_append_checkpoint,
     load_cached_rows as _load_cached_rows,
 )
 from codex_usage.session_cache_results import validated_results as _validated_results
@@ -52,7 +49,12 @@ from codex_usage.session_cache_store import record_file_error, record_file_stale
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
 )
-from codex_usage.session_history_requests import prepare_history_requests
+from codex_usage import session_history_requests
+from codex_usage.session_cache_work_plans import (
+    apply_total_parse_budget as _apply_total_parse_budget,  # noqa: F401 - retained test seam
+    prepare_requests,
+)
+from codex_usage.session_replica_selection import select_replicas
 
 _COMMIT_GROUP_SIZE = 8
 
@@ -72,64 +74,29 @@ def refresh_files(
 ) -> CacheRefreshOutcome:
     cached_rows = _load_cached_rows(connection)
     _reconcile_fallback_file_keys(inventory, cached_rows)
+    physical_inventory = list(inventory) if history_inventory is None else history_inventory
+    selection = select_replicas(connection, inventory, cached_rows,
+        max_bytes=session_history_requests.HISTORY_EXTRA_READ_BUDGET)
+    cached_rows = _load_cached_rows(connection)
     parse_entries, reused, missing_marked, affected_task_ids = _commit_preflight(
         connection,
         inventory,
         cached_rows,
         rebuilt=rebuilt,
     )
+    affected_task_ids.update(selection.affected_task_ids)
     refreshed_rows = _load_cached_rows(connection)
-    request_plans: list[tuple[tuple[object, ...], UsageParseRequest]] = []
-    preferred = {_normalized_path(path) for path in preferred_paths}
-    for ordinal, entry in parse_entries:
-        cached = refreshed_rows.get(entry.file_key)
-        checkpoint = _eligible_append_checkpoint(
-            connection,
-            entry,
-            cached,
-            rebuilt=rebuilt,
-        )
-        deferred_reason = ""
-        if (
-            defer_full_fallback
-            and not rebuilt
-            and cached is not None
-            and cached["checkpoint_offset"] is not None
-            and checkpoint is None
-        ):
-            deferred_reason = (
-                "source no longer satisfies the guarded append-only contract"
-            )
-        request = UsageParseRequest(
-            ordinal=ordinal,
-            file_key=entry.file_key,
-            path=entry.path,
-            size_bytes=entry.size_bytes,
-            mtime_ns=entry.mtime_ns,
-            checkpoint=checkpoint,
-            max_bytes=max_parse_bytes,
-            defer_full_fallback=defer_full_fallback,
-            deferred_full_parse_reason=deferred_reason,
-        )
-        request_plans.append(
-            (
-                _request_priority(
-                    request,
-                    cached,
-                    preferred=_normalized_path(entry.path) in preferred,
-                ),
-                request,
-            )
-        )
-    requests = _apply_total_parse_budget(
-        request_plans,
+    requests = prepare_requests(connection, parse_entries, refreshed_rows,
+        rebuilt=rebuilt, defer_full_fallback=defer_full_fallback,
+        preferred_paths=preferred_paths, blocked_sources=selection.blocked,
         max_total_parse_bytes=max_total_parse_bytes,
         max_parse_bytes=max_parse_bytes,
     )
-    requests, history_metadata_bytes = prepare_history_requests(
-        history_inventory if history_inventory is not None else inventory,
+    requests, history_metadata_bytes = session_history_requests.prepare_history_requests(
+        physical_inventory,
         requests,
         refreshed_rows,
+        extra_read_budget=session_history_requests.HISTORY_EXTRA_READ_BUDGET-selection.bytes_read,
     )
 
     worker_spans: list[WorkerSpan] = []
@@ -195,7 +162,7 @@ def refresh_files(
             result.outcome in {"full_fallback", "stale"}
             for result in all_results
         ),
-        source_bytes_read=history_metadata_bytes + sum(result.bytes_read for result in all_results),
+        source_bytes_read=selection.bytes_read + history_metadata_bytes + sum(result.bytes_read for result in all_results),
         pending_files=sum(
             1
             for entry in inventory
@@ -224,66 +191,6 @@ def refresh_files(
         affected_task_ids=frozenset(affected_task_ids),
         rebased_project_task_ids=rebased_project_task_ids,
     )
-
-
-def _request_priority(
-    request: UsageParseRequest,
-    cached: sqlite3.Row | None,
-    *,
-    preferred: bool,
-) -> tuple[object, ...]:
-    if request.deferred_full_parse_reason:
-        work_kind = 0
-    elif (
-        request.checkpoint is not None
-        and cached is not None
-        and int(cached["size_bytes"]) < request.size_bytes
-    ):
-        work_kind = 1
-    elif cached is None:
-        work_kind = 2
-    else:
-        work_kind = 3
-    parsed_at = str(cached["parsed_at"] or "") if cached is not None else ""
-    return (
-        0 if preferred else 1,
-        work_kind,
-        parsed_at,
-        request.estimated_bytes,
-        request.ordinal,
-    )
-
-
-def _apply_total_parse_budget(
-    request_plans: list[tuple[tuple[object, ...], UsageParseRequest]],
-    *,
-    max_total_parse_bytes: int | None,
-    max_parse_bytes: int | None,
-) -> list[UsageParseRequest]:
-    if max_total_parse_bytes is None:
-        return [request for _, request in request_plans]
-    if max_total_parse_bytes < 1:
-        raise ValueError("max_total_parse_bytes must be at least one")
-
-    remaining = max_total_parse_bytes
-    selected: list[UsageParseRequest] = []
-    for _, request in sorted(request_plans, key=lambda item: item[0]):
-        if request.deferred_full_parse_reason:
-            selected.append(request)
-            continue
-        if remaining <= 0:
-            continue
-        request_limit = remaining
-        if max_parse_bytes is not None:
-            request_limit = min(request_limit, max_parse_bytes)
-        request_limit = max(1, request_limit)
-        selected.append(replace(request, max_bytes=request_limit))
-        remaining -= min(request.estimated_bytes, request_limit)
-    return selected
-
-
-def _normalized_path(path: str | Path) -> str:
-    return os.path.normcase(os.path.abspath(os.path.expanduser(str(path))))
 
 
 def _checkpoint_offset(connection: sqlite3.Connection, file_key: str) -> int:

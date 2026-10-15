@@ -7,10 +7,11 @@ from codex_usage.session_history import HISTORY_PREFIX_LIMIT, HISTORY_READ_BUDGE
 HISTORY_EXTRA_READ_BUDGET = 8 * 1024 * 1024
 
 
-def prepare_history_requests(inventory, requests, cached_rows):
+def prepare_history_requests(inventory, requests, cached_rows, *, extra_read_budget=None):
     metadata_by_path = {}
     selected = []
-    remaining = HISTORY_EXTRA_READ_BUDGET
+    remaining = (HISTORY_EXTRA_READ_BUDGET if extra_read_budget is None
+                 else min(HISTORY_EXTRA_READ_BUDGET, extra_read_budget))
     bytes_read = 0
     for request in requests:
         if request.deferred_full_parse_reason:

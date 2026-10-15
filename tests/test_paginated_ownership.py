@@ -65,8 +65,11 @@ def test_page_mirrors_never_promote_into_logical_root_on_warm_capture(tmp_path, 
         mirror.parent.mkdir()
         mirror.write_bytes(page.read_bytes())
     if old_normalization:
-        load_cached_session_data(directories, cache_database_path=database, auto_transitions=False, max_workers=1)
         with monkeypatch.context() as patch:
+            from codex_usage.session_replica_selection import ReplicaSelection
+            patch.setattr("codex_usage.session_cache_refresh.select_replicas",
+                          lambda *_a, **_k: ReplicaSelection({}, 0, frozenset()))
+            load_cached_session_data(directories, cache_database_path=database, auto_transitions=False, max_workers=1)
             patch.setattr("codex_usage.ledger_sync.skip_proven_page_mirror", lambda *_: (False, False))
             synchronize_parser_workset(database)
         assert sum(r.usage.total_tokens for r in load_ledger_records(database)) > 150

@@ -10,6 +10,7 @@ from codex_usage.session_cache_models import CachedFileSummary
 from codex_usage.session_cache_queries import row_to_usage_record
 from codex_usage.session_files import owning_session_dir
 from codex_usage.session_inventory import SessionFileInventoryEntry
+from codex_usage.session_replica_retention import accounted_keys
 
 
 def record_file_error(
@@ -117,6 +118,7 @@ def _load_records_by_file_key(
 ) -> dict[str, list[UsageRecord]]:
     if not selected_keys:
         return {}
+    selected_keys = accounted_keys(connection, selected_keys)
     records_by_file: dict[str, list[UsageRecord]] = {}
     for row in connection.execute(
         "select * from usage_records order by file_key, record_index"

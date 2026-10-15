@@ -128,14 +128,40 @@ only approved facts/cache changes under source/revision checks. Raw logs and
 official quota readings remain untouched. No current implementation is authority
 to mutate a live ledger or claim corrected historical totals by itself.
 
-Open qualification issue: **replica prefix authority**. A synthetic root consuming
-100, an active page consuming 50 and a longer archived replica consuming 100 have
-200 unique consumed tokens. Current storage-priority ownership selects 150 in
-the cache and normalizes 250 when the longer replica cannot be skipped. No file
-error is emitted. Resolve canonical ownership from verified captured-prefix
-coverage, including partial/appended/missing copies, before release; never select
-by token magnitude or discard the longer replica's genuine suffix. Existing
-retirement guards prevent its loss but do not yet reconcile this overlap.
+**Replica prefix authority:** a synthetic root consuming 100, an active page
+consuming 50 and a longer archived replica consuming 100 have 200 unique consumed
+tokens. Storage-priority ownership incorrectly selected 150 in the cache and
+normalized 250, without a coverage error. Paginated replicas now select one
+longest compatible physical source *before* scheduling parsing. Prove every
+available shorter copy and retained accounting-valid prefix against that source
+using the established bounded head/boundary guards on a stable frozen snapshot;
+this is not a claim of full interior-byte equality. Never select by token magnitude.
+
+Rebind the complete checkpoint only after proof; adopt a larger compatible
+cached generation whole rather than merging independent response indexes. All
+header/proof reads share the existing 8 MiB extra-history budget. An unchanged
+member/stat set reuses a content-free proof receipt without reopening headers or
+prefixes, including after partial checkpoint advancement. Keep the full raw
+inventory separately available to inherited-history resolution. Missing a longer
+canonical copy retains its captured facts and exposes a named coverage gap;
+divergent copies do not become independent consumption.
+
+Before adopting/removing fallback keys, retain a physical-alias receipt containing
+the covered parser and trusted-generation prefixes. Cache selection excludes
+proven mirrors. Normalized retirement requires an exact trusted canonical
+checkpoint covering those prefixes and the same proved target snapshot; retain
+old facts plus the retirement receipt, not a second charge. Existing same-path
+relocation proof remains valid. Ordinary unclassified legacy sources keep their
+existing ownership path; a filename alone is not paginated-header authority.
+Pending alias prefixes survive removal of the donor's cache row. Every changed
+owner snapshot must prove and renew those obligations through append/handoff
+until normalized retirement completes; capture and normalization need not be
+adjacent. Do not relax exact snapshot matching to accommodate a delayed sync.
+
+Remaining qualification: already-overlapping legacy normalized generations with
+a larger missing fallback and no available source covering its retained prefix
+must not be silently declared reconciled. Resolve their accounting authority or
+leave an explicit unqualified repair result before any live repair/publication.
 
 Regressions cover repeated/advanced counters, ordinary sessions, missing/history
 conflicts, chunked checkpoints, quota-only rows before/after opening, continued
