@@ -222,7 +222,7 @@ function parseDescriptor(value: unknown): AgentDescriptor {
   }
   if (value.api_version !== API_VERSION) throw new AgentIncompatibleError();
   const processOwner = value.process_owner;
-  const parentPid = value.parent_pid;
+  const parentPid = value.parent_pid === null ? undefined : value.parent_pid;
   const launchId = value.launch_id;
   if (processOwner !== undefined && processOwner !== "background" && processOwner !== "transient") {
     throw new Error("descriptor has invalid process ownership details");

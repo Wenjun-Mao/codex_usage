@@ -102,6 +102,8 @@ test("read-only requests refresh one replaced descriptor while POST requests nev
     token: "c".repeat(40),
     codex_home: home,
     process_owner: "background",
+    parent_pid: null,
+    launch_id: null,
   }));
   const client = await AgentClient.discoverAt(home);
   await new Promise((resolve) => first.close(resolve));
@@ -124,6 +126,8 @@ test("read-only requests refresh one replaced descriptor while POST requests nev
     token: "d".repeat(40),
     codex_home: home,
     process_owner: "background",
+    parent_pid: null,
+    launch_id: null,
   }));
 
   assert.deepEqual(await client.get("/v1/status"), { ready: true });
@@ -143,6 +147,8 @@ test("read-only requests refresh one replaced descriptor while POST requests nev
     token: "e".repeat(40),
     codex_home: home,
     process_owner: "background",
+    parent_pid: null,
+    launch_id: null,
   }));
 
   try {

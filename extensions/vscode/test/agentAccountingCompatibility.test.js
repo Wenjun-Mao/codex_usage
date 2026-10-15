@@ -38,6 +38,41 @@ async function fixture(context, payload) {
   return { home, descriptorPath, descriptor, calls, close };
 }
 
+test("Python background descriptors accept a null parent without granting transient ownership", async context => {
+  const instance = await fixture(context, health);
+  await fs.writeFile(instance.descriptorPath, JSON.stringify({
+    ...instance.descriptor, process_owner: "background", parent_pid: null, launch_id: null,
+  }));
+  const supervisor = new AgentSupervisor({
+    settingsFile: path.join(instance.home, "settings.json"),
+    getCodexHome: async () => instance.home,
+    resolveExecutable: async () => assert.fail("must not resolve a fallback executable"),
+    spawn: () => assert.fail("must not spawn collector or settings controls"),
+  });
+  const client = await supervisor.acquire();
+  assert.equal(client.processOwner, "background");
+  assert.equal(client.isTransientOwnedBy(process.pid, "a".repeat(48)), false);
+  assert.equal(await supervisor.stopManagedAgent(), false);
+  assert.deepEqual(instance.calls.map(call => call.path), ["/v1/health"]);
+});
+
+for (const [name, ownership] of [
+  ["null transient parent", { process_owner: "transient", parent_pid: null }],
+  ["omitted transient parent", { process_owner: "transient" }],
+  ["string background parent", { process_owner: "background", parent_pid: "123" }],
+  ["boolean background parent", { process_owner: "background", parent_pid: false }],
+  ["nonpositive transient parent", { process_owner: "transient", parent_pid: 0 }],
+  ["fractional transient parent", { process_owner: "transient", parent_pid: 1.5 }],
+  ["nonempty background parent", { process_owner: "background", parent_pid: process.pid }],
+]) {
+  test(`discovery rejects ${name} before health or ownership adoption`, async context => {
+    const instance = await fixture(context, health);
+    await fs.writeFile(instance.descriptorPath, JSON.stringify({ ...instance.descriptor, ...ownership }));
+    await assert.rejects(AgentClient.discoverAt(instance.home), AgentUnavailableError);
+    assert.deepEqual(instance.calls, []);
+  });
+}
+
 for (const [name, capabilities] of [
   ["missing", undefined], ["null", null], ["empty", []],
   ["wrong version", ["physical-lineage-accounting-v0"]],

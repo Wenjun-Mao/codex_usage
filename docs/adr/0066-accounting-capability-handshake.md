@@ -36,6 +36,15 @@ Read-only retry validates a replacement descriptor through a separate client
 before adopting it. Failed validation must not leave that descriptor installed
 for a later write. POST requests are still never replayed.
 
+Optional parent ownership follows the Python descriptor's JSON representation:
+`parent_pid: null` means no parent, equivalent to an omitted field. The extension
+normalizes that representation before validation. Previously it rejected actual
+background descriptors and incorrectly entered the unavailable-agent fallback;
+fixtures that omitted the field concealed the mismatch. A transient descriptor
+still requires a positive integer parent PID, and background descriptors cannot
+claim a nonempty parent. Null normalization grants no transient shutdown ownership
+and never substitutes for the authenticated accounting-capability check.
+
 ## Boundaries And Alternatives
 
 - This proves runtime feature compatibility, not that historical accounting has
