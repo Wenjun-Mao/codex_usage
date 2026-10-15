@@ -44,9 +44,10 @@ def _fragment(report, fragment, timezone, link):
     from codex_usage.report_allowance import _local_reset, series_label, text
     reset = fragment["next_reset"]
     next_reset = ""
-    if reset is not None and not fragment["uncertain"] and not fragment["ended_by"]:
+    if reset is not None and (fragment["current"] or not fragment["uncertain"] and not fragment["ended_by"]):
         iso, label = _local_reset(reset, timezone)
-        next_reset = f' · Next reset <time datetime="{text(iso)}">{text(label)}</time>'
+        reset_label = "Captured reset" if fragment["current"] else "Next reset"
+        next_reset = f' · {reset_label} <time datetime="{text(iso)}">{text(label)}</time>'
     status = ("Current · uncertain boundary" if fragment["current"] and fragment["uncertain"] else
               "Current" if fragment["current"] else "Uncertain" if fragment["uncertain"] else
               "Ended" if fragment["ended_by"] in SUPPORTED | {"plan change"} else

@@ -107,11 +107,16 @@ def display_history(points, provenance, windows, anchors, *, live_points=None):
     captures = [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in ordered]
     fragments, owners = source_aware_fragments(ordered, positions, provenance, live_points, _segment)
     # Captured current membership is independent of opening/reset certainty.
+    current_resets = {}
     for anchor in anchors:
         owner = owners.get(anchor)
         if owner is not None:
             owner["current"] = True
+            current_resets.setdefault(id(owner), set()).add(
+                anchor.resets_at if anchor.resets_at is not None and anchor.resets_at > seconds(anchor) else None)
     by_identity = {id(fragment): fragment for fragment in fragments}
+    for identity, resets in current_resets.items():
+        by_identity[identity]["next_reset"] = next(iter(resets)) if len(resets) == 1 else None
     cross_boundary = []
     for index, window in enumerate(windows):
         fit_owners = {id(owners[QuotaObservation(**{key: point[key] for key in QuotaObservation.__dataclass_fields__})])

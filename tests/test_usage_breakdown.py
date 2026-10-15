@@ -3,6 +3,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
+import re
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -91,7 +92,15 @@ def test_warm_all_controls_have_no_history_decode_fitting_pricing_or_sources(tmp
     first = render(tmp_path)
     assert first.breakdown_navigation["state"]["basis"] == "selected"
     base = render_speed_report(tmp_path, range_name="all", project_keys=[], theme="day", timezone_name="UTC", now=AT)
-    assert first.html.replace(first.html[first.html.index('<style>\n    .usage-breakdown'):first.html.index('<section class="section observed-speed"')], "") == base.html
+    without_breakdown = first.html.replace(first.html[first.html.index('<style>\n    .usage-breakdown'):first.html.index('<section class="section observed-speed"')], "")
+    # Composition adds issued history links, but must not change their labels
+    # or any surrounding baseline accounting, pace, evidence or chart markup.
+    without_history_links, links = re.subn(
+        r'<a href="command:codexUsage.navigateAllowanceHistory\?[^\"]*">([^<]*)</a>',
+        r"\1", without_breakdown,
+    )
+    assert links and first.allowance_navigation["actions"]
+    assert without_history_links == base.html
     def forbidden(*args, **kwargs):
         raise AssertionError("warm control performed historical work")
     for name in ("codex_usage.breakdown_reports.prepare", "codex_usage.breakdown_reports.value_records",

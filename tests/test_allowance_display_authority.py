@@ -37,10 +37,30 @@ def test_exact_current_anchor_remains_primary_when_boundary_is_uncertain():
     report = dict(windows=[], display_history=result, history=[], qualified=[], headline=None)
     markup = period_history(report, UTC, nav=navigation(report, "synthetic"))
     assert "Current · uncertain boundary" in markup and "Opening unobserved" in markup
+    assert "Captured reset" in markup
+    assert current[0]["next_reset"] == points[-1].resets_at
     assert "Observed 2026-11-01 to 2026-11-01" in markup
     assert "start" not in current[0]
     restored = decode_report(encode_report(report))
     assert restored == report
+
+
+def test_current_missing_reset_does_not_borrow_earlier_deadline():
+    points = [point(0, 40), point(1, 45, resets_at=None)]
+    result = build(points, [], [points[-1]])
+    current = next(fragment for fragment in result["periods"] if fragment["current"])
+    assert current["next_reset"] is None
+    report = dict(windows=[], display_history=result, history=[], qualified=[], headline=None)
+    markup = period_history(report, UTC, nav=navigation(report, "synthetic"))
+    assert "Captured reset" not in markup and "Next reset" not in markup
+
+
+def test_conflicting_current_reset_captures_have_no_arbitrary_summary_deadline():
+    first = point(0, 10)
+    second = replace(first, slot="secondary", resets_at=first.resets_at+3600)
+    result = build([first, second], [], [first, second])
+    current = next(fragment for fragment in result["periods"] if fragment["current"])
+    assert current["uncertain"] and current["next_reset"] is None
 
 
 def test_coherent_live_range_ignores_interleaved_stale_and_conflicting_tasks():
