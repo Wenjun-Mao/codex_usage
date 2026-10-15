@@ -18,9 +18,7 @@ from codex_usage.models import (
     SessionMetadata,
     TokenUsage,
     UsageRecord,
-    usage_role_from_is_subagent,
 )
-from codex_usage.project_identity import resolve_project_identity
 from codex_usage.session_generation_models import (
     RawRepoPathCandidate,
 )
@@ -56,6 +54,11 @@ from codex_usage.session_parser_payloads import (
     generated_artifact_directory as _generated_artifact_directory,
     capture_bounded_payload,
 )
+from codex_usage.session_history import (
+    HistorySource, inline_replay_possible, resolve_baseline, validate_page_metadata,
+)
+from codex_usage.session_history_models import PaginatedHistoryError
+from codex_usage.session_usage_record import usage_record
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +87,7 @@ def _parse_session_chunk(
     expected_checkpoint: SessionParseCheckpoint | None,
     max_bytes: int | None,
     strict_byte_budget: bool = False,
+    history_sources: tuple[HistorySource, ...] = (),
 ) -> _ParsedChunk:
     metadata = initial_state.metadata
     root_metadata = initial_state.root_metadata
@@ -92,6 +96,7 @@ def _parse_session_chunk(
     previous_usage = initial_state.previous_usage
     root_session_id = initial_state.root_session_id
     root_session_is_fork = initial_state.root_session_is_fork
+    root_inline_replay_possible = initial_state.root_inline_replay_possible
     counted_root_fork_usage = initial_state.counted_root_fork_usage
     subagent_own_activity_started = initial_state.subagent_own_activity_started
     current_model = initial_state.current_model
@@ -101,6 +106,8 @@ def _parse_session_chunk(
     image_capture = initial_state.image_capture
     speed = SpeedParser(initial_state.speed_state)
     row_drain = initial_state.row_drain
+    history_baseline_pending = initial_state.history_baseline_pending
+    history_boundary_digest = initial_state.history_boundary_digest
     image_operations = []
     quota_points = []
     bytes_read = 0
@@ -201,14 +208,25 @@ def _parse_session_chunk(
                 speed.observe(obj, current_model, current_turn_id)
 
                 if event_type == "session_meta":
-                    metadata = _parse_session_metadata(payload, path, event_timestamp)
+                    metadata = _parse_session_metadata(payload, path, event_timestamp, ordinal=obj.get("ordinal"))
                     if root_metadata is None:
+                        validate_page_metadata(metadata)
                         root_metadata = metadata
                         root_session_id = metadata.session_id
                         root_session_is_fork = bool(metadata.forked_from_id)
+                        root_inline_replay_possible = inline_replay_possible(metadata)
                         subagent_own_activity_started = not (
-                            metadata.is_subagent and root_session_is_fork
+                            metadata.is_subagent and root_session_is_fork and root_inline_replay_possible
                         )
+                        if metadata.history_base is not None:
+                            baseline = resolve_baseline(metadata, history_sources)
+                            previous_usage = baseline.usage
+                            bytes_read += baseline.bytes_read
+                            history_baseline_pending = True
+                            history_boundary_digest = baseline.boundary_digest
+                            # Paginated inheritance is external to this physical
+                            # page, unlike legacy inline imported-parent replay.
+                            subagent_own_activity_started = True
                     checkpoint_offset = line_end
                     continue
 
@@ -315,11 +333,16 @@ def _parse_session_chunk(
                     payload.get("rate_limits"), event_timestamp.isoformat() if event_timestamp else ""
                 ))
                 info = payload.get("info")
-                if not isinstance(info, dict):
+                if not isinstance(info, dict) or info.get("total_token_usage") is None:
                     checkpoint_offset = line_end
                     continue
 
                 total_usage = TokenUsage.from_mapping(info.get("total_token_usage"))
+                if history_baseline_pending:
+                    if any(total_usage.to_dict()[key] < previous_usage.to_dict()[key]
+                           for key in total_usage.__dataclass_fields__):
+                        raise PaginatedHistoryError("paginated_history_counter_precedes_baseline")
+                    history_baseline_pending = False
                 if previous_usage and any(total_usage.to_dict()[k] < previous_usage.to_dict()[k] for k in ("input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens")):
                     if speed.matched is not None:
                         speed.matched["reason"] = "nonmonotonic_usage"
@@ -337,6 +360,7 @@ def _parse_session_chunk(
                     root_metadata is not None
                     and root_metadata.is_subagent
                     and root_session_is_fork
+                    and root_inline_replay_possible
                     and not subagent_own_activity_started
                 ):
                     checkpoint_offset = line_end
@@ -345,13 +369,14 @@ def _parse_session_chunk(
                 is_root_session = (
                     not root_session_id or metadata.session_id == root_session_id
                 )
-                if root_session_is_fork and not is_root_session:
+                if root_session_is_fork and root_inline_replay_possible and not is_root_session:
                     checkpoint_offset = line_end
                     continue
                 # Fork files can replay imported parent history before actual fork work. A first root
                 # snapshot without a prior baseline is inherited context, not newly consumed tokens.
                 if (
                     root_session_is_fork
+                    and root_inline_replay_possible
                     and is_root_session
                     and not counted_root_fork_usage
                     and not had_previous_usage
@@ -364,31 +389,9 @@ def _parse_session_chunk(
                     checkpoint_offset = line_end
                     continue
 
-                project_identity = resolve_project_identity(metadata)
                 records.append(
-                    UsageRecord(
-                        timestamp=timestamp,
-                        usage=delta,
-                        session_id=metadata.session_id,
-                        file_path=path,
-                        usage_role=usage_role_from_is_subagent(metadata.is_subagent),
-                        model=current_model,
-                        turn_id=current_turn_id,
-                        effort=current_effort,
-                        collaboration_mode=current_mode,
-                        project_key=project_identity.key,
-                        project_label=project_identity.label,
-                        project_aliases=project_identity.aliases,
-                        cwd=metadata.cwd,
-                        git_repository_url=(
-                            project_identity.git_repository_url
-                            if project_identity.uses_current_checkout_origin
-                            else metadata.git_repository_url
-                            or project_identity.git_repository_url
-                        ),
-                        git_branch=metadata.git_branch,
-                        parent_thread_id=metadata.parent_thread_id,
-                    )
+                    usage_record(path, metadata, timestamp, delta, model=current_model,
+                                 turn_id=current_turn_id, effort=current_effort, mode=current_mode)
                 )
                 if root_session_is_fork and is_root_session:
                     counted_root_fork_usage = True
@@ -417,6 +420,9 @@ def _parse_session_chunk(
                 image_capture=image_capture,
                 speed_state=speed.state,
                 row_drain=row_drain,
+                history_baseline_pending=history_baseline_pending,
+                history_boundary_digest=history_boundary_digest,
+                root_inline_replay_possible=root_inline_replay_possible,
             )
             head_sha256, head_bytes = _digest_range(
                 handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint_offset)
@@ -426,6 +432,9 @@ def _parse_session_chunk(
                 handle, boundary_start, checkpoint_offset
             )
             bytes_read += head_bytes + boundary_bytes
+    except PaginatedHistoryError as error:
+        error.bytes_read = bytes_read + getattr(error, "bytes_read", 0)
+        raise
     except (OSError, UnicodeDecodeError) as error:
         from codex_usage.session_parser_safety import PartialSessionGenerationReadError
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from codex_usage.models import SessionMetadata, UsageRecord
+from codex_usage.session_history_models import HistoryBoundary, optional_ordinal
 from codex_usage.project_transition_evidence import extract_repo_paths
 from codex_usage.session_generation_models import RawRepoPathCandidate
 from codex_usage.session_provenance import (
@@ -110,6 +111,7 @@ def parse_session_metadata(
     payload: dict[str, Any],
     path: Path,
     timestamp: datetime | None,
+    *, ordinal: object = None,
 ) -> SessionMetadata:
     git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
     return SessionMetadata(
@@ -129,6 +131,10 @@ def parse_session_metadata(
         git_branch=str(git.get("branch") or ""),
         git_commit_hash=str(git.get("commit_hash") or ""),
         is_subagent=is_structured_subagent(payload),
+        history_mode=str(payload.get("history_mode") or ""),
+        history_base=HistoryBoundary.from_mapping(payload.get("history_base")),
+        history_ordinal=optional_ordinal(ordinal),
+        forked_from_ordinal_exclusive=optional_ordinal(payload.get("forked_from_ordinal_exclusive")),
     )
 
 

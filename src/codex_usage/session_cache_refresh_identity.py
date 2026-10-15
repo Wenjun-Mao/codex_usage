@@ -6,6 +6,7 @@ from dataclasses import replace
 from codex_usage.parallel.usage import UsageParseResult
 from codex_usage.session_cache_generations import rekey_file_generation
 from codex_usage.session_generation_models import ParsedSessionGeneration
+from codex_usage.session_history import PAGE_KEY_PREFIX, source_identity
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     _path_fallback_file_key,
@@ -20,7 +21,7 @@ def group_canonical_winners(
     for result in results:
         if result.error or result.generation is None:
             continue
-        session_id = result.generation.metadata.session_id
+        session_id = source_identity(result.generation.metadata)
         current = winners.get(session_id)
         if current is None or entry_priority(
             inventory[result.request.ordinal]
@@ -38,7 +39,7 @@ def entry_for_successful_generation(
     if result.generation is None:
         raise ValueError("successful usage parse result lacks generation")
     original_entry = inventory[result.request.ordinal]
-    session_id = result.generation.metadata.session_id
+    session_id = source_identity(result.generation.metadata)
     if group_winners[session_id] != result.request.ordinal:
         return fallback_duplicate_entry(original_entry), set()
 
@@ -144,6 +145,8 @@ def dedupe_inventory_by_cached_session_id(
             if cached is not None and cached["session_id"] and not cached["error"]
             else entry.file_key
         )
+        if entry.file_key.startswith(PAGE_KEY_PREFIX):
+            session_id = entry.file_key
         existing = selected.get(session_id)
         if existing is None or entry_priority(entry) < entry_priority(existing):
             selected[session_id] = entry
@@ -165,7 +168,7 @@ def _entry_with_generation_identity(
     entry: SessionFileInventoryEntry,
     generation: ParsedSessionGeneration,
 ) -> SessionFileInventoryEntry:
-    session_id = generation.metadata.session_id
+    session_id = source_identity(generation.metadata)
     if not session_id or session_id == entry.file_key:
         return entry
     return replace(entry, file_key=session_id, file_key_is_fallback=False)

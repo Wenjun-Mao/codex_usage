@@ -10,7 +10,8 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from codex_usage.filesystem_retry import is_transient_filesystem_error
 from codex_usage.models import SessionMetadata
-from codex_usage.parser import parse_timestamp
+from codex_usage.session_parser_events import parse_timestamp
+from codex_usage.session_history_models import HistoryBoundary, PaginatedHistoryError, optional_ordinal
 from codex_usage.session_provenance import (
     is_structured_subagent,
     parent_thread_id_from_source,
@@ -24,6 +25,7 @@ _MAX_SESSION_METADATA_BYTES = 1_048_576
 class SessionMetadataRead:
     metadata: SessionMetadata | None
     diagnostic: str = ""
+    bytes_read: int = 0
 
 
 def read_session_metadata(path: Path) -> SessionMetadata | None:
@@ -42,6 +44,8 @@ def read_session_metadata_bounded(
         return _read_session_metadata_bounded_once(path, max_bytes=max_bytes)
     except OSError:
         return SessionMetadataRead(None, "session_meta_unreadable")
+    except PaginatedHistoryError as error:
+        return SessionMetadataRead(None, str(error))
 
 
 @retry(
@@ -64,7 +68,7 @@ def _read_session_metadata_bounded_once(
                 break
             consumed += len(raw_line)
             if len(raw_line) > remaining:
-                return SessionMetadataRead(None, "session_meta_limit_exceeded")
+                return SessionMetadataRead(None, "session_meta_limit_exceeded", consumed)
             try:
                 line = raw_line.decode("utf-8")
             except UnicodeDecodeError:
@@ -95,9 +99,13 @@ def _read_session_metadata_bounded_once(
                     git_branch=str(git.get("branch") or ""),
                     git_commit_hash=str(git.get("commit_hash") or ""),
                     is_subagent=is_structured_subagent(payload),
-                )
+                    history_mode=str(payload.get("history_mode") or ""),
+                    history_base=HistoryBoundary.from_mapping(payload.get("history_base")),
+                    history_ordinal=optional_ordinal(obj.get("ordinal")),
+                    forked_from_ordinal_exclusive=optional_ordinal(payload.get("forked_from_ordinal_exclusive")),
+                ), bytes_read=consumed,
             )
-    return SessionMetadataRead(None, "session_meta_missing")
+    return SessionMetadataRead(None, "session_meta_missing", consumed)
 
 
 def load_all_index_entries(session_dirs: list[Path]) -> dict[str, dict[str, Any]]:

@@ -12,6 +12,7 @@ from codex_usage.image_capture_models import (
     image_capture_state_to_json,
 )
 from codex_usage.models import SessionMetadata, TokenUsage
+from codex_usage.session_history_models import HistoryBoundary, optional_ordinal
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +31,9 @@ class SessionParserState:
     image_capture: ImageCaptureState = ImageCaptureState()
     speed_state: dict = field(default_factory=dict)
     row_drain: dict = field(default_factory=dict)
+    history_baseline_pending: bool = False
+    history_boundary_digest: str = ""
+    root_inline_replay_possible: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +74,9 @@ def parser_state_to_json(state: SessionParserState) -> str:
             "image_capture": image_capture_state_to_json(state.image_capture),
             "speed_state": state.speed_state,
             "row_drain": state.row_drain,
+            "history_baseline_pending": state.history_baseline_pending,
+            "history_boundary_digest": state.history_boundary_digest,
+            "root_inline_replay_possible": state.root_inline_replay_possible,
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -107,6 +114,9 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
         image_capture=image_capture_state_from_json(parsed.get("image_capture")),
         speed_state=parsed.get("speed_state") or {},
         row_drain=parsed.get("row_drain") or {},
+        history_baseline_pending=bool(parsed.get("history_baseline_pending")),
+        history_boundary_digest=_text(parsed.get("history_boundary_digest")),
+        root_inline_replay_possible=bool(parsed.get("root_inline_replay_possible", True)),
     )
 
 
@@ -127,6 +137,10 @@ def _metadata_to_dict(metadata: SessionMetadata) -> dict[str, object]:
         "git_branch": metadata.git_branch,
         "git_commit_hash": metadata.git_commit_hash,
         "is_subagent": metadata.is_subagent,
+        "history_mode": metadata.history_mode,
+        "history_base": metadata.history_base.to_dict() if metadata.history_base else None,
+        "history_ordinal": metadata.history_ordinal,
+        "forked_from_ordinal_exclusive": metadata.forked_from_ordinal_exclusive,
     }
 
 
@@ -154,6 +168,10 @@ def _metadata_from_dict(value: dict[str, Any], path: Path) -> SessionMetadata:
         git_branch=_text(value.get("git_branch")),
         git_commit_hash=_text(value.get("git_commit_hash")),
         is_subagent=bool(value.get("is_subagent")),
+        history_mode=_text(value.get("history_mode")),
+        history_base=HistoryBoundary.from_mapping(value.get("history_base")),
+        history_ordinal=optional_ordinal(value.get("history_ordinal")),
+        forked_from_ordinal_exclusive=optional_ordinal(value.get("forked_from_ordinal_exclusive")),
     )
 
 

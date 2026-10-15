@@ -25,6 +25,7 @@ from codex_usage.session_generation_models import (
     ParsedSessionGeneration,
 )
 from codex_usage.session_parser_models import SessionParseCheckpoint
+from codex_usage.session_history import HistorySource
 
 type ParseOutcome = Literal["full", "append", "full_fallback", "stale"]
 
@@ -40,6 +41,7 @@ class UsageParseRequest:
     max_bytes: int | None = None
     defer_full_fallback: bool = False
     deferred_full_parse_reason: str = ""
+    history_sources: tuple[HistorySource, ...] = ()
 
     @property
     def estimated_bytes(self) -> int:
@@ -88,6 +90,7 @@ class UsageParseResult:
 def parse_usage_request(request: UsageParseRequest) -> UsageParseResult:
     started_ns = time.monotonic_ns()
     pid = os.getpid()
+    failed_bytes_read = 0
     try:
         generation, appended, outcome, fallback_reason = (
             _parse_usage_request_with_retry(request)
@@ -100,10 +103,11 @@ def parse_usage_request(request: UsageParseRequest) -> UsageParseResult:
         outcome = "full"
         fallback_reason = ""
         error = f"{type(exc).__name__}: {exc}"
+        failed_bytes_read = getattr(exc, "bytes_read", 0)
     bytes_read = (
         generation.bytes_read
         if generation is not None
-        else appended.bytes_read if appended is not None else 0
+        else appended.bytes_read if appended is not None else failed_bytes_read
     )
     return UsageParseResult(
         request=request,
@@ -144,6 +148,7 @@ def _parse_usage_request_with_retry(
                 request.checkpoint,
                 stop_offset=request.size_bytes,
                 max_bytes=request.max_bytes,
+                history_sources=request.history_sources,
             )
         except AppendCheckpointMismatch as error:
             if request.defer_full_fallback:
@@ -152,6 +157,7 @@ def _parse_usage_request_with_retry(
                 request.path,
                 stop_offset=request.size_bytes,
                 max_bytes=request.max_bytes,
+                history_sources=request.history_sources,
             )
             return generation, None, "full_fallback", str(error)
         return None, appended, "append", ""
@@ -159,5 +165,6 @@ def _parse_usage_request_with_retry(
         request.path,
         stop_offset=request.size_bytes,
         max_bytes=request.max_bytes,
+        history_sources=request.history_sources,
     )
     return generation, None, "full", ""

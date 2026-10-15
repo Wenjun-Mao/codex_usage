@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from codex_usage.session_history_models import HistoryBoundary
+
 
 UNKNOWN = "unknown"
 
@@ -112,6 +114,10 @@ class SessionMetadata:
     git_branch: str = ""
     git_commit_hash: str = ""
     is_subagent: bool = False
+    history_mode: str = ""
+    history_base: HistoryBoundary | None = None
+    history_ordinal: int | None = None
+    forked_from_ordinal_exclusive: int | None = None
 
 
 @dataclass(frozen=True)

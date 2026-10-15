@@ -6,6 +6,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from codex_usage.session_files import read_session_metadata
+from codex_usage.session_history import source_identity
+from codex_usage.session_history_models import PaginatedHistoryError
 
 ACTIVE_SESSION_DIR_NAME = "sessions"
 ARCHIVED_SESSION_DIR_NAME = "archived_sessions"
@@ -125,7 +127,10 @@ def session_file_key(path: Path) -> str:
 def _session_file_key_with_provenance(path: Path) -> tuple[str, bool]:
     metadata = read_session_metadata(path)
     if metadata and metadata.session_id:
-        return metadata.session_id, False
+        try:
+            return source_identity(metadata), False
+        except PaginatedHistoryError:
+            return _path_fallback_file_key(path), True
     return _path_fallback_file_key(path), True
 
 

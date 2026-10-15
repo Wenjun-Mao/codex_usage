@@ -52,6 +52,7 @@ from codex_usage.session_cache_store import record_file_error, record_file_stale
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
 )
+from codex_usage.session_history_requests import prepare_history_requests
 
 _COMMIT_GROUP_SIZE = 8
 
@@ -124,6 +125,7 @@ def refresh_files(
         max_total_parse_bytes=max_total_parse_bytes,
         max_parse_bytes=max_parse_bytes,
     )
+    requests, history_metadata_bytes = prepare_history_requests(inventory, requests, refreshed_rows)
 
     worker_spans: list[WorkerSpan] = []
     all_results: list[UsageParseResult] = []
@@ -188,7 +190,7 @@ def refresh_files(
             result.outcome in {"full_fallback", "stale"}
             for result in all_results
         ),
-        source_bytes_read=sum(result.bytes_read for result in all_results),
+        source_bytes_read=history_metadata_bytes + sum(result.bytes_read for result in all_results),
         pending_files=sum(
             1
             for entry in inventory

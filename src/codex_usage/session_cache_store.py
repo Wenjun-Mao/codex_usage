@@ -26,10 +26,11 @@ def record_file_error(
         connection.execute(
             """
             update files
-            set last_seen_at = ?, missing_since = null, is_missing = 0, error = ?
+            set last_seen_at = ?, missing_since = null, is_missing = 0, error = ?,
+                parsed_at = case when ? then ? else parsed_at end
             where file_key = ?
             """,
-            (now, error, entry.file_key),
+            (now, error, "PaginatedHistoryError:" in error, now, entry.file_key),
         )
         connection.execute(
             "update session_metadata set is_missing = 0 where file_key = ?",

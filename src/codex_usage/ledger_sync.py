@@ -15,6 +15,7 @@ from codex_usage.ledger_schema import increment_ledger_revision, open_ledger
 from codex_usage.session_parser_safety import digest_range
 from codex_usage.session_row_relevance import CHECKPOINT_DIGEST_BYTES
 from codex_usage.speed_store import synchronize_speed
+from codex_usage.ledger_source_relocations import retire_relocated_generations
 
 
 _NORMALIZED_OWNERSHIP_VERSION = 3
@@ -122,6 +123,7 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
         """
     )
     changed |= removed.rowcount > 0
+    changed |= retire_relocated_generations(connection)
     return changed
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from codex_usage.image_capture_models import ImageCaptureState
 from codex_usage.models import UNKNOWN, SessionMetadata
+from codex_usage.session_history import HistorySource
 from codex_usage.session_generation_models import (
     ParsedSessionAppend,
     ParsedSessionGeneration,
@@ -38,6 +39,7 @@ def parse_session_generation(
     max_bytes: int | None = None,
     _capture_partial_candidates: bool = False,
     strict_byte_budget: bool = False,
+    history_sources: tuple[HistorySource, ...] = (),
 ) -> ParsedSessionGeneration:
     initial_metadata = SessionMetadata(session_id=path.stem, file_path=path)
     initial_state = SessionParserState(
@@ -65,6 +67,7 @@ def parse_session_generation(
             expected_checkpoint=None,
             max_bytes=max_bytes,
             strict_byte_budget=strict_byte_budget,
+            history_sources=history_sources,
         )
     except _PartialSessionGenerationReadError as error:
         if _capture_partial_candidates:
@@ -92,6 +95,7 @@ def parse_session_append(
     stop_offset: int,
     max_bytes: int | None = None,
     strict_byte_budget: bool = False,
+    history_sources: tuple[HistorySource, ...] = (),
 ) -> ParsedSessionAppend:
     try:
         chunk = _parse_session_chunk(
@@ -104,6 +108,7 @@ def parse_session_append(
             expected_checkpoint=checkpoint,
             max_bytes=max_bytes,
             strict_byte_budget=strict_byte_budget,
+            history_sources=history_sources,
         )
     except _PartialSessionGenerationReadError as error:
         raise error.cause from error

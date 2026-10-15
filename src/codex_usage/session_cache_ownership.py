@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from codex_usage.session_cache_generations import rekey_file_generation
 from codex_usage.session_inventory import SessionFileInventoryEntry
+from codex_usage.session_history import PAGE_KEY_PREFIX
 
 
 def is_reusable(
@@ -17,6 +18,7 @@ def is_reusable(
     return bool(
         not rebuilt
         and cached is not None
+        and "PaginatedHistoryError:" not in str(cached["error"] or "")
         and str(cached["path"]) == str(entry.path)
         and int(cached["size_bytes"]) == entry.size_bytes
         and int(cached["mtime_ns"]) == entry.mtime_ns
@@ -50,6 +52,8 @@ def promote_cached_session_owners(
     """
     current_by_session_id: dict[str, list[int]] = {}
     for index, entry in enumerate(inventory):
+        if entry.file_key.startswith(PAGE_KEY_PREFIX):
+            continue
         cached = cached_rows.get(entry.file_key)
         session_id = _complete_cached_session_id(connection, entry.file_key, cached)
         if session_id:
