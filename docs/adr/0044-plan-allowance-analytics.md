@@ -157,25 +157,54 @@ rebases and conflicting readings start uncertain fragments; subsequent compatibl
 readings do not remove uncertainty without supported boundary/identity evidence.
 Initial coverage is left-censored: no duration-subtracted or actual start is
 invented. Only the exact active-series capture anchor can mark a period current.
+Current membership is independent of fit confidence, known opening or reset
+certainty. An anchored uncertain range remains a primary `Current · uncertain
+boundary` row; a lone active anchor is a current observed point with opening
+unobserved, never an inferred full-duration period. Other uncertain fragments
+remain in the collapsed uncertain-reading group.
 Unanchored open coverage is labeled last observed, not current or ended.
 Unsupported boundaries end coherent observed coverage, labeled `Coverage ended`,
 not a proven reset period.
 
+Official display continuity advances only on already-loaded live-member
+readings. Interleaved stale/conflicting task snapshots cannot rebase, consume
+reset credits, introduce a plan change into, or fragment a compatible official
+range. Task captures join such a range only when bracketing official captures
+in the same coherent range corroborate their meter and available plan/reset/
+credit metadata. No task extrapolation supplies a range opening from a lone
+anchor. Task-only historical coverage remains available without asserting live
+authority; disputed/interleaved or later task evidence remains globally
+uncertain with exact captures, provenance and named evidence reasons. Membership
+uses `AllowancePreparation.raw`'s existing live set; direct pure callers may
+derive that membership from the supplied `Live probe` provenance label.
+
+This distinction fixes two presentation-model errors: certainty had incorrectly
+gated current membership, and a shared mixed-source cursor let stale task
+readings fragment coherent official evidence. Neither changes monetary
+segmentation, estimates, confidence, headline or pace. Fits remain independent
+indices; any fit crossing the final display/authority ownership barriers appears
+once in cross-boundary detail. No current/official classification promotes it.
+
 Render at most 12 periods and one collapsed `Uncertain readings (N)` group
-(N is its full distinct-capture count), with at most 12 uncertain fragments.
-Each includes local observed dates, full counts, boundary reasons and bounded
-exact captures, including raw plans, durations, reset credits and provenance.
-Independent fits are nested details (at most 12 per owner); fits spanning display
+(N is its full distinct-capture count), with at most 12 uncertain fragments per
+page. Private issued links reach every older page. Selecting one owner shows
+its local observed dates, full counts, boundary reasons, at most 100 exact
+captures and 12 independent fits per page. Raw plans, durations, reset credits
+and provenance remain inspectable. Fit and capture pages reach the oldest
+retained entries without emitting tables for every collapsed fragment.
+Independent fits are nested details; fits spanning display
 barriers appear once in uncertain/cross-boundary detail, never split, averaged,
-summed, duplicated as period values, or promoted in confidence. Omitted counts
-remain visible and complete capture/fit evidence remains in the derived report.
+summed, duplicated as period values, or promoted in confidence. Capture and fit
+pages default newest first; an explicit oldest-first capture toggle resets its
+capture page. Labels distinguish older/newer from earlier/later chronological
+navigation. Every count has a supported inspection path in the companion.
 
 **Rejected:** changing estimator segmentation to match display; deriving display
 from fitted windows; silently joining uncertain suffixes under a shared deadline.
 These either change monetary facts or hide unsupported evidence.
 
 **Consequences and guardrails:** report revision 7 invalidates older derived
-payloads; HTML revision 36 invalidates old presentation. Cache format 2 stores a
+payloads; HTML revision 37 invalidates old presentation. Cache format 2 stores a
 single canonical capture pool and window point indices, rather than serializing
 raw dictionaries both in windows and `display_history`. Decode restores exact
 window dictionaries with point objects shared with the display capture pool.
@@ -196,21 +225,54 @@ R layout qualification belongs to the mandatory allowance browser unit, not
 conditionally skipped pytest cases. Named `period-history` and
 `period-history-dense` scenarios cover Chromium, WebKit and Firefox, Day/Night,
 and 1440/760/360px widths (36 added identities, 252 allowance identities total),
-with production rendering, keyboard disclosure, capture/fit inspection, local
-DST evidence and screenshots. Missing R cases fail the independent inventory.
+with production rendering, real private-host issued navigation, keyboard
+disclosure, oldest period/fragment access, capture pagination/order, cross-fit
+inspection, local DST evidence and screenshots. Missing R cases fail the
+independent inventory; these identities augment all 216 previous cases.
 
-**Open release gap: historical access.** The first R renderer truncates older
-periods, uncertain fragments and independent fits. Full counts and cached
-evidence are not an inspection path. Integration remains held until a supported
-access contract is accepted and implemented. The script-free allowance view has
-no issued history action; chart/breakdown actions cannot accept allowance state.
-The minimal bounded proposal is a new issued allowance-history action, pinned to
-the report/evidence scope, with validated period/fragment, fit and capture-page
-indices, rendered from the already cached report without source loads, refits
-or repricing. This requires explicit host/extension scope expansion before code.
-An alternative compact native older-history disclosure could retain all period
-and fit metadata without old capture tables, but has linear DOM growth and no
-old exact-capture access; it is not equivalent to bounded lazy pagination.
+### Private History Navigation
+
+The first R renderer truncated history without an inspection path. Counts and
+cached raw evidence were not access. The accepted fix is a hidden
+`codexUsage.navigateAllowanceHistory` webview command over the existing
+authenticated `/v1/report` transport's private `allowance_action` parameter, not
+a new endpoint, public Companion RPC capability, palette command, or manifest
+activation. Existing script-disabled CSP remains unchanged.
+
+Scopes hash the local ledger identity, ledger/pricing/report/cache revisions,
+coverage, exact active account buckets/series, probe freshness, timezone/theme,
+range, projects and transition setting. Thus account-wide facts remain identical
+across report filters, but private link tokens intentionally differ. State owns
+independent period/uncertain page indices and one selected owner, fit page,
+capture page and capture ordering. Only exact issued current-scope actions enter
+through the extension. Host validation rejects bools, invalid types, unexpected
+fields, wrong scopes/series, non-neighbor/unissued actions and invalid indices.
+Issuance itself checks owner membership, visible page and page bounds.
+
+Reuse the breakdown action-hash receipt contract and its 24-hour/256-scope
+retention limits under a separate `allowance-issued:` prefix. Previously issued
+actions in a different report scope produce typed scope expiry; absent/expired
+receipts or crafted actions are ordinary invalid requests, never permission to
+silently retry. The extension recovers once only for typed issued-scope expiry,
+clearing transient commands but preserving global filters. Explicit Reload,
+new evidence/revision or report identity clears local issued state.
+
+History pages replace only a delimited history slot after the existing monetary,
+speed and breakdown render/cache paths. A first inspection of a new page may
+decode the already cached derived allowance report; it never loads raw evidence,
+prepares account history, reads task sources, probes, refits or reprices. Page
+HTML and compact navigation cache under the full scope/state key. Revisiting a
+page or default warm view reads only that bounded frame, not the full allowance
+payload. Revision-pinned writes prevent concurrent capture from publishing old
+page/receipt state. Standalone HTML rendering supplies only an overview: private
+pagination capabilities are issued exclusively by the companion report host.
+
+Rejected alternatives: emitting all old capture tables behind native disclosures
+(unbounded DOM), borrowing chart state (wrong domain/authority), and a public
+history endpoint (unnecessary surface). Guardrails include complete multi-page
+traversal, exact/shared codec ownership, scope/shape/range/expiry rejection,
+no-work first-page/revisit tests, frontend validation/recovery and mandatory
+three-engine UI replay. Human dashboard acceptance remains a separate gate.
 
 Observation details distinguish **Live probe**, **Task snapshot**, and
 **Recovered task snapshot** from the stored provenance, retaining all applicable

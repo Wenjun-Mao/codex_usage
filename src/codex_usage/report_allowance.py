@@ -201,7 +201,7 @@ def _reading_label(probe_status):
     }.get(probe_status, "Last known reading")
 
 
-def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
+def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None, history_navigation=None):
     if report is None:
         return ""
     status = report["status"]
@@ -300,7 +300,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
     history_markup = _history_html(history)
     if "display_history" in report:
         from codex_usage.report_allowance_history import period_history
-        history_markup = period_history(report, timezone)
+        history_markup = '<!-- allowance-history:start -->' + period_history(report, timezone, nav=history_navigation) + '<!-- allowance-history:end -->'
         qualified_context = ""
     capture_details = ("".join(details) or "<p>No observations captured yet.</p>"
                        if "display_history" not in report else "")
@@ -368,6 +368,7 @@ def allowance_css():
 .allowance-history-value { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .allowance-history-meta { margin: 4px 0 0; color: var(--muted, #64717b); overflow-wrap: anywhere; }
 .allowance-history-count { margin: 6px 0 0; }
+.allowance-history-nav { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0; }
 .allowance-value { font-size: 1.35rem; font-weight: 700; }
 .allowance-window { margin: 12px 0; padding: 10px; border: 1px solid var(--border, var(--line)); }
 .allowance-provisional { border-style: dashed; }

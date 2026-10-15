@@ -99,9 +99,10 @@ def test_unknown_plan_does_not_bridge_different_known_plans_or_duration_changes(
 def test_conflicting_plan_metadata_cannot_restore_certainty_on_same_plan():
     points = [point(0), point(1, 20), point(1, 20, plan="team"), point(2, 30)]
     result = grouped(points, anchors=[points[-1]])
-    assert len(result["periods"]) == 1
-    assert not any(f["current"] for f in result["periods"])
-    assert sum(len(f["capture_indices"]) for f in result["uncertain"]) == 3
+    assert len(result["periods"]) == 2
+    current = next(f for f in result["periods"] if f["current"])
+    assert current["uncertain"] and current["capture_indices"] == [3]
+    assert sum(len(f["capture_indices"]) for f in result["uncertain"]) == 2
 
 
 def test_multiple_buckets_current_requires_exact_anchor_not_ongoing_fit():

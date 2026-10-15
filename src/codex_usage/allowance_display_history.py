@@ -35,20 +35,12 @@ def _identities(timeline):
     return list(zip(labels, ambiguous, strict=True))
 
 
-def display_history(points, provenance, windows, anchors):
-    """Retain every distinct capture and reference each untouched fit once.
-
-    Called only while materializing a report, with request-local loaded evidence.
-    Index references avoid copying fits or captures into individual display rows.
-    """
-    ordered = sorted(dict.fromkeys(points), key=lambda p: (seconds(p), p.limit_id, p.slot))
-    positions = {point: index for index, point in enumerate(ordered)}
-    captures = [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in ordered]
+def _segment(points, positions):
+    """Segment one evidence-authority lane without dropping raw conflicts."""
     limits = {}
-    for point in ordered:
+    for point in points:
         limits.setdefault(point.limit_id, []).append(point)
     fragments = []
-    fragment_positions = {}
     owners = {}
     for limit, readings in limits.items():
         timeline = [(time, list(group)) for time, group in groupby(readings, seconds)]
@@ -95,33 +87,42 @@ def display_history(points, provenance, windows, anchors):
                         "capture_indices": [], "fit_indices": [], "ended_by": "",
                         "current": False, "next_reset": None,
                     }
-                    fragment_positions[id(fragment)] = len(fragments)
                     fragments.append(fragment)
                     active[duration] = (fragment, continuity)
                 else:
                     fragment = existing[0]
                 for point in members:
                     fragment["capture_indices"].append(positions[point])
-                    owners[point] = fragment_positions[id(fragment)]
+                    owners[point] = fragment
                 fragment["next_reset"] = (continuity.reset if continuity.reset is not None
                                           and continuity.reset > time else None)
-    # Exact live-series anchors, not the estimator's many "ongoing" closures.
+    return fragments, owners
+
+
+def display_history(points, provenance, windows, anchors, *, live_points=None):
+    """Display authority never changes monetary segmentation or fit facts."""
+    from codex_usage.allowance_display_authority import source_aware_fragments
+    ordered = sorted(dict.fromkeys(points), key=lambda p: (seconds(p), p.limit_id, p.slot))
+    positions = {point: index for index, point in enumerate(ordered)}
+    captures = [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in ordered]
+    fragments, owners = source_aware_fragments(ordered, positions, provenance, live_points, _segment)
+    # Captured current membership is independent of opening/reset certainty.
     for anchor in anchors:
         owner = owners.get(anchor)
         if owner is not None:
-            fragment = fragments[owner]
-            fragment["current"] = not fragment["uncertain"] and not fragment["ended_by"]
+            owner["current"] = True
+    by_identity = {id(fragment): fragment for fragment in fragments}
     cross_boundary = []
     for index, window in enumerate(windows):
-        fit_owners = {owners[QuotaObservation(**{key: point[key] for key in QuotaObservation.__dataclass_fields__})]
+        fit_owners = {id(owners[QuotaObservation(**{key: point[key] for key in QuotaObservation.__dataclass_fields__})])
                       for point in window["points"]}
         if len(fit_owners) == 1:
-            fragments[next(iter(fit_owners))]["fit_indices"].append(index)
+            by_identity[next(iter(fit_owners))]["fit_indices"].append(index)
         else:
             cross_boundary.append(index)
     for fragment in fragments:
         fragment["capture_indices"].sort()
     fragments.sort(key=lambda f: f["capture_indices"][-1], reverse=True)
-    return {"captures": captures, "periods": [f for f in fragments if not f["uncertain"]],
-            "uncertain": [f for f in fragments if f["uncertain"]],
+    return {"captures": captures, "periods": [f for f in fragments if f["current"] or not f["uncertain"]],
+            "uncertain": [f for f in fragments if f["uncertain"] and not f["current"]],
             "cross_boundary_fit_indices": cross_boundary}

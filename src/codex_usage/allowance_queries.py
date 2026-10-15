@@ -113,7 +113,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
     status = allowance_status(connection) if status is None else status
     preparation = preparation or AllowancePreparation(connection)
     credits = credit_history(connection)
-    points, provenance, _ = preparation.raw
+    points, provenance, live_points = preparation.raw
     from codex_usage.allowance_pace import fit_paces
     anchors = [QuotaObservation(**{key: bucket[key] for key in QuotaObservation.__dataclass_fields__})
                for bucket in status["active_buckets"]]
@@ -123,7 +123,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
     if not points:
         return {"status": status, "credits": credits, "paces": paces, "windows": [], "qualified": [], "headline": None,
                 "headline_previous": False, "history": [],
-                "display_history": display_history(points, provenance, [], anchors)}
+                "display_history": display_history(points, provenance, [], anchors, live_points=live_points)}
     times, costs, unpriced = [], [0.0], [0]
     for timestamp, cost, unpriced_tokens in priced_events:
         times.append(timestamp)
@@ -154,7 +154,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
         "qualified": qualified, "headline": headline,
         "headline_previous": headline is not None and headline is not latest,
         "history": allowance_history(windows),
-        "display_history": display_history(points, provenance, windows, anchors),
+        "display_history": display_history(points, provenance, windows, anchors, live_points=live_points),
     }
 
 

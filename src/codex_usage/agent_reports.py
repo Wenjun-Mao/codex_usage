@@ -39,7 +39,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = pricing_revision()
-REPORT_RENDER_REVISION = 36
+REPORT_RENDER_REVISION = 37
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +51,7 @@ class RenderedLedgerReport:
     status: LedgerStatus
     speed_navigation: dict | None = None
     breakdown_navigation: dict | None = None
+    allowance_navigation: dict | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -61,6 +62,7 @@ class RenderedLedgerReport:
             "status": self.status.to_dict(),
             "speed_navigation": self.speed_navigation,
             "breakdown_navigation": self.breakdown_navigation,
+            "allowance_navigation": self.allowance_navigation,
         }
 
 
@@ -356,6 +358,7 @@ def _store_cached_reports(
              for key, rendered in fragments.items()],
         )
         connection.execute(
-            "delete from rendered_reports where ledger_revision < ? and cache_key not like 'breakdown-issued:%'", (revision,)
+            """delete from rendered_reports where ledger_revision < ?
+            and cache_key not like 'breakdown-issued:%' and cache_key not like 'allowance-issued:%'""", (revision,)
         )
         connection.commit()

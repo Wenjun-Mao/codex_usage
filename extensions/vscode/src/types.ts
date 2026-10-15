@@ -80,6 +80,22 @@ export interface BreakdownNavigation {
   evidence_state?: { probe_status: string; deadline_elapsed: boolean };
 }
 
+export interface AllowanceHistoryState {
+  period_page: number;
+  uncertain_page: number;
+  kind: "" | "periods" | "uncertain" | "cross";
+  index: number;
+  fit_page: number;
+  capture_page: number;
+  capture_order: "newest" | "oldest";
+}
+export interface AllowanceHistoryAction { scope: string; state: AllowanceHistoryState }
+export interface AllowanceHistoryNavigation {
+  scope: string;
+  state: AllowanceHistoryState;
+  actions: AllowanceHistoryAction[];
+}
+
 export interface RenderedReport {
   html: string;
   ledger_revision: number;
@@ -88,6 +104,7 @@ export interface RenderedReport {
   status: Pick<AgentStatus, "ledger_revision" | "last_capture_at" | "last_capture_outcome" | "last_capture_error" | "coverage" | "image_backfill" | "speed" | "plan_allowance">;
   speed_navigation?: SpeedNavigation;
   breakdown_navigation?: BreakdownNavigation;
+  allowance_navigation?: AllowanceHistoryNavigation;
 }
 
 export interface SpeedNavigation {

@@ -44,6 +44,8 @@ def store(path, revision, payloads):
             [(k, revision, PRICING_REVISION, datetime.now(UTC).isoformat(), v if isinstance(v, str) else json.dumps(v))
              for k, v in payloads.items()])
         prune_receipts(writer)
+        from codex_usage.allowance_history_navigation import RECEIPT_PREFIX as allowance_prefix
+        prune_receipts(writer, prefix=allowance_prefix)
         writer.commit()
 
 
@@ -120,7 +122,7 @@ def live_evidence_state(live):
         p.resets_at is not None and p.resets_at <= live["now"] for p in weekly_anchors(live))}
 
 
-def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
+def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_action=None, **kwargs):
     from codex_usage.agent_reports import PRICING_REVISION, REPORT_RENDER_REVISION, RenderedLedgerReport
     from codex_usage.report_usage_breakdown import render_breakdown
     from codex_usage.speed_reports import render_speed_report
@@ -135,6 +137,9 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
     with open_ledger(path, read_only=True) as connection:
         connection.execute("begin")
         status = query_ledger_status(connection, now=kwargs["now"])
+        from codex_usage.allowance_history_reports import context_identity, prepare_state, render_history
+        history_context = context_identity(status, kwargs, report_range, path)
+        history_state = prepare_state(connection, allowance_action, history_context)
         sink["status"] = status
         from codex_usage.allowance_preparation import AllowancePreparation
         sink["quota"] = AllowancePreparation(connection)
@@ -235,6 +240,8 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, **kwargs):
         # The speed section replaces its placeholder; place breakdown after the
         # heatmap's enclosing section without changing monetary report markup.
         rendered = rendered.replace('<section class="section observed-speed"', section + '<section class="section observed-speed"', 1)
+        rendered, history_nav, history_hit = render_history(connection, rendered, history_context, history_state,
+                                                           status, timezone, sink, writes)
     store(path, status.revision, writes)
-    return RenderedLedgerReport(rendered, base.ledger_revision, base.cache_hit and not cold_seconds,
-        monotonic() - started, base.status, base.speed_navigation, nav)
+    return RenderedLedgerReport(rendered, base.ledger_revision, base.cache_hit and not cold_seconds and history_hit,
+        monotonic() - started, base.status, base.speed_navigation, nav, history_nav)

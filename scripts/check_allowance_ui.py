@@ -36,14 +36,14 @@ THEMES = {
 }
 BROWSERS = ("chromium", "webkit", "firefox")
 VALUES = (0, 17, 83, 100)
-def _document(report, theme_name):
+def _document(report, theme_name, history_navigation=None):
     html_theme, body_class, body_style = THEMES[theme_name]
     return (
         f'<!doctype html><html data-codex-theme="{html_theme}"><style>'
         f'{report_css()}{allowance_css()}</style>'
         f'<body class="{body_class}" style="{body_style}">'
         f'{render_allowance_section(report, timezone=ZoneInfo("America/Toronto"),
-                                    now=datetime.fromisoformat(report["status"]["last_probe_at"]))}'
+                                    now=datetime.fromisoformat(report["status"]["last_probe_at"]), history_navigation=history_navigation)}'
         "</body></html>"
     )
 
@@ -378,7 +378,7 @@ def main():
             try:
                 page = browser.new_page(java_script_enabled=False)
                 total += _check_report_matrix(page, browser_name, audit)
-                total += check_period_matrix(page, browser_name, audit, _document)
+                total += check_period_matrix(page, browser_name, audit)
                 _check_meter_visuals(page, browser_name, audit)
             finally:
                 browser.close()

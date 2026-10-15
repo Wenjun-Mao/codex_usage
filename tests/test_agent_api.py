@@ -86,7 +86,34 @@ def test_agent_api_omits_absent_calendar_bounds_for_preset_reports() -> None:
             "speed_window_start": None,
             "speed_window_scope": None,
             "breakdown_action": None,
+            "allowance_action": None,
         }
+    finally:
+        server.stop()
+
+
+def test_private_allowance_action_uses_existing_authenticated_report_transport():
+    from urllib.parse import urlencode
+    from codex_usage.allowance_history_navigation import AllowanceScopeExpired
+    class Agent(_StubAgent):
+        def report(self, **kwargs):
+            super().report(**kwargs)
+            if kwargs["allowance_action"] == "expired":
+                raise AllowanceScopeExpired("expired")
+            if kwargs["allowance_action"] == "crafted":
+                raise ValueError("unissued")
+            return _StubReport()
+    agent = Agent()
+    server = AgentHttpServer(agent, token="x"*40)
+    server.start()
+    try:
+        for action, expected in (("issued", 200), ("expired", 409), ("crafted", 400)):
+            status, payload = _request(server.port, headers={"Authorization": "Bearer " + "x"*40},
+                                       path="/v1/report?" + urlencode({"range": "all", "theme": "day", "allowance_action": action}))
+            assert status == expected, payload
+            assert agent.report_kwargs["allowance_action"] == action
+            if expected == 409:
+                assert json.loads(payload)["code"] == "allowance_scope_expired"
     finally:
         server.stop()
 

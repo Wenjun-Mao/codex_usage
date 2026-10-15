@@ -16,15 +16,15 @@ def receipt(actions):
     return {"action_hashes": [action_hash(action) for action in actions]}
 
 
-def prune_receipts(connection, *, now=None):
+def prune_receipts(connection, *, now=None, prefix=RECEIPT_PREFIX):
     """Own bounded recovery proofs, independently of rendered generation data."""
     cutoff = ((now or datetime.now(UTC)) - timedelta(hours=RECEIPT_TTL_HOURS)).isoformat()
     connection.execute("delete from rendered_reports where cache_key like ? and created_at < ?",
-        (RECEIPT_PREFIX + "%", cutoff))
+        (prefix + "%", cutoff))
     connection.execute("""delete from rendered_reports where cache_key in (
         select cache_key from rendered_reports where cache_key like ?
         order by created_at desc, cache_key desc limit -1 offset ?)""",
-        (RECEIPT_PREFIX + "%", RECEIPT_MAX_SCOPES))
+        (prefix + "%", RECEIPT_MAX_SCOPES))
 
 
 class BreakdownScopeExpired(ValueError):

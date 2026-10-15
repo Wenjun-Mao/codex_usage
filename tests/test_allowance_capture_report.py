@@ -1,5 +1,8 @@
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
+import json
+import re
+from urllib.parse import quote, unquote
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -67,13 +70,24 @@ def test_project_date_theme_reports_open_zero_jsonl_and_never_probe(tmp_path, mo
     monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance", forbidden)
     monkeypatch.setattr("codex_usage.agent_capture.capture_once", forbidden)
     sections = []
+    scopes = set()
+    def scoped_link(match):
+        prefix, payload = match.group(0).split("?", 1)
+        args = json.loads(unquote(payload))
+        assert len(args) == 1 and set(args[0]) == {"scope", "state"}
+        scopes.add(args[0]["scope"])
+        args[0]["scope"] = "report-scoped-capability"
+        return prefix + "?" + quote(json.dumps(args, separators=(",", ":")), safe="")
     for theme, range_name, projects in (("day", "all", []), ("night", "today", ["other"]), ("day", "month", [])):
         result = render_ledger_report(home, range_name=range_name, project_keys=projects, theme=theme, timezone_name="UTC")
         assert "Plan Allowance" in result.html and "31% used" in result.html
         assert "<script" not in result.html
         assert result.html.index('id="plan-allowance"') < result.html.index('data-report-section="project-economics"') if 'data-report-section="project-economics"' in result.html else True
-        sections.append(result.html.split('id="plan-allowance"')[1].split('</section>')[0])
+        section = result.html.split('id="plan-allowance"')[1].split('</section>')[0]
+        # Facts and targets stay account-wide; private issuance is report-scoped.
+        sections.append(re.sub(r'command:codexUsage.navigateAllowanceHistory\?[^"<]+', scoped_link, section))
     assert sections[0] == sections[1] == sections[2]
+    assert len(scopes) == 3
 
 
 def test_empty_report_is_explicitly_unavailable(tmp_path):

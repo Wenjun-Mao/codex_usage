@@ -71,6 +71,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!dashboardNavigation.speed(args)) return;
       await refreshVisibleDashboard({ showLoading: false });
     }),
+    vscode.commands.registerCommand("codexUsage.navigateAllowanceHistory", async (args: unknown) => {
+      if (dashboardNavigation.allowance(args)) await refreshVisibleDashboard({ showLoading: false });
+    }),
     vscode.commands.registerCommand("codexUsage.selectTheme", selectTheme),
     vscode.commands.registerCommand("codexUsage.showUsageView", () => selectView("usage")),
     vscode.commands.registerCommand("codexUsage.showStorageView", () => selectView("storage")),

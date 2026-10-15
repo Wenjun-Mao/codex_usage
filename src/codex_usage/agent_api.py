@@ -87,6 +87,7 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                         speed_window_start=_optional(query, "speed_window_start"),
                         speed_window_scope=_optional(query, "speed_window_scope"),
                         breakdown_action=_optional(query, "breakdown_action"),
+                        allowance_action=_optional(query, "allowance_action"),
                     )
                     self._json(HTTPStatus.OK, report.to_dict())
                 elif path == "/v1/agent-activity":
@@ -231,6 +232,10 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
             return payload
 
         def _exception(self, exc: Exception) -> None:
+            from codex_usage.allowance_history_navigation import AllowanceScopeExpired
+            if isinstance(exc, AllowanceScopeExpired):
+                self._json(HTTPStatus.CONFLICT, {"error": str(exc), "code": "allowance_scope_expired"})
+                return
             from codex_usage.breakdown_commands import BreakdownScopeExpired
             if isinstance(exc, BreakdownScopeExpired):
                 self._json(HTTPStatus.CONFLICT, {"error": str(exc), "code": "breakdown_scope_expired"})
