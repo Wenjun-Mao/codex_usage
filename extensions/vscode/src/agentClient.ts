@@ -142,7 +142,8 @@ export class AgentClient {
           "Content-Type": "application/json",
           ...(encoded ? { "Content-Length": encoded.length } : {}),
         },
-        ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+        // Active operations must not inherit the global agent's idle timeout.
+        timeout: timeoutMs ?? 0,
       }, (response) => {
         const declaredLength = Number(response.headers["content-length"] ?? 0);
         if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {

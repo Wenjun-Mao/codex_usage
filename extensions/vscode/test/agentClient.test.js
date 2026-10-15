@@ -56,6 +56,43 @@ test("agent discovery authenticates health and subsequent requests", async (cont
   assert.ok(seen.every((request) => request.origin === undefined));
 });
 
+test("default keep-alive socket timeouts do not limit ledger reads or capture writes", async context => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "codex-usage-timeout-"));
+  const descriptorPath = path.join(home, ".codex-usage", "agent.json");
+  await fs.mkdir(path.dirname(descriptorPath));
+  const server = http.createServer((request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify(request.url === "/v1/health" ? compatibleHealth : { ready: true }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 1, timeout: 5000 });
+  const original = http.request;
+  const requests = [];
+  http.request = (options, onResponse) => {
+    const request = original({ ...options, agent }, onResponse);
+    request.once("finish", () => requests.push({
+      path: options.path, timeout: request.socket.timeout, reused: request.reusedSocket,
+    }));
+    return request;
+  };
+  context.after(async () => {
+    http.request = original;
+    agent.destroy();
+    await new Promise(resolve => server.close(resolve));
+    await fs.rm(home, { recursive: true, force: true });
+  });
+  await fs.writeFile(descriptorPath, JSON.stringify({ pid: process.pid, api_version: 1,
+    port: server.address().port, token: "t".repeat(40), codex_home: home }));
+  const client = await AgentClient.discoverAt(home);
+  assert.deepEqual(await client.get("/v1/status"), { ready: true });
+  assert.deepEqual(await client.post("/v1/capture"), { ready: true });
+  assert.deepEqual(requests, [
+    { path: "/v1/health", timeout: 2000, reused: false },
+    { path: "/v1/status", timeout: 0, reused: true },
+    { path: "/v1/capture", timeout: 0, reused: true },
+  ]);
+});
+
 test("client rejects request smuggling paths and oversized request bodies", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-usage-companion-"));
   const data = path.join(root, "config");

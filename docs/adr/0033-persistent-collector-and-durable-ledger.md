@@ -42,6 +42,12 @@ false failure while the single agent-owned operation continued. Request and
 response size bounds, job coalescing, and the heavy-I/O lane remain the resource
 guards.
 
+The extension sets each request's socket timeout explicitly: the short health
+limit for probes, and zero for authenticated operations. Omitting the option
+can inherit the Node global keep-alive agent's idle timeout and abort a healthy
+long-running request. A real reused-socket regression checks health, ledger reads
+and capture writes; connection reuse remains enabled and POSTs are never replayed.
+
 Filesystem notifications only mark paths dirty. Interval reconciliation may
 stat sources but opens no unchanged JSONLs. Guarded checkpoints read fixed
 verification windows plus append tails. Mismatches preserve the trusted
