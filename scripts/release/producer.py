@@ -5,6 +5,8 @@ import subprocess
 
 from verification.visual_cases import validate_inventory
 from verification.test_inventory import validate_extension, validate_python
+from verification.hover_measurements import validate_measurements
+from verification.hover_process import validate_process
 from run_visual_suite import SCRIPTS
 
 from .archives import inspect_payload
@@ -47,6 +49,12 @@ def validate_payload(metadata, files, gate):
             validate_inventory(evidence, child)
             visual[child] = {key: evidence[key] for key in
                 ("schema", "suite", "status", "synthetic_only", "assertions", "completed")}
+            if child == "hover":
+                summary = validate_measurements(evidence)
+                require(evidence.get("observation_summary") == summary, "Tooltip raw observations/summary differ")
+                visual[child]["observation_summary"] = summary
+                require("hover/process.json" in files, "Missing owned hover process proof")
+                visual[child]["process"] = validate_process(json.loads(files["hover/process.json"]))
             if child in ("breakdown", "speed"):
                 require(f"{child}/evidence.json" in files, "Missing work-counter evidence")
                 performance = json.loads(files[f"{child}/evidence.json"])["performance"]

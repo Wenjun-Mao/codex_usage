@@ -83,7 +83,7 @@ def test_keyboard_origin_is_unique_and_real_tab_has_no_corrective_focus(monkeypa
     targets = SimpleNamespace(nth=lambda position: (calls.append(("preceding", position)), origin)[1])
 
     def observe(page, tooltip, action, **kwargs):
-        assert kwargs == {"visible": True, "keyboard": True, "phase": "keyboard"}
+        assert kwargs == {"visible": True, "keyboard": True, "phase": "keyboard", "record": None}
         calls.append("budget starts")
         action()
         return .01
@@ -99,7 +99,7 @@ def test_keyboard_origin_is_unique_and_real_tab_has_no_corrective_focus(monkeypa
 
 def test_hover_harness_uses_guarded_keyboard_sequence_not_corrective_focus():
     source = inspect.getsource(load_tool("check_breakdown_hover_ui").main)
-    assert "observe_keyboard(page, handle, targets, index)" in source
+    assert "observe_keyboard(page, handle, targets, index, record=record)" in source
     assert "target.focus()" not in source
 
 
@@ -148,3 +148,35 @@ def test_pointer_budget_starts_before_real_motion_not_locator_readiness():
     source = inspect.getsource(load_tool("check_breakdown_hover_ui").main)
     assert source.index("point = prepare_pointer(page, hit, handle)") < source.index("durations.append(observe_input(")
     assert 'lambda: page.mouse.move(point["x"], point["y"])' in source
+
+
+@pytest.mark.parametrize("phase", ("hover", "hide", "keyboard"))
+def test_recorder_retains_actual_states_and_does_not_add_style_reads(monkeypatch, phase):
+    measurements = load_tool("verification.hover_measurements")
+    ticks = iter((0., .01, .02))
+    monkeypatch.setattr(observation, "perf_counter", lambda: next(ticks))
+    visible = phase != "hide"
+    states = iter(([HIDDEN] if visible else []) + [measurements.MATCHED[phase]])
+    calls, records = [], []
+    def sample(_):
+        calls.append("style")
+        return next(states)
+    result = observation.observe_input(None, SimpleNamespace(evaluate=sample),
+        lambda: calls.append("real input"), visible=visible, keyboard=phase == "keyboard",
+        phase=phase, record=records.append)
+    assert result == .02
+    assert calls == (["style"] if visible else []) + ["real input", "style"]
+    assert records == [{"phase": phase, "seconds": .02,
+        "baseline": HIDDEN if visible else None, "matched": measurements.MATCHED[phase]}]
+
+
+@pytest.mark.parametrize("ticks", ((0., .3), (0., .1, .3)))
+def test_late_action_or_style_result_cannot_emit_a_success_observation(monkeypatch, ticks):
+    times = iter(ticks)
+    monkeypatch.setattr(observation, "perf_counter", lambda: next(times))
+    records = []
+    states = iter((HIDDEN, {**HIDDEN, "visible": True, "hidden": False, "hover": True}))
+    with pytest.raises(AssertionError):
+        observation.observe_input(None, SimpleNamespace(evaluate=lambda _: next(states)),
+            lambda: None, visible=True, phase="hover", record=records.append)
+    assert records == []

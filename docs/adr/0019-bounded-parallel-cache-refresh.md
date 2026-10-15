@@ -58,8 +58,13 @@ a new session and process-group termination. Windows creates a Job Object with
 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, starts a controller blocked on a launch
 gate, assigns that controller to the Job, and only then releases it to spawn
 the target. The target and descendants inherit Job membership, while the
-parent retains the Job handle after the target root exits. Timeout cleanup
-terminates and closes the Job before bounded output drain and reap.
+parent retains the Job handle after the target root exits. Timeout and catchable
+interruption/transport-failure cleanup terminate the owned tree before bounded
+output drain and reap, then propagate the original exception. A cleanup failure
+remains explicit and chains that original cause. Hover qualification reuses this
+ownership boundary and routes SIGTERM through the same cancellation path; its
+temporary signal handler is restored afterward. Uncatchable process termination
+is not claimed to execute Python cleanup.
 
 Validate the native acceptance contract with source/frozen PID-overlap proof,
 child SQLite guards, oracle equivalence, a Windows root-exits/child-survives

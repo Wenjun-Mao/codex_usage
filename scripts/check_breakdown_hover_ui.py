@@ -13,6 +13,7 @@ from preview_breakdown_layouts import document
 from verification.visual_cases import identity
 from verification.visual_evidence import VisualEvidence
 from verification.hover_observation import observe_input, observe_keyboard, prepare_pointer
+from verification.hover_measurements import HoverMeasurements, SCHEMA, validate_measurements
 
 
 def chart(zone_name, *, days=1, metric="cost", dst=False):
@@ -47,6 +48,8 @@ def main(diagnostic_document=None):
     if diagnostic_document is not None:
         evidence.update(diagnostic_only=True, qualification_eligible=False)
     with VisualEvidence(args.output, "hover") as audit, sync_playwright() as playwright:
+        measurements = HoverMeasurements()
+        audit.data.update(observation_contract=SCHEMA, observations=measurements.rows)
         for engine in ("chromium", "webkit", "firefox"):
             browser = getattr(playwright, engine).launch()
             context = browser.new_context(java_script_enabled=False)
@@ -72,6 +75,7 @@ def main(diagnostic_document=None):
                                     durations = []
                                     targets = page.locator(".ub-hover-target")
                                     for index in range(3):
+                                        record = measurements.recorder(identity(engine, scenario, theme, width), index)
                                         page.evaluate("document.activeElement.blur()")
                                         target = targets.nth(index)
                                         hit = target.locator(".ub-hover-hit")
@@ -82,15 +86,15 @@ def main(diagnostic_document=None):
                                         point = prepare_pointer(page, hit, handle)
                                         durations.append(observe_input(page, handle,
                                             lambda: page.mouse.move(point["x"], point["y"]),
-                                            visible=True, phase="hover"))
+                                            visible=True, phase="hover", record=record))
                                         text = tooltip.inner_text()
                                         assert "74.197783" not in text and "e+" not in text
                                         assert "$74.20" in text if scenario != "tokens" else "139.03 M tokens" in text
                                         assert target.get_attribute("href").endswith("issued=" + str(index))
                                         assert tooltip.evaluate("e=>{const b=e.getBoundingClientRect(),p=e.closest('.ub-scroll').getBoundingClientRect();return b.left>=p.left-1&&b.right<=p.right+1&&e.scrollWidth<=e.clientWidth+1}"), (engine, scenario, width, text)
                                         observe_input(page, handle, lambda: page.mouse.move(0, 0),
-                                            visible=False, phase="hide")
-                                        observe_keyboard(page, handle, targets, index)
+                                            visible=False, phase="hide", record=record)
+                                        observe_keyboard(page, handle, targets, index, record=record)
                                         if index < 2:
                                             page.keyboard.press("Tab")
                                             assert targets.nth(index+1).evaluate("e=>e===document.activeElement")
@@ -109,6 +113,7 @@ def main(diagnostic_document=None):
             finally:
                 context.close()
                 browser.close()
+        audit.data["observation_summary"] = validate_measurements(audit.data)
     (args.output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print(json.dumps({"views": len(evidence["views"]), "script_disabled": True}))
 

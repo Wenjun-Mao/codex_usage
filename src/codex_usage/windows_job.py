@@ -69,7 +69,7 @@ class WindowsJob:
         self._handle: int | None = self._api.create_job()
         try:
             self._api.set_kill_on_close(self._require_handle())
-        except Exception:
+        except BaseException:
             self.close()
             raise
 

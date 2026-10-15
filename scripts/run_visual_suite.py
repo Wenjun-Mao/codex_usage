@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from verification.visual_cases import validate_inventory
+from verification.hover_process import run_hover
 
 SCRIPTS = {
     "screenshots-allowance": (("screenshots", "generate_marketplace_screenshot.py", "--check"),
@@ -27,9 +28,16 @@ def main():
     environment = {**os.environ, "CODEX_VISUAL_FAIL_CASE": args.fail_case}
     for suite, script, *flags in SCRIPTS[args.suite]:
         directory = args.output / suite
-        subprocess.run([sys.executable, str(Path(__file__).with_name(script)), *flags,
-            "--output", str(directory)], env=environment, check=True)
+        command = [sys.executable, str(Path(__file__).with_name(script)), *flags, "--output", str(directory)]
+        process = None
+        if suite == "hover":
+            (directory / "process.json").unlink(missing_ok=True)
+            process = run_hover(command, environment=environment, cwd=Path.cwd())
+        else:
+            subprocess.run(command, env=environment, check=True)
         validate_inventory(json.loads((directory / "verification.json").read_text()), suite)
+        if process is not None:
+            (directory / "process.json").write_text(json.dumps(process, separators=(",", ":")) + "\n")
 
 
 if __name__ == "__main__":

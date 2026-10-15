@@ -6,6 +6,7 @@ from zipfile import ZipFile
 from xml.etree import ElementTree
 
 from release_tooling_support import load_tool
+from hover_measurement_fixture import PROCESS, measurements
 
 policy = load_tool("release.policy")
 archives = load_tool("release.archives")
@@ -35,8 +36,11 @@ def package_bytes(target="darwin-arm64", version="2.12.2"):
 
 
 def visual_evidence(suite):
-    return {"schema": 1, "suite": suite, "status": "passed", "synthetic_only": True,
+    result = {"schema": 1, "suite": suite, "status": "passed", "synthetic_only": True,
         "assertions": list(cases.ASSERTIONS[suite]), "completed": cases.expected_cases(suite)}
+    if suite == "hover":
+        result.update(measurements())
+    return result
 
 
 class FixtureAPI(GitHub):
@@ -108,6 +112,8 @@ class FixtureAPI(GitHub):
         files = {}
         for suite, *_ in suites:
             files[f"{suite}/verification.json"] = policy.canonical(visual_evidence(suite))
+            if suite == "hover":
+                files["hover/process.json"] = policy.canonical(PROCESS)
             key = "warm_history_materializations_fits_reprices" if suite == "breakdown" else "warm_monetary_materializations"
             files[f"{suite}/evidence.json"] = policy.canonical({"performance": {key: 0}})
         return files

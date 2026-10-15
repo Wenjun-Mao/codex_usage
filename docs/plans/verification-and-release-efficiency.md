@@ -209,7 +209,7 @@ A/B move to the following release. On October 14 the owner explicitly accepted
 the existing hosted WebKit observation delay for the next release only.
 
 - Before qualification, record an ADR 0063/release-proof amendment binding the
-  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite; ADR 0070's journal foundation is implemented, with observation/proof integration and explicit append authority pending.
+  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite; ADR 0070's journal and strict raw-observation foundations are implemented; bound disposition/fresh-journal integration and explicit append authority remain pending.
   Preserve actual elapsed values and report `deferred-known-latency`, never passed.
 - Continue every original case/input and all functional assertions: hidden/hit
   baselines, visible/hidden state, real Tab modality, content, containment and
@@ -479,7 +479,7 @@ Local median breakdown runtime: 150.13 -> 95.29s across three alternating pairs;
 reads. Fresh navigation, 1,440 keyboard presses and 160 screenshots remain.
 U's 18 mandatory cases and controlled rejection pass. R is integrated through
 `186ad5d`: 252 mandatory allowance browser cases and all 51 extension tests pass.
-Core after guarded relocation passes 2,720 tests/one approved skip with validated inventory;
+Core after strict raw-hover evidence and owned-tree cancellation fixes passes 2,869 tests/one approved skip with validated inventory;
 frozen monetary/work guards and the renewed 252-case allowance browser inventory pass.
 P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
 Replicas cover compatible longest copies, missing canonical retention and partial handoffs; staged semantic repairs preserve evidence and install atomically across source-key changes.

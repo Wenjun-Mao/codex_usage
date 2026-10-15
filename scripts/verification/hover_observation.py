@@ -32,20 +32,20 @@ def require_hidden(tooltip):
     state = tooltip_state(tooltip)
     assert state["hidden"] and not state["active"] and not state["hover"], {
         "phase": "input baseline", "state": state}
+    return state
 
 
-def observe_keyboard(page, tooltip, targets, index):
+def observe_keyboard(page, tooltip, targets, index, *, record=None):
     origin = page.locator('.ub-meter-legend span[tabindex="0"]') if index == 0 else targets.nth(index-1)
     assert origin.count() == 1
     origin.focus()
     assert origin.evaluate("e=>e===document.activeElement")
     return observe_input(page, tooltip, lambda: page.keyboard.press("Tab"),
-        visible=True, keyboard=True, phase="keyboard")
+        visible=True, keyboard=True, phase="keyboard", record=record)
 
 
-def observe_input(page, tooltip, action, *, visible, keyboard=False, phase):
-    if visible:
-        require_hidden(tooltip)
+def observe_input(page, tooltip, action, *, visible, keyboard=False, phase, record=None):
+    baseline = require_hidden(tooltip) if visible else None
     started = perf_counter()
     action()
     state = None
@@ -61,5 +61,7 @@ def observe_input(page, tooltip, action, *, visible, keyboard=False, phase):
         else:
             matched = state["hidden"] and not state["active"] and not state["hover"]
         if matched:
+            if record is not None:
+                record({"phase": phase, "seconds": elapsed, "baseline": baseline, "matched": state})
             return elapsed
         page.wait_for_timeout(10)

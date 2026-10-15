@@ -4,6 +4,8 @@ import json
 import re
 
 from verification.visual_cases import validate_inventory
+from verification.hover_measurements import validate_summary
+from verification.hover_process import validate_process
 from run_visual_suite import SCRIPTS
 
 from .archives import inspect_payload
@@ -97,6 +99,9 @@ class Proofs:
             require(set(manifest.get("visual", {})) == set(children), "Missing required visual suite")
             for child in children:
                 validate_inventory(manifest["visual"][child], child)
+                if child == "hover":
+                    validate_summary(manifest["visual"][child].get("observation_summary"))
+                    validate_process(manifest["visual"][child].get("process"))
         files = None
         if payload:
             _, transport = self.api.artifact(uploaded["id"], uploaded["digest"], self.run)
@@ -147,6 +152,7 @@ class Proofs:
             and manifest.get("run") == self.run_id and set(manifest.get("gates", {})) == set(GATES),
             "Foreign or incomplete hosted manifest")
         for gate, reference in manifest["gates"].items():
-            proof = self.receipt(gate, reference["receipt_id"], reference["receipt_digest"])
+            proof = self.receipt(gate, reference["receipt_id"], reference["receipt_digest"],
+                payload=gate == "visual-hover")
             require(self.reference(proof) == reference, "Frozen producer identity mismatch")
         return hosted, manifest

@@ -65,6 +65,8 @@ def contract_files(root=ROOT):
         "scripts/check_speed_webview.py", "scripts/speed_native_target.py", "scripts/native_cdp.py",
         "scripts/breakdown_rpc_fixture.py", "scripts/usage_breakdown_fixture.py",
         "uv.lock", "extensions/vscode/package-lock.json"]
+    files += ["src/codex_usage/" + name for name in
+        ("process_tree.py", "windows_job.py", "windows_job_controller.py")]
     files += [file.relative_to(root).as_posix() for directory in ("scripts/release", "scripts/verification")
         for file in (root / directory).iterdir() if file.suffix in (".py", ".cjs")]
     files += ["scripts/" + file for file in ("check_usage_breakdown_ui.py", "check_speed_ui.py",

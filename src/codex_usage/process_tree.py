@@ -43,20 +43,15 @@ def run_process_tree(
     )
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired as timeout_error:
+    except BaseException as error:
         try:
-            _cleanup_timed_out_process(
+            _cleanup_failed_process(
                 process,
                 platform_name=target_platform,
                 windows_job=windows_job,
             )
         except ProcessTreeCleanupError as cleanup_error:
-            raise cleanup_error from timeout_error
-        raise
-    except BaseException as error:
-        failures = _close_windows_job(windows_job)
-        if failures:
-            raise ProcessTreeCleanupError(failures) from error
+            raise cleanup_error from error
         raise
 
     failures = _close_windows_job(windows_job)
@@ -127,22 +122,31 @@ def _launch_windows_controller(
             env=environment,
             cwd=cwd,
         )
-    except (OSError, ValueError) as error:
-        _close_windows_job(job)
-        raise ProcessTreeLaunchError(
-            "Windows process ownership setup failed"
-        ) from error
+    except BaseException as error:
+        failures = _close_windows_job(job)
+        if failures:
+            raise ProcessTreeCleanupError(failures) from error
+        if isinstance(error, Exception):
+            raise ProcessTreeLaunchError(
+                "Windows process ownership setup failed"
+            ) from error
+        raise
 
     assigned = False
     try:
         job.assign(process.pid)
         assigned = True
         _release_windows_controller(process)
-    except Exception as error:
-        _abort_windows_controller(process, job, assigned=assigned)
-        raise ProcessTreeLaunchError(
-            "Windows process ownership setup failed"
-        ) from error
+    except BaseException as error:
+        try:
+            _abort_windows_controller(process, job, assigned=assigned)
+        except ProcessTreeCleanupError as cleanup_error:
+            raise cleanup_error from error
+        if isinstance(error, Exception):
+            raise ProcessTreeLaunchError(
+                "Windows process ownership setup failed"
+            ) from error
+        raise
     return process, job
 
 
@@ -162,27 +166,27 @@ def _abort_windows_controller(
     *,
     assigned: bool,
 ) -> None:
-    if assigned:
-        try:
-            job.terminate()
-        except (OSError, WindowsJobError):
-            pass
+    failures = []
     gate = process.stdin
     if gate is not None:
         try:
             gate.close()
         except (OSError, ValueError):
-            pass
+            failures.append("Windows controller gate close failed")
         process.stdin = None
-    _kill_direct_process(process)
+    if not assigned:
+        failure = _kill_direct_process(process)
+        if failure is not None:
+            failures.append(failure)
     try:
-        process.communicate(timeout=_DIRECT_DRAIN_TIMEOUT_SECONDS)
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        pass
-    _close_windows_job(job)
+        _cleanup_failed_process(process, platform_name="nt", windows_job=job)
+    except ProcessTreeCleanupError as error:
+        failures.extend(error.failures)
+    if failures:
+        raise ProcessTreeCleanupError(failures)
 
 
-def _cleanup_timed_out_process(
+def _cleanup_failed_process(
     process: subprocess.Popen[str],
     *,
     platform_name: str,

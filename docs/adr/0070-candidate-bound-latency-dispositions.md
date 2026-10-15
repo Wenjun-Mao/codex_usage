@@ -1,6 +1,6 @@
 # ADR 0070: Candidate-Bound Hosted Latency Dispositions
 
-Status: Journal foundation implemented; observation/proof integration and explicit append authority pending.
+Status: Journal/raw-observation foundations implemented; bound deferral and explicit append authority pending.
 
 ## Problem
 
@@ -75,13 +75,29 @@ serialization. Candidate creation checks the complete stored record's byte and
 history-count limits before any Git-object write, so a valid event cannot poison
 retained history merely by exceeding a reader limit after wrapping or append.
 
-These are foundation tests, not active release authority. No real binding has
-been appended. The selected future scope retains the 250 ms strict criterion,
-with 2 s functional acceptance and a 600 s owned-process execution ceiling for
-the approved hosted WebKit context only. These deferred bounds are not yet wired
-into the observer. Raw observation collection, independent fresh-journal proof
-validation and producer/freeze/promotion integration remain unimplemented. The
-current strict observer and all existing qualification checks remain unchanged.
+Raw hover evidence now retains all 648 exact case/target/phase observations,
+with elapsed time and typed baseline/matched states. Hidden input baselines use
+the existing pre-input read; hide continuity refers to the preceding matched
+hover, without an extra style read. Missing/duplicate observations, wrong real
+input modality, primed baselines and nonfinite or late values fail. Receipts keep
+only a digest/count/maximum summary; both freeze and hosted inspection reopen
+the raw immutable hover payload and revalidate it, rather than trusting that
+summary. At this checkpoint all engines and contexts still require strict
+`<250ms`; no late observation can receive a passing receipt.
+
+The hover runner reuses the shared owned-process-tree supervisor with a 600 s
+ceiling plus bounded termination/drain/reap on failure. Catchable interruption
+now follows that same cleanup path; the hover runner temporarily routes SIGTERM
+to it and restores the original handler. A stale process receipt is removed
+before launch; failed, interrupted, incomplete and late attempts cannot write
+a new one. The shared ownership implementation is in the execution fingerprint.
+
+These foundations are not active release authority. No real binding has been
+appended. The selected future hosted WebKit scope retains a 250 ms strict
+criterion with explicitly deferred timing and 2 s functional acceptance. Bound
+runtime selection, the versioned functional/timing disposition, fresh-journal
+validation and binding-reference propagation through producer/freeze/promotion
+remain unimplemented. No environment flag currently relaxes a timing check.
 
 Local verification: 2,774 passed with the one approved Windows-only skip, with
 raw JUnit and collection inventory independently validated under
@@ -90,3 +106,16 @@ includes the added record-count boundary guard. Ruff, frozen monetary parity and
 bounded-work guards pass. Independent read-only review found and then verified
 the serialized-size correction. No hosted pilot or production journal write has
 been run for this foundation.
+
+The strict observation checkpoint passes 2,869 Python cases with the one approved
+Windows-only skip, independently reconciled through raw JUnit and collection
+inventory in `output/verification/d4-raw-hover/final/`. All 72 local browser cases
+produce 648 strict observations with scripts disabled. The supervised browser
+artifacts are in `output/playwright/d4-raw-hover-final/`; raw producer admission
+and independent inspection reject modified payloads despite a retained summary.
+A disposable POSIX SIGTERM check stops both a synthetic target and grandchild.
+Independent review identified cancellation gaps in communication and Windows
+launch handoff; both are corrected at shared ownership boundaries and have
+interruption/cleanup-failure regressions. Native Windows execution remains a
+hosted C gate, not a locally proven claim. No real journal write, hosted pilot,
+new diagnostic batch or release has occurred at this checkpoint.
