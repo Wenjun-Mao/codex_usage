@@ -13,13 +13,20 @@ class StagedCaptureUnavailableError(RuntimeError):
 
 
 def load_rebuild_source(connection, source_key):
-    return connection.execute("""select s.source_key, s.path, s.session_dir, s.storage_state,
+    row = connection.execute("""select s.source_key, s.path, s.session_dir, s.storage_state,
         f.session_id, f.parsed_at, p.byte_offset, p.next_record_index,
         p.head_sha256, p.boundary_sha256, p.source_device, p.source_inode, p.state_json,
         coalesce((select value from schema_meta where key='history-invalidation:'||s.source_key),'0') history_epoch
         from ledger_sources s join files f on f.file_key=s.source_key and f.path=s.path
         left join parser_checkpoints p on p.file_key=f.file_key
-        where s.source_key=? and s.is_stale=1 and s.is_missing=0""", (source_key,)).fetchone()
+        where s.source_key=? and s.is_stale=1""", (source_key,)).fetchone()
+    if row is None:
+        return None
+    missing = connection.execute("select is_missing from ledger_sources where source_key=?", (source_key,)).fetchone()[0]
+    if not missing:
+        return row
+    from codex_usage.history_upgrade_relocation import relocated_source
+    return relocated_source(connection, source_key, row)
 
 
 def _origin(source):
@@ -40,6 +47,9 @@ def bind_rebuild_authority(connection, source):
         authority = json.loads(row[0])
         if authority.get("version") != 1 or authority.get("origin") != origin:
             raise RuntimeError("staged capture identity changed from its authorized owner")
+        if "captured_path" in dict(source) and any(authority.get(key) != source[key]
+                for key in ("captured_path", "recovery_snapshots")):
+            raise RuntimeError("staged capture relocation snapshots changed from its authorized owner")
         if authority["header"] is None and _table_exists(connection, "parser_checkpoints"):
             rows = connection.execute("select file_key, path from files where path=?", (source["path"],)).fetchall()
             if len(rows) > 1:
@@ -55,6 +65,9 @@ def bind_rebuild_authority(connection, source):
            for table in ("files", "parser_checkpoints", "usage_records")):
         raise RuntimeError("staged capture identity has no originating authority")
     authority = dict(version=1, origin=origin, logical_id=source["session_id"], header=None)
+    if "captured_path" in dict(source):
+        authority["captured_path"] = source["captured_path"]
+        authority["recovery_snapshots"] = source["recovery_snapshots"]
     connection.execute("insert into rebuild_authority values (1,?)", (json.dumps(authority, sort_keys=True),))
     connection.commit()
     return authority
@@ -99,8 +112,11 @@ def validate_staged_capture(connection, entry, checkpoint, authority):
 
 
 def assert_live_rebuild_authority(connection, source_key, authority):
-    if _origin(load_rebuild_source(connection, source_key)) != authority["origin"]:
+    source = load_rebuild_source(connection, source_key)
+    if _origin(source) != authority["origin"]:
         raise RuntimeError("staged capture identity changed before installation")
+    from codex_usage.history_upgrade_relocation import assert_relocation_snapshot
+    assert_relocation_snapshot(source)
 
 
 def assert_attached_stage(connection, entry, checkpoint):

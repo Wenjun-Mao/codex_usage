@@ -65,12 +65,13 @@ def stale_source_keys(ledger_path: Path) -> tuple[str, ...]:
         excluded = pending_upgrade_keys(connection)
         rows = connection.execute(
             """
-            select source_key from ledger_sources
-            where is_stale = 1 and is_missing = 0
+            select source_key, is_missing from ledger_sources
+            where is_stale = 1
             order by size_bytes, source_key
             """
         ).fetchall()
-    return tuple(str(row["source_key"]) for row in rows if str(row["source_key"]) not in excluded)
+        return tuple(str(row["source_key"]) for row in rows if str(row["source_key"]) not in excluded
+                     and (not row["is_missing"] or load_rebuild_source(connection, row["source_key"]) is not None))
 
 
 def pending_incremental_source_count(ledger_path: Path) -> int:
@@ -101,6 +102,8 @@ def rebuild_stale_source_slice(
     """Advance one isolated rebuild and install it only when complete."""
     ledger_path = ledger_database_path(codex_home)
     source = _load_stale_source(ledger_path, source_key)
+    from codex_usage.history_upgrade_relocation import assert_relocation_snapshot
+    assert_relocation_snapshot(source)
     path = Path(source["path"])
     stat = path.stat()
     entry = SessionFileInventoryEntry(
@@ -115,7 +118,8 @@ def rebuild_stale_source_slice(
         source_inode=int(stat.st_ino),
     )
     epoch = parse_invalidation_epoch(source["history_epoch"])
-    staging_path = _staging_path(codex_home, source_key, history_epoch=epoch)
+    staging_path = _staging_path(codex_home, source_key, history_epoch=epoch,
+                                 recovery_id=dict(source).get("recovery_id", ""))
     # One owned-home stat inventory supplies history candidates, separately from
     # the parse worklist.
     history_inventory = collect_session_file_inventory(
@@ -200,9 +204,11 @@ def _load_stale_source(ledger_path: Path, source_key: str) -> sqlite3.Row:
     return row
 
 
-def _staging_path(codex_home: Path, source_key: str, *, history_epoch=0) -> Path:
+def _staging_path(codex_home: Path, source_key: str, *, history_epoch=0, recovery_id="") -> Path:
     digest = hashlib.sha256(source_key.encode()).hexdigest()
     suffix = f"-history-{history_epoch}" if history_epoch else ""
+    if recovery_id:
+        suffix += "-recovery-"+recovery_id
     return agent_data_dir(codex_home) / "rebuilds" / f"accounting-v2-{digest}{suffix}.sqlite3"
 
 
@@ -238,7 +244,7 @@ def _install_completed_rebuild(
             ).fetchone()
             if (
                 current is None
-                or str(current["path"]) != str(entry.path)
+                or str(current["path"]) != str(authority.get("captured_path", entry.path))
                 or (not str(current["error"] or "").startswith(STALE_ERROR_PREFIX)
                     and not pending_invalidation(connection, entry.file_key))
             ):
@@ -246,7 +252,8 @@ def _install_completed_rebuild(
             assert_live_rebuild_authority(connection, entry.file_key, authority)
             assert_attached_stage(connection, staged_entry, checkpoint)
             _check_identity_target(connection, entry.file_key, staged_entry.file_key)
-            invalidate_dependents(connection, [entry.path], exclude={entry.file_key, staged_entry.file_key})
+            invalidate_dependents(connection, [entry.path, Path(authority.get("captured_path", entry.path))],
+                                  exclude={entry.file_key, staged_entry.file_key})
             _mark_rebuilt_tasks_dirty(connection, staged_entry.file_key, entry.file_key)
             _replace_workset_rows(connection, entry.file_key, staged_entry.file_key)
             rekey_invalidation(connection, entry.file_key, staged_entry.file_key)
@@ -258,6 +265,9 @@ def _install_completed_rebuild(
             supersede_rebuilt_generations(connection, entry.file_key, staged_entry.file_key, checkpoint, authority)
             synchronize_parser_workset_in_transaction(connection)
             assert_installed_authority(connection, staged_entry, checkpoint)
+            from codex_usage.history_upgrade_relocation import clear_relocation, assert_relocation_snapshot
+            assert_relocation_snapshot(authority)
+            clear_relocation(connection, entry.file_key)
             if _file_snapshot(entry.path.stat()) != _file_snapshot(before):
                 raise OSError("source changed before rebuild commit")
             connection.commit()

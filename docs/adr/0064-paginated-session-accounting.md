@@ -234,7 +234,8 @@ replacement between child slices starts a new epoch-bound stage, retaining the
 obsolete stage rather than adopting it. The `accounting-v2` namespace refuses old
 pre-dependency stages. Marker/epoch movement follows source-key changes atomically.
 Private repair qualification must include obsolete-stage storage and cleanup in
-its maintenance/rollback lifecycle; no automatic deletion is introduced here.
+its maintenance/rollback lifecycle. ADR 0069 selects measured retention through
+the rollback window; no automatic deletion is introduced here.
 Captured quota observations remain untouched; revision-pinned allowance, economics,
 credit and HTML consumers observe either the old transaction or its invalidation.
 Regressions cover transitive/uncaptured ancestors, append/replica escape attempts,

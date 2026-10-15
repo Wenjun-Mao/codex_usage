@@ -16,6 +16,7 @@ from codex_usage.session_files import read_session_metadata_stream
 from codex_usage.session_history import HISTORY_PREFIX_LIMIT, PAGE_KEY_PREFIX, source_identity, validate_page_metadata
 from codex_usage.session_history_models import PaginatedHistoryError
 from codex_usage.session_rollout_identity import rollout_identity
+from codex_usage.history_upgrade_relocation import qualify_relocation, clear_relocation
 
 DISCOVERY_BYTES = 1024 * 1024
 DISCOVERY_FILES = 32
@@ -27,7 +28,7 @@ def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_B
                                  protected_keys=frozenset()):
     if max_bytes < 0 or max_files < 0:
         raise ValueError("discovery budgets cannot be negative")
-    rows = connection.execute(f"""select f.file_key, f.path, f.session_id,
+    rows = connection.execute(f"""select f.file_key, f.path, f.session_id, f.mtime_ns,
         p.byte_offset, p.next_record_index, p.head_sha256, p.boundary_sha256,
         p.session_id checkpoint_session_id from files f join parser_checkpoints p using(file_key)
         where not coalesce(({history_contract_sql()}),0)""").fetchall()
@@ -48,8 +49,13 @@ def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_B
             attempt = previous.get("attempt", 0) if previous else 0
             candidates.append((0 if not attempt else 1,
                 -entry.mtime_ns if not attempt else attempt, entry.file_key, entry, row, guard, previous))
-    candidates.sort(key=lambda item: item[:3])
     absent = {key for key in old.keys()-matched if not _retired_capture(connection, key)}
+    for key in absent:
+        previous = decision(connection, key)
+        attempt = previous.get("attempt", 0) if previous else 0
+        candidates.append((0 if not attempt else 1, attempt or -old[key]["mtime_ns"],
+                           key, None, old[key], None, previous))
+    candidates.sort(key=lambda item: item[:3])
     protected = set(protected_keys) | absent | {key for key, value in decisions.items() if value["disposition"] != Disposition.UNCHANGED}
     waiting = connection.execute("select 1 from schema_meta where key like ? limit 1", (WAIT_PREFIX+"%",)).fetchone()
     if not candidates and not protected and waiting is None:
@@ -58,7 +64,30 @@ def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_B
     bytes_read = attempted = reserved = 0
     connection.execute("begin immediate")
     try:
+        for key in matched:
+            clear_relocation(connection, key)
         for _, _, key, entry, row, guard, previous in candidates:
+            if entry is None:
+                diagnostic, consumed, count = qualify_relocation(connection, key, row, inventory,
+                    max_bytes=max_bytes-reserved, max_files=max_files-attempted,
+                    batch_bytes=max_bytes, batch_files=max_files, inspect=_inspect)
+                bytes_read += consumed
+                reserved += consumed
+                attempted += count
+                if count:
+                    sequence += 1
+                qualified = diagnostic == "qualified"
+                reason = (Reason.INHERITED if qualified else Reason.BUDGET if diagnostic == "budget"
+                          else Reason.UNAVAILABLE if diagnostic == "unavailable" else Reason.INVALID)
+                store_decision(connection, key, dict(disposition=Disposition.REBUILD if qualified else Disposition.PENDING,
+                    reason=reason, diagnostic=diagnostic, relocation_pending=diagnostic == "budget",
+                    attempt=sequence if count else previous.get("attempt", 0) if previous else 0))
+                if qualified:
+                    connection.execute("update files set error=? where file_key=?",
+                                       ("stale append checkpoint: "+REBUILD_ERROR, key))
+                else:
+                    clear_relocation(connection, key)
+                continue
             limit = max(1, min(HISTORY_PREFIX_LIMIT, entry.size_bytes))
             value = dict(guard=guard, disposition=Disposition.PENDING, reason=Reason.BUDGET,
                          attempt=previous.get("attempt", 0) if previous else 0)
@@ -73,10 +102,6 @@ def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_B
                 value = previous
             store_decision(connection, key, value)
             decisions[key] = value
-        for key in absent:
-            previous = decision(connection, key)
-            store_decision(connection, key, dict(disposition=Disposition.PENDING, reason=Reason.UNAVAILABLE,
-                diagnostic="captured_source_not_in_inventory", attempt=previous.get("attempt", 0) if previous else 0))
         connection.execute("insert or replace into schema_meta(key,value) values ('history-upgrade-sequence',?)", (str(sequence),))
         protected = set(protected_keys) | absent | {key for key, value in decisions.items() if value["disposition"] != Disposition.UNCHANGED}
         for entry in inventory:

@@ -88,7 +88,8 @@ def pending_upgrade_keys(connection, *, budget_only=False):
     rows = connection.execute(f"""select f.file_key from schema_meta m
         join files f on m.key=?||f.file_key
         left join parser_checkpoints p using(file_key)
-        where f.is_missing=0 and json_valid(m.value)
+        where (f.is_missing=0 or (json_extract({value},'$.reason')='budget'
+            and json_type({value},'$.relocation_pending')='true')) and json_valid(m.value)
           and json_extract({value},'$.version')=1
           and json_extract({value},'$.disposition')='pending' {reason}
           and not coalesce(({history_contract_sql()}),0)""", (PREFIX,)).fetchall()

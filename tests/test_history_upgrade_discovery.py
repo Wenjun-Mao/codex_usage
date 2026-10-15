@@ -172,7 +172,7 @@ def test_absent_old_capture_keeps_its_claim_reserved_for_new_files(tmp_path, mon
     refresh(home, ledger)
     assert checkpoints(ledger) == before
     assert total(ledger) == 250
-    assert stale_source_keys(ledger) == ()
+    assert stale_source_keys(ledger) == ((THREAD,) if claim == "same-physical-copy" else ())
 
 
 def test_budget_deferral_preserves_a_previous_failed_discovery_classification(tmp_path, monkeypatch):

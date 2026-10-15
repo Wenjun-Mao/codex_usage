@@ -70,7 +70,7 @@ capture, fair retries, failures not starving other jobs, and UI/capture priority
 They include weak and qualified claimants with misleading recognized filenames,
 capture-before-execution ordering, both fingerprint failure paths, and primary/
 extended SQLite retry classification.
-Discovery does not itself rebind a missing path, repair unresolved replica
-families, authorize live writes or qualify release. Dependent invalidation follows ADR 0064.
+Discovery does not itself rebind a checkpoint or correct financial facts. ADR 0069
+admits byte-proven alternate replay inputs; dependent invalidation follows ADR 0064.
 ADR 0068 supplies supported-writer fencing and quiescent migration, not completed
 historical repair. Remaining repair and validation follow the implementation plan.
