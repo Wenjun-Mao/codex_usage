@@ -117,7 +117,7 @@ class CodexUsageAgent:
         try:
             ensure_private_file(agent_lock_path(self.codex_home))
             ledger_path = ledger_database_path(self.codex_home)
-            with open_ledger(ledger_path):
+            with open_ledger(ledger_path, maintenance_agent_lock=self._lock):
                 pass
             recover_interrupted_capture_runs(ledger_path)
             roots = session_dirs_for_home(self.codex_home)

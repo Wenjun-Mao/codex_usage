@@ -81,3 +81,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0065: Retained Accounting Authority](0065-retained-accounting-authority.md)
 - [0066: Accounting Capability Handshake](0066-accounting-capability-handshake.md)
 - [0067: Bounded Accounting Upgrade Discovery](0067-bounded-accounting-upgrade-discovery.md)
+- [0068: Ledger Writer Fencing](0068-ledger-writer-fencing.md)

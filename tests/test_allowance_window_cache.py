@@ -223,6 +223,8 @@ def test_partial_reset_cached_read_then_capture_recovers_tracking(ledger, table)
 def test_first_install_retains_independent_price_index(ledger):
     # Simulate a pre-feature ledger with valid event prices and no fits/tracking.
     with sqlite3.connect(ledger) as connection:
+        from codex_usage.ledger_writer_contract import authorize_cache_connection
+        authorize_cache_connection(connection)
         costs = connection.execute("select * from allowance_event_costs order by event_id").fetchall()
         names = [r[0] for r in connection.execute("select name from sqlite_master where type='trigger' and name like 'allowance_windows_%'")]
         for name in names:

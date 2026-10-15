@@ -7,7 +7,7 @@ const test = require("node:test");
 const { AgentClient, AgentIncompatibleError, AgentUnavailableError } = require("../out/agentClient");
 const { AgentSupervisor } = require("../out/agentSupervisor");
 
-const capability = "physical-lineage-accounting-v1";
+const capability = "physical-lineage-accounting-v2";
 const health = { ok: true, api_version: 1, capabilities: [capability] };
 
 async function fixture(context, payload) {
@@ -41,6 +41,7 @@ async function fixture(context, payload) {
 for (const [name, capabilities] of [
   ["missing", undefined], ["null", null], ["empty", []],
   ["wrong version", ["physical-lineage-accounting-v0"]],
+  ["pre-fence preview", ["physical-lineage-accounting-v1"]],
   ["string", capability], ["object", { [capability]: true }],
   ["mixed types", [capability, 1]],
 ]) {

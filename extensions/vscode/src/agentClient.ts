@@ -4,7 +4,7 @@ import * as os from "os";
 import * as path from "path";
 
 const API_VERSION = 1;
-const ACCOUNTING_CAPABILITY = "physical-lineage-accounting-v1";
+const ACCOUNTING_CAPABILITY = "physical-lineage-accounting-v2";
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 

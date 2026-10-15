@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
+from codex_usage.ledger_writer_contract import (
+    LEDGER_SCHEMA_VERSION, authorize_writer_connection, install_writer_contract,
+    validate_writer_contract, ledger_schema_version, assert_legacy_writer_metadata,
+    admit_ledger_privacy_paths,
+)
 
 import codex_usage.session_cache_schema as parser_schema
 from codex_usage.agent_private_files import (
@@ -14,16 +18,17 @@ from codex_usage.agent_private_files import (
 )
 
 
-LEDGER_SCHEMA_VERSION = 6
 LEDGER_REVISION_KEY = "ledger_revision"
 
 
-def configure_ledger_connection(connection: sqlite3.Connection) -> None:
+def configure_ledger_connection(connection: sqlite3.Connection, *, journal_mode=True) -> None:
+    authorize_writer_connection(connection)
     connection.row_factory = sqlite3.Row
     connection.execute("pragma foreign_keys = on")
     connection.execute("pragma busy_timeout = 5000")
     connection.execute("pragma synchronous = normal")
-    connection.execute("pragma journal_mode = wal")
+    if journal_mode:
+        connection.execute("pragma journal_mode = wal")
 
 
 @contextmanager
@@ -31,47 +36,92 @@ def open_ledger(
     path: Path,
     *,
     read_only: bool = False,
+    maintenance_agent_lock=None,
 ) -> Iterator[sqlite3.Connection]:
     if read_only:
         connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-        connection.row_factory = sqlite3.Row
-        connection.execute("pragma foreign_keys = on")
-        connection.execute("pragma busy_timeout = 5000")
     else:
+        path = admit_ledger_privacy_paths(path)
         ensure_private_directory(path.parent)
         connection = sqlite3.connect(path)
-        ensure_private_file(path)
-        configure_ledger_connection(connection)
-        ensure_ledger_schema(connection, path=path)
-        from codex_usage.allowance_window_tracking import repair_existing_tracking
-        repair_existing_tracking(connection)
+    primary = None
     try:
+        if read_only:
+            connection.row_factory = sqlite3.Row
+            connection.execute("pragma foreign_keys = on")
+            connection.execute("pragma busy_timeout = 5000")
+        else:
+            ensure_private_file(path)
+            ensure_ledger_schema(connection, path=path, maintenance_agent_lock=maintenance_agent_lock)
+            from codex_usage.allowance_window_tracking import repair_existing_tracking
+            repair_existing_tracking(connection)
         yield connection
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        connection.close()
+        cleanup_failure = None
+        cleanups = [connection.close]
         if not read_only:
-            ensure_private_sqlite_files(path)
+            cleanups.append(lambda: ensure_private_sqlite_files(path))
+        for cleanup in cleanups:
+            try:
+                cleanup()
+            except Exception as error:
+                if primary is not None:
+                    primary.add_note(f"Ledger cleanup failed: {type(error).__name__}: {error}")
+                elif cleanup_failure is None:
+                    cleanup_failure = error
+                else:
+                    cleanup_failure.add_note(f"Additional ledger cleanup failure: {type(error).__name__}: {error}")
+        if primary is None and cleanup_failure is not None:
+            raise cleanup_failure
 
 
 def ensure_ledger_schema(
     connection: sqlite3.Connection,
     *,
     path: Path | None = None,
+    maintenance_agent_lock=None,
 ) -> None:
-    configure_ledger_connection(connection)
+    connection.row_factory = sqlite3.Row
+    authorize_writer_connection(connection)
     version = _ledger_version(connection)
     if version > LEDGER_SCHEMA_VERSION:
         raise ValueError(
             f"ledger schema {version} is newer than supported schema {LEDGER_SCHEMA_VERSION}"
         )
     if version == LEDGER_SCHEMA_VERSION:
+        validate_writer_contract(connection)
+        configure_ledger_connection(connection)
         parser_schema._ensure_schema(connection)
         return
     if version and path is not None:
-        _backup_before_migration(connection, path, version)
-    parser_schema._ensure_schema(connection)
+        assert_legacy_writer_metadata(connection)
+        from codex_usage.ledger_maintenance import acquire_ledger_maintenance
+        with acquire_ledger_maintenance(path, owned_agent_lock=maintenance_agent_lock):
+            if _ledger_version(connection) != version:
+                raise RuntimeError("ledger schema changed before maintenance admission")
+            configure_ledger_connection(connection, journal_mode=False)
+            backup = _backup_before_migration(connection, path, version)
+            _migrate_schema(connection, version, backup=backup)
+            configure_ledger_connection(connection)
+        return
+    if version:
+        raise ValueError("existing ledger migration requires its owned database path")
+    configure_ledger_connection(connection)
+    _migrate_schema(connection, version)
+
+
+def _migrate_schema(connection, version, *, backup=None):
+    if not version:
+        parser_schema._ensure_schema(connection)
     connection.execute("begin immediate")
     try:
+        if version:
+            from codex_usage.ledger_migration_backup import assert_backup_current
+            assert_backup_current(connection, backup)
+            parser_schema._ensure_schema(connection, ledger_migration=True)
         if version == 0:
             _create_schema_v1(connection)
             _migrate_v1_to_v2(connection)
@@ -92,6 +142,11 @@ def ensure_ledger_schema(
             "insert or ignore into ledger_meta (key, value) values (?, '0')",
             (LEDGER_REVISION_KEY,),
         )
+        if version:
+            from codex_usage.history_upgrade_receipts import seed_legacy_checkpoint_discovery
+            if seed_legacy_checkpoint_discovery(connection):
+                increment_ledger_revision(connection)
+        install_writer_contract(connection)
         connection.commit()
     except BaseException:
         connection.rollback()
@@ -132,13 +187,7 @@ def _create_allowance_cost_schema(connection: sqlite3.Connection) -> None:
 
 
 def _ledger_version(connection: sqlite3.Connection) -> int:
-    try:
-        row = connection.execute(
-            "select value from ledger_meta where key = 'schema_version'"
-        ).fetchone()
-    except sqlite3.Error:
-        return 0
-    return int(row["value"]) if row is not None else 0
+    return ledger_schema_version(connection)
 
 
 def _backup_before_migration(
@@ -146,13 +195,8 @@ def _backup_before_migration(
     path: Path,
     version: int,
 ) -> None:
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    backup_path = path.with_name(
-        f"{path.name}.schema-{version}-backup-{stamp}"
-    )
-    with sqlite3.connect(backup_path) as backup:
-        connection.backup(backup)
-    ensure_private_file(backup_path)
+    from codex_usage.ledger_migration_backup import backup_before_writer_upgrade
+    return backup_before_writer_upgrade(connection, path, version)
 
 
 def _create_schema_v1(connection: sqlite3.Connection) -> None:

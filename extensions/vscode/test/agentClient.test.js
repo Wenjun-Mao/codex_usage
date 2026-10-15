@@ -6,7 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { AgentClient, resolveCodexHome, samePath, settingsFilePath } = require("../out/agentClient");
-const compatibleHealth = { ok: true, api_version: 1, capabilities: ["physical-lineage-accounting-v1"] };
+const compatibleHealth = { ok: true, api_version: 1, capabilities: ["physical-lineage-accounting-v2"] };
 
 test("settings path and custom Codex home follow the shared contract", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-usage-companion-"));

@@ -12,7 +12,9 @@ that collector as unavailable would also permit startup and settings controls.
 ## Decision
 
 Keep the transport API at version 1. The runtime advertises the versioned
-`physical-lineage-accounting-v1` capability in authenticated health/status.
+`physical-lineage-accounting-v2` capability in authenticated health/status.
+V2 includes dependency invalidation and the schema-7 writer contract; V1 preview
+collectors are now explicitly incompatible, not candidates for adoption.
 The extension requires that exact capability in a string array, API 1, and
 boolean `ok: true` before returning a discovered client. Descriptor metadata and
 process ownership cannot substitute for this runtime check.
@@ -40,8 +42,9 @@ for a later write. POST requests are still never replayed.
   been repaired, the ledger is complete, or a writer migration is safe.
 - It does not fence independent older CLI/parser/database connections. Row-level
   SQL triggers alone are insufficient: an old parser can drop cache tables.
-  Quiescent cutover and mixed-writer protection remain separate implementation
-  and disposable-repair gates; no schema migration is activated by this ADR.
+  [ADR 0068](0068-ledger-writer-fencing.md) implements the separate supported-writer
+  and quiescent-upgrade contract. Disposable/live repair qualification remains
+  required; the capability check itself does not authorize migration or repair.
 - A transport-version bump would unnecessarily couple accounting semantics to
   unrelated API consumers. A release-number comparison would not directly bind
   the feature contract. Neither grants authority to stop an older service.

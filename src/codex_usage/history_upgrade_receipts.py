@@ -59,6 +59,23 @@ def store_decision(connection, source_key, value, *, waiting=False):
         ((WAIT_PREFIX if waiting else PREFIX)+source_key, json.dumps({**value, "version": 1}, sort_keys=True)))
 
 
+def seed_legacy_checkpoint_discovery(connection):
+    """Writer compatibility is not proof that captured history has been repaired."""
+    rows = connection.execute(f"""select f.file_key from files f join parser_checkpoints p using(file_key)
+        where not coalesce(({history_contract_sql()}),0)""").fetchall()
+    reason = "stale append checkpoint: accounting_upgrade_discovery_pending"
+    for row in rows:
+        key = str(row[0])
+        store_decision(connection, key, dict(disposition=UpgradeDisposition.PENDING,
+            reason=UpgradeReason.BUDGET, attempt=0, diagnostic="writer_upgrade_discovery_required"))
+        connection.execute("update files set error=? where file_key=? and (error='' or error like 'stale append checkpoint:%')",
+                           (reason, key))
+        connection.execute("""update ledger_sources set is_stale=1,
+            stale_reason=(select error from files where file_key=?),
+            error=(select error from files where file_key=?) where source_key=?""", (key, key, key))
+    return bool(rows)
+
+
 def rekey_upgrade_decision(connection, source_key, replacement_key):
     connection.execute("insert or replace into schema_meta(key,value) select ?,value from schema_meta where key=?",
                        (PREFIX+replacement_key, PREFIX+source_key))

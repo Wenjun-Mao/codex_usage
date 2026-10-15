@@ -42,6 +42,8 @@ def test_concurrent_wal_commit_does_not_mix_revisions(tmp_path):
         if not wrote:
             wrote.append(True)
             with sqlite3.connect(source) as writer:
+                from codex_usage.ledger_writer_contract import authorize_cache_connection
+                authorize_cache_connection(writer)
                 writer.execute("update ledger_meta set value='99' where key='ledger_revision'")
     receipt = create_repair_snapshot(source, tmp_path / "private" / "backup.sqlite3", progress=commit_later)
     assert verify_repair_snapshot(receipt)["ledger_revision"] == 0

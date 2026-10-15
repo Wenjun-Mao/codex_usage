@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import errno
 import subprocess
 import threading
 from pathlib import Path
@@ -12,9 +13,11 @@ _security_lock = threading.Lock()
 
 
 def ensure_private_directory(path: Path) -> None:
+    if path.is_symlink():
+        raise ValueError("private state directory cannot be a symlink")
     path.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
-        path.chmod(0o700)
+        _chmod_nonsymlink(path, 0o700, directory=True)
         return
     key = _path_key(path)
     with _security_lock:
@@ -25,10 +28,10 @@ def ensure_private_directory(path: Path) -> None:
 
 
 def ensure_private_file(path: Path) -> None:
-    if not path.is_file():
+    if path.is_symlink() or not path.is_file():
         return
     if os.name != "nt":
-        path.chmod(0o600)
+        _chmod_nonsymlink(path, 0o600)
         return
     key = _path_key(path)
     with _security_lock:
@@ -39,9 +42,27 @@ def ensure_private_file(path: Path) -> None:
 
 
 def ensure_private_sqlite_files(path: Path) -> None:
+    if path.is_symlink() or path.parent.resolve() != path.parent.absolute():
+        return
     ensure_private_directory(path.parent)
     for suffix in ("", "-wal", "-shm"):
         ensure_private_file(path.with_name(path.name + suffix))
+
+
+def _chmod_nonsymlink(path, mode, *, directory=False):
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    if directory:
+        flags |= getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.ENOENT):
+            return
+        raise
+    try:
+        os.fchmod(descriptor, mode)
+    finally:
+        os.close(descriptor)
 
 
 def windows_acl_command(

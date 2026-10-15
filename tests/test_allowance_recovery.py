@@ -65,8 +65,10 @@ def test_dedup_preserves_all_source_provenance(tmp_path):
 
 
 def test_v2_ledger_migration_preserves_data_and_backup(tmp_path):
+    from ledger_writer_test_support import legacy_writer_fixture
     ledger = tmp_path / "ledger"
     with open_ledger(ledger) as connection:
+        legacy_writer_fixture(connection, version=2)
         for table in ("quota_provenance", "quota_observations", "quota_recovery", "quota_reads"):
             connection.execute(f"drop table {table}")
         connection.execute("update ledger_meta set value='2' where key='schema_version'")
@@ -77,7 +79,7 @@ def test_v2_ledger_migration_preserves_data_and_backup(tmp_path):
         assert connection.execute("select count(*) from quota_reads").fetchone()[0] == 0
     backups = list(tmp_path.glob("ledger.schema-2-backup-*"))
     assert len(backups) == 1
-    with sqlite3.connect(backups[0]) as connection:
+    with sqlite3.connect(backups[0] / "ledger.sqlite3") as connection:
         assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == "2"
 
 

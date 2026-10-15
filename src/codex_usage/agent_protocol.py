@@ -17,7 +17,7 @@ from codex_usage.agent_private_files import (
 
 
 AGENT_API_VERSION = 1
-ACCOUNTING_CAPABILITY = "physical-lineage-accounting-v1"
+ACCOUNTING_CAPABILITY = "physical-lineage-accounting-v2"
 MAX_API_REQUEST_BYTES = 2 * 1024 * 1024
 _PROCESS_OWNERS = frozenset({"background", "transient", "unknown"})
 _LAUNCH_ID = re.compile(r"[0-9a-f]{48}\Z")

@@ -54,6 +54,11 @@ def legacy_speed_home(home):
     synchronize_parser_workset(db)
     with open_ledger(db) as connection:
         baseline = tuple(connection.execute("select count(*), sum(total_tokens), sum(output_tokens) from ledger_usage_events").fetchone())
+        from codex_usage.ledger_writer_contract import TRIGGER_PREFIX, WRITER_EPOCH_KEY
+        for row in connection.execute("select name from sqlite_master where type='trigger' and name like ?",
+                                      (TRIGGER_PREFIX+"%",)).fetchall():
+            connection.execute(f'DROP TRIGGER "{row[0]}"')
+        connection.execute("delete from ledger_meta where key=?", (WRITER_EPOCH_KEY,))
         for row in connection.execute("select file_key, state_json from parser_checkpoints").fetchall():
             state = json.loads(row["state_json"])
             state.pop("speed_state", None)

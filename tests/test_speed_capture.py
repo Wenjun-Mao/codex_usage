@@ -81,6 +81,8 @@ def test_additive_schema_five_ten_upgrade_keeps_usage_and_private_backup(tmp_pat
     write_source(tmp_path)
     capture_once(tmp_path, request_kind="manual", max_workers=1)
     db = ledger_database_path(tmp_path)
+    from ledger_writer_test_support import make_legacy_writer_fixture
+    make_legacy_writer_fixture(db, version=5)
     with sqlite3.connect(db) as connection:
         usage = connection.execute("select * from ledger_usage_events order by event_id").fetchall()
         checkpoints = connection.execute("select * from parser_checkpoints").fetchall()
@@ -94,7 +96,8 @@ def test_additive_schema_five_ten_upgrade_keeps_usage_and_private_backup(tmp_pat
         assert [tuple(r) for r in connection.execute("select * from parser_checkpoints")] == checkpoints
         monetary_revision = connection.execute("select value from ledger_meta where key='ledger_revision'").fetchone()[0]
     backups = list(db.parent.glob("*.schema-5-backup-*"))
-    assert backups and backups[0].stat().st_mode & 0o777 == 0o600
+    assert backups and backups[0].stat().st_mode & 0o777 == 0o700
+    assert (backups[0] / "ledger.sqlite3").stat().st_mode & 0o777 == 0o600
     assert run_speed_recovery_slice(db).changed
     with open_ledger(db) as connection:
         assert connection.execute("select value from ledger_meta where key='ledger_revision'").fetchone()[0] == monetary_revision

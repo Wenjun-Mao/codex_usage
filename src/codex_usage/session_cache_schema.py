@@ -49,20 +49,28 @@ class CacheSchemaState:
     reset_reason: str = ""
 
 
-def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
+def _ensure_schema(connection: sqlite3.Connection, *, ledger_migration=False) -> CacheSchemaState:
+    from codex_usage.ledger_writer_contract import assert_disposable_cache_reset, assert_supported_ledger_schema
+    assert_supported_ledger_schema(connection)
+    if ledger_migration and not connection.in_transaction:
+        raise RuntimeError("ledger parser migration requires the owned transaction")
     if _schema_matches(connection):
         ensure_role_validation_indexes(connection)
         from codex_usage.speed_schema import create_speed_cache
         create_speed_cache(connection)
         return CacheSchemaState()
 
-    from codex_usage.allowance_schema import backup_parser_cache
-    backup_parser_cache(connection, _prior_schema_version(connection))
-    connection.execute("begin immediate")
+    can_migrate = _can_migrate_v8_to_v9(connection) or _schema_matches(connection, predecessor=True) or _schema_matches(connection, timing_predecessor=True)
+    if not can_migrate:
+        assert_disposable_cache_reset(connection)
+    if not ledger_migration:
+        from codex_usage.allowance_schema import backup_parser_cache
+        backup_parser_cache(connection, _prior_schema_version(connection))
+        connection.execute("begin immediate")
     try:
         prior_tables = _existing_cache_tables(connection)
         prior_version = _prior_schema_version(connection)
-        if _can_migrate_v8_to_v9(connection) or _schema_matches(connection, predecessor=True) or _schema_matches(connection, timing_predecessor=True):
+        if can_migrate:
             if _prior_schema_version(connection) == "8":
                 _create_image_operations_schema(connection)
             from codex_usage.allowance_schema import create_quota_cache
@@ -78,7 +86,8 @@ def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
                     ("parser_version", str(PARSER_CACHE_VERSION)),
                 ),
             )
-            connection.commit()
+            if not ledger_migration:
+                connection.commit()
             return CacheSchemaState()
         _drop_cache_schema(connection)
         _create_cache_schema(connection)
@@ -96,9 +105,11 @@ def _ensure_schema(connection: sqlite3.Connection) -> CacheSchemaState:
                 ("storage_metadata_version", str(STORAGE_METADATA_CACHE_VERSION)),
             ],
         )
-        connection.commit()
+        if not ledger_migration:
+            connection.commit()
     except BaseException:
-        connection.rollback()
+        if not ledger_migration:
+            connection.rollback()
         raise
 
     return CacheSchemaState(
@@ -471,24 +482,5 @@ def _prior_schema_version(connection: sqlite3.Connection) -> str:
 
 
 def _drop_cache_schema(connection: sqlite3.Connection) -> None:
-    for index in sorted(_KNOWN_CACHE_INDEXES):
-        connection.execute(f"drop index if exists {index}")
-    for table in (
-        "speed_cache_facts",
-        "speed_cache_tools",
-        "speed_cache_uncertain_tools",
-        "speed_cache_dirty",
-        "quota_cache",
-        "project_transitions",
-        "dirty_transition_tasks",
-        "transition_candidates",
-        "image_operations",
-        "parser_checkpoints",
-        "storage_content_diagnostics",
-        "storage_files",
-        "session_metadata",
-        "usage_records",
-        "files",
-        "schema_meta",
-    ):
-        connection.execute(f"drop table if exists {table}")
+    from codex_usage.session_cache_reset import drop_disposable_cache_schema
+    drop_disposable_cache_schema(connection, _KNOWN_CACHE_INDEXES)

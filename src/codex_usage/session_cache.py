@@ -144,6 +144,8 @@ def resolve_cache_dir(session_dirs: list[Path], cache_dir: Path | None = None) -
 def _open_cache_connection(path: Path):
     connection = sqlite3.connect(path)
     try:
+        from codex_usage.ledger_writer_contract import authorize_cache_connection
+        authorize_cache_connection(connection)
         with connection:
             yield connection
     finally:

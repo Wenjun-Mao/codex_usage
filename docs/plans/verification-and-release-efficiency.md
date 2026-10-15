@@ -479,12 +479,12 @@ Local median breakdown runtime: 150.13 -> 95.29s across three alternating pairs;
 reads. Fresh navigation, 1,440 keyboard presses and 160 screenshots remain.
 U's 18 mandatory cases and controlled rejection pass. R is integrated through
 `186ad5d`: 252 mandatory allowance browser cases and all 51 extension tests pass.
-Core after lineage invalidation integration passes 2,543 tests/one approved
-skip; frozen monetary/work guards and the renewed 252-case allowance browser inventory pass.
+Core after writer fencing passes 2,698 tests/one approved skip with validated inventory;
+frozen monetary/work guards and the renewed 252-case allowance browser inventory pass.
 P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
 Replicas cover compatible longest copies, missing canonical retention and partial handoffs; staged semantic repairs preserve evidence and install atomically across source-key changes.
-[Retained accounting](../adr/0065-retained-accounting-authority.md) selects whole proven projections; [runtime compatibility](../adr/0066-accounting-capability-handshake.md) passes 73 extension cases.
-[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md) reserves old captures and bounds retries; dependent baselines now have epoch-bound invalidation. Writer safety, missing-source rebinding, disposable/live repair and owner preview remain unfinished.
+[Retained accounting](../adr/0065-retained-accounting-authority.md) selects whole proven projections; [runtime compatibility](../adr/0066-accounting-capability-handshake.md) passes 74 inventory-validated extension cases.
+[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md) bounds retries; dependent baselines have epoch-bound invalidation. [Writer fencing](../adr/0068-ledger-writer-fencing.md) is implemented. Missing-source rebinding, disposable/live repair and owner preview remain unfinished.
 
 The [pilot](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md) retain chronology/costs.

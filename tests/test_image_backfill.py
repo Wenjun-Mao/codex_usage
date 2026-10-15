@@ -140,6 +140,8 @@ def test_scheduled_artifact_first_backfill_preserves_language_ledger(
     assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
     ledger = ledger_database_path(home)
     with sqlite3.connect(ledger) as connection:
+        from codex_usage.ledger_writer_contract import authorize_cache_connection
+        authorize_cache_connection(connection)
         language_before = connection.execute(
             "select * from ledger_usage_events"
         ).fetchall()
@@ -169,6 +171,8 @@ def test_image_ledger_migration_creates_a_pre_migration_backup(tmp_path: Path) -
     ledger = tmp_path / "usage-ledger.sqlite3"
     with open_ledger(ledger):
         pass
+    from ledger_writer_test_support import make_legacy_writer_fixture
+    make_legacy_writer_fixture(ledger, version=1)
     with sqlite3.connect(ledger) as connection:
         connection.execute("drop table ledger_image_events")
         for table in ("quota_provenance", "quota_observations", "quota_recovery", "quota_reads"):
@@ -192,7 +196,9 @@ def test_image_ledger_migration_creates_a_pre_migration_backup(tmp_path: Path) -
     backups = list(tmp_path.glob("usage-ledger.sqlite3.schema-1-backup-*"))
     assert version == str(LEDGER_SCHEMA_VERSION)
     assert len(backups) == 1
-    with sqlite3.connect(backups[0]) as connection:
+    from codex_usage.ledger_repair_snapshot import verify_repair_snapshot
+    assert verify_repair_snapshot(backups[0] / "snapshot.json")["schema_version"] == 1
+    with sqlite3.connect(backups[0] / "ledger.sqlite3") as connection:
         assert (
             connection.execute(
                 "select value from ledger_meta where key = 'schema_version'"

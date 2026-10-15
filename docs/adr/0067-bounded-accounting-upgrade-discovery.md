@@ -72,4 +72,5 @@ capture-before-execution ordering, both fingerprint failure paths, and primary/
 extended SQLite retry classification.
 Discovery does not itself rebind a missing path, repair unresolved replica
 families, authorize live writes or qualify release. Dependent invalidation follows ADR 0064.
-Those remain explicit repair and validation work in the implementation plan.
+ADR 0068 supplies supported-writer fencing and quiescent migration, not completed
+historical repair. Remaining repair and validation follow the implementation plan.

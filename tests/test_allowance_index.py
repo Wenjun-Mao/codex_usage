@@ -129,8 +129,10 @@ def test_index_matches_oracle_across_append_replacement_recovery_pricing_and_res
 
 
 def test_read_only_pre_migration_report_uses_full_estimator(tmp_path):
+    from ledger_writer_test_support import legacy_writer_fixture
     ledger = tmp_path / "ledger.sqlite3"
     with open_ledger(ledger) as connection:
+        legacy_writer_fixture(connection, version=3)
         connection.execute("drop table allowance_report_cache")
         connection.execute("drop table allowance_event_costs")
         connection.execute("update ledger_meta set value = '3' where key = 'schema_version'")
@@ -144,12 +146,14 @@ def test_read_only_pre_migration_report_uses_full_estimator(tmp_path):
 
 
 def test_schema_3_migration_preserves_events_and_backs_up_prior_ledger(tmp_path):
+    from ledger_writer_test_support import make_legacy_writer_fixture
     home = tmp_path / ".codex"
     directory = home / "sessions" / "2026" / "09" / "02"
     directory.mkdir(parents=True)
     _session(directory / "rollout-task-1.jsonl", [100])
     assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
     ledger = ledger_database_path(home)
+    make_legacy_writer_fixture(ledger, version=3)
     with sqlite3.connect(ledger) as connection:
         expected_events = connection.execute(
             "select count(*) from ledger_usage_events"
@@ -180,7 +184,7 @@ def test_schema_3_migration_preserves_events_and_backs_up_prior_ledger(tmp_path)
         ).fetchone() is not None
     backups = list(ledger.parent.glob(f"{ledger.name}.schema-3-backup-*"))
     assert len(backups) == 1
-    with sqlite3.connect(backups[0]) as connection:
+    with sqlite3.connect(backups[0] / "ledger.sqlite3") as connection:
         assert connection.execute(
             "select value from ledger_meta where key = 'schema_version'"
         ).fetchone()[0] == "3"

@@ -89,7 +89,8 @@ def run_image_backfill_slice(
 ) -> ImageBackfillResult:
     """Read one exact owning rollout slice, skipping unavailable candidates."""
     task_artifacts = _artifact_inventory(codex_home / "generated_images")
-    with sqlite3.connect(ledger_path) as connection:
+    from codex_usage.ledger_schema import open_ledger
+    with open_ledger(ledger_path, read_only=True) as connection:
         connection.row_factory = sqlite3.Row
         state = _load_state(connection)
         completed = set(state.get("completed", []))
@@ -191,7 +192,7 @@ def run_image_backfill_slice(
         "last_served": dict(sorted(last_served.items())),
         "next_service_order": next_service_order,
     }
-    with sqlite3.connect(ledger_path) as connection:
+    with open_ledger(ledger_path) as connection:
         if parsed is not None and parsed_path is not None:
             insert_image_operations(
                 connection,

@@ -149,8 +149,10 @@ def test_history_is_bounded_and_decimal_subtraction_is_exact(tmp_path):
 
 
 def test_schema_4_backup_and_migration_preserve_quota_and_render_cache(tmp_path):
+    from ledger_writer_test_support import legacy_writer_fixture
     ledger = tmp_path / "ledger"
     with open_ledger(ledger) as connection:
+        legacy_writer_fixture(connection, version=4)
         store_read(connection, _read(0), None)
         quota = [tuple(row) for row in connection.execute("select * from quota_observations")]
         connection.execute("drop table credit_observations")
@@ -169,7 +171,7 @@ def test_schema_4_backup_and_migration_preserve_quota_and_render_cache(tmp_path)
         connection.commit()
     backups = list(tmp_path.glob("ledger.schema-4-backup-*"))
     assert len(backups) == 1
-    with sqlite3.connect(backups[0]) as connection:
+    with sqlite3.connect(backups[0] / "ledger.sqlite3") as connection:
         assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == "4"
 
 
