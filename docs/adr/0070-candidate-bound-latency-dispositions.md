@@ -1,6 +1,6 @@
 # ADR 0070: Candidate-Bound Hosted Latency Dispositions
 
-Status: Design selected; implementation and explicit journal-append authority pending.
+Status: Journal foundation implemented; observation/proof integration and explicit append authority pending.
 
 ## Problem
 
@@ -64,3 +64,29 @@ duplicate slot, cap overflow, purpose regression, superseded/forged proof, both
 append race orders, either target's publication freeze, missing/duplicate/nonfinite
 observations, false pass labels and functional/transport failures. No automatic
 rebinding after a failed run and no new diagnostic batches are introduced.
+
+## Implementation Checkpoint
+
+The journal supports typed bindings, current-candidate resolution, immutable
+release scope, bounded monotonic replacement and permanent freezing after either
+target's possible-upload intent. Both race orders and lost acknowledgements are
+covered with the in-memory Git transport. Approval reasons are bounded before
+serialization. Candidate creation checks the complete stored record's byte and
+history-count limits before any Git-object write, so a valid event cannot poison
+retained history merely by exceeding a reader limit after wrapping or append.
+
+These are foundation tests, not active release authority. No real binding has
+been appended. The selected future scope retains the 250 ms strict criterion,
+with 2 s functional acceptance and a 600 s owned-process execution ceiling for
+the approved hosted WebKit context only. These deferred bounds are not yet wired
+into the observer. Raw observation collection, independent fresh-journal proof
+validation and producer/freeze/promotion integration remain unimplemented. The
+current strict observer and all existing qualification checks remain unchanged.
+
+Local verification: 2,774 passed with the one approved Windows-only skip, with
+raw JUnit and collection inventory independently validated under
+`output/verification/d4-journal-foundation/`. A subsequent 111-case focused run
+includes the added record-count boundary guard. Ruff, frozen monetary parity and
+bounded-work guards pass. Independent read-only review found and then verified
+the serialized-size correction. No hosted pilot or production journal write has
+been run for this foundation.

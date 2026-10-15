@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 
 from .journal_model import FILE, MAX_BLOB, MAX_RECORDS, configuration, git_sha, origin, validate_event
 from .policy import SCHEMA, canonical, fingerprint, require
+from .journal_state import retained_state
+from .latency_bindings import KIND, reference, require_current
 
 
 def blob_sha(data):
@@ -53,22 +55,14 @@ class Journal:
                 and type(record["sequence"]) is int, "Journal continuity differs")
             require(isinstance(record["invocation"], str) and UUID(record["invocation"]).version == 4
                 and str(UUID(record["invocation"])) == record["invocation"], "Invalid journal invocation")
-            validate_event(record["event"], self.config)
             records.append({**record, "commit": cursor})
             cursor = previous
         commit, root = self.record(cursor)
         require(commit["parents"] == [] and canonical(root) == canonical(origin(self.config)), "Pinned journal origin differs")
         records.reverse()
-        keys, sources = [], {}
         for index, record in enumerate(records, 1):
             require(record["sequence"] == index, "Journal sequence differs")
-            intent = record["event"]["intent"]
-            version = intent["source"]["version"]
-            source = canonical(intent["source"])
-            require(version not in sources or sources[version] == source, "Conflicting same-version journal sources")
-            sources[version] = source
-            keys.append((intent["source"]["version"], intent["target"]))
-        require(len(keys) == len(set(keys)), "Repeated release target intent")
+        retained_state(records, self.config)
         require(len({record["invocation"] for record in records}) == len(records), "Repeated journal invocation")
         return {"head": head, "records": records}
 
@@ -76,16 +70,12 @@ class Journal:
         event = validate_event(event, self.config)
         snapshot = self.read() if snapshot is None else snapshot
         require(canonical(snapshot) == canonical(self.read(snapshot["head"])), "Candidate snapshot is not verified Git history")
-        data = event["intent"]
-        require(all(canonical(record["event"]["intent"]["source"]) == canonical(data["source"])
-            for record in snapshot["records"] if record["event"]["intent"]["source"]["version"] == data["source"]["version"]),
-            "Conflicting same-version journal sources")
-        require(not any(record["event"]["intent"]["source"]["version"] == data["source"]["version"]
-            and record["event"]["intent"]["target"] == data["target"] for record in snapshot["records"]),
-            "Target already has a retained possible upload; do not record/re-upload")
+        require(len(snapshot["records"]) < MAX_RECORDS, "Journal record limit reached")
+        retained_state(snapshot["records"], self.config).admit(event)
         record = {"schema": SCHEMA, "kind": "journal-entry", "genesis": self.config["genesis"],
             "previous": snapshot["head"], "sequence": len(snapshot["records"]) + 1, "invocation": str(uuid4()), "event": event}
         data = canonical(record)
+        require(len(data) <= MAX_BLOB, "Serialized journal record exceeds bounds")
         blob = self.api.write("POST", "git/blobs", {"content": base64.b64encode(data).decode(), "encoding": "base64"})
         require(blob["sha"] == blob_sha(data), "Created blob identity differs")
         tree = self.api.write("POST", "git/trees", {"tree": [{"path": FILE, "mode": "100644", "type": "blob", "sha": blob["sha"]}]})
@@ -98,12 +88,30 @@ class Journal:
         self.api.write("PATCH", "git/refs/" + self.config["ref"].removeprefix("refs/"),
             {"sha": candidate["commit"], "force": False})
         # Unknown write results never grant authority; read back anchored ancestry.
-        return self.witness(candidate["commit"], candidate["record"]["event"]["intent"])
+        event = candidate["record"]["event"]
+        if event["kind"] == KIND:
+            return self.binding_witness(candidate["commit"], event["binding"])
+        return self.witness(candidate["commit"], event["intent"])
 
     def witness(self, commit, intent):
         snapshot = self.read()
-        matches = [record for record in snapshot["records"] if record["commit"] == git_sha(commit)]
+        matches = [record for record in snapshot["records"] if record["commit"] == git_sha(commit)
+                   and record["event"]["kind"] != KIND]
         require(len(matches) == 1 and canonical(matches[0]["event"]["intent"]) == canonical(intent), "Intent is not anchored in retained history")
         return {"schema": SCHEMA, "domain": self.config["domain"], "ref": self.config["ref"],
             "genesis": self.config["genesis"], "commit": commit, "sequence": matches[0]["sequence"],
             "invocation": matches[0]["invocation"], "intent_sha256": fingerprint(intent)}
+
+    def binding_witness(self, commit, binding):
+        snapshot = self.read()
+        current = retained_state(snapshot["records"], self.config).binding
+        require(current is not None and current["commit"] == git_sha(commit)
+            and canonical(current["event"]["binding"]) == canonical(binding),
+            "D4 binding is not the current anchored candidate")
+        return reference(current, self.config)
+
+    def current_binding(self, source, *, publication=False):
+        snapshot = self.read()
+        current = require_current(retained_state(snapshot["records"], self.config).binding,
+                                  source, publication=publication)
+        return {"reference": reference(current, self.config), "binding": current["event"]["binding"]}

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from journal_fixture import GitWriteError, JournalFixture, model, policy
+from journal_fixture import GitWriteError, JournalFixture, model, policy, storage
 from release_tooling_support import load_tool
 
 
@@ -18,6 +18,47 @@ def test_pinned_origin_and_reachable_intent_precede_any_upload_authority():
     ack = f.journal.anchor(candidate)
     assert ack["commit"] == f.api.heads[f.selected["ref"]]
     assert ack["intent_sha256"] == policy.fingerprint(event["intent"])
+
+
+def test_complete_record_size_is_bounded_before_any_git_write():
+    f = JournalFixture()
+    event = f.event()
+    assets = event["intent"]["package"]["assets"]
+    assets["extension/padding"] = {"sha256": "a"*64, "bytes": 0}
+    padding = model.MAX_BLOB - len(policy.canonical(event))
+    assets["extension/padding" + "x"*padding] = assets.pop("extension/padding")
+    assert len(policy.canonical(event)) == model.MAX_BLOB
+    assert model.validate_event(event, f.selected) == event
+    with pytest.raises(ValueError, match="Serialized journal record exceeds bounds"):
+        f.journal.candidate(event)
+    assert not f.api.writes
+    assert f.journal.read() == {"head": f.root, "records": []}
+
+
+def test_record_exactly_at_the_read_limit_can_be_appended_and_read_back():
+    f = JournalFixture()
+    event = f.event()
+    record = {"schema": 1, "kind": "journal-entry", "genesis": f.root, "previous": f.root,
+        "sequence": 1, "invocation": "2d130d47-58b5-4aa1-801c-a1f8350a2a1e", "event": event}
+    assets = event["intent"]["package"]["assets"]
+    assets["extension/padding"] = {"sha256": "a"*64, "bytes": 0}
+    padding = model.MAX_BLOB - len(policy.canonical(record))
+    assets["extension/padding" + "x"*padding] = assets.pop("extension/padding")
+    candidate = f.journal.candidate(event)
+    assert len(policy.canonical(candidate["record"])) == model.MAX_BLOB
+    ack = f.journal.anchor(candidate)
+    assert f.journal.read()["head"] == ack["commit"]
+
+
+def test_record_count_cannot_exceed_the_read_limit(monkeypatch):
+    f = JournalFixture()
+    monkeypatch.setattr(storage, "MAX_RECORDS", 1)
+    ack = f.journal.anchor(f.journal.candidate(f.event()))
+    writes = len(f.api.writes)
+    with pytest.raises(ValueError, match="record limit reached"):
+        f.journal.candidate(f.event("win32-x64"))
+    assert len(f.api.writes) == writes
+    assert f.journal.read()["head"] == ack["commit"]
 
 
 def test_concurrent_identical_semantic_attempts_get_distinct_commits_and_one_winner():

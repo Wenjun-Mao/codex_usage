@@ -39,7 +39,17 @@ def origin(config):
 
 
 def validate_event(event, config):
+    require(isinstance(event, dict), "Journal event must be an object")
     domain = config["domain"]
+    from .latency_bindings import KIND, validate_binding
+    if event.get("kind") == KIND:
+        require(set(event) == {"schema", "kind", "domain", "workflow_id", "binding"}
+            and type(event["schema"]) is int and event["schema"] == SCHEMA
+            and event["domain"] == domain and type(event["workflow_id"]) is int
+            and event["workflow_id"] == config["workflow_id"], "Foreign D4 journal event")
+        validate_binding(event["binding"], config)
+        require(len(canonical(event)) <= MAX_BLOB, "D4 event exceeds bounds")
+        return event
     expected_kind = "publication-start" if domain == "production" else "synthetic-start"
     require(set(event) == {"schema", "kind", "domain", "workflow_id", "intent"}
         and type(event["schema"]) is int and event["schema"] == SCHEMA and event["kind"] == expected_kind
@@ -48,7 +58,7 @@ def validate_event(event, config):
     data = event["intent"]
     fields = {"schema", "kind", "source", "tag", "qualification_run", "qualification_attempt", "manifest_sha256",
         "publisher_sha", "target", "package", "origin"}
-    require(set(data) == fields and type(data["schema"]) is int and data["schema"] == SCHEMA
+    require(set(data) in (fields, fields | {"latency_binding"}) and type(data["schema"]) is int and data["schema"] == SCHEMA
         and data["kind"] == ("publication-intent" if domain == "production" else "synthetic-journal-intent"), "Foreign intent contract")
     source = data["source"]
     require(set(source) == {"repository", "repository_id", "sha", "version", "contract", "workflow", "probe"}
@@ -89,6 +99,9 @@ def validate_event(event, config):
         digest(value["sha256"])
         require(type(value["bytes"]) is int and value["bytes"] >= 0, "Invalid asset size")
     require(len(canonical(event)) <= MAX_BLOB, "Journal event exceeds bounds")
+    if "latency_binding" in data:
+        from .latency_bindings import validate_reference
+        validate_reference(data["latency_binding"], config)
     return event
 
 
@@ -98,8 +111,12 @@ def event_for(intent, config):
 
 
 def prior_targets(records, qualified):
+    """Project upload targets from already-validated retained journal history."""
+    from .latency_bindings import KIND
     result = {}
     for record in records:
+        if record["event"]["kind"] == KIND:
+            continue
         intent = record["event"]["intent"]
         if intent["source"]["version"] != qualified["source"]["version"]:
             continue

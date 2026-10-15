@@ -29,11 +29,14 @@ def intent(qualified, target, env=os.environ):
     require(qualified["promotion"] == {"run": positive(env["GITHUB_RUN_ID"]),
         "attempt": positive(env["GITHUB_RUN_ATTEMPT"]), "sha": qualified["source"]["sha"],
         "ref": env["GITHUB_REF"], "publisher_sha": head}, "Intent publication context differs")
-    return {"schema": SCHEMA, "kind": "publication-intent", "source": qualified["source"],
+    data = {"schema": SCHEMA, "kind": "publication-intent", "source": qualified["source"],
         "tag": qualified["tag"], "qualification_run": qualified["qualification_run"],
         "qualification_attempt": qualified["qualification_attempt"], "manifest_sha256": qualified["manifest_sha256"],
         "publisher_sha": head, "target": target, "package": qualified["manifest"]["packages"][target],
         "origin": {"run": positive(env["GITHUB_RUN_ID"]), "attempt": positive(env["GITHUB_RUN_ATTEMPT"]), "job": "publish"}}
+    if "latency_binding" in qualified:
+        data["latency_binding"] = qualified["latency_binding"]
+    return data
 
 
 def stamp(target, artifact_id, artifact_digest, env=os.environ):

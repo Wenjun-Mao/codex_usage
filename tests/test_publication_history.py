@@ -157,7 +157,7 @@ def completed_history():
     expected = {"qualification_run": 77, "qualification_attempt": 1, "source": api.source,
         "packages": api.qualified["manifest"]["packages"]}
     api.publisher_log += "CODEX_PROMOTION_COMPLETE " + policy.canonical(expected).decode()
-    api.retained = lambda: {"records": [{"event": {"intent": {"source": api.source,
+    api.retained = lambda: {"records": [{"event": {"kind": "publication-start", "intent": {"source": api.source,
         "target": "darwin-arm64", "package": api.qualified["manifest"]["packages"]["darwin-arm64"]}}}]}
     return api
 
