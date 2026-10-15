@@ -83,3 +83,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0067: Bounded Accounting Upgrade Discovery](0067-bounded-accounting-upgrade-discovery.md)
 - [0068: Ledger Writer Fencing](0068-ledger-writer-fencing.md)
 - [0069: Missing Source Replay Authority](0069-missing-source-replay-authority.md)
+- [0070: Candidate-Bound Latency Dispositions](0070-candidate-bound-latency-dispositions.md)

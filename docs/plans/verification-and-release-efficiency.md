@@ -209,7 +209,7 @@ A/B move to the following release. On October 14 the owner explicitly accepted
 the existing hosted WebKit observation delay for the next release only.
 
 - Before qualification, record an ADR 0063/release-proof amendment binding the
-  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite.
+  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite; ADR 0070 selects the candidate-binding design, with new journal-append authority pending.
   Preserve actual elapsed values and report `deferred-known-latency`, never passed.
 - Continue every original case/input and all functional assertions: hidden/hit
   baselines, visible/hidden state, real Tab modality, content, containment and
