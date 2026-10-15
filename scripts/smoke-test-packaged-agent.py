@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 import sqlite3
 
 from observed_speed_fixture import legacy_speed_home
+from codex_usage.ledger_writer_contract import LEDGER_SCHEMA_VERSION
 
 
 def main() -> int:
@@ -108,7 +109,8 @@ def _verify_packaged_speed(descriptor, db, baseline, report):
     with closing(sqlite3.connect(db)) as connection:
         assert connection.execute("select count(*), sum(total_tokens), sum(output_tokens) from ledger_usage_events").fetchone() == baseline
         assert connection.execute("select count(*) from ledger_speed_facts where reason='' ").fetchone()[0] == 20
-        assert connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0] == "6"
+        schema = connection.execute("select value from ledger_meta where key='schema_version'").fetchone()[0]
+        assert schema == str(LEDGER_SCHEMA_VERSION), (schema, LEDGER_SCHEMA_VERSION)
     assert list(db.parent.glob("*.schema-5-backup-*"))
 
 
