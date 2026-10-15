@@ -10,6 +10,7 @@ from codex_usage.session_history_models import PaginatedHistoryError
 from codex_usage.session_parser_safety import CapturedPrefix
 from codex_usage.session_rollout_identity import rollout_identity
 from codex_usage.session_parser_models import SessionParseCheckpoint
+from codex_usage.replica_accounting_selection import accounting_keys
 
 ALIAS_PREFIX = "physical-replica-alias:"
 
@@ -98,4 +99,4 @@ def accounted_keys(connection, selected_keys):
         receipt = json.loads(row[0])
         if connection.execute("select 1 from files where file_key=?", (receipt["owner_key"],)).fetchone():
             excluded.add(receipt["mirror_key"])
-    return selected_keys-excluded
+    return accounting_keys(connection, selected_keys, excluded)

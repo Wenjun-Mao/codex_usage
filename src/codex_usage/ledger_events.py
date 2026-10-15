@@ -71,12 +71,8 @@ def rebuild_normalized_events(connection: sqlite3.Connection) -> None:
     raw_records = [row_to_usage_record(row) for row in source_rows]
     resolved_records = finalize_session_records([raw_records])
 
-    connection.execute("delete from ledger_usage_events")
-    connection.execute("delete from ledger_image_events")
-    connection.execute("delete from ledger_contexts")
-    connection.execute("delete from ledger_tasks")
-    connection.execute("delete from ledger_projects")
-    connection.execute("delete from ledger_models")
+    _clear_trusted_events(connection, "ledger_usage_events")
+    _clear_trusted_events(connection, "ledger_image_events")
 
     default_titles = {
         str(row["file_key"]): str(row["session_id"])
@@ -99,7 +95,7 @@ def rebuild_normalized_events(connection: sqlite3.Connection) -> None:
 
 def rebuild_image_events(connection: sqlite3.Connection) -> None:
     """Rebuild image events alone, preserving all language accounting rows."""
-    connection.execute("delete from ledger_image_events")
+    _clear_trusted_events(connection, "ledger_image_events")
     _rebuild_image_events(connection)
 
 
@@ -117,6 +113,13 @@ def _rebuild_image_events(connection: sqlite3.Connection) -> None:
     ).fetchall()
     for row in rows:
         _insert_image_event(connection, int(row["generation_id"]), row)
+
+
+def _clear_trusted_events(connection, table):
+    if table not in {"ledger_usage_events", "ledger_image_events"}:
+        raise ValueError("Unsupported accounting event table")
+    connection.execute(f"""delete from {table} where generation_id in
+        (select generation_id from ledger_generations where status='trusted')""")
 
 
 def _resolved_generation_records(

@@ -479,12 +479,12 @@ Local median breakdown runtime: 150.13 -> 95.29s across three alternating pairs;
 reads. Fresh navigation, 1,440 keyboard presses and 160 screenshots remain.
 U's 18 mandatory cases and controlled rejection pass. R is integrated through
 `186ad5d`: 252 mandatory allowance browser cases and all 51 extension tests pass.
-Core after staged-rebuild/prefix-guard refinements passes 2,393 tests/one approved
+Core after retained-accounting integration passes 2,453 tests/one approved
 skip; the renewed 252-case allowance browser inventory also passes.
 P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
-Replicas cover compatible longest copies, missing canonical retention, partial handoffs,
-fallback adoption and zero-I/O warm reuse. Legacy overlaps, upgrades/dependencies,
-mixed-writer safety, disposable/live repair and owner preview remain unfinished.
+Replicas cover compatible longest copies, missing canonical retention and partial handoffs.
+[Retained accounting](../adr/0065-retained-accounting-authority.md) selects whole proven projections.
+Upgrades/dependencies, mixed-writer safety, disposable/live repair and owner preview remain unfinished.
 
 The [pilot](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md) retain chronology/costs.

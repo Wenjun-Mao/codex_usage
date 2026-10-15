@@ -90,7 +90,11 @@ def test_range_query_uses_timestamp_index_and_selected_file_keys() -> None:
     assert "timestamp_us >=" in usage_queries[0]
     assert "timestamp_us <" in usage_queries[0]
     assert "files.file_key = files.session_id" in usage_queries[0]
-    assert " in (" not in usage_queries[0].casefold()
+    # Fixed authority subqueries are allowed; selected-file lists must not
+    # expand the query shape or replace the indexed timestamp range seek.
+    assert "'child'" not in usage_queries[0] and "'stale-child'" not in usage_queries[0]
+    plan = connection.execute("explain query plan "+usage_queries[0]).fetchall()
+    assert any("usage_records_timestamp_us_idx" in row[3] for row in plan)
 
 
 def test_range_query_uses_fixed_shapes_for_open_and_unbounded_ranges() -> None:
@@ -257,7 +261,11 @@ def _range_query_connection() -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.executescript(
         """
-        create table files (file_key text primary key, session_id text not null);
+        create table files (file_key text primary key, session_id text not null, parsed_at text not null default '');
+        create table schema_meta(key text primary key,value text not null);
+        create table parser_checkpoints(file_key text primary key,byte_offset integer,
+            next_record_index integer,head_sha256 text,boundary_sha256 text,
+            source_device text,source_inode text,session_id text,state_json text);
         create table usage_records (
             file_key text not null,
             file_path text not null,

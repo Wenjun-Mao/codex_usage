@@ -51,6 +51,8 @@ def upsert_parser_checkpoint(
     file_key: str,
     checkpoint: SessionParseCheckpoint,
 ) -> None:
+    from codex_usage.session_cache_source_identity import record_physical_identity
+    record_physical_identity(connection, checkpoint)
     connection.execute(
         """
         insert or replace into parser_checkpoints (

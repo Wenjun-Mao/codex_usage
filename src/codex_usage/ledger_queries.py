@@ -450,6 +450,9 @@ def _coverage(connection: sqlite3.Connection) -> LedgerCoverage:
         from ledger_sources
         left join ledger_generations on ledger_generations.source_id = ledger_sources.source_id
           and ledger_generations.status = 'trusted'
+        where not (ledger_sources.is_missing = 1 and not exists (
+            select 1 from ledger_generations retained where retained.source_id=ledger_sources.source_id
+              and retained.status in ('trusted', 'staging')))
         """
     ).fetchone()
     return LedgerCoverage(

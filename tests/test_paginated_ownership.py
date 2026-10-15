@@ -24,6 +24,7 @@ from codex_usage.session_inventory import collect_session_file_inventory
 from codex_usage.session_transition_records import load_transition_predecessors
 
 from test_paginated_history import PAGE, THREAD, corpus, meta, rollout_name, tokens, write_rows
+from test_paginated_replicas import use_legacy_replica_accounting
 
 
 @pytest.mark.parametrize("start,end", [(None, None), (0, None), (None, 2**63-1), (0, 2**63-1)])
@@ -66,9 +67,7 @@ def test_page_mirrors_never_promote_into_logical_root_on_warm_capture(tmp_path, 
         mirror.write_bytes(page.read_bytes())
     if old_normalization:
         with monkeypatch.context() as patch:
-            from codex_usage.session_replica_selection import ReplicaSelection
-            patch.setattr("codex_usage.session_cache_refresh.select_replicas",
-                          lambda *_a, **_k: ReplicaSelection({}, 0, frozenset()))
+            use_legacy_replica_accounting(patch)
             load_cached_session_data(directories, cache_database_path=database, auto_transitions=False, max_workers=1)
             patch.setattr("codex_usage.ledger_sync.skip_proven_page_mirror", lambda *_: (False, False))
             synchronize_parser_workset(database)

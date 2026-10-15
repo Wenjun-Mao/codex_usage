@@ -11,6 +11,7 @@ from codex_usage.session_cache_queries import row_to_usage_record
 from codex_usage.session_files import owning_session_dir
 from codex_usage.session_inventory import SessionFileInventoryEntry
 from codex_usage.session_replica_retention import accounted_keys
+from codex_usage.replica_accounting_selection import issues as accounting_issues
 
 
 def record_file_error(
@@ -171,7 +172,7 @@ def _load_file_errors(connection: sqlite3.Connection) -> dict[str, str]:
         for row in connection.execute(
             "select path, error from files where error is not null and error != ''"
         )
-    }
+    } | accounting_issues(connection)
 
 
 def _missing_file_keys(connection: sqlite3.Connection) -> set[str]:

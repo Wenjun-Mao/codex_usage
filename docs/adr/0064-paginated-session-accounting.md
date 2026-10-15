@@ -158,10 +158,11 @@ owner snapshot must prove and renew those obligations through append/handoff
 until normalized retirement completes; capture and normalization need not be
 adjacent. Do not relax exact snapshot matching to accommodate a delayed sync.
 
-Remaining qualification: already-overlapping legacy normalized generations with
-a larger missing fallback and no available source covering its retained prefix
-must not be silently declared reconciled. Resolve their accounting authority or
-leave an explicit unqualified repair result before any live repair/publication.
+[ADR 0065](0065-retained-accounting-authority.md) handles retained accounting when
+no available raw copy covers the longer capture. It proves stored-fact dominance
+or withholds an unresolved family; it never supplies missing byte-prefix proof,
+rebinds checkpoints, or claims completeness against lost raw data. Upgrade,
+mixed-writer, disposable/live-repair and release qualification remain separate.
 
 Regressions cover repeated/advanced counters, ordinary sessions, missing/history
 conflicts, chunked checkpoints, quota-only rows before/after opening, continued

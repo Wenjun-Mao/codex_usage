@@ -18,6 +18,10 @@ from codex_usage.speed_store import synchronize_speed
 from codex_usage.ledger_source_relocations import retire_relocated_generations
 from codex_usage.ledger_source_mirrors import skip_proven_page_mirror
 from codex_usage.ledger_replica_receipts import retire_proven_replica_generations
+from codex_usage.replica_accounting import reconcile_accounting, authorize_retained_snapshot
+from codex_usage.replica_accounting_selection import source_selection, receipts, issues as accounting_issues
+from codex_usage.replica_accounting_proof import AccountingProofError
+from codex_usage.ledger_transition_sync import sync_transitions as _sync_transitions
 
 
 _NORMALIZED_OWNERSHIP_VERSION = 3
@@ -34,7 +38,8 @@ def synchronize_parser_workset(
     with open_ledger(ledger_path) as connection:
         connection.execute("begin immediate")
         try:
-            changed = _sync_sources(connection)
+            changed = reconcile_accounting(connection)
+            changed |= _sync_sources(connection)
             changed |= _sync_transitions(connection)
             if force_image_events:
                 rebuild_image_events(connection)
@@ -51,6 +56,7 @@ def synchronize_parser_workset(
                     ),
                 )
                 changed = True
+            changed |= reconcile_accounting(connection)
             revision = (
                 increment_ledger_revision(connection)
                 if changed
@@ -83,6 +89,10 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
         """
     ).fetchall()
     rows_by_key = {row["file_key"]: row for row in rows}
+    accounting_members, accounting_selected = source_selection(connection)
+    covered_by_selection = {m["key"] for receipt in receipts(connection)
+        if receipt["selected"] in accounting_selected for m in receipt["members"]}
+    accounting_errors = accounting_issues(connection)
     for row in rows:
         skip, retired = skip_proven_page_mirror(connection, row, rows_by_key)
         changed |= retired
@@ -92,10 +102,24 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
         if bool(row["is_missing"]) and row["byte_offset"] is None:
             continue
         observed_keys.add(source_key)
-        source_id, source_changed, inode_changed = _upsert_source(connection, row)
+        reported = dict(row)
+        reported["error"] = accounting_errors.get(row["path"], row["error"])
+        source_id, source_changed, inode_changed = _upsert_source(connection, reported)
         changed |= source_changed
-        if row["byte_offset"] is None or bool(row["error"]) or bool(row["is_missing"]):
+        if source_key in accounting_members and source_key not in accounting_selected:
+            if source_key in covered_by_selection or row["error"] or row["is_missing"]:
+                continue
+        if row["byte_offset"] is None or ((bool(row["error"]) or bool(row["is_missing"]))
+                and source_key not in accounting_selected):
             continue
+        retained_snapshot = None
+        if source_key in accounting_selected and (row["error"] or row["is_missing"]):
+            try:
+                retained_snapshot = authorize_retained_snapshot(connection, source_key)
+            except AccountingProofError:
+                # The post-sync accounting reconciliation records the changed
+                # evidence as unresolved, without inventing a fresh raw capture.
+                continue
         changed |= _sync_generation(
             connection,
             source_id,
@@ -103,6 +127,7 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
             row,
             source_changed=source_changed,
             inode_changed=inode_changed,
+            retained_snapshot=retained_snapshot,
         )
 
     for row in connection.execute(
@@ -216,6 +241,7 @@ def _sync_generation(
     *,
     source_changed: bool,
     inode_changed: bool,
+    retained_snapshot=None,
 ) -> bool:
     trusted = connection.execute(
         """
@@ -228,7 +254,7 @@ def _sync_generation(
     captured_size = int(row["byte_offset"])
     needs_sync = (
         trusted is None
-        or source_changed
+        or (source_changed and retained_snapshot is None)
         or int(trusted["captured_size"]) != captured_size
         or int(trusted["captured_mtime_ns"]) != int(row["mtime_ns"])
         or int(trusted["record_count"]) != record_count
@@ -237,7 +263,14 @@ def _sync_generation(
     )
     if not needs_sync:
         return False
-    prior_guards_match = _verify_source_guards(row, trusted)
+    if retained_snapshot is not None:
+        binding = retained_snapshot.binding
+        if (retained_snapshot.key, binding["offset"], binding["count"], binding["head"], binding["boundary"]) != (
+                source_key, captured_size, record_count, row["head_sha256"], row["boundary_sha256"]):
+            raise RuntimeError("retained accounting snapshot changed before normalization")
+        prior_guards_match = True
+    else:
+        prior_guards_match = _verify_source_guards(row, trusted)
     requires_replace = (
         trusted is None
         or inode_changed
@@ -372,52 +405,6 @@ def _event_index_is_complete(
         and int(row["first_index"]) == 0
         and int(row["last_index"]) == expected_count - 1
     )
-
-
-def _sync_transitions(connection: sqlite3.Connection) -> bool:
-    current = [
-        tuple(row)
-        for row in connection.execute(
-            """
-            select owner_task_id, source_key, source_label, target_key,
-                   target_label, effective_from, confidence, evidence_json,
-                   task_ids_json
-            from ledger_transitions order by transition_id
-            """
-        )
-    ]
-    desired = [
-        (
-            str(row["owner_thread_id"]),
-            str(row["source_key"]),
-            str(row["source_label"]),
-            str(row["target_key"]),
-            str(row["target_label"]),
-            str(row["effective_from"]),
-            int(row["confidence"]),
-            str(row["evidence_json"]),
-            str(row["thread_ids_json"]),
-        )
-        for row in connection.execute(
-            """
-            select * from project_transitions
-            order by effective_from, source_key, target_key
-            """
-        )
-    ]
-    if current == desired:
-        return False
-    connection.execute("delete from ledger_transitions")
-    connection.executemany(
-        """
-        insert into ledger_transitions (
-            owner_task_id, source_key, source_label, target_key, target_label,
-            effective_from, confidence, evidence_json, task_ids_json
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        desired,
-    )
-    return True
 
 
 def _verify_source_guards(

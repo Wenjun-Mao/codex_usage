@@ -11,6 +11,16 @@ from codex_usage.session_cache import load_cached_session_data, refresh_cached_s
 from test_paginated_history import corpus, tokens
 
 
+def use_legacy_replica_accounting(patch):
+    from codex_usage.session_replica_selection import ReplicaSelection
+
+    patch.setattr("codex_usage.session_cache_refresh.select_replicas",
+        lambda *_a, **_k: ReplicaSelection({}, 0, frozenset()))
+    patch.setattr("codex_usage.ledger_sync.skip_proven_page_mirror", lambda *_: (False, False))
+    patch.setattr("codex_usage.session_cache_refresh.reconcile_accounting", lambda *_: False)
+    patch.setattr("codex_usage.ledger_sync.reconcile_accounting", lambda *_: False)
+
+
 def capture(directories, database):
     result = load_cached_session_data(directories, cache_database_path=database,
         auto_transitions=False, max_workers=1)
@@ -81,8 +91,6 @@ def test_missing_longest_copy_does_not_replace_captured_usage_with_shorter_copy(
 
 @pytest.mark.parametrize("missing_donor", [False, True])
 def test_larger_legacy_fallback_generation_is_adopted_and_retired_once(tmp_path, monkeypatch, missing_donor):
-    from codex_usage.session_replica_selection import ReplicaSelection
-
     sessions, archived = tmp_path / "sessions", tmp_path / "archived_sessions"
     _, page, _ = corpus(sessions)
     archived.mkdir()
@@ -93,9 +101,7 @@ def test_larger_legacy_fallback_generation_is_adopted_and_retired_once(tmp_path,
     directories = [sessions, archived]
     # Seed the former active-first, independently-normalized mirror state.
     with monkeypatch.context() as patch:
-        patch.setattr("codex_usage.session_cache_refresh.select_replicas",
-            lambda *_a, **_k: ReplicaSelection({}, 0, frozenset()))
-        patch.setattr("codex_usage.ledger_sync.skip_proven_page_mirror", lambda *_: (False, False))
+        use_legacy_replica_accounting(patch)
         _, normalized = capture(directories, database)
         assert normalized == 250
     if missing_donor:
@@ -198,8 +204,6 @@ def test_unchanged_replica_set_never_reopens_headers_or_prefixes(tmp_path, monke
 
 
 def test_uncovered_missing_legacy_fallback_is_not_falsely_retired(tmp_path, monkeypatch):
-    from codex_usage.session_replica_selection import ReplicaSelection
-
     sessions, archived = tmp_path / "sessions", tmp_path / "archived_sessions"
     _, page, _ = corpus(sessions)
     archived.mkdir()
@@ -209,9 +213,7 @@ def test_uncovered_missing_legacy_fallback_is_not_falsely_retired(tmp_path, monk
     database = tmp_path / "ledger.sqlite3"
     directories = [sessions, archived]
     with monkeypatch.context() as patch:
-        patch.setattr("codex_usage.session_cache_refresh.select_replicas",
-            lambda *_a, **_k: ReplicaSelection({}, 0, frozenset()))
-        patch.setattr("codex_usage.ledger_sync.skip_proven_page_mirror", lambda *_: (False, False))
+        use_legacy_replica_accounting(patch)
         capture(directories, database)
     mirror.unlink()
     blocked, _ = capture(directories, database)
@@ -225,8 +227,6 @@ def test_uncovered_missing_legacy_fallback_is_not_falsely_retired(tmp_path, monk
 
 @pytest.mark.parametrize("handoff", [False, True])
 def test_alias_obligation_survives_append_before_normalization(tmp_path, monkeypatch, handoff):
-    from codex_usage.session_replica_selection import ReplicaSelection
-
     sessions, archived = tmp_path / "sessions", tmp_path / "archived_sessions"
     _, page, _ = corpus(sessions)
     archived.mkdir()
@@ -236,9 +236,7 @@ def test_alias_obligation_survives_append_before_normalization(tmp_path, monkeyp
     database = tmp_path / "ledger.sqlite3"
     directories = [sessions, archived]
     with monkeypatch.context() as patch:
-        patch.setattr("codex_usage.session_cache_refresh.select_replicas",
-            lambda *_a, **_k: ReplicaSelection({}, 0, frozenset()))
-        patch.setattr("codex_usage.ledger_sync.skip_proven_page_mirror", lambda *_: (False, False))
+        use_legacy_replica_accounting(patch)
         capture(directories, database)
     page.write_bytes(mirror.read_bytes())
     mirror.unlink()

@@ -46,6 +46,11 @@ def _query_connection() -> sqlite3.Connection:
     connection.execute(
         "create table files (file_key text primary key, session_id text not null)"
     )
+    connection.execute("alter table files add column parsed_at text not null default ''")
+    connection.execute("create table schema_meta(key text primary key,value text not null)")
+    connection.execute("""create table parser_checkpoints(file_key text primary key,
+        byte_offset integer,next_record_index integer,head_sha256 text,boundary_sha256 text,
+        source_device text,source_inode text,session_id text,state_json text)""")
     connection.execute(
         """
         create table usage_records (

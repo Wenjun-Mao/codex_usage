@@ -55,6 +55,7 @@ from codex_usage.session_cache_work_plans import (
     prepare_requests,
 )
 from codex_usage.session_replica_selection import select_replicas
+from codex_usage.replica_accounting import reconcile_accounting
 
 _COMMIT_GROUP_SIZE = 8
 
@@ -142,6 +143,7 @@ def refresh_files(
         inventory,
     )
     affected_task_ids.update(rebased_project_task_ids)
+    reconcile_accounting(connection)
 
     missing_count = int(
         connection.execute(
