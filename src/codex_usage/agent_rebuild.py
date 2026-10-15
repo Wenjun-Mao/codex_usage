@@ -35,6 +35,10 @@ from codex_usage.session_cache_checkpoints import load_parser_checkpoint
 from codex_usage.session_cache_refresh import refresh_files
 from codex_usage.session_cache_schema import _ensure_schema
 from codex_usage.history_upgrade_receipts import pending_upgrade_keys
+from codex_usage.session_history_invalidation import (
+    parse_invalidation_epoch, invalidate_dependents, rekey_invalidation, complete_invalidation,
+    pending_invalidation,
+)
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     collect_session_file_inventory,
@@ -110,7 +114,8 @@ def rebuild_stale_source_slice(
         source_device=int(stat.st_dev),
         source_inode=int(stat.st_ino),
     )
-    staging_path = _staging_path(codex_home, source_key)
+    epoch = parse_invalidation_epoch(source["history_epoch"])
+    staging_path = _staging_path(codex_home, source_key, history_epoch=epoch)
     # One owned-home stat inventory supplies history candidates, separately from
     # the parse worklist.
     history_inventory = collect_session_file_inventory(
@@ -195,9 +200,10 @@ def _load_stale_source(ledger_path: Path, source_key: str) -> sqlite3.Row:
     return row
 
 
-def _staging_path(codex_home: Path, source_key: str) -> Path:
+def _staging_path(codex_home: Path, source_key: str, *, history_epoch=0) -> Path:
     digest = hashlib.sha256(source_key.encode()).hexdigest()
-    return agent_data_dir(codex_home) / "rebuilds" / f"accounting-v1-{digest}.sqlite3"
+    suffix = f"-history-{history_epoch}" if history_epoch else ""
+    return agent_data_dir(codex_home) / "rebuilds" / f"accounting-v2-{digest}{suffix}.sqlite3"
 
 
 def _install_completed_rebuild(
@@ -233,14 +239,18 @@ def _install_completed_rebuild(
             if (
                 current is None
                 or str(current["path"]) != str(entry.path)
-                or not str(current["error"] or "").startswith(STALE_ERROR_PREFIX)
+                or (not str(current["error"] or "").startswith(STALE_ERROR_PREFIX)
+                    and not pending_invalidation(connection, entry.file_key))
             ):
                 raise RuntimeError("stale source changed before rebuild commit")
             assert_live_rebuild_authority(connection, entry.file_key, authority)
             assert_attached_stage(connection, staged_entry, checkpoint)
             _check_identity_target(connection, entry.file_key, staged_entry.file_key)
+            invalidate_dependents(connection, [entry.path], exclude={entry.file_key, staged_entry.file_key})
             _mark_rebuilt_tasks_dirty(connection, staged_entry.file_key, entry.file_key)
             _replace_workset_rows(connection, entry.file_key, staged_entry.file_key)
+            rekey_invalidation(connection, entry.file_key, staged_entry.file_key)
+            complete_invalidation(connection, staged_entry.file_key)
             from codex_usage.session_cache_source_identity import record_physical_identity
             record_physical_identity(connection, checkpoint)
             # Byte-identical semantic repairs can retain the same row count.

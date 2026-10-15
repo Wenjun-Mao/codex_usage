@@ -23,7 +23,8 @@ PENDING_ERROR = "accounting_upgrade_discovery_pending"
 REBUILD_ERROR = "paginated_history_accounting_upgrade_required"
 
 
-def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_BYTES, max_files=DISCOVERY_FILES):
+def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_BYTES, max_files=DISCOVERY_FILES,
+                                 protected_keys=frozenset()):
     if max_bytes < 0 or max_files < 0:
         raise ValueError("discovery budgets cannot be negative")
     rows = connection.execute(f"""select f.file_key, f.path, f.session_id,
@@ -49,7 +50,7 @@ def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_B
                 -entry.mtime_ns if not attempt else attempt, entry.file_key, entry, row, guard, previous))
     candidates.sort(key=lambda item: item[:3])
     absent = {key for key in old.keys()-matched if not _retired_capture(connection, key)}
-    protected = absent | {key for key, value in decisions.items() if value["disposition"] != Disposition.UNCHANGED}
+    protected = set(protected_keys) | absent | {key for key, value in decisions.items() if value["disposition"] != Disposition.UNCHANGED}
     waiting = connection.execute("select 1 from schema_meta where key like ? limit 1", (WAIT_PREFIX+"%",)).fetchone()
     if not candidates and not protected and waiting is None:
         return UpgradeDiscovery(frozenset(), 0)
@@ -77,7 +78,7 @@ def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_B
             store_decision(connection, key, dict(disposition=Disposition.PENDING, reason=Reason.UNAVAILABLE,
                 diagnostic="captured_source_not_in_inventory", attempt=previous.get("attempt", 0) if previous else 0))
         connection.execute("insert or replace into schema_meta(key,value) values ('history-upgrade-sequence',?)", (str(sequence),))
-        protected = absent | {key for key, value in decisions.items() if value["disposition"] != Disposition.UNCHANGED}
+        protected = set(protected_keys) | absent | {key for key, value in decisions.items() if value["disposition"] != Disposition.UNCHANGED}
         for entry in inventory:
             value = decisions.get(entry.file_key)
             if value is None:
@@ -88,11 +89,21 @@ def discover_accounting_upgrades(connection, inventory, *, max_bytes=DISCOVERY_B
             else:
                 reason = REBUILD_ERROR if value["disposition"] == Disposition.REBUILD else PENDING_ERROR
                 record_file_stale(connection, [entry.session_dir], entry, reason)
-        reserved = protected | {str(old[key]["session_id"]) for key in protected if old[key]["session_id"]}
+        reserved = protected | {str(old[key]["session_id"]) for key in protected if key in old and old[key]["session_id"]}
         physical = {identity.rollout_id for key in protected
-                    if (identity := rollout_identity(Path(old[key]["path"]))) is not None}
+                    if key in old and (identity := rollout_identity(Path(old[key]["path"]))) is not None}
+        for key in protected & old.keys():
+            identity = rollout_identity(Path(old[key]["path"]))
+            if identity is not None:
+                reserved.add(identity.thread_id if identity.thread_id == identity.rollout_id
+                             else PAGE_KEY_PREFIX+identity.rollout_id)
         blocked = _expand_protected(connection, inventory, reserved, physical)
         blocked.update(reserved)
+        for row in connection.execute("select key from schema_meta where key like ?", (WAIT_PREFIX+"%",)).fetchall():
+            key = str(row[0])[len(WAIT_PREFIX):]
+            receipt = decision(connection, key, waiting=True)
+            if receipt and receipt.get("blocked_by") in reserved:
+                blocked.add(key)
         _release_dependencies(connection, blocked)
         connection.commit()
     except BaseException:
@@ -175,9 +186,12 @@ def _expand_protected(connection, inventory, protected, physical):
     return blocked
 
 
-def defer_upgrade_dependency(connection, entry):
+def defer_upgrade_dependency(connection, entry, *, blocked_by=None):
+    previous = decision(connection, entry.file_key, waiting=True)
+    if blocked_by is None and previous:
+        blocked_by = previous.get("blocked_by")
     store_decision(connection, entry.file_key,
-        dict(disposition=Disposition.PENDING, reason=Reason.DEPENDENCY), waiting=True)
+        dict(disposition=Disposition.PENDING, reason=Reason.DEPENDENCY, blocked_by=blocked_by), waiting=True)
     row = connection.execute("select 1 from files where file_key=?", (entry.file_key,)).fetchone()
     if row is not None:
         record_file_stale(connection, [entry.session_dir], entry, "accounting_upgrade_dependency_pending")

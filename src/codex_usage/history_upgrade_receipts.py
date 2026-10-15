@@ -47,6 +47,8 @@ def decision(connection, source_key, *, waiting=False):
         UpgradeReason(value["reason"])
         if "attempt" in value and (type(value["attempt"]) is not int or value["attempt"] < 0):
             return None
+        if value.get("blocked_by") is not None and not isinstance(value["blocked_by"], str):
+            return None
         return value
     except (ValueError, KeyError, TypeError):
         return None

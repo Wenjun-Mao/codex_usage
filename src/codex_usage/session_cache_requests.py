@@ -7,6 +7,7 @@ from codex_usage.session_cache_checkpoints import load_parser_checkpoint
 from codex_usage.session_inventory import SessionFileInventoryEntry
 from codex_usage.session_parser_models import SessionParseCheckpoint
 from codex_usage.checkpoint_history_contract import supports_history_resume
+from codex_usage.session_history_invalidation import pending_invalidation
 
 
 class StaleAppendCheckpointError(RuntimeError):
@@ -42,6 +43,7 @@ def eligible_append_checkpoint(
 ) -> SessionParseCheckpoint | None:
     if (
         rebuilt
+        or pending_invalidation(connection, entry.file_key)
         or cached is None
         or (
             entry.storage_state != "active"
@@ -81,6 +83,8 @@ def is_current_append_checkpoint(
     expected: SessionParseCheckpoint | None,
 ) -> bool:
     if expected is None:
+        return False
+    if pending_invalidation(connection, file_key):
         return False
     return load_parser_checkpoint(connection, file_key, path) == expected
 

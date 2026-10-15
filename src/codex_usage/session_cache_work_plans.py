@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from codex_usage.parallel.usage import UsageParseRequest
 from codex_usage.session_cache_requests import eligible_append_checkpoint
+from codex_usage.session_history_invalidation import pending_invalidation
 
 
 def prepare_requests(connection, parse_entries, cached_rows, *, rebuilt,
@@ -15,6 +16,8 @@ def prepare_requests(connection, parse_entries, cached_rows, *, rebuilt,
         cached = cached_rows.get(entry.file_key)
         checkpoint = eligible_append_checkpoint(connection, entry, cached, rebuilt=rebuilt)
         reason = blocked_sources.get(entry.file_key, "")
+        if pending_invalidation(connection, entry.file_key):
+            reason = "history_dependency_changed"
         if (not reason and defer_full_fallback and not rebuilt and cached is not None
                 and cached["checkpoint_offset"] is not None and checkpoint is None):
             reason = "source no longer satisfies the guarded append-only contract"

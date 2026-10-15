@@ -42,11 +42,11 @@ def resolve(metadata, sources):
     budget = _Budget()
     try:
         identity = rollout_identity(metadata.file_path)
-        counter, digest = _prefix(metadata.history_base, sources, budget, (identity.rollout_id,), {})
+        counter, digest, dependencies = _prefix(metadata.history_base, sources, budget, (identity.rollout_id,), {})
         if counter.usage is None:
             reason = "replay_boundary_unresolved" if counter.replay_barrier else "counter_unavailable"
             raise PaginatedHistoryError(f"paginated_history_{reason}")
-        return HistoryBaseline(counter.usage, budget.bytes_read, digest)
+        return HistoryBaseline(counter.usage, budget.bytes_read, digest, dependencies)
     except PaginatedHistoryError as error:
         error.bytes_read = budget.bytes_read
         raise
@@ -77,11 +77,12 @@ def _prefix(reference, sources, budget, chain, cache):
         header, local_counter, digest = _read_prefix(source, identity, reference, budget)
         ancestor = HistoryBoundary.from_mapping(header["payload"].get("history_base"))
         inherited = _Counter()
+        dependencies = ()
         if ancestor is not None:
-            inherited, prior_digest = _prefix(ancestor, sources, budget, (*chain, physical), cache)
+            inherited, prior_digest, dependencies = _prefix(ancestor, sources, budget, (*chain, physical), cache)
             digest = hashlib.sha256((digest + prior_digest).encode()).hexdigest()
         counter = local_counter if local_counter.usage is not None or local_counter.replay_barrier else inherited
-        found.append((counter, digest))
+        found.append((counter, digest, (reference, *dependencies)))
     if not found:
         raise PaginatedHistoryError("paginated_history_source_unavailable")
     if any(result != found[0] for result in found[1:]):

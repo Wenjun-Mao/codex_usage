@@ -150,7 +150,9 @@ def test_zero_discovery_budget_retains_all_old_capture_evidence(tmp_path, monkey
         from dataclasses import replace
         inventory = [replace(entry, file_key=by_path[str(entry.path)]) for entry in inventory]
         outcome = discover_accounting_upgrades(connection, inventory, max_bytes=0)
-    assert outcome.bytes_read == 0 and len(outcome.protected) == 2
+    assert outcome.bytes_read == 0
+    assert {row[0] for row in before} <= outcome.protected
+    assert "codex-usage:page:22222222-2222-4222-8222-222222222222" in outcome.protected
     assert checkpoints(ledger) == before
     assert total(ledger) == 250
 
@@ -281,3 +283,22 @@ def test_logical_reservation_does_not_depend_on_the_claimants_filename_hint(tmp_
     assert total(ledger) == before_total
     with open_ledger(ledger, read_only=True) as connection:
         assert connection.execute("select path from files where file_key=?", (THREAD,)).fetchone()[0] == str(page)
+
+
+def test_unknown_filename_claimant_remains_bound_to_its_blocker_without_reparsing(tmp_path, monkeypatch):
+    home, ledger, page = old_capture(tmp_path, monkeypatch)
+    page.unlink()
+    claimant = write_rows(home / "sessions" / "unknown-claimant.jsonl", [meta(), tokens(20)])
+    refresh(home, ledger)
+    with open_ledger(ledger, read_only=True) as connection:
+        key = connection.execute("select file_key from files where path=?", (str(claimant),)).fetchone()[0]
+        assert decision(connection, key, waiting=True)["blocked_by"] == THREAD
+    original_open = Path.open
+
+    def no_history(path, *args, **kwargs):
+        if path.suffix == ".jsonl":
+            raise AssertionError("pending claimant must not be reparsed while its blocker remains")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", no_history)
+    assert refresh(home, ledger).stats.source_bytes_read == 0

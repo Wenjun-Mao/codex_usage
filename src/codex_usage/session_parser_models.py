@@ -34,6 +34,7 @@ class SessionParserState:
     history_baseline_pending: bool = False
     history_boundary_digest: str = ""
     root_inline_replay_possible: bool = True
+    history_dependencies: tuple[HistoryBoundary, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +78,7 @@ def parser_state_to_json(state: SessionParserState) -> str:
             "history_baseline_pending": state.history_baseline_pending,
             "history_boundary_digest": state.history_boundary_digest,
             "root_inline_replay_possible": state.root_inline_replay_possible,
+            "history_dependencies": [reference.to_dict() for reference in state.history_dependencies],
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -89,13 +91,15 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
         raise ValueError("parser checkpoint state must be an object")
     root_value = parsed.get("root_metadata")
     usage_value = parsed.get("previous_usage")
+    root = None if root_value is None else _metadata_from_dict(_mapping(root_value), path)
+    dependencies = _history_dependencies(parsed.get("history_dependencies", []))
+    if "history_dependencies" in parsed:
+        reference = root.history_base if root else None
+        if (reference is None and dependencies) or (reference is not None and (not dependencies or dependencies[0] != reference)):
+            raise ValueError("checkpoint history dependencies disagree with its opening boundary")
     return SessionParserState(
         metadata=_metadata_from_dict(_mapping(parsed.get("metadata")), path),
-        root_metadata=(
-            None
-            if root_value is None
-            else _metadata_from_dict(_mapping(root_value), path)
-        ),
+        root_metadata=root,
         previous_usage=(
             None
             if usage_value is None
@@ -117,6 +121,7 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
         history_baseline_pending=bool(parsed.get("history_baseline_pending")),
         history_boundary_digest=_text(parsed.get("history_boundary_digest")),
         root_inline_replay_possible=bool(parsed.get("root_inline_replay_possible", True)),
+        history_dependencies=dependencies,
     )
 
 
@@ -142,6 +147,15 @@ def _metadata_to_dict(metadata: SessionMetadata) -> dict[str, object]:
         "history_ordinal": metadata.history_ordinal,
         "forked_from_ordinal_exclusive": metadata.forked_from_ordinal_exclusive,
     }
+
+
+def _history_dependencies(value):
+    if not isinstance(value, list) or len(value) > 32:
+        raise ValueError("invalid checkpoint history dependencies")
+    references = tuple(HistoryBoundary.from_mapping(item) for item in value)
+    if None in references or len({reference.rollout_id.lower() for reference in references}) != len(references):
+        raise ValueError("invalid checkpoint history dependencies")
+    return references
 
 
 def _metadata_from_dict(value: dict[str, Any], path: Path) -> SessionMetadata:

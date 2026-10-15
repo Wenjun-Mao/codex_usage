@@ -58,6 +58,7 @@ from codex_usage.session_replica_selection import select_replicas
 from codex_usage.replica_accounting import reconcile_accounting
 from codex_usage.history_upgrade_discovery import DISCOVERY_BYTES, discover_accounting_upgrades, defer_upgrade_dependency
 from codex_usage.session_history import source_identity
+from codex_usage.session_history_invalidation import pending_repair_guards
 
 _COMMIT_GROUP_SIZE = 8
 
@@ -79,7 +80,8 @@ def refresh_files(
     _reconcile_fallback_file_keys(inventory, cached_rows)
     physical_inventory = list(inventory) if history_inventory is None else history_inventory
     discovery = discover_accounting_upgrades(connection, inventory,
-        max_bytes=min(DISCOVERY_BYTES, session_history_requests.HISTORY_EXTRA_READ_BUDGET))
+        max_bytes=min(DISCOVERY_BYTES, session_history_requests.HISTORY_EXTRA_READ_BUDGET),
+        protected_keys=pending_repair_guards(connection))
     selection = select_replicas(connection, inventory, cached_rows,
         max_bytes=session_history_requests.HISTORY_EXTRA_READ_BUDGET-discovery.bytes_read,
         protected_keys=discovery.blocked)
@@ -356,7 +358,7 @@ def _commit_result_group(
                 )
             else:
                 if source_identity(result.metadata) in protected_keys:
-                    defer_upgrade_dependency(connection, entry)
+                    defer_upgrade_dependency(connection, entry, blocked_by=source_identity(result.metadata))
                     continue
                 if result.appended is not None:
                     _assert_current_append_checkpoint(

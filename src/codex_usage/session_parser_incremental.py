@@ -108,6 +108,7 @@ def _parse_session_chunk(
     row_drain = initial_state.row_drain
     history_baseline_pending = initial_state.history_baseline_pending
     history_boundary_digest = initial_state.history_boundary_digest
+    history_dependencies = initial_state.history_dependencies
     image_operations = []
     quota_points = []
     bytes_read = 0
@@ -224,6 +225,7 @@ def _parse_session_chunk(
                             bytes_read += baseline.bytes_read
                             history_baseline_pending = True
                             history_boundary_digest = baseline.boundary_digest
+                            history_dependencies = baseline.dependencies
                             # Paginated inheritance is external to this physical
                             # page, unlike legacy inline imported-parent replay.
                             subagent_own_activity_started = True
@@ -423,6 +425,7 @@ def _parse_session_chunk(
                 history_baseline_pending=history_baseline_pending,
                 history_boundary_digest=history_boundary_digest,
                 root_inline_replay_possible=root_inline_replay_possible,
+                history_dependencies=history_dependencies,
             )
             head_sha256, head_bytes = _digest_range(
                 handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint_offset)

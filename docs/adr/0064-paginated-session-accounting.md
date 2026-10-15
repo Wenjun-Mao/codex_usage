@@ -202,7 +202,43 @@ mixed-writer, disposable/live-repair and release qualification remain separate.
 [ADR 0067](0067-bounded-accounting-upgrade-discovery.md) discovers weak historical
 checkpoints before ownership changes, reserves their logical slots and bounds
 staged retries. Discovery is not repair authority or missing-source rebinding;
-dependent lineage invalidation and mixed-writer safety remain separate work.
+mixed-writer safety and private repair qualification remain separate work.
+
+## Dependent Baseline Invalidation
+
+An aggregate baseline digest cannot identify which unchanged continuations used
+a replaced ancestor. The bounded resolver now retains every physical boundary
+in its validated chain, including ancestors whose intermediate page has never
+been captured. Checkpoints serialize these content-free references. Resume
+authority requires a valid, unique chain whose opening matches root metadata;
+older evidence remains readable but must undergo bounded upgrade discovery.
+
+Replacing a trusted normalized source generation, or installing a staged repair,
+invalidates captured descendants in the same accounting transaction. Use the
+previous normalized physical path when ownership changes, not the new occupant's
+identity. Ordinary guarded appends do not invalidate frozen ancestor prefixes.
+This does not add full-interior rewrite detection beyond the existing bounded
+source proofs. No raw history is opened to discover dependent captures.
+
+Retain checkpoints and accounting facts, mark coverage stale and advance a
+per-source invalidation epoch with a durable pending-repair marker. That marker
+gates request planning, append commits, normalization and replica/ownership
+handoffs independently of replaceable diagnostic strings. Waiting claimants name
+their canonical blocker so unchanged captures do not reparse them. Malformed
+dependency entries preserve valid edges and are explicitly quarantined, rather
+than aborting unrelated replacement. A quarantine remains pending until repair.
+
+Only a complete authorized staged install clears pending authority. The epoch
+participates in its captured-origin fingerprint and staging identity. An ancestor
+replacement between child slices starts a new epoch-bound stage, retaining the
+obsolete stage rather than adopting it. The `accounting-v2` namespace refuses old
+pre-dependency stages. Marker/epoch movement follows source-key changes atomically.
+Private repair qualification must include obsolete-stage storage and cleanup in
+its maintenance/rollback lifecycle; no automatic deletion is introduced here.
+Captured quota observations remain untouched; revision-pinned allowance, economics,
+credit and HTML consumers observe either the old transaction or its invalidation.
+Regressions cover transitive/uncaptured ancestors, append/replica escape attempts,
+malformed references, obsolete stages, rollback and cache/direct-parser parity.
 
 Regressions cover repeated/advanced counters, ordinary sessions, missing/history
 conflicts, chunked checkpoints, quota-only rows before/after opening, continued

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from codex_usage.models import SessionMetadata, TokenUsage
-from codex_usage.session_history_models import PaginatedHistoryError
+from codex_usage.session_history_models import HistoryBoundary, PaginatedHistoryError
 from codex_usage.session_rollout_identity import rollout_identity
 
 HISTORY_READ_BUDGET = 2 * 1024 * 1024
@@ -33,6 +33,7 @@ class HistoryBaseline:
     usage: TokenUsage
     bytes_read: int
     boundary_digest: str
+    dependencies: tuple[HistoryBoundary, ...] = ()
 
 
 def source_identity(metadata: SessionMetadata) -> str:

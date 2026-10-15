@@ -22,6 +22,7 @@ from codex_usage.replica_accounting import reconcile_accounting, authorize_retai
 from codex_usage.replica_accounting_selection import source_selection, receipts, issues as accounting_issues
 from codex_usage.replica_accounting_proof import AccountingProofError
 from codex_usage.ledger_transition_sync import sync_transitions as _sync_transitions
+from codex_usage.session_history_invalidation import invalidate_dependents, pending_report_row
 
 
 _NORMALIZED_OWNERSHIP_VERSION = 3
@@ -79,6 +80,7 @@ def synchronize_parser_workset_in_transaction(
 def _sync_sources(connection: sqlite3.Connection) -> bool:
     changed = False
     observed_keys: set[str] = set()
+    invalidated = set()
     rows = connection.execute(
         """
         select files.*,
@@ -87,6 +89,8 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
                parser_checkpoints.source_inode,
                parser_checkpoints.head_sha256,
                parser_checkpoints.boundary_sha256,
+               (select path from ledger_sources where source_key=files.file_key) previous_source_path,
+               (select value from schema_meta where key='history-invalidation-pending:'||files.file_key) pending_history_invalidation,
                (select count(*) from usage_records
                 where usage_records.file_key = files.file_key) as record_count
         from files
@@ -108,6 +112,7 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
         if bool(row["is_missing"]) and row["byte_offset"] is None:
             continue
         observed_keys.add(source_key)
+        row = pending_report_row(connection, row, invalidated)
         reported = dict(row)
         reported["error"] = accounting_errors.get(row["path"], row["error"])
         source_id, source_changed, inode_changed = _upsert_source(connection, reported)
@@ -134,6 +139,7 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
             source_changed=source_changed,
             inode_changed=inode_changed,
             retained_snapshot=retained_snapshot,
+            invalidated=invalidated,
         )
 
     for row in connection.execute(
@@ -248,6 +254,7 @@ def _sync_generation(
     source_changed: bool,
     inode_changed: bool,
     retained_snapshot=None,
+    invalidated=None,
 ) -> bool:
     trusted = connection.execute(
         """
@@ -287,6 +294,10 @@ def _sync_generation(
     now = datetime.now(UTC).isoformat()
     start_record_index = 0
     if requires_replace:
+        if trusted is not None:
+            affected = invalidate_dependents(connection, [row["previous_source_path"] or row["path"]], exclude={source_key})
+            if invalidated is not None:
+                invalidated.update(affected)
         connection.execute(
             """
             update ledger_generations set status = 'superseded', completed_at = ?

@@ -19,6 +19,7 @@ from codex_usage.session_generation_models import (
 from codex_usage.session_inventory import SessionFileInventoryEntry
 from codex_usage.speed_store import cache_speed
 from codex_usage.history_upgrade_receipts import rekey_upgrade_decision
+from codex_usage.session_history_invalidation import pending_invalidation, rekey_invalidation
 
 _ESTIMATED_SYNC_METADATA_BYTES = 4096
 
@@ -29,6 +30,8 @@ def replace_file_generation(
     entry: SessionFileInventoryEntry,
     generation: ParsedSessionGeneration,
 ) -> set[str]:
+    if pending_invalidation(connection, entry.file_key):
+        raise RuntimeError("pending history dependency requires an authorized staged repair")
     affected = affected_task_ids_for_file(connection, entry.file_key)
     for alias_key in _same_path_alias_keys(connection, entry):
         affected.update(affected_task_ids_for_file(connection, alias_key))
@@ -56,6 +59,8 @@ def append_file_generation(
     entry: SessionFileInventoryEntry,
     appended: ParsedSessionAppend,
 ) -> set[str]:
+    if pending_invalidation(connection, entry.file_key):
+        raise RuntimeError("pending history dependency cannot resume append")
     affected = affected_task_ids_for_file(connection, entry.file_key)
     record_start = appended.checkpoint.next_record_index - len(appended.records)
     candidate_start = (
@@ -100,6 +105,7 @@ def rekey_file_generation(
     affected = affected_task_ids_for_file(connection, entry.file_key)
     affected.update(affected_task_ids_for_file(connection, replacement.file_key))
     rekey_upgrade_decision(connection, entry.file_key, replacement.file_key)
+    rekey_invalidation(connection, entry.file_key, replacement.file_key)
     delete_file_generation(connection, replacement.file_key)
     connection.execute("delete from files where file_key = ?", (replacement.file_key,))
     for table in (

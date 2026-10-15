@@ -71,5 +71,5 @@ They include weak and qualified claimants with misleading recognized filenames,
 capture-before-execution ordering, both fingerprint failure paths, and primary/
 extended SQLite retry classification.
 Discovery does not itself rebind a missing path, repair unresolved replica
-families, invalidate dependent lineage, authorize live writes or qualify release.
+families, authorize live writes or qualify release. Dependent invalidation follows ADR 0064.
 Those remain explicit repair and validation work in the implementation plan.

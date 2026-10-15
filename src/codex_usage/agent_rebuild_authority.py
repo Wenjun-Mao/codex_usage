@@ -15,7 +15,8 @@ class StagedCaptureUnavailableError(RuntimeError):
 def load_rebuild_source(connection, source_key):
     return connection.execute("""select s.source_key, s.path, s.session_dir, s.storage_state,
         f.session_id, f.parsed_at, p.byte_offset, p.next_record_index,
-        p.head_sha256, p.boundary_sha256, p.source_device, p.source_inode, p.state_json
+        p.head_sha256, p.boundary_sha256, p.source_device, p.source_inode, p.state_json,
+        coalesce((select value from schema_meta where key='history-invalidation:'||s.source_key),'0') history_epoch
         from ledger_sources s join files f on f.file_key=s.source_key and f.path=s.path
         left join parser_checkpoints p on p.file_key=f.file_key
         where s.source_key=? and s.is_stale=1 and s.is_missing=0""", (source_key,)).fetchone()
