@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from codex_usage.agent_capture import session_dirs_for_home
 from codex_usage.agent_paths import agent_data_dir, ledger_database_path
 from codex_usage.agent_private_files import (
     ensure_private_directory,
@@ -17,7 +18,10 @@ from codex_usage.parser import parse_session_append
 from codex_usage.session_cache_checkpoints import load_parser_checkpoint
 from codex_usage.session_cache_refresh import refresh_files
 from codex_usage.session_cache_schema import _ensure_schema
-from codex_usage.session_inventory import SessionFileInventoryEntry
+from codex_usage.session_inventory import (
+    SessionFileInventoryEntry,
+    collect_session_file_inventory,
+)
 
 
 STALE_ERROR_PREFIX = "stale append checkpoint:"
@@ -96,6 +100,12 @@ def rebuild_stale_source_slice(
         source_inode=int(stat.st_ino),
     )
     staging_path = _staging_path(codex_home, source_key)
+    # One owned-home stat inventory supplies history candidates, separately from
+    # the parse worklist.
+    history_inventory = collect_session_file_inventory(
+        session_dirs_for_home(codex_home),
+        read_metadata=False,
+    )
     ensure_private_directory(staging_path.parent)
     connection = sqlite3.connect(staging_path)
     ensure_private_file(staging_path)
@@ -109,6 +119,7 @@ def rebuild_stale_source_slice(
             rebuilt=schema.created or schema.reset,
             max_workers=1,
             max_parse_bytes=max_bytes,
+            history_inventory=history_inventory,
         )
         checkpoint = load_parser_checkpoint(connection, source_key, path)
         captured = checkpoint.byte_offset if checkpoint is not None else 0

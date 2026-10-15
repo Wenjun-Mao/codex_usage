@@ -7,6 +7,7 @@ from codex_usage.parallel.usage import UsageParseResult
 from codex_usage.session_cache_generations import rekey_file_generation
 from codex_usage.session_generation_models import ParsedSessionGeneration
 from codex_usage.session_history import PAGE_KEY_PREFIX, source_identity
+from codex_usage.session_cache_source_identity import cached_source_identity
 from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     _path_fallback_file_key,
@@ -134,6 +135,7 @@ def upsert_pending_inventory_rows(
 
 
 def dedupe_inventory_by_cached_session_id(
+    connection: sqlite3.Connection,
     inventory: list[SessionFileInventoryEntry],
     cached_rows: dict[str, sqlite3.Row],
 ) -> None:
@@ -141,7 +143,7 @@ def dedupe_inventory_by_cached_session_id(
     for entry in inventory:
         cached = cached_rows.get(entry.file_key)
         session_id = (
-            str(cached["session_id"])
+            cached_source_identity(connection, entry, cached) or entry.file_key
             if cached is not None and cached["session_id"] and not cached["error"]
             else entry.file_key
         )

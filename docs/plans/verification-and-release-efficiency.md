@@ -1,16 +1,15 @@
 # Verification And Release Efficiency
 
-Date: 2026-10-13. Status: local and journal gates pass. Earlier normal/dry-run
-evidence is retained; current source qualification is held by hosted WebKit
-input/observation latency. Production promotion is source-disabled.
-Remaining-work revision: owner approved stages A-F through the active goal,
-starting from `1032b715`; A is in progress, dependent gates remain unmet.
+Date: 2026-10-13; revised 2026-10-14. Local and journal gates pass; production
+promotion is source-disabled. Earlier normal/dry-run proof is historical only.
+The owner defers A/B's hosted WebKit latency diagnosis/correction until after the
+next release, accepting that known limitation for that candidate only.
 Scope agreed: faster failure-local gates, exact qualified-artifact promotion,
 and fewer browser round trips without reducing coverage.
-Owner's latest revision approves bounded temporal tracing, adds within-project
-model comparison, and requires owner UI acceptance before publication. This is
-a reviewed plan; the owner has now approved the autonomy bundle and restarted
-the Goal without a wall-time constraint. Publication still awaits UI acceptance.
+The Goal includes P: continuation accounting/targeted repair, R: period-first
+allowance history, and U: model comparison, before C-F release qualification.
+The autonomy bundle has no wall-time constraint. Owner UI acceptance still gates
+publication; the three-batch diagnostic ceiling remains exhausted, not renewed.
 
 Authority: [measured profile](../research/2026-10-13-verification-and-release-profile.md),
 [ADR 0061](../adr/0061-qualified-artifact-promotion.md), and the existing
@@ -24,19 +23,20 @@ retryable, and publish the same packages that passed qualification instead of
 building and qualifying a second set of packages at the same source commit.
 Reduce browser transport overhead while retaining observable behavior checks.
 
-Preserve complete Python and extension tests, Ruff, frozen monetary parity,
+Preserve complete Python and extension tests, Ruff, unaffected monetary parity,
 bounded-work guards, screenshot acceptance, all browser scenarios/themes/widths/
 engines, both supported platform packages, collector smoke/archive/handoff
 checks, hash-bound native macOS verification, and public Marketplace hash checks.
-Existing native Windows acceptance gaps remain explicit, not newly claimed proof.
-No product accounting, pricing or timeout change is planned. The additional
-Project Economics presentation change below reuses existing model metrics.
+Existing native Windows gaps remain explicit. The only new exception is D4's
+candidate-bound hosted WebKit timing disposition, never a functional-check waiver.
+P corrects accounting, not rates; R/U reuse evidence without changing fit semantics.
 
 Exclude Python fixture/shutdown tuning, Python test sharding, duplicate
 TypeScript build cleanup, runner-platform migration, new distribution targets,
 dashboard latency work, automatic retries, and Marketplace propagation shortcuts.
-Do not modify live ledgers, installed extensions, credentials/Keychain, user
-VS Code windows, services, secrets/settings, or unrelated untracked `apps/`.
+Live-ledger writes are limited to the approved P repair safeguards. Do not change
+installed extensions, credentials/Keychain, user VS Code windows, services,
+secrets/settings, or unrelated untracked `apps/`.
 
 ## Diagnosis And Evidence
 
@@ -48,9 +48,9 @@ VS Code windows, services, secrets/settings, or unrelated untracked `apps/`.
 | Many small browser reads dominate | 11,628 evaluate/count calls cost 54.8s in a 141.3s local breakdown run | Verification harness transport |
 
 These are local and historical hosted observations, not promised future timings.
-The earlier 250ms tooltip-hide failure has no confirmed root cause. Preserve
-the deadline; instrument failures before deciding whether code or harness
-changes are justified. An unchanged retry passing is not a diagnosis.
+The earlier 250ms tooltip failure has no confirmed root cause. Preserve its raw
+measurements and deadline; D4 defers this hosted timing requirement for one release.
+An unchanged retry passing is not a diagnosis or a substitute for that disposition.
 
 ## Selected Publishing Flow
 
@@ -204,56 +204,41 @@ invalidate qualification. Both public target hashes equal the qualified hashes.
 
 ### D4: Qualify And Measure The New Process
 
-The remaining critical path is A -> B -> C -> D -> E, with U integrated before
-final qualification and F held for owner UI acceptance. Preserve ADR 0063's strict
-input-to-observation budget; neither a late visible result nor a diagnostic-only
-passing run qualifies the candidate.
+Next-release path: P/R/U -> C -> D -> E -> F, with owner UI acceptance before F.
+A/B move to the following release. On October 14 the owner explicitly accepted
+the existing hosted WebKit observation delay for the next release only.
+
+- Before qualification, record an ADR 0063/release-proof amendment binding the
+  deferred `<250ms` assertion to the selected version/SHA and hosted WebKit suite.
+  Preserve actual elapsed values and report `deferred-known-latency`, never passed.
+- Continue every original case/input and all functional assertions: hidden/hit
+  baselines, visible/hidden state, real Tab modality, content, containment and
+  scripts-disabled behavior. Use a finite observation deadline for these checks;
+  missing/wrong states, transport failures and incomplete inventories still fail.
+- Local/other-engine and exact-package native requirements remain unchanged.
+  Aggregation/promotion must explicitly validate this one candidate's disposition;
+  do not ignore a failed job, blanket-xfail a case or enable an environment bypass.
+- Negative pilots must reject missing proof, other failures and a different
+  version/SHA. Retain the strict timing probe for follow-up; no diagnostic reruns
+  or timeout increase may be presented as a root-cause correction.
 
 #### D4A: Locate The Hosted WebKit Delay
 
-- Freeze source, fixture hashes, SDK and actual browser-binary revision/digest,
-  OS/runner, viewport, scripts-disabled state and the original input history.
-  Reproduce the first WebKit view through the affected second usage bucket;
-  minimize only after the relevant input/state history is shown equivalent.
-- Reuse the existing protocol/host/renderer-clock diagnostic. Compare the original
-  style query with a minimal non-DOM control query on the same page. Record
-  foreground/visibility/focus and lifecycle state outside the acceptance timer.
-  Add one hypothesis-specific control only when prior evidence justifies it.
-- Correlate input send/reply, target-query send/reply and expression execution
-  by session/command ID. Distinguish driver/host delay, target scheduling, expression
-  work and reply delivery. Do not subtract cross-process clocks, adjust acceptance
-  times or claim paint timing from these markers.
-- Every extra diagnostic read/listener must be declared and remain outside
-  qualification authority. Preserve the original failed guard and raw evidence.
-  Product scripts/CSP and acceptance inputs remain unchanged.
-- Bound each diagnostic job to five minutes and each investigation batch to two
-  new dispatches with prespecified hypotheses/controls. Repetition solely to get
-  green is excluded. If the batch does not discriminate, report the remaining
-  hypotheses and revise the next probe before further dispatch or full qualification.
-
-Acceptance: a root-cause note identifies the failed stage, supporting controls,
-and why the proposed correction belongs at that layer. A causal intervention
-must change the predicted delayed stage; eventual visible DOM is insufficient.
+Deferred, not completed. Preserve frozen source/fixture/browser/OS authority and
+original input history from the [pilot](../release/2026-10-13-qualification-pilot.md).
+Any future approved probe needs a discriminating hypothesis/control, command/session
+correlation and separate host/renderer clocks. Diagnostics never qualify packages.
+No paint/onset inference, cross-clock subtraction, green-seeking retry or extra
+collection is authorized. A root-cause note must establish the owning layer and
+a causal intervention; eventual visible state alone does not establish it.
 
 #### D4B: Correct The Owning Layer
 
-- Implement the evidence-backed correction with existing public APIs/patterns;
-  do not silently patch the SDK, migrate runners or add engine-specific tolerance.
-  Preserve readiness/hit checks, genuine hidden baselines, real Tab/hover/hide,
-  scripts-disabled behavior and strict rejection at or beyond 250ms.
-- Regression tests cover the diagnosed failure, late input/style replies,
-  cancellation/cleanup, trial-hover priming and absence of corrective target focus.
-  Add the root-specific guard to existing cohesive modules and ADR 0062/0063.
-- Verify prespecified cold launches and warm passes of the affected input history,
-  including at least three of each on the hosted authority, then all 72 local
-  hover views. Stop on an unexpected failure; do not retry it into acceptance.
-- Use one bounded independent read-only review of the causal correction and
-  measurement contract. Collect and close any reviewer before ending the work.
-
-Default: repair the current observation path without changing its requirement.
-If evidence instead establishes that the requirement needs a different measurement
-contract or toolchain/runner, present that alternative and its lost/new guarantees
-for owner review before implementation. That is not an implicit fallback.
+Deferred. Correct the evidenced owning layer using public APIs, with regressions
+for late replies, cleanup/cancellation, priming and keyboard modality. Restore the
+strict hosted guard after three cold/three warm hosted passes, all 72 local views
+and independent review. SDK patches, runner migration or permanent measurement
+redesign still require review; D4's one-release exception is not such authority.
 
 #### D4C: Fresh Normal, Retry And Native Qualification
 
@@ -261,8 +246,8 @@ for owner review before implementation. That is not an implicit fallback.
   parity/work and complete visual inventories. Reconcile every original required
   identity with raw results; retain the exact platform-skip policy and real inputs.
 - Commit/push only the approved slice and run one fresh normal qualification at
-  the exact candidate SHA. Require every core/platform/visual gate, frozen manifest
-  and hash-pinned native macOS replay of the actual qualified VSIX.
+  the exact candidate SHA. Require every core/platform/visual gate, D4's explicit
+  timing disposition, frozen manifest and hash-pinned native replay of that VSIX.
 - Separately run the controlled first-case hover failure at the same SHA. Attempt 1
   must fail exactly the injected case, retain diagnostics and skip dependents;
   rerun failed jobs once with injection disabled. Any unexpected failure stops
@@ -292,7 +277,7 @@ No old source's receipts qualify a changed execution closure.
   cost. Retain the three local baseline pairs; label limited hosted sampling.
   The 20% local/30% hosted goals never override correctness or become promises.
 
-Acceptance: A-D pass; readiness is explicitly nonpublishing. Expired artifacts
+Acceptance: C-D pass under the recorded D4 exception; readiness is nonpublishing. Expired artifacts
 require renewed qualification, never a promotion-time rebuild or stale-proof reuse.
 
 #### D4E: Production Enablement After Technical Gates
@@ -328,40 +313,70 @@ any such change starts a new candidate. Enablement is not publication authority.
   remain pending; preserve possible-upload intents and never infer safe re-upload
   from absence. Record a verified release only after both target hashes match.
 
+### P: Paginated Accounting And Targeted Repair
+
+Required by the owner on October 14. Private source reconciliation confirms an
+inherited cumulative counter counted again. [ADR 0064](../adr/0064-paginated-session-accounting.md)
+records the parser/lineage defect and guards; private usage figures stay outside the repository.
+
+- Model the continuation's physical-rollout prefix lineage and opening baseline;
+  count subsequent genuine deltas, including new work in an advanced opening
+  snapshot. Do not use magnitude filters, blanket first-event suppression or
+  the carried last-request object as a presumed fresh response.
+- Preserve genuine new sessions, forks, raw source files and uncertain/missing
+  historical coverage. Validate references through owned inventory with bounded
+  reads; do not scan multi-gigabyte histories without an established bound.
+- Record the durable parser/lineage contract in an ADR. Add regression fixtures
+  for repeated/advanced counters, missing or mismatched history, multiple
+  continuations, source generations and historical/continued-file coexistence.
+- Prove the fix on disposable snapshots. Dry-run a narrowly selected repair of
+  affected facts and dependent cost/credit, economics, allowance and HTML caches.
+  Live application is approved only after a coherent private backup, unchanged-
+  source/revision checks, bounded execution and a verified rollback procedure.
+- Reproduce the pinned private screenshot/counter reconciliation. Audit other
+  affected continuations; a one-record what-if is not blanket clearance. Preserve
+  unaffected monetary goldens, genuine spent branches and official quota data.
+- Integrate serially before C/E and rebuild the owner preview with corrected
+  data. P cannot waive owner UI acceptance or exact-package release gates.
+
+### R: Period-First Allowance History
+
+The renderer lists each conservative fit segment as a reset window. Unsupported
+material meter drops split segments; each then repeats the same insufficient/
+unknown label. That is not evidence of a distinct subscription reset period.
+
+- Present one compact row per evidence-backed allowance period, newest first,
+  with local observed dates, current/ended status and next reset when supported.
+  Distinguish observed coverage from actual start; never invent a full seven-day
+  period by subtracting duration or use exact reset timestamps as stable identity.
+- Derive display groups from compatible limit/plan/duration and boundary evidence.
+  Keep genuine scheduled/banked resets and plan changes separate; deadline rebases
+  or conflicts cannot silently join periods. Assign uncertain fragments only with
+  supporting evidence, otherwise retain an explicitly uncertain observed range.
+- Collapse fragments under `Uncertain readings (N)` or the relevant period's
+  capture details instead of one top-level insufficient row per segment. Keep
+  bounded exact captures, provenance, boundary reasons and full counts inspectable.
+- This is presentation grouping, not new monetary segmentation: never merge fits,
+  average percentages/estimates, sum fitted values, or promote confidence. Preserve
+  existing headline/fit/pace selection; R does not repair P's incorrect facts.
+- Use existing ledger evidence, no probes/source reads or extra historical scans.
+  Record the presentation/estimation distinction in ADR 0044 and invalidate HTML
+  and any changed derived report contract without repricing unchanged events.
+- Test same-day fragments, genuine early resets, missing/conflicting clocks,
+  multiple buckets/plans and local/DST dates; preserve numeric parity and warm-work
+  guards. Verify Day/Night narrow/wide layouts and include R in owner preview.
+
 ### U: Within-Project Model Comparison
 
-The backend already supplies `ModelEconomics.metrics`; the renderer currently
-shows the requested measures only at project level. This is a presentation gap,
-not a reason for a schema migration, backfill, extra valuation or raw-log scan.
-
-- Make each project's primary model table show Model, Average cost / response,
-  Responses / turn, Tokens / turn, and Measured turns. Apply it to all models,
-  including Sol/Astra/Luna, using the selected project/date scope.
-- Preserve total tokens, token/cost shares and average cost / turn in secondary
-  inspectable details. Expose model-specific response/turn counts, priceability,
-  missing-turn coverage, unavailable values and small samples.
-- Reuse existing measured populations: positive ledger responses with non-empty
-  turn IDs; cost averages use priced responses. A mixed-model turn contributes
-  once per participating model, using only that model's usage. Do not silently
-  turn these observational comparisons into model-quality/efficiency claims.
-- Use compact token units, one decimal for response ratios and bounded monetary
-  precision that distinguishes small model costs from each other and zero, not
-  just a shared `<$0.01` label. Keep exact values and denominators inspectable;
-  use existing domain formatters where suitable. Cost is API-equivalent USD;
-  tokens include input (including cached input) and output, not output alone.
-- Scope renderer changes to `report_tables.py` or a cohesive extracted economics
-  renderer if needed. Preserve precomputed economics, one valuation per record,
-  monetary parity and bounded warm-report work; no new data query is required.
-- Test mixed-model turns, missing IDs/prices, tiny values, zero/empty populations
-  and unequal sample sizes. Add named, inventory-validated synthetic economics
-  browser subcases to the report/screenshot qualification unit, retaining every
-  existing case. Check both themes, all three engines and widths 1440/760/360,
-  readable table headers/values, keyboard disclosures and no page-level overflow.
-
-U can proceed alongside A/B in an isolated worktree with a disjoint renderer/test
-write set. Integrate serially before final C/E qualification; never qualify one
-branch and publish another. Produce the full-dashboard preview and exact VSIX
-for owner review. U is not accepted merely because synthetic checks pass.
+Implemented; owner acceptance remains pending. The [UI checkpoint](../release/2026-10-14-model-economics-checkpoint.md)
+records the renderer, upgrade-cache guard and verification. Primary model rows
+show cost/response, responses/turn, compact tokens/turn and measured turns;
+secondary details preserve totals, shares, priceability and exact denominators.
+Existing measured populations remain unchanged; mixed-model turn counts are
+nonadditive, not model-quality claims. Preserve bounded display precision,
+small-sample/missing states and the 18 mandatory three-engine/theme/width cases.
+No extra accounting query belongs to U. Recheck it after P and integrate before
+C/E; full-dashboard owner acceptance is required despite synthetic passes.
 
 ## Files And Responsibilities
 
@@ -375,7 +390,8 @@ for owner review. U is not accepted merely because synthetic checks pass.
 | Native proof | `scripts/check_usage_breakdown_webview.py` and its existing native helpers; exact VSIX extraction and trusted receipt |
 | Public verification | `scripts/verify_marketplace_release.cjs`; promotion negative tests in a cohesive new test module |
 | Production enablement | `scripts/release/policy.py`, pinned journal validators, `scripts/qualification.py`, `tests/test_qualification_transport.py`, `.github/workflows/promote-vsix.yml`; source-bound policy transition |
-| Model comparison | `src/codex_usage/report_tables.py`, existing `project_economics.py` metrics; economics rendering/oracle tests and inventory-validated report browser subcases |
+| Model comparison/history | `report_tables.py`, existing `project_economics.py` metrics; `report_allowance.py` and cohesive grouping helper; rendering/oracle/cache and inventory-bound browser tests |
+| Continuation accounting | `session_parser_incremental.py`, parser state/metadata and source-generation ownership, `models.py`, targeted repair/cache invalidation and parser/ledger regressions |
 | Documentation | ADR 0061, this plan, profiling report, release guide/receipt links |
 
 ## Autonomy Approval Review
@@ -399,6 +415,8 @@ preapproval below. The restarted Goal carries these permissions into implementat
 | Stage E and release candidate selection | Already conditionally authorized; choose an unused eligible version >=2.12.3 and record exact source/proof; no release tag while UI acceptance is pending |
 | Local full-dashboard review window | Approved: one new disposable Local Preview VS Code profile with in-memory secrets, reading a private local ledger snapshot only; no capture, production installation/profile change or private-data upload; open when owner is ready, not while asleep |
 | Stage F publication | Held by the latest instruction until owner UI acceptance; prior Goal approval cannot bypass this review |
+| P accounting repair | Approved: code/tests, disposable-snapshot validation and targeted live-ledger repair after a verified private backup and rollback procedure. This narrow exception supersedes the earlier live-write exclusion for P only; raw Codex logs remain untouched |
+| Next-release revision | Owner requests period-first history R and defers A/B until after the next release; D4's explicit hosted WebKit timing exception is candidate-bound, not authority for other failed checks or more diagnostics |
 
 The owner removed the proposed ten-hour timebox. Retain standard existing hosted
 runners, visual concurrency <=2 and the job/batch/repair ceilings above. Every new
@@ -406,10 +424,11 @@ diagnostic batch needs evidence that changes its hypothesis; two successive
 non-discriminating batches stop diagnosis. No larger runners, paid services or
 new infrastructure. Limits are execution ceilings, not a narrower completion claim.
 
-Keep the <250ms guard, scripts-disabled product, genuine inputs, all case identities,
-accounting and publication trust contracts. Measurement-contract redesign, runner
+Keep the strict timing measurement with D4's one-candidate hosted disposition,
+scripts-disabled product, genuine inputs, all case identities and trust contracts.
+Permanent measurement-contract redesign, runner
 migration, lost guarantees, secret/settings changes, Keychain operations, live-data
-writes, journal/tag rewriting and ambiguous re-upload remain unapproved. Stop the
+writes outside approved P repair, journal/tag rewriting and ambiguous re-upload remain unapproved. Stop the
 affected path for review; continue independent permitted UI/preparation work.
 
 Choose and announce subagent model/effort at native dispatch under Relay Direct;
@@ -438,62 +457,43 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 - [x] Owner approved the bounded temporal-tracing extension.
 - [x] Owner accepts the unattended autonomy bundle without a wall-time constraint.
 - [x] U passes integrated renderer/core/extension and inventory-bound browser checks.
-- [ ] U receives owner acceptance in the full-dashboard Local Preview.
-- [ ] A-B establish and fix the root cause with retained measurement guarantees.
+- [x] Owner added P's parser fix and targeted repair to the Goal scope.
+- [x] Owner defers A/B beyond the next release and requests period-first history R.
+- [ ] P passes lineage regressions, snapshot repair/reconciliation and approved live application.
+- [x] R preserves calculations and passes period/grouping/render/cache regressions.
+- [ ] P/R/U receive owner acceptance in the full-dashboard Local Preview.
+- [ ] D4's candidate-bound exception is explicit and failure-local pilots remain strict.
+- [ ] A-B establish and fix the cause after the next release; not a current release gate.
 - [ ] C-D pass current-source normal/retry/native/dry-run gates and update measures.
 - [ ] E's final enabled/versioned source is requalified under existing authority.
 - [ ] F follows owner UI acceptance and both public target hashes are verified.
 
 ## Implementation Checkpoint
 
-Latest hosted diagnostic source: `c1ac6983`; promotion false, no new publication.
-Stage A identifies a reproduced pre-expression wait but not its owning cause;
-stages B-F remain gated. The read-only reviewer is collected, closed and unregistered.
-Early gates, isolated visual jobs, batched snapshots, exact-artifact promotion,
-original-attempt receipts and the independently pinned Git journal are implemented.
-The journal pilot passes; production history remains empty and starts at 2.12.3.
-Normal/native and dry-run gates passed at historical `dc79adb6`, not current source.
+Latest diagnostic source `c1ac6983`; promotion false, no new publication. Early
+gates, isolated visual jobs, batched snapshots, exact-artifact/original-attempt
+proof and pinned Git journal are implemented. The journal pilot passes; production
+history is empty and starts at 2.12.3. Historical `dc79adb6` proof is not current.
+Local median breakdown runtime: 150.13 -> 95.29s across three alternating pairs;
+720 tuples/80 identical documents, zero forbidden warm work and 11,628 -> 720
+reads. Fresh navigation, 1,440 keyboard presses and 160 screenshots remain.
+U's 18 mandatory cases and controlled rejection pass. R is integrated through
+`186ad5d`: 252 mandatory allowance browser cases and all 51 extension tests pass.
+Core after staged-rebuild/prefix-guard refinements passes 2,393 tests/one approved
+skip; the renewed 252-case allowance browser inventory also passes.
+P's [foundation](../adr/0064-paginated-session-accounting.md) and read-only replay
+confirm the carried event; upgrade/dependency handling, mixed-writer safety,
+replica-prefix authority, disposable repair, live application and owner preview remain unfinished.
 
-Local median breakdown runtime is 150.13 -> 95.29 seconds across three alternating
-pairs, with 720 tuples/80 byte-identical documents and zero forbidden warm work.
-Reads fall from 11,628 to 720 snapshots; fresh navigation, 1,440 real keyboard
-presses and 160 screenshots remain. Resize-only equivalence is not accepted.
-Historical core evidence: 2,178 passed, one approved skip, 2,179 unique identities;
-all 72 local hover views and Ruff/parity/work guards passed at that checkpoint.
-U is integrated serially on main: per-model cost/response, responses/turn and
-compact tokens/turn, with exact values/coverage in details. Its 18 inventory-bound
-browser cases pass and controlled injection fails at the required first case.
-They are now mandatory in `screenshots-allowance`; latest core passes 2,234
-tests with one approved skip and 2,235 reconciled identities; all 48 extension
-tests, Ruff, monetary parity/work and 72 local hover identities pass. Owner
-acceptance and the full-dashboard preview remain pending. No data schema,
-accounting population or extra query was added.
-
-Native polling/deadline defects were corrected under
-[ADR 0062](../adr/0062-native-observation-transport.md). Trial-hover priming and
-real-input baselines are guarded under
-[ADR 0063](../adr/0063-real-input-observation-budget.md). Hosted diagnostics still
-fail: a 345ms observation has a same-renderer 342ms baseline-to-expression-entry
-gap with a fast input ACK and a body reporting 0ms at clock resolution. Sampling
-changed timing and did not reproduce that failure. The cause is not established;
-visibility onset/paint and every keyboard stall are still unproven. Current-source
-qualification and controlled retry remain incomplete.
-
-The complete chronology, immutable identities, failed evidence, trust-boundary
-reviews and measured costs remain in the
-[pilot receipt](../release/2026-10-13-qualification-pilot.md) and
-[profile](../research/2026-10-13-verification-and-release-profile.md).
-The temporal-tracing extension and its tool/scope limitations are
-captured in a [review note](../research/2026-10-13-webkit-temporal-probe.md);
-batch 1's hosted read-only capability job passed. The privileged prototype is
-held in an isolated checkout after ownership, child-containment and export-bound
-review findings; no collection arm was dispatched. Further approval alone does
-not establish a safe supported target association. Autonomy remains approved,
-but owner UI acceptance is still required before publication.
-The public [handle-free-query pair](../research/2026-10-14-handle-free-query-probe.md)
-completed batch 2: both arms fail the same original guard, including a 476ms
-literal query. A local [public AX check](../research/2026-10-14-public-ax-association.md)
-finds the fixture but reports the UI PID, not a distinct renderer. Further
-[session/event checks and readiness review](../research/2026-10-14-public-observability-limits.md)
-supply no native renderer marker. The [public eval-lookup pair](../research/2026-10-14-public-eval-lookup-probe.md)
-completes batch 3 without the stall. Budget is exhausted; cause and dependent gates stay unresolved.
+The [pilot](../release/2026-10-13-qualification-pilot.md) and
+[profile](../research/2026-10-13-verification-and-release-profile.md) retain chronology/costs.
+[ADR 0062](../adr/0062-native-observation-transport.md) fixes native transport;
+[ADR 0063](../adr/0063-real-input-observation-budget.md) guards real inputs.
+Hosted cause remains unresolved: pre-expression waits reach hundreds of ms;
+three approved batches are spent. The [handle-free pair](../research/2026-10-14-handle-free-query-probe.md)
+fails both arms; the [eval-lookup pair](../research/2026-10-14-public-eval-lookup-probe.md)
+passes with added setup but loses the stall. The [held prototype](../research/2026-10-13-webkit-temporal-probe.md)
+lacks attachment/containment/export guarantees; no profiler collection occurred.
+The owner's latest direction defers A/B to after the next release, not a claimed
+fix. Implement P/R, the explicit D4 disposition and fresh C-F gates; owner UI
+acceptance remains mandatory. No new CI diagnosis is authorized by this revision.

@@ -27,6 +27,21 @@ Normalized synchronization retires an old missing key only when a current parser
 owned generation proves the same path, nonzero device/inode and header digest.
 Preserve its facts as superseded with a content-free relocation receipt; genuinely
 missing files are still retained. New keys must not count both old and new facts.
+The replacement must cover the old captured offset and match its bounded head
+and boundary fingerprints under a stable source stat; a matching header alone
+does not retire a truncated or changed tail.
+
+Range, task, parent-identity and transition queries accept canonical physical
+page owners as well as logical-root owners. Ownership promotion and duplicate
+selection use the checkpoint's physical identity, including fallback-key mirrors.
+Normalized synchronization skips a proven page mirror only when its canonical
+physical owner covers its captured prefix under the same guards. Existing mirror
+facts are retained as superseded with a reason receipt, never deleted. This is
+not authority to merge different physical branches or divergent historical facts.
+Both the current mirror checkpoint and any older trusted generation must fit
+within the canonical owner's captured extent and match one stable file snapshot.
+Compare hashes at their own recorded offsets; small appends legitimately change
+a whole-file head digest even though the earlier prefix is unchanged.
 
 Resolve a baseline only through a caller-supplied frozen owned inventory. Never
 interpret metadata as permission to discover or open an arbitrary path. Validate
@@ -81,6 +96,9 @@ sources remain pending; failures rotate behind older pending work. Successful an
 failed historical reads contribute to work accounting. Existing primary source
 parse budgets remain separate and unchanged. Warm reusable/append paths do not
 read inherited history.
+Every permitted full-parse fallback reserves for a possible changed-header
+reference, even when the cached header had no base. Deferred fallback paths do
+not inherit that reservation because they cannot perform the history read.
 
 ## Alternatives And Consequences
 
@@ -109,6 +127,15 @@ a disposable snapshot, verify a private coherent backup and rollback, then apply
 only approved facts/cache changes under source/revision checks. Raw logs and
 official quota readings remain untouched. No current implementation is authority
 to mutate a live ledger or claim corrected historical totals by itself.
+
+Open qualification issue: **replica prefix authority**. A synthetic root consuming
+100, an active page consuming 50 and a longer archived replica consuming 100 have
+200 unique consumed tokens. Current storage-priority ownership selects 150 in
+the cache and normalizes 250 when the longer replica cannot be skipped. No file
+error is emitted. Resolve canonical ownership from verified captured-prefix
+coverage, including partial/appended/missing copies, before release; never select
+by token magnitude or discard the longer replica's genuine suffix. Existing
+retirement guards prevent its loss but do not yet reconcile this overlap.
 
 Regressions cover repeated/advanced counters, ordinary sessions, missing/history
 conflicts, chunked checkpoints, quota-only rows before/after opening, continued

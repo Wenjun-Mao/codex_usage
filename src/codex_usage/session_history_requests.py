@@ -31,8 +31,9 @@ def prepare_history_requests(inventory, requests, cached_rows):
         if metadata is not None:
             metadata_by_path[request.path] = metadata
         can_resolve = checkpoint is None or not request.defer_full_fallback or checkpoint.state.root_metadata is None
+        possible_full_fallback = checkpoint is not None and not request.defer_full_fallback
         reserve = HISTORY_READ_BUDGET if (request.size_bytes and can_resolve
-            and (metadata is None or metadata.history_base is not None)) else 0
+            and (metadata is None or metadata.history_base is not None or possible_full_fallback)) else 0
         if remaining < reserve:
             continue
         remaining -= reserve

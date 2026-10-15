@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from codex_usage.session_cache_generations import rekey_file_generation
 from codex_usage.session_inventory import SessionFileInventoryEntry
-from codex_usage.session_history import PAGE_KEY_PREFIX
+from codex_usage.session_cache_source_identity import cached_source_identity
 
 
 def is_reusable(
@@ -48,30 +48,28 @@ def promote_cached_session_owners(
     Inventory discovery deliberately begins with path-based keys so duplicate
     active/archive JSONL files can coexist. Once both complete generations are
     cached, an ownership handoff can be resolved without reopening either file:
-    the complete winner is moved to its session-id key in this transaction.
+    the complete winner is moved to its physical source key in this transaction.
     """
-    current_by_session_id: dict[str, list[int]] = {}
+    current_by_source: dict[str, list[int]] = {}
     for index, entry in enumerate(inventory):
-        if entry.file_key.startswith(PAGE_KEY_PREFIX):
-            continue
         cached = cached_rows.get(entry.file_key)
-        session_id = _complete_cached_session_id(connection, entry.file_key, cached)
-        if session_id:
-            current_by_session_id.setdefault(session_id, []).append(index)
+        source_key = cached_source_identity(connection, entry, cached)
+        if source_key:
+            current_by_source.setdefault(source_key, []).append(index)
 
     affected_task_ids: set[str] = set()
-    for session_id, indexes in current_by_session_id.items():
+    for source_key, indexes in current_by_source.items():
         winner_index = min(indexes, key=lambda index: entry_priority(inventory[index]))
         winner = inventory[winner_index]
         winner_cached = cached_rows[winner.file_key]
-        if winner.file_key == session_id or not is_reusable(
+        if winner.file_key == source_key or not is_reusable(
             winner, winner_cached, rebuilt=rebuilt
         ):
             continue
 
         canonical_entry = replace(
             winner,
-            file_key=session_id,
+            file_key=source_key,
             file_key_is_fallback=False,
         )
         affected_task_ids.update(
@@ -79,22 +77,3 @@ def promote_cached_session_owners(
         )
         inventory[winner_index] = canonical_entry
     return affected_task_ids
-
-
-def _complete_cached_session_id(
-    connection: sqlite3.Connection,
-    file_key: str,
-    cached: sqlite3.Row | None,
-) -> str:
-    if cached is None or not cached["session_id"]:
-        return ""
-    session_id = str(cached["session_id"])
-    metadata = connection.execute(
-        """
-        select 1
-        from session_metadata
-        where file_key = ? and session_id = ? and is_missing = 0
-        """,
-        (file_key, session_id),
-    ).fetchone()
-    return session_id if metadata is not None else ""

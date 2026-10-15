@@ -2,6 +2,7 @@
 from datetime import UTC
 
 from codex_usage.session_cache_queries import row_to_usage_record
+from codex_usage.session_cache_source_identity import owner_predicate
 
 
 def load_transition_predecessors(connection, observations):
@@ -15,18 +16,18 @@ def load_transition_predecessors(connection, observations):
     for task, timestamp in sorted(origins):
         bound = int(timestamp.astimezone(UTC).timestamp() * 1_000_000)
         while True:
-            row = connection.execute("""
+            row = connection.execute(f"""
                 select r.timestamp_us from usage_records r
                 join files f using(file_key)
-                where r.session_id=? and r.timestamp_us<=? and f.file_key=f.session_id
+                where r.session_id=? and r.timestamp_us<=? and {owner_predicate('f')}
                 order by r.timestamp_us desc limit 1
             """, (task, bound)).fetchone()
             if row is None:
                 break
             stamp = row[0]
-            ties = connection.execute("""
+            ties = connection.execute(f"""
                 select r.* from usage_records r join files f using(file_key)
-                where r.session_id=? and r.timestamp_us=? and f.file_key=f.session_id
+                where r.session_id=? and r.timestamp_us=? and {owner_predicate('f')}
                 order by r.file_key, r.record_index
             """, (task, stamp)).fetchall()
             eligible = []

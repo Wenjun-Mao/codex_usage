@@ -16,6 +16,7 @@ from codex_usage.session_parser_safety import digest_range
 from codex_usage.session_row_relevance import CHECKPOINT_DIGEST_BYTES
 from codex_usage.speed_store import synchronize_speed
 from codex_usage.ledger_source_relocations import retire_relocated_generations
+from codex_usage.ledger_source_mirrors import skip_proven_page_mirror
 
 
 _NORMALIZED_OWNERSHIP_VERSION = 3
@@ -80,7 +81,12 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
         order by files.file_key
         """
     ).fetchall()
+    rows_by_key = {row["file_key"]: row for row in rows}
     for row in rows:
+        skip, retired = skip_proven_page_mirror(connection, row, rows_by_key)
+        changed |= retired
+        if skip:
+            continue
         source_key = str(row["file_key"])
         if bool(row["is_missing"]) and row["byte_offset"] is None:
             continue

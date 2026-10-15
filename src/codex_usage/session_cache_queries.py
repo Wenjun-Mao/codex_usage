@@ -10,37 +10,38 @@ from codex_usage.aggregation import RangeBounds
 from codex_usage.models import TokenUsage, UsageRecord, parse_usage_role
 from codex_usage.parser import parse_timestamp
 from codex_usage.session_generation_models import RawRepoPathCandidate
+from codex_usage.session_cache_source_identity import owner_predicate
 
 _MAX_IN_QUERY_IDS = 500
 _RANGE_QUERY_SQL = {
-    "all": """
+    "all": f"""
         select usage_records.*
         from usage_records
         join files on files.file_key = usage_records.file_key
-        where files.file_key = files.session_id
+        where {owner_predicate()}
         order by usage_records.file_key, usage_records.record_index
     """,
-    "start": """
+    "start": f"""
         select usage_records.*
         from usage_records
         join files on files.file_key = usage_records.file_key
-        where files.file_key = files.session_id
+        where {owner_predicate()}
             and usage_records.timestamp_us >= ?
         order by usage_records.file_key, usage_records.record_index
     """,
-    "end": """
+    "end": f"""
         select usage_records.*
         from usage_records
         join files on files.file_key = usage_records.file_key
-        where files.file_key = files.session_id
+        where {owner_predicate()}
             and usage_records.timestamp_us < ?
         order by usage_records.file_key, usage_records.record_index
     """,
-    "bounded": """
+    "bounded": f"""
         select usage_records.*
         from usage_records
         join files on files.file_key = usage_records.file_key
-        where files.file_key = files.session_id
+        where {owner_predicate()}
             and usage_records.timestamp_us >= ?
             and usage_records.timestamp_us < ?
         order by usage_records.file_key, usage_records.record_index
@@ -123,7 +124,7 @@ def load_parent_identity_records(
             from usage_records
             join files on files.file_key = usage_records.file_key
             where usage_records.session_id in ({placeholders})
-                and files.file_key = files.session_id
+                and {owner_predicate()}
                 and usage_records.git_repository_url != ''
             order by usage_records.session_id, usage_records.file_key,
                 usage_records.record_index
@@ -166,11 +167,11 @@ def load_all_raw_candidates(
     connection: sqlite3.Connection,
 ) -> list[RawRepoPathCandidate]:
     rows = connection.execute(
-        """
+        f"""
         select transition_candidates.*
         from transition_candidates
         join files on files.file_key = transition_candidates.file_key
-        where files.file_key = files.session_id
+        where {owner_predicate()}
         order by transition_candidates.file_key, transition_candidates.candidate_index
         """
     )
@@ -264,7 +265,7 @@ def _query_current_generation_rows_in_chunks(
                 from {table}
                 join files on files.file_key = {table}.file_key
                 where {table}.{column} in ({placeholders})
-                    and files.file_key = files.session_id
+                    and {owner_predicate()}
                 order by {table}.file_key, {table}.{index_column}
                 """,
                 task_id_chunk,

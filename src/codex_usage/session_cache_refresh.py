@@ -68,6 +68,7 @@ def refresh_files(
     max_total_parse_bytes: int | None = None,
     defer_full_fallback: bool = False,
     preferred_paths: tuple[str, ...] = (),
+    history_inventory: list[SessionFileInventoryEntry] | None = None,
 ) -> CacheRefreshOutcome:
     cached_rows = _load_cached_rows(connection)
     _reconcile_fallback_file_keys(inventory, cached_rows)
@@ -125,7 +126,11 @@ def refresh_files(
         max_total_parse_bytes=max_total_parse_bytes,
         max_parse_bytes=max_parse_bytes,
     )
-    requests, history_metadata_bytes = prepare_history_requests(inventory, requests, refreshed_rows)
+    requests, history_metadata_bytes = prepare_history_requests(
+        history_inventory if history_inventory is not None else inventory,
+        requests,
+        refreshed_rows,
+    )
 
     worker_spans: list[WorkerSpan] = []
     all_results: list[UsageParseResult] = []
@@ -163,7 +168,7 @@ def refresh_files(
             file_errors += sum(bool(result.error) for result in results)
 
     _dedupe_inventory_by_cached_session_id(
-        inventory, _load_cached_rows(connection)
+        connection, inventory, _load_cached_rows(connection)
     )
     rebased_project_task_ids = refresh_cached_project_identities(
         connection,
