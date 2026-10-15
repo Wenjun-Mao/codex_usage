@@ -242,12 +242,13 @@ def test_storage_format_change_rebuilds_reports_without_repricing(ledger, monkey
     from codex_usage import allowance_index
     with open_ledger(ledger, read_only=True) as connection:
         costs = [tuple(r) for r in connection.execute("select * from allowance_event_costs order by event_id")]
-    monkeypatch.setattr(allowance_index, "REPORT_CACHE_FORMAT_REVISION", 2)
+    revision = allowance_index.REPORT_CACHE_FORMAT_REVISION + 1
+    monkeypatch.setattr(allowance_index, "REPORT_CACHE_FORMAT_REVISION", revision)
     with patch.object(allowance_index, "estimate_cost", side_effect=AssertionError("Storage format repriced events")):
         assert compare(ledger)[1]
     with open_ledger(ledger, read_only=True) as connection:
         assert [tuple(r) for r in connection.execute("select * from allowance_event_costs order by event_id")] == costs
-        assert all(":cache-format-2" in r[0] for r in connection.execute("select pricing_revision from allowance_report_cache"))
+        assert all(f":cache-format-{revision}" in r[0] for r in connection.execute("select pricing_revision from allowance_report_cache"))
 
 
 def test_failed_build_rolls_back_reuse_and_retains_invalidation(ledger):

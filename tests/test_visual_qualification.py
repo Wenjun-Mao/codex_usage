@@ -18,7 +18,7 @@ def evidence(suite):
 
 
 @pytest.mark.parametrize("suite,count", [("breakdown", 720), ("speed", 162),
-    ("overlay", 90), ("hover", 72), ("allowance", 216), ("screenshots", 15), ("economics", 18)])
+    ("overlay", 90), ("hover", 72), ("allowance", 252), ("screenshots", 15), ("economics", 18)])
 def test_independent_complete_tuple_inventory(suite, count):
     sample = evidence(suite)
     assert len(sample["completed"]) == count
@@ -46,6 +46,17 @@ def test_same_count_or_partial_evidence_cannot_qualify(change):
         sample["schema"] = 2
     with pytest.raises(ValueError):
         validate_inventory(sample, "hover")
+
+
+def test_period_history_cases_are_mandatory_not_optional_supplemental_receipts():
+    sample = evidence("allowance")
+    period = [case for case in sample["completed"] if case["scenario"] in cases.PERIOD_HISTORY_STATES]
+    assert len(period) == 36
+    assert {case["engine"] for case in period} == set(cases.ENGINES)
+    assert {case["width"] for case in period} == set(cases.WIDTHS)
+    sample["completed"].remove(period[0])
+    with pytest.raises(ValueError, match="case mismatch"):
+        validate_inventory(sample, "allowance")
 
 
 def test_failure_keeps_original_exception_current_and_completed_cases(tmp_path):

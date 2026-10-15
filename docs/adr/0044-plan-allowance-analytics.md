@@ -175,7 +175,15 @@ from fitted windows; silently joining uncertain suffixes under a shared deadline
 These either change monetary facts or hide unsupported evidence.
 
 **Consequences and guardrails:** report revision 7 invalidates older derived
-payloads; HTML revision 36 invalidates old presentation. The existing cache key
+payloads; HTML revision 36 invalidates old presentation. Cache format 2 stores a
+single canonical capture pool and window point indices, rather than serializing
+raw dictionaries both in windows and `display_history`. Decode restores exact
+window dictionaries with point objects shared with the display capture pool.
+Format 1 wrapped reports and older unwrapped reports remain readable; invalid,
+duplicate, out-of-range, boolean and multiply stored references are rejected.
+A 12,000-capture payload guard requires exactly one serialized dictionary per
+capture and bounds size relative to the former single-copy window format.
+The existing cache key
 couples report revision to historical fit reuse, so upgrading incurs one refit,
 not repricing unchanged events. Warm report/HTML paths do not regroup, reload raw
 evidence, refit or reprice. Synthetic ambiguity/identity/local-DST/rendering tests,
@@ -183,6 +191,26 @@ numerical parity, single-load and existing warm-cache tests guard the distinctio
 Legacy payload rendering remains readable; newly materialized reports always use
 the period-first contract. Full-dashboard human acceptance remains separate from
 synthetic layout verification.
+
+R layout qualification belongs to the mandatory allowance browser unit, not
+conditionally skipped pytest cases. Named `period-history` and
+`period-history-dense` scenarios cover Chromium, WebKit and Firefox, Day/Night,
+and 1440/760/360px widths (36 added identities, 252 allowance identities total),
+with production rendering, keyboard disclosure, capture/fit inspection, local
+DST evidence and screenshots. Missing R cases fail the independent inventory.
+
+**Open release gap: historical access.** The first R renderer truncates older
+periods, uncertain fragments and independent fits. Full counts and cached
+evidence are not an inspection path. Integration remains held until a supported
+access contract is accepted and implemented. The script-free allowance view has
+no issued history action; chart/breakdown actions cannot accept allowance state.
+The minimal bounded proposal is a new issued allowance-history action, pinned to
+the report/evidence scope, with validated period/fragment, fit and capture-page
+indices, rendered from the already cached report without source loads, refits
+or repricing. This requires explicit host/extension scope expansion before code.
+An alternative compact native older-history disclosure could retain all period
+and fit metadata without old capture tables, but has linear DOM growth and no
+old exact-capture access; it is not equivalent to bounded lazy pagination.
 
 Observation details distinguish **Live probe**, **Task snapshot**, and
 **Recovered task snapshot** from the stored provenance, retaining all applicable

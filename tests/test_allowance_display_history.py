@@ -114,7 +114,8 @@ def test_multiple_buckets_current_requires_exact_anchor_not_ongoing_fit():
 
 def test_same_time_conflicts_retained_and_cross_boundary_fit_owned_once():
     points = [point(0), point(1, 20), point(1, 25), point(2, 30)]
-    windows = [{"points": [p.to_dict() for p in (points[0], points[1], points[-1])],
+    windows = [{"points": [dict(p.to_dict(), provenance="Live probe, Task snapshot")
+                           for p in (points[0], points[1], points[-1])],
                 "estimate": {"value": 123.456}}]
     original = deepcopy(windows)
     result = grouped(points, windows)

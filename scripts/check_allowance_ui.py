@@ -11,6 +11,7 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 from allowance_fixture import allowance_fixture
+from check_allowance_period_ui import check_period_matrix
 from codex_usage.allowance_queries import allowance_history
 from codex_usage.report_allowance import (
     allowance_css,
@@ -377,6 +378,7 @@ def main():
             try:
                 page = browser.new_page(java_script_enabled=False)
                 total += _check_report_matrix(page, browser_name, audit)
+                total += check_period_matrix(page, browser_name, audit, _document)
                 _check_meter_visuals(page, browser_name, audit)
             finally:
                 browser.close()

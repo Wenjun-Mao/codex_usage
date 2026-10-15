@@ -22,6 +22,7 @@ ALLOWANCE_STATES = (
     "qualified", "previous-window", "stale", "unavailable", "partial",
     "multi-bucket", "insufficient", "credits-stale", "credits-unlimited", "credits-missing",
 )
+PERIOD_HISTORY_STATES = ("period-history", "period-history-dense")
 ASSERTIONS = {
     "breakdown": ("script-disabled", "section-controls-fit", "fixed-visible-axes",
         "axis-glyph-containment", "dated-mark-inspection", "issued-command-links",
@@ -35,7 +36,9 @@ ASSERTIONS = {
         "readable-values", "issued-links", "tooltip-containment", "hover-hide-250ms",
         "keyboard-focus-250ms", "tab-order", "account-hit-test"),
     "allowance": ("script-disabled", "content-states", "layout", "keyboard-details",
-        "native-meter-semantics", "theme-contrast", "painted-meter-pixels"),
+        "native-meter-semantics", "theme-contrast", "painted-meter-pixels",
+        "period-history-local-dst", "uncertain-capture-provenance", "cross-boundary-fit-details",
+        "bounded-capture-tables", "period-keyboard-disclosures", "period-theme-layout"),
     "screenshots": ("synthetic-private-markers", "no-script-elements", "theme-layout",
         "real-controls-tooltips", "capture-validation"),
     "economics": ("script-disabled", "per-model-metrics", "bounded-display-precision",
@@ -78,7 +81,8 @@ def expected_cases(suite):
                 THEMES, ((1440, False), (760, False), (360, False), (1440, True)))]
         return cases + [identity(e, "converging", t, w) for e, t, w in product(ENGINES, THEMES, WIDTHS)]
     elif suite == "allowance":
-        cases = [identity(e, s, t, w) for e, s, t, w in product(ENGINES, ALLOWANCE_STATES, THEMES, WIDTHS)]
+        cases = [identity(e, s, t, w) for e, s, t, w in product(ENGINES,
+            ALLOWANCE_STATES + PERIOD_HISTORY_STATES, THEMES, WIDTHS)]
         return cases + [identity(e, "meter", t, 360, used=used)
             for e, t, used in product(ENGINES, (*THEMES, "vscode"), (0, 17, 83, 100))]
     elif suite == "screenshots":
