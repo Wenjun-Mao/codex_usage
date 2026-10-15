@@ -126,16 +126,63 @@ Capture does not infer a replacement percentage from token totals or synthesize
 missing history. Renderer changes advance the report-render revision so cached
 HTML receives the freshness label.
 Probe timestamps, recovery counts, fit diagnostics, and allowance history stay
-in one collapsed diagnostics disclosure. History includes valid priced fits
-from ongoing, completed, and plan-change-ended windows, including provisional
-fits, sorted newest first across series. Each row identifies its series,
-observation dates, current/completed/ended status, confidence, percentage span,
-bins, and local ledger coverage. It shows at most the latest 12 valid priced
-windows and gives the full count; individual reset windows remain available
-below. Capture tables
-show at most the latest 100 points per window and disclose the full count. The
+in one collapsed diagnostics disclosure. History presents raw-evidence-backed
+observed periods, newest first, separately from the monetary fit windows.
+Capture tables show at most the latest 100 points per period/fragment and disclose
+the full count. The
 economic summary is unframed and uses a subtle divider. Report interactions
 derive data only from the ledger and never probe or open JSONLs.
+
+### Period-First Display Contract (R)
+
+**Problem:** monetary segmentation is conservative about meter drops, omits
+some same-time conflicts, and the former history selected only valid priced fits.
+Neither estimator windows nor valid-fit history is authority for subscription
+period identity. Repeating them as reset rows overstated that authority.
+
+**Decision:** build a separate `display_history` from the request-local
+`AllowancePreparation.raw`, retaining distinct exact captures and all loaded
+provenance. Period/uncertain rows reference capture indices and untouched fit
+indices; codec validation requires exactly one owner for every capture and fit.
+No raw schema, source reads, monetary segmentation, numeric fit, headline,
+pace selection, confidence, or price facts change.
+
+Compatible limit, plan and duration evidence defines display continuity. Slots
+are transport metadata. Missing plans may resolve to compatible known endpoints,
+but never bridge different known plans; plan changes apply across durations for
+the same limit. Scheduled deadline crossings with an advanced deadline, and
+banked reset-credit decreases, support separate periods, including early resets.
+Exact reset timestamps are not identity. Material unsupported drops, deadline
+rebases and conflicting readings start uncertain fragments; subsequent compatible
+readings do not remove uncertainty without supported boundary/identity evidence.
+Initial coverage is left-censored: no duration-subtracted or actual start is
+invented. Only the exact active-series capture anchor can mark a period current.
+Unanchored open coverage is labeled last observed, not current or ended.
+Unsupported boundaries end coherent observed coverage, labeled `Coverage ended`,
+not a proven reset period.
+
+Render at most 12 periods and one collapsed `Uncertain readings (N)` group
+(N is its full distinct-capture count), with at most 12 uncertain fragments.
+Each includes local observed dates, full counts, boundary reasons and bounded
+exact captures, including raw plans, durations, reset credits and provenance.
+Independent fits are nested details (at most 12 per owner); fits spanning display
+barriers appear once in uncertain/cross-boundary detail, never split, averaged,
+summed, duplicated as period values, or promoted in confidence. Omitted counts
+remain visible and complete capture/fit evidence remains in the derived report.
+
+**Rejected:** changing estimator segmentation to match display; deriving display
+from fitted windows; silently joining uncertain suffixes under a shared deadline.
+These either change monetary facts or hide unsupported evidence.
+
+**Consequences and guardrails:** report revision 7 invalidates older derived
+payloads; HTML revision 36 invalidates old presentation. The existing cache key
+couples report revision to historical fit reuse, so upgrading incurs one refit,
+not repricing unchanged events. Warm report/HTML paths do not regroup, reload raw
+evidence, refit or reprice. Synthetic ambiguity/identity/local-DST/rendering tests,
+numerical parity, single-load and existing warm-cache tests guard the distinction.
+Legacy payload rendering remains readable; newly materialized reports always use
+the period-first contract. Full-dashboard human acceptance remains separate from
+synthetic layout verification.
 
 Observation details distinguish **Live probe**, **Task snapshot**, and
 **Recovered task snapshot** from the stored provenance, retaining all applicable

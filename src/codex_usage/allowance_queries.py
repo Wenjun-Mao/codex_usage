@@ -119,9 +119,11 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
                for bucket in status["active_buckets"]]
     prepared = preparation.pace({(p.limit_id, p.duration_minutes) for p in anchors}) if anchors else None
     paces = [fit_paces(prepared, anchor) for anchor in anchors]
+    from codex_usage.allowance_display_history import display_history
     if not points:
         return {"status": status, "credits": credits, "paces": paces, "windows": [], "qualified": [], "headline": None,
-                "headline_previous": False, "history": []}
+                "headline_previous": False, "history": [],
+                "display_history": display_history(points, provenance, [], anchors)}
     times, costs, unpriced = [], [0.0], [0]
     for timestamp, cost, unpriced_tokens in priced_events:
         times.append(timestamp)
@@ -152,6 +154,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
         "qualified": qualified, "headline": headline,
         "headline_previous": headline is not None and headline is not latest,
         "history": allowance_history(windows),
+        "display_history": display_history(points, provenance, windows, anchors),
     }
 
 

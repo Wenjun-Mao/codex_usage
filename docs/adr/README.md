@@ -56,7 +56,7 @@ The custom calendar-range and ledger-only Agent Activity contract is recorded in
 The project-turn economics and reported cache-write telemetry contract is recorded in [ADR 0042](0042-project-economics-and-cache-write-telemetry.md).
 The independent image-generation accounting and bounded historical-recovery contract is recorded in [ADR 0043](0043-image-generation-accounting.md).
 
-- [0044: Observed Plan Allowance Analytics](0044-plan-allowance-analytics.md)
+- [0044: Observed Plan Allowance Analytics](0044-plan-allowance-analytics.md), including period-first display evidence separate from monetary fits.
 - [0045: Guard-Verified Ledger Generations](0045-guard-verified-ledger-generations.md)
 - [0046: Model Category Valuations And Standard Credit Estimates](0046-model-category-valuations-and-standard-credits.md)
 

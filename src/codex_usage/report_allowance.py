@@ -171,7 +171,7 @@ def _observation_time(timestamp, timezone):
     return f'<time datetime="{text(iso)}" title="UTC: {text(utc)}">{text(display)}</time>'
 
 
-def _observation_row(point, timezone):
+def _observation_row(point, timezone, *, full=False):
     source = point.get("provenance", "Unknown source")
     iso, observed = _local_observation(point["timestamp"], timezone, detailed=True)
     observed_title = (
@@ -183,9 +183,13 @@ def _observation_row(point, timezone):
         reset_cell = f'<td title="Unix seconds: {text(reset)}">{text(reset_display)}</td>'
     else:
         reset_cell = '<td>Unavailable</td>'
+    metadata = (f'<td>{text(point["plan"] or "Unknown plan")}</td>'
+                f'<td>{text(point["duration_minutes"])}</td>'
+                f'<td>{text(point["reset_credits"] if point["reset_credits"] is not None else "Unavailable")}</td>'
+                if full else "")
     return (
         f'<tr><td{observed_title}>{text(observed)}</td><td>{point["used_percent"]!r}%</td>'
-        f'<td>{text(point["slot"])} · {text(source)}</td>{reset_cell}</tr>'
+        f'<td>{text(point["slot"])} · {text(source)}</td>{reset_cell}{metadata}</tr>'
     )
 
 
@@ -247,7 +251,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
         )
     qualified = report["qualified"]
     details = []
-    for window in reversed(report["windows"]):
+    for window in reversed(report["windows"] if "display_history" not in report else []):
         estimate = window["estimate"]
         provisional = " allowance-provisional" if not window["completed"] else ""
         shown_points = window["points"][-100:]
@@ -293,6 +297,19 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
     qualified_context = (f'<p>Earlier qualified estimates (latest {len(shown_qualified)} of '
                          f'{len(older_qualified)}; all reset windows below):</p><ul>{qualified_items}</ul>'
                          if older_qualified else '<p>No earlier qualified completed estimate.</p>')
+    history_markup = _history_html(history)
+    if "display_history" in report:
+        from codex_usage.report_allowance_history import period_history
+        history_markup = period_history(report, timezone)
+        qualified_context = ""
+    capture_details = ("".join(details) or "<p>No observations captured yet.</p>"
+                       if "display_history" not in report else "")
+    balance_details = credit_details(credits, report.get("credits", {}),
+                                    lambda stamp: _observation_time(stamp, timezone))
+    extra_details = (f'<details><summary>Reset windows and capture details</summary>{balance_details}'
+                     f'{qualified_context}{capture_details}</details>' if "display_history" not in report else "")
+    if "display_history" in report:
+        history_markup += balance_details
     return (
         '<section class="card plan-allowance" id="plan-allowance" aria-labelledby="plan-allowance-title">'
         '<div class="allowance-heading"><h2 id="plan-allowance-title">Plan Allowance</h2>'
@@ -313,11 +330,8 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None):
         f'<p>Bounded recovered history: {recovery["complete"]} sources checked, '
         f'{recovery["pending"]} pending, {recovery["unavailable"]} unavailable. Endpoint sampling is partial.</p>'
         f'<p>Account lifetime tokens (coverage diagnostic only): {text(status["lifetime_tokens"] if status["lifetime_tokens"] is not None else "Unavailable")}</p>'
-        f'{_history_html(history)}</details>'
-        '<details><summary>Reset windows and capture details</summary>'
-        f'{credit_details(credits, report.get("credits", {}), lambda stamp: _observation_time(stamp, timezone))}'
-        f'{qualified_context}'
-        f'{"".join(details) or "<p>No observations captured yet.</p>"}</details></section>'
+        f'{history_markup}</details>'
+        f'{extra_details}</section>'
     )
 
 

@@ -269,7 +269,8 @@ def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_
     assert [p["plan"] for p in report["windows"][0]["points"]] == [p.plan for p in points]
     with open_ledger(ledger) as connection:
         assert {r[0] for r in connection.execute("select pricing_revision from allowance_report_cache")} == {
-            "p1:allowance-index-2:report-6:cache-format-1", "p1:allowance-index-2:report-6:cache-format-1:pace-state"}
+            f"p1:allowance-index-2:report-{allowance_index.ALLOWANCE_REPORT_REVISION}:cache-format-1",
+            f"p1:allowance-index-2:report-{allowance_index.ALLOWANCE_REPORT_REVISION}:cache-format-1:pace-state"}
 
     # Use independent synthetic cumulative costs to exercise headline selection.
     from codex_usage.allowance_queries import _build_from_costs
