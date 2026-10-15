@@ -90,6 +90,11 @@ export class AgentSupervisor {
     }
     const current = await this.codexHome();
     if (samePath(current, target)) return this.acquire();
+    try {
+      await this.discover(target);
+    } catch (error) {
+      if (!(error instanceof AgentUnavailableError)) throw error;
+    }
     await this.stopOrRejectCurrentCollector(current);
     await this.runControl(["--set-codex-home", target]);
     return this.acquire();

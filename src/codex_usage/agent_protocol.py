@@ -17,6 +17,7 @@ from codex_usage.agent_private_files import (
 
 
 AGENT_API_VERSION = 1
+ACCOUNTING_CAPABILITY = "physical-lineage-accounting-v1"
 MAX_API_REQUEST_BYTES = 2 * 1024 * 1024
 _PROCESS_OWNERS = frozenset({"background", "transient", "unknown"})
 _LAUNCH_ID = re.compile(r"[0-9a-f]{48}\Z")
@@ -30,8 +31,8 @@ class AgentDescriptor:
     token: str
     started_at: str
     codex_home: str
-    # Older collectors did not declare their lifetime. Clients may connect to
-    # them, but must not infer that they are safe to stop.
+    # Lifetime metadata grants neither accounting compatibility nor permission
+    # to stop a collector owned by another client.
     process_owner: str = "unknown"
     parent_pid: int | None = None
     launch_id: str | None = None

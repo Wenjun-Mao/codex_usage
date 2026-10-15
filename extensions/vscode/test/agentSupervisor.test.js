@@ -254,7 +254,8 @@ test("changing CODEX_HOME validates before persisting the selected home", async 
     settingsFile: "/tmp/codex-usage-agent-settings.json",
     getCodexHome: async () => storedHome,
     resolveExecutable: async () => "/tmp/codex-usage-agent",
-    discover: async () => {
+    discover: async (home) => {
+      if (home === requestedHome && storedHome !== requestedHome) throw new AgentUnavailableError("no destination collector");
       discoveries += 1;
       if (discoveries === 1) throw new AgentUnavailableError("missing descriptor");
       return client;

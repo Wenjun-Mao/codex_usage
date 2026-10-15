@@ -4,6 +4,7 @@ import * as os from "os";
 import * as path from "path";
 
 const API_VERSION = 1;
+const ACCOUNTING_CAPABILITY = "physical-lineage-accounting-v1";
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
@@ -26,6 +27,13 @@ export class AgentUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "AgentUnavailableError";
+  }
+}
+
+export class AgentIncompatibleError extends Error {
+  constructor() {
+    super("The running collector lacks compatible accounting support. Update or stop it from its owning client, then reopen the dashboard.");
+    this.name = "AgentIncompatibleError";
   }
 }
 
@@ -95,14 +103,23 @@ export class AgentClient {
   }
 
   private async refreshDescriptor(): Promise<void> {
-    this.descriptor = await readDescriptor(this.descriptorPath, this.descriptor.codex_home);
-    await this.verifyHealth();
+    const descriptor = await readDescriptor(this.descriptorPath, this.descriptor.codex_home);
+    const replacement = new AgentClient(descriptor, this.descriptorPath);
+    await replacement.verifyHealth();
+    this.descriptor = descriptor;
   }
 
   private async verifyHealth(): Promise<void> {
-    const health = await this.request<{ api_version: number; ok: boolean }>("GET", "/v1/health", undefined, 2_000);
-    if (!health.ok || health.api_version !== API_VERSION) {
-      throw new AgentUnavailableError("Collector API is unavailable or incompatible.");
+    const health = await this.request<unknown>("GET", "/v1/health", undefined, 2_000);
+    if (!isRecord(health) || health.ok !== true) {
+      throw new AgentUnavailableError("Collector API is unavailable.");
+    }
+    if (health.api_version !== API_VERSION || !Array.isArray(health.capabilities)
+      || !health.capabilities.every(value => typeof value === "string")
+      || !health.capabilities.includes(ACCOUNTING_CAPABILITY)) {
+      // Incompatibility is not unavailability: the supervisor must not launch
+      // another writer or change settings when an older collector is healthy.
+      throw new AgentIncompatibleError();
     }
   }
 
@@ -200,9 +217,10 @@ export function samePath(
 }
 
 function parseDescriptor(value: unknown): AgentDescriptor {
-  if (!isRecord(value) || typeof value.pid !== "number" || !Number.isInteger(value.pid) || value.pid < 1 || value.api_version !== API_VERSION || typeof value.port !== "number" || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 || typeof value.token !== "string" || value.token.length < 32 || typeof value.codex_home !== "string") {
+  if (!isRecord(value) || typeof value.pid !== "number" || !Number.isInteger(value.pid) || value.pid < 1 || typeof value.api_version !== "number" || !Number.isInteger(value.api_version) || value.api_version < 1 || typeof value.port !== "number" || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535 || typeof value.token !== "string" || value.token.length < 32 || typeof value.codex_home !== "string") {
     throw new Error("descriptor has invalid connection details");
   }
+  if (value.api_version !== API_VERSION) throw new AgentIncompatibleError();
   const processOwner = value.process_owner;
   const parentPid = value.parent_pid;
   const launchId = value.launch_id;
@@ -239,6 +257,7 @@ async function readDescriptor(descriptorPath: string, codexHome: string): Promis
   try {
     descriptor = parseDescriptor(JSON.parse(await fs.readFile(descriptorPath, "utf8")));
   } catch (error) {
+    if (error instanceof AgentIncompatibleError) throw error;
     throw new AgentUnavailableError(`Collector descriptor unavailable: ${errorMessage(error)}`);
   }
   if (!samePath(descriptor.codex_home, codexHome)) {

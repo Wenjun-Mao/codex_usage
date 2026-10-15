@@ -18,7 +18,7 @@ test("authenticated transport recovers pruned R1 scope under cached R1 status; m
     assert.equal(request.headers.authorization, `Bearer ${token}`);
     const query = new URL(request.url, "http://localhost");
     response.setHeader("Content-Type", "application/json");
-    if (query.pathname === "/v1/health") return response.end(JSON.stringify({ ok: true, api_version: 1 }));
+    if (query.pathname === "/v1/health") return response.end(JSON.stringify({ ok: true, api_version: 1, capabilities: ["physical-lineage-accounting-v1"] }));
     calls.push(request.url);
     const sent = query.searchParams.get("breakdown_action");
     if (!sent) return response.end(JSON.stringify(r2));

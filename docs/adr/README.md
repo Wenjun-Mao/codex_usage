@@ -78,3 +78,5 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0062: Native Observation Transport](0062-native-observation-transport.md)
 - [0063: Real Input Observation Budget](0063-real-input-observation-budget.md)
 - [0064: Paginated Session Accounting](0064-paginated-session-accounting.md)
+- [0065: Retained Accounting Authority](0065-retained-accounting-authority.md)
+- [0066: Accounting Capability Handshake](0066-accounting-capability-handshake.md)

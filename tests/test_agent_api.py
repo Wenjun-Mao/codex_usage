@@ -6,13 +6,17 @@ import json
 import pytest
 
 from codex_usage.agent_api import AgentHttpServer
-from codex_usage.agent_protocol import AGENT_API_VERSION, MAX_API_REQUEST_BYTES
+from codex_usage.agent_protocol import (
+    ACCOUNTING_CAPABILITY,
+    AGENT_API_VERSION,
+    MAX_API_REQUEST_BYTES,
+)
 from codex_usage.companion_contract import CompanionError
 
 
 class _StubAgent:
     def status_payload(self) -> dict[str, object]:
-        return {"ready": True}
+        return {"ready": True, "capabilities": [ACCOUNTING_CAPABILITY]}
 
     def report(self, **kwargs: object) -> object:
         self.report_kwargs = kwargs
@@ -39,6 +43,7 @@ def test_agent_api_requires_bearer_token_and_rejects_browser_origin() -> None:
         )
         assert status == 200
         assert f'"api_version":{AGENT_API_VERSION}' in payload
+        assert json.loads(payload)["capabilities"] == [ACCOUNTING_CAPABILITY]
     finally:
         server.stop()
 

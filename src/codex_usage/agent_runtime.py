@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import threading
 import time
 from collections import deque
@@ -39,15 +38,13 @@ from codex_usage.agent_rebuild import (
     stale_source_keys,
 )
 from codex_usage.agent_schedule import CaptureSchedule
+from codex_usage.agent_status import runtime_status_payload
 from codex_usage.agent_settings import (
     AgentSettings,
     load_agent_settings,
     save_agent_settings,
 )
 from codex_usage.agent_watcher import DirtyPathSet, SessionWatcher
-from codex_usage.ledger_queries import (
-    load_ledger_status,
-)
 from codex_usage.ledger_schema import open_ledger
 
 
@@ -236,29 +233,13 @@ class CodexUsageAgent:
         ).to_dict()
 
     def status_payload(self) -> dict[str, object]:
-        status = load_ledger_status(ledger_database_path(self.codex_home)).to_dict()
-        status.update(
-            {
-                "agent_pid": os.getpid(),
-                "api_version": self.descriptor.api_version,
-                "codex_home": str(self.codex_home),
-                "capture_running": self._capture_is_running(),
-                "next_capture_seconds": self._schedule.seconds_until_due(
-                    self._clock()
-                ),
-                "dirty_paths": len(self._dirty_paths.snapshot()),
-                "capabilities": [
-                    "custom-report-range",
-                    "agent-activity",
-                    "image-generation-accounting",
-                    "observed-output-speed-v1",
-                    "usage-allowance-breakdown-v1",
-                    "plan-allowance",
-                    "private-companion-v1",
-                ],
-            }
+        return runtime_status_payload(
+            self.codex_home,
+            self.descriptor,
+            capture_running=self._capture_is_running(),
+            next_capture_seconds=self._schedule.seconds_until_due(self._clock()),
+            dirty_paths=len(self._dirty_paths.snapshot()),
         )
-        return status
 
     def projects(self) -> list[dict[str, object]]:
         return self._features.projects()

@@ -6,6 +6,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { AgentClient, resolveCodexHome, samePath, settingsFilePath } = require("../out/agentClient");
+const compatibleHealth = { ok: true, api_version: 1, capabilities: ["physical-lineage-accounting-v1"] };
 
 test("settings path and custom Codex home follow the shared contract", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-usage-companion-"));
@@ -35,7 +36,7 @@ test("agent discovery authenticates health and subsequent requests", async (cont
   const server = http.createServer((request, response) => {
     seen.push({ url: request.url, authorization: request.headers.authorization, origin: request.headers.origin });
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify(request.url === "/v1/health" ? { ok: true, api_version: 1 } : { ready: true }));
+    response.end(JSON.stringify(request.url === "/v1/health" ? compatibleHealth : { ready: true }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   context.after(() => server.close());
@@ -65,7 +66,7 @@ test("client rejects request smuggling paths and oversized request bodies", asyn
   await fs.writeFile(path.join(data, "settings.json"), JSON.stringify({ codex_home: home }));
   const server = http.createServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({ ok: true, api_version: 1 }));
+    response.end(JSON.stringify(compatibleHealth));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
@@ -91,7 +92,7 @@ test("read-only requests refresh one replaced descriptor while POST requests nev
 
   const first = http.createServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify(request.url === "/v1/health" ? { ok: true, api_version: 1 } : { stale: true }));
+    response.end(JSON.stringify(request.url === "/v1/health" ? compatibleHealth : { stale: true }));
   });
   await new Promise((resolve) => first.listen(0, "127.0.0.1", resolve));
   await fs.writeFile(descriptorPath, JSON.stringify({
@@ -113,7 +114,7 @@ test("read-only requests refresh one replaced descriptor while POST requests nev
       return;
     }
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify(request.url === "/v1/health" ? { ok: true, api_version: 1 } : { ready: true }));
+    response.end(JSON.stringify(request.url === "/v1/health" ? compatibleHealth : { ready: true }));
   });
   await new Promise((resolve) => second.listen(0, "127.0.0.1", resolve));
   await fs.writeFile(descriptorPath, JSON.stringify({
@@ -132,7 +133,7 @@ test("read-only requests refresh one replaced descriptor while POST requests nev
   const third = http.createServer((request, response) => {
     replayedRequests.push(request.url);
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({ ok: true, api_version: 1 }));
+    response.end(JSON.stringify(compatibleHealth));
   });
   await new Promise((resolve) => third.listen(0, "127.0.0.1", resolve));
   await fs.writeFile(descriptorPath, JSON.stringify({
