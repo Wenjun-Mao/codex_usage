@@ -6,7 +6,7 @@ from zipfile import ZipFile
 from xml.etree import ElementTree
 
 from release_tooling_support import load_tool
-from hover_measurement_fixture import PROCESS, measurements
+from hover_measurement_fixture import PROCESS, hosted_measurements, measurements
 
 policy = load_tool("release.policy")
 archives = load_tool("release.archives")
@@ -35,11 +35,12 @@ def package_bytes(target="darwin-arm64", version="2.12.2"):
         archives.AGENTS[target]: b"collector-" + target.encode()})
 
 
-def visual_evidence(suite):
-    result = {"schema": 1, "suite": suite, "status": "passed", "synthetic_only": True,
+def visual_evidence(suite, *, hover=None):
+    result = {"schema": 2 if suite == "hover" else 1, "suite": suite,
+        "status": "functional-complete" if suite == "hover" else "passed", "synthetic_only": True,
         "assertions": list(cases.ASSERTIONS[suite]), "completed": cases.expected_cases(suite)}
     if suite == "hover":
-        result.update(measurements())
+        result.update(measurements() if hover is None else hover)
     return result
 
 
@@ -50,6 +51,7 @@ class FixtureAPI(GitHub):
         self.source = {"repository": policy.REPOSITORY, "repository_id": 123,
             "sha": "a" * 40, "version": "2.12.2", "contract": "b" * 64,
             "workflow": policy.WORKFLOW, "probe": False}
+        self.hover, self.journal = hosted_measurements(self.source)
         self.run_data = {"id": 77, "run_attempt": 1, "head_sha": self.source["sha"],
             "repository": {"id": 123, "full_name": policy.REPOSITORY}, "head_repository": {"id": 123},
             "event": "workflow_dispatch", "path": policy.WORKFLOW, "head_branch": "main",
@@ -65,7 +67,8 @@ class FixtureAPI(GitHub):
             self.add_gate(gate, self.gate_files(gate))
 
     def reader(self):
-        return Proofs(self, 77, self.run_data["run_attempt"], self.source["contract"], self.source["version"], self.blobs)
+        return Proofs(self, 77, self.run_data["run_attempt"], self.source["contract"], self.source["version"], self.blobs,
+            journal=self.journal)
 
     def contract_tree(self, source_sha):
         assert source_sha == self.source["sha"]
@@ -111,7 +114,7 @@ class FixtureAPI(GitHub):
         suites = load_tool("run_visual_suite").SCRIPTS[gate.removeprefix("visual-")]
         files = {}
         for suite, *_ in suites:
-            files[f"{suite}/verification.json"] = policy.canonical(visual_evidence(suite))
+            files[f"{suite}/verification.json"] = policy.canonical(visual_evidence(suite, hover=self.hover))
             if suite == "hover":
                 files["hover/process.json"] = policy.canonical(PROCESS)
             key = "warm_history_materializations_fits_reprices" if suite == "breakdown" else "warm_monetary_materializations"
@@ -137,10 +140,11 @@ class FixtureAPI(GitHub):
                 package=archives.package_identity(files["package.vsix"], gate.removeprefix("package-"), self.source["version"]))
         payload = zip_bytes({**files, "payload.json": policy.canonical(metadata)})
         uploaded = self.upload(producer.artifact_name("payload", gate, 77, attempt), {"payload.zip": payload})
-        metadata = producer.validate_payload(metadata, files, gate)
+        origin = {"run": 77, "attempt": attempt, "job_name": policy.JOBS[gate],
+            "job_key": "package" if gate.startswith("package-") else "visual" if gate.startswith("visual-") else gate}
+        metadata = producer.validate_payload(metadata, files, gate, origin=origin, journal=self.journal)
         receipt = {"schema": 1, "gate": gate, "source": self.source,
-            "origin": {"run": 77, "attempt": attempt, "job_name": policy.JOBS[gate],
-                "job_key": "package" if gate.startswith("package-") else "visual" if gate.startswith("visual-") else gate},
+            "origin": origin,
             "payload": {"id": uploaded["id"], "digest": uploaded["digest"].removeprefix("sha256:"), "name": uploaded["name"]},
             "manifest": metadata}
         record = self.upload(producer.artifact_name("receipt", gate, 77, attempt), {"receipt.json": policy.canonical(receipt)})

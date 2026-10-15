@@ -1,6 +1,6 @@
 # ADR 0070: Candidate-Bound Hosted Latency Dispositions
 
-Status: Journal/raw-observation foundations implemented; bound deferral and explicit append authority pending.
+Status: Implemented and locally qualified; explicit journal-append authority and hosted C-F qualification pending.
 
 ## Problem
 
@@ -82,8 +82,8 @@ hover, without an extra style read. Missing/duplicate observations, wrong real
 input modality, primed baselines and nonfinite or late values fail. Receipts keep
 only a digest/count/maximum summary; both freeze and hosted inspection reopen
 the raw immutable hover payload and revalidate it, rather than trusting that
-summary. At this checkpoint all engines and contexts still require strict
-`<250ms`; no late observation can receive a passing receipt.
+summary. At the strict foundation checkpoint `34e303ac`, all engines and contexts
+required `<250ms`; the source-bound extension below separates the one exception.
 
 The hover runner reuses the shared owned-process-tree supervisor with a 600 s
 ceiling plus bounded termination/drain/reap on failure. Catchable interruption
@@ -92,12 +92,29 @@ to it and restores the original handler. A stale process receipt is removed
 before launch; failed, interrupted, incomplete and late attempts cannot write
 a new one. The shared ownership implementation is in the execution fingerprint.
 
-These foundations are not active release authority. No real binding has been
-appended. The selected future hosted WebKit scope retains a 250 ms strict
-criterion with explicitly deferred timing and 2 s functional acceptance. Bound
-runtime selection, the versioned functional/timing disposition, fresh-journal
-validation and binding-reference propagation through producer/freeze/promotion
-remain unimplemented. No environment flag currently relaxes a timing check.
+The hosted runtime now requires the current source-bound journal witness before
+launching a browser. Schema 2 reports `functional-complete` separately from timing;
+all 216 hosted WebKit observations carry `deferred-known-latency`, even when fast.
+The other 432 observations and every local/native observation remain strict.
+Producer admission, freeze and hosted inspection independently resolve fresh
+journal state, source, original run/attempt and reference, then validate raw data.
+Frozen manifests and qualification results expose the reference and disposition;
+publication intent, outcome and completion records preserve that reference.
+Publication additionally requires a release-purpose,
+non-probe binding; none of this bypasses the disabled production policy.
+
+`publication_journal.py prepare-latency-binding` verifies retained main is pushed,
+clean and matches immutable Git blobs, using one normalized byte map for version
+and fingerprint. It prepares an expected-head record without Git writes. Only
+the separately approved `append-latency-binding` operation may append it after
+rechecking source and uncached mutable refs. Source/head drift or an unknown
+acknowledgement stops; never automatically regenerate or retry the preparation.
+
+No real binding has been appended, so the exception is not active. Explicit
+append approval and actual hosted qualification remain outstanding. Following
+the release, restoring strict hosted validation requires a reviewed source
+change, not a broader binding or version allowlist. Retain the historical typed
+journal validators and immutable scope so old retained records remain readable.
 
 Local verification: 2,774 passed with the one approved Windows-only skip, with
 raw JUnit and collection inventory independently validated under
@@ -119,3 +136,14 @@ launch handoff; both are corrected at shared ownership boundaries and have
 interruption/cleanup-failure regressions. Native Windows execution remains a
 hosted C gate, not a locally proven claim. No real journal write, hosted pilot,
 new diagnostic batch or release has occurred at this checkpoint.
+
+The bound-proof implementation passes 2,926 Python cases with the one approved
+Windows-only skip; raw JUnit and collection inventory are in
+`output/verification/d4-bound-proof/`. Schema-2 local replay passes all 72 cases
+and 648 strict observations with zero deferred samples in
+`output/playwright/d4-bound-local/`. In-memory guards cover forged context,
+supersession at receipt/freeze/inspection, false pass labels, finite functional
+deadlines, publication-reference propagation and admin source/head/replay drift.
+Independent review found and verified the uncached-main correction. A read-only
+live journal check confirms the pinned origin and zero records. No production
+binding append or hosted C-F qualification is claimed by these local results.

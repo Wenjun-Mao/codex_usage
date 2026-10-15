@@ -146,6 +146,7 @@ jobs:
         env:
           SUITE: ${{ matrix.suite }}
           REQUESTED_FAILURE: ${{ inputs.fail_case }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           fault=""
           if [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]; then fault="$REQUESTED_FAILURE"; fi

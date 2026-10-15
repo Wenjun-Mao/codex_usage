@@ -11,6 +11,8 @@ from run_visual_suite import SCRIPTS
 from .archives import inspect_payload
 from .policy import GATES, JOBS, REPOSITORY, SCHEMA, TARGETS, WORKFLOW, positive, require
 from .producer import MARKER, artifact_name, validate_payload
+from .git_journal import Journal
+from .latency_context import current_binding, validate_context
 
 
 def unique_job(jobs, name):
@@ -50,7 +52,7 @@ def check_marker(log, expected):
 
 
 class Proofs:
-    def __init__(self, api, run_id, attempt, contract, version, blobs, *, completed=True):
+    def __init__(self, api, run_id, attempt, contract, version, blobs, *, completed=True, journal=None):
         self.api, self.run_id, self.attempt = api, positive(run_id), positive(attempt)
         self.run = api.run(self.run_id)
         check_run(self.run, self.attempt, completed=completed)
@@ -61,6 +63,7 @@ class Proofs:
         self.selected_jobs = api.jobs(self.run_id, self.attempt)
         self.inventory = api.artifacts(self.run_id)
         self.cache = {}
+        self.journal = journal or Journal(api)
 
     def receipt(self, gate, artifact_id, artifact_digest, *, payload=False):
         cache_key = (gate, positive(artifact_id), artifact_digest, payload)
@@ -100,14 +103,17 @@ class Proofs:
             for child in children:
                 validate_inventory(manifest["visual"][child], child)
                 if child == "hover":
-                    validate_summary(manifest["visual"][child].get("observation_summary"))
+                    deferred = validate_context(manifest["visual"][child].get("timing_context"),
+                        source=receipt["source"], origin=origin, journal=self.journal)
+                    validate_summary(manifest["visual"][child].get("observation_summary"), deferred=deferred)
                     validate_process(manifest["visual"][child].get("process"))
         files = None
         if payload:
             _, transport = self.api.artifact(uploaded["id"], uploaded["digest"], self.run)
             require(set(transport) == {"payload.zip"}, "Foreign payload archive")
             metadata, files = inspect_payload(transport["payload.zip"], gate, receipt["source"])
-            require(validate_payload(metadata, files, gate) == manifest, "Producer payload/declaration mismatch")
+            require(validate_payload(metadata, files, gate, origin=origin, journal=self.journal) == manifest,
+                "Producer payload/declaration mismatch")
         result = {"receipt_id": positive(artifact_id), "receipt_digest": artifact_digest,
             "receipt_sha256": sha256(receipt_data).hexdigest(), "originating_attempt": attempt,
             "producer_job_id": original["id"], "selected_job_id": selected["id"],
@@ -138,7 +144,10 @@ class Proofs:
         proofs = {gate: self.resolve(gate, payload=True) for gate in GATES}
         sources = [proof["receipt"]["source"] for proof in proofs.values()]
         require(all(source == sources[0] for source in sources), "Mixed qualification sources")
+        reference = proofs["visual-hover"]["receipt"]["manifest"]["visual"]["hover"]["timing_context"]["binding"]
+        current_binding(sources[0], reference, self.journal)
         return {"schema": SCHEMA, "source": sources[0], "run": self.run_id,
+            "latency_binding": reference, "timing_disposition": "deferred-known-latency",
             "originating_attempt": self.attempt,
             "gates": {gate: self.reference(proof) for gate, proof in proofs.items()},
             "packages": {target: proofs[f"package-{target}"]["receipt"]["manifest"]["package"] for target in TARGETS}}
@@ -155,4 +164,9 @@ class Proofs:
             proof = self.receipt(gate, reference["receipt_id"], reference["receipt_digest"],
                 payload=gate == "visual-hover")
             require(self.reference(proof) == reference, "Frozen producer identity mismatch")
+            if gate == "visual-hover":
+                require(manifest.get("latency_binding") == proof["receipt"]["manifest"]["visual"]["hover"]["timing_context"]["binding"],
+                    "Frozen D4 binding differs from raw producer proof")
+        require(manifest.get("timing_disposition") == "deferred-known-latency", "Missing frozen D4 disposition")
+        current_binding(manifest["source"], manifest.get("latency_binding"), self.journal)
         return hosted, manifest

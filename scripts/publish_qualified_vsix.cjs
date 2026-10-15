@@ -39,9 +39,10 @@ async function runPublisher(directory, mode, options = {}) {
   const lookup = options.lookup || (async (version, target) => targetEntry(await catalog(), version, target));
   const save = async result => files.writeFile(path.join(directory, 'publication.json'), JSON.stringify(result, null, 2) + '\n');
   const log = options.log || console.log;
+  const timing = qualified.latency_binding ? { latency_binding: qualified.latency_binding } : {};
   const binding = { schema: 1, source: qualified.source, tag: qualified.tag, promotion: qualified.promotion,
     qualification_run: qualified.qualification_run, qualification_attempt: qualified.qualification_attempt,
-    manifest_sha256: qualified.manifest_sha256 };
+    manifest_sha256: qualified.manifest_sha256, ...timing };
   const validateOutcome = result => { for (const [key, value] of Object.entries(binding)) assert.deepEqual(result[key], value); };
   if (mode === 'complete') {
     const result = JSON.parse(await files.readFile(path.join(directory, 'publication.json'), 'utf8'));
@@ -50,7 +51,7 @@ async function runPublisher(directory, mode, options = {}) {
     result.status = 'uploaded-awaiting-public-validation';
     await save(result);
     log('CODEX_PROMOTION_COMPLETE ' + JSON.stringify({ qualification_run: qualified.qualification_run,
-      qualification_attempt: qualified.qualification_attempt, source: qualified.source, packages: qualified.manifest.packages }));
+      qualification_attempt: qualified.qualification_attempt, source: qualified.source, packages: qualified.manifest.packages, ...timing }));
     return result;
   }
   if (mode === 'prepare') {
@@ -86,7 +87,7 @@ async function runPublisher(directory, mode, options = {}) {
     qualification_run: qualified.qualification_run, qualification_attempt: qualified.qualification_attempt,
     manifest_sha256: qualified.manifest_sha256, publisher_sha: qualified.promotion.publisher_sha,
     target: mode, package: qualified.manifest.packages[mode],
-    origin: { run: qualified.promotion.run, attempt: qualified.promotion.attempt, job: 'publish' } });
+    origin: { run: qualified.promotion.run, attempt: qualified.promotion.attempt, job: 'publish' }, ...timing });
   const authority = JSON.parse(await files.readFile(path.join(directory, `intent-${mode}-authority.json`), 'utf8'));
   validateOutcome(authority);
   assert.equal(authority.target, mode);

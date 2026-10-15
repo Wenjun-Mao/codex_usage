@@ -59,9 +59,11 @@ class GitAPI:
 
 
 class JournalFixture:
-    def __init__(self, domain="production"):
+    def __init__(self, domain="production", *, repository_id=None):
         self.api = GitAPI()
         self.config = json.loads(model.CONFIG.read_text())
+        if repository_id is not None:
+            self.config["repository_id"] = repository_id
         self.config["domains"][domain]["workflow_id"] = 19
         selected = model.configuration(domain, self.config, pinned=False)
         self.root = self.commit(policy.canonical(model.origin(selected)), [])

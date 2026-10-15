@@ -83,7 +83,7 @@ def test_keyboard_origin_is_unique_and_real_tab_has_no_corrective_focus(monkeypa
     targets = SimpleNamespace(nth=lambda position: (calls.append(("preceding", position)), origin)[1])
 
     def observe(page, tooltip, action, **kwargs):
-        assert kwargs == {"visible": True, "keyboard": True, "phase": "keyboard", "record": None}
+        assert kwargs == {"visible": True, "keyboard": True, "phase": "keyboard", "record": None, "limit": .25}
         calls.append("budget starts")
         action()
         return .01
@@ -99,7 +99,7 @@ def test_keyboard_origin_is_unique_and_real_tab_has_no_corrective_focus(monkeypa
 
 def test_hover_harness_uses_guarded_keyboard_sequence_not_corrective_focus():
     source = inspect.getsource(load_tool("check_breakdown_hover_ui").main)
-    assert "observe_keyboard(page, handle, targets, index, record=record)" in source
+    assert "observe_keyboard(page, handle, targets, index, record=record, limit=limit)" in source
     assert "target.focus()" not in source
 
 

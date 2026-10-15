@@ -93,11 +93,27 @@ def main():
     init.add_argument("--output", type=Path, required=True)
     probe = commands.add_parser("pilot")
     probe.add_argument("--output", type=Path, required=True)
+    prepare = commands.add_parser("prepare-latency-binding")
+    prepare.add_argument("--release-version", required=True)
+    prepare.add_argument("--purpose", choices=("nonpublishing", "release"), required=True)
+    prepare.add_argument("--approval", required=True)
+    prepare.add_argument("--output", type=Path, required=True)
+    append = commands.add_parser("append-latency-binding")
+    append.add_argument("--prepared", type=Path, required=True)
+    append.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "bootstrap":
         bootstrap(args.domain, args.output)
-    else:
+    elif args.command == "pilot":
         pilot(args.output)
+    else:
+        from release import latency_admin
+        if args.command == "prepare-latency-binding":
+            result = latency_admin.prepare(args.release_version, args.purpose, args.approval)
+        else:
+            result = latency_admin.append(json.loads(args.prepared.read_text()))
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_bytes(canonical(result))
 
 
 if __name__ == "__main__":

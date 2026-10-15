@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from hover_measurement_fixture import PROCESS, measure, measurements
+from hover_measurement_fixture import PROCESS, hosted_measurements, measure, measurements
 from qualification_fixture import policy, producer, visual_evidence
 
 
@@ -13,12 +13,18 @@ def files(evidence):
         "hover/process.json": policy.canonical(PROCESS)}
 
 
+def producer_case():
+    data, journal = hosted_measurements()
+    return (visual_evidence("hover", hover=data), journal, {"source": data["timing_context"]["source"]},
+        {"run": 77, "attempt": 1, "job_key": "visual"})
+
+
 def test_every_case_target_and_phase_has_an_actual_strict_measurement():
     evidence = measurements()
     summary = measure.validate_measurements(evidence)
     assert summary == evidence["observation_summary"]
     assert summary["observations"] == 648
-    assert summary["maximum_seconds"] == dict.fromkeys(measure.PHASES, .01)
+    assert all(phases == dict.fromkeys(measure.PHASES, .01) for phases in summary["maximum_seconds"].values())
     assert measure.validate_summary(summary) == summary
 
 
@@ -96,9 +102,9 @@ def test_untrusted_summary_is_not_raw_measurement_proof(fault):
     elif fault == "digest":
         summary["sha256"] = "not a digest"
     elif fault == "phase":
-        summary["maximum_seconds"].pop("hide")
+        summary["maximum_seconds"]["chromium"].pop("hide")
     elif fault == "late":
-        summary["maximum_seconds"]["keyboard"] = .25
+        summary["maximum_seconds"]["chromium"]["keyboard"] = .25
     else:
         summary["schema"] = True
     with pytest.raises(ValueError):
@@ -107,7 +113,7 @@ def test_untrusted_summary_is_not_raw_measurement_proof(fault):
 
 @pytest.mark.parametrize("fault", ["missing", "incomplete", "late", "forged-summary"])
 def test_producer_requires_raw_measurements_even_for_a_complete_case_inventory(fault):
-    evidence = visual_evidence("hover")
+    evidence, journal, metadata, origin = producer_case()
     if fault == "missing":
         evidence.pop("observations")
     elif fault == "incomplete":
@@ -117,12 +123,12 @@ def test_producer_requires_raw_measurements_even_for_a_complete_case_inventory(f
     else:
         evidence["observations"][0]["seconds"] = .02
     with pytest.raises(ValueError):
-        producer.validate_payload({}, files(evidence), "visual-hover")
+        producer.validate_payload(metadata, files(evidence), "visual-hover", origin=origin, journal=journal)
 
 
 def test_producer_keeps_a_compact_digest_summary_not_a_second_raw_copy():
-    evidence = visual_evidence("hover")
-    result = producer.validate_payload({}, files(evidence), "visual-hover")
+    evidence, journal, metadata, origin = producer_case()
+    result = producer.validate_payload(metadata, files(evidence), "visual-hover", origin=origin, journal=journal)
     actual = result["visual"]["hover"]
     assert actual["observation_summary"] == evidence["observation_summary"]
     assert "observations" not in actual

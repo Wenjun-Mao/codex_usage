@@ -33,8 +33,8 @@ ASSERTIONS = {
     "overlay": ("script-disabled", "fixed-axes", "time-alignment", "account-axis-key",
         "complete-captured-points", "legend-color", "real-hover", "keyboard-evidence"),
     "hover": ("script-disabled", "compact-time-labels", "empty-native-title",
-        "readable-values", "issued-links", "tooltip-containment", "hover-hide-250ms",
-        "keyboard-focus-250ms", "tab-order", "account-hit-test"),
+        "readable-values", "issued-links", "tooltip-containment", "hover-hide-250ms-or-bound-deferral",
+        "keyboard-focus-250ms-or-bound-deferral", "tab-order", "account-hit-test"),
     "allowance": ("script-disabled", "content-states", "layout", "keyboard-details",
         "native-meter-semantics", "theme-contrast", "painted-meter-pixels",
         "period-history-local-dst", "uncertain-capture-provenance", "cross-boundary-fit-details",
@@ -100,9 +100,9 @@ def expected_cases(suite):
 
 
 def validate_inventory(evidence, suite):
-    if type(evidence.get("schema")) is not int or evidence["schema"] != 1 or evidence.get("suite") != suite:
+    if type(evidence.get("schema")) is not int or evidence["schema"] != (2 if suite == "hover" else 1) or evidence.get("suite") != suite:
         raise ValueError("Unknown or foreign visual evidence contract")
-    if evidence.get("status") != "passed" or evidence.get("synthetic_only") is not True:
+    if evidence.get("status") != ("functional-complete" if suite == "hover" else "passed") or evidence.get("synthetic_only") is not True:
         raise ValueError("Visual evidence is incomplete, failed or private")
     if evidence.get("assertions") != list(ASSERTIONS[suite]):
         raise ValueError("Visual assertion inventory differs")

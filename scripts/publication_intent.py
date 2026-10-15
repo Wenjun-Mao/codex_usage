@@ -72,6 +72,8 @@ def main():
             "manifest_sha256": qualified["manifest_sha256"], "target": args.target,
             "package_sha256": qualified["manifest"]["packages"][args.target]["sha256"],
             "intent_sha256": sha256(body).hexdigest(), "journal": receipt}
+        if "latency_binding" in qualified:
+            binding["latency_binding"] = qualified["latency_binding"]
         (args.directory / f"intent-{args.target}-authority.json").write_bytes(canonical(binding))
         print(message)
 

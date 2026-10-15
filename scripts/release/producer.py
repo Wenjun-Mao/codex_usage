@@ -11,6 +11,7 @@ from run_visual_suite import SCRIPTS
 
 from .archives import inspect_payload
 from .policy import JOBS, REPOSITORY, SCHEMA, WORKFLOW, canonical, contract_files, contract_identity, digest, package_version, positive, require
+from .latency_context import validate_context
 
 MARKER = "CODEX_GATE_RECEIPT "
 
@@ -37,7 +38,7 @@ def artifact_name(kind, gate, run, attempt):
     return f"{kind}-{gate}-r{positive(run)}-a{positive(attempt)}"
 
 
-def validate_payload(metadata, files, gate):
+def validate_payload(metadata, files, gate, *, origin=None, journal=None):
     if gate.startswith("visual-"):
         suite = gate.removeprefix("visual-")
         require(suite in SCRIPTS, "Unknown visual gate")
@@ -50,9 +51,13 @@ def validate_payload(metadata, files, gate):
             visual[child] = {key: evidence[key] for key in
                 ("schema", "suite", "status", "synthetic_only", "assertions", "completed")}
             if child == "hover":
-                summary = validate_measurements(evidence)
+                deferred = validate_context(evidence.get("timing_context"), source=metadata["source"],
+                    origin=origin, journal=journal)
+                require(deferred, "Hosted hover proof requires the candidate-bound disposition")
+                summary = validate_measurements(evidence, deferred=deferred)
                 require(evidence.get("observation_summary") == summary, "Tooltip raw observations/summary differ")
                 visual[child]["observation_summary"] = summary
+                visual[child]["timing_context"] = evidence["timing_context"]
                 require("hover/process.json" in files, "Missing owned hover process proof")
                 visual[child]["process"] = validate_process(json.loads(files["hover/process.json"]))
             if child in ("breakdown", "speed"):
@@ -72,10 +77,11 @@ def make_receipt(root, gate, payload_data, payload_id, payload_digest, env=os.en
     require(gate in JOBS, "Unknown gate")
     source = source_context(root, env)
     metadata, files = inspect_payload(payload_data, gate, source)
-    metadata = validate_payload(metadata, files, gate)
     run, attempt = positive(env["GITHUB_RUN_ID"]), positive(env["GITHUB_RUN_ATTEMPT"])
+    origin = {"run": run, "attempt": attempt, "job_key": env["GITHUB_JOB"], "job_name": JOBS[gate]}
+    metadata = validate_payload(metadata, files, gate, origin=origin)
     return {"schema": SCHEMA, "source": source, "gate": gate,
-        "origin": {"run": run, "attempt": attempt, "job_key": env["GITHUB_JOB"], "job_name": JOBS[gate]},
+        "origin": origin,
         "payload": {"id": positive(payload_id), "digest": digest(payload_digest),
             "name": artifact_name("payload", gate, run, attempt)}, "manifest": metadata}
 

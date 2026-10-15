@@ -13,7 +13,8 @@ VisualEvidence = load_tool("verification.visual_evidence").VisualEvidence
 
 
 def evidence(suite):
-    return {"schema": 1, "suite": suite, "status": "passed", "synthetic_only": True,
+    return {"schema": 2 if suite == "hover" else 1, "suite": suite,
+        "status": "functional-complete" if suite == "hover" else "passed", "synthetic_only": True,
         "assertions": list(ASSERTIONS[suite]), "completed": expected_cases(suite)}
 
 
@@ -43,7 +44,7 @@ def test_same_count_or_partial_evidence_cannot_qualify(change):
     elif change == "private":
         sample["synthetic_only"] = False
     else:
-        sample["schema"] = 2
+        sample["schema"] = 3
     with pytest.raises(ValueError):
         validate_inventory(sample, "hover")
 

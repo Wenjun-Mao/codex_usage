@@ -35,26 +35,27 @@ def require_hidden(tooltip):
     return state
 
 
-def observe_keyboard(page, tooltip, targets, index, *, record=None):
+def observe_keyboard(page, tooltip, targets, index, *, record=None, limit=.25):
     origin = page.locator('.ub-meter-legend span[tabindex="0"]') if index == 0 else targets.nth(index-1)
     assert origin.count() == 1
     origin.focus()
     assert origin.evaluate("e=>e===document.activeElement")
     return observe_input(page, tooltip, lambda: page.keyboard.press("Tab"),
-        visible=True, keyboard=True, phase="keyboard", record=record)
+        visible=True, keyboard=True, phase="keyboard", record=record, limit=limit)
 
 
-def observe_input(page, tooltip, action, *, visible, keyboard=False, phase, record=None):
+def observe_input(page, tooltip, action, *, visible, keyboard=False, phase, record=None, limit=.25):
+    assert type(limit) in (int, float) and limit in (.25, 2.0), "Invalid finite observation policy"
     baseline = require_hidden(tooltip) if visible else None
     started = perf_counter()
     action()
     state = None
     while True:
         elapsed = perf_counter() - started
-        assert elapsed < .25, {"phase": phase, "seconds": elapsed, "state": state}
+        assert elapsed < limit, {"phase": phase, "seconds": elapsed, "state": state}
         state = tooltip_state(tooltip)
         elapsed = perf_counter() - started
-        assert elapsed < .25, {"phase": phase, "seconds": elapsed, "state": state}
+        assert elapsed < limit, {"phase": phase, "seconds": elapsed, "state": state}
         if visible:
             matched = state["visible"] and (not keyboard or
                 (state["active"] and state["focusVisible"] and not state["hover"]))

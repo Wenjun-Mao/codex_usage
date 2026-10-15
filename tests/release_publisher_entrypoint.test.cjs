@@ -4,7 +4,7 @@ const { digest, targets, root } = require('../scripts/release/marketplace.cjs');
 const path = require('node:path');
 const { runPublisher } = require('../scripts/publish_qualified_vsix.cjs');
 
-function fixture() {
+function fixture(withTiming = false) {
   const directory = '/synthetic';
   const packages = Object.fromEntries(targets.map(target => [target, Buffer.from(target)]));
   const qualified = { schema: 1, status: 'validated-for-publication', tag: 'v2.12.3',
@@ -12,6 +12,9 @@ function fixture() {
     manifest_sha256: 'f'.repeat(64), manifest: { packages: Object.fromEntries(targets.map(target =>
       [target, { sha256: digest(packages[target]), bytes: packages[target].length }])) },
     promotion: { run: 99, attempt: 1, sha: 'a'.repeat(40), ref: 'refs/tags/v2.12.3', publisher_sha: 'd'.repeat(40) } };
+  if (withTiming) qualified.latency_binding = { schema: 1, domain: 'production',
+    ref: 'refs/heads/codex/publication-receipts', genesis: 'e'.repeat(40), commit: 'b'.repeat(40),
+    sequence: 1, invocation: 'f983a06b-d378-4aeb-a909-a6cfbd6e8ce8', binding_sha256: 'c'.repeat(64) };
   const documents = new Map();
   const put = (name, value) => documents.set(`${directory}/${name}`, Buffer.from(JSON.stringify(value) + '\n'));
   put('qualified.json', qualified);
@@ -19,9 +22,9 @@ function fixture() {
   documents.set(path.join(root, 'scripts/release/journal-origins.json'), Buffer.from(JSON.stringify({ domains: {
     production: { ref: 'refs/heads/codex/publication-receipts', genesis: 'e'.repeat(40) } } })));
   for (const target of targets) documents.set(`${directory}/codex-usage-companion-${target}.vsix`, packages[target]);
-  const uploads = [], saved = [];
+  const uploads = [], saved = [], logs = [];
   const options = { environment: { GITHUB_RUN_ID: '99', GITHUB_RUN_ATTEMPT: '1', GITHUB_SHA: qualified.source.sha,
-    GITHUB_REF: qualified.promotion.ref }, checkFiles: () => {}, lookup: async () => null, log: () => {},
+    GITHUB_REF: qualified.promotion.ref }, checkFiles: () => {}, lookup: async () => null, log: line => logs.push(line),
     upload: async (dir, target) => uploads.push(target), files: {
       readFile: async (name, encoding) => { if (!documents.has(name)) throw Object.assign(Error(`Missing ${name}`), { code: 'ENOENT' });
         return encoding ? documents.get(name).toString() : documents.get(name); },
@@ -32,7 +35,8 @@ function fixture() {
     put(`intent-${target}/intent.json`, { schema: 1, kind: 'publication-intent', source: qualified.source,
       tag: qualified.tag, qualification_run: 77, qualification_attempt: 2, manifest_sha256: qualified.manifest_sha256,
       publisher_sha: qualified.promotion.publisher_sha, target, package: qualified.manifest.packages[target],
-      origin: { run: 99, attempt: 1, job: 'publish' } });
+      origin: { run: 99, attempt: 1, job: 'publish' },
+      ...(withTiming ? { latency_binding: qualified.latency_binding } : {}) });
     const intent_sha256 = digest(documents.get(`${directory}/intent-${target}/intent.json`));
     const journal = { schema: 1, domain: 'production', ref: 'refs/heads/codex/publication-receipts',
       genesis: 'e'.repeat(40), commit: 'f'.repeat(40), sequence: 1,
@@ -42,10 +46,46 @@ function fixture() {
     put(`intent-${target}-authority.json`, { schema: 1, source: qualified.source, tag: qualified.tag,
       promotion: qualified.promotion, qualification_run: 77, qualification_attempt: 2,
       manifest_sha256: qualified.manifest_sha256, target, package_sha256: qualified.manifest.packages[target].sha256,
-      intent_sha256, journal });
+      intent_sha256, journal, ...(withTiming ? { latency_binding: qualified.latency_binding } : {}) });
   };
-  return { directory, qualified, documents, options, uploads, saved, put, recordIntent };
+  return { directory, qualified, documents, options, uploads, saved, logs, put, recordIntent };
 }
+
+test('candidate-bound timing reference survives intent, outcome and completion', async () => {
+  const f = fixture(true);
+  await runPublisher(f.directory, 'prepare', f.options);
+  f.options.environment.VSCE_PAT = 'synthetic-test-value';
+  for (const target of targets) {
+    f.recordIntent(target);
+    await runPublisher(f.directory, target, f.options);
+  }
+  delete f.options.environment.VSCE_PAT;
+  const result = await runPublisher(f.directory, 'complete', f.options);
+  assert.deepEqual(result.latency_binding, f.qualified.latency_binding);
+  const complete = JSON.parse(f.logs.find(line => line.startsWith('CODEX_PROMOTION_COMPLETE ')).slice('CODEX_PROMOTION_COMPLETE '.length));
+  assert.deepEqual(complete.latency_binding, f.qualified.latency_binding);
+});
+
+test('a matching intent digest cannot hide a missing or changed timing binding', async () => {
+  for (const fault of ['missing', 'changed']) {
+    const f = fixture(true), target = targets[0];
+    await runPublisher(f.directory, 'prepare', f.options);
+    f.recordIntent(target);
+    const body = JSON.parse(f.documents.get(`${f.directory}/intent-${target}/intent.json`));
+    if (fault === 'missing') delete body.latency_binding;
+    else body.latency_binding.commit = '0'.repeat(40);
+    f.put(`intent-${target}/intent.json`, body);
+    const sha = digest(f.documents.get(`${f.directory}/intent-${target}/intent.json`));
+    for (const suffix of ['ack', 'authority']) {
+      const value = JSON.parse(f.documents.get(`${f.directory}/intent-${target}-${suffix}.json`));
+      value.intent_sha256 = value.journal.intent_sha256 = sha;
+      f.put(`intent-${target}-${suffix}.json`, value);
+    }
+    f.options.environment.VSCE_PAT = 'synthetic-test-value';
+    await assert.rejects(runPublisher(f.directory, target, f.options));
+    assert.deepEqual(f.uploads, []);
+  }
+});
 
 test('actual per-target entrypoint requires durable intent and binds every outcome', async () => {
   const f = fixture();

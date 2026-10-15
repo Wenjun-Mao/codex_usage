@@ -14,6 +14,7 @@ from verification.visual_cases import identity
 from verification.visual_evidence import VisualEvidence
 from verification.hover_observation import observe_input, observe_keyboard, prepare_pointer
 from verification.hover_measurements import HoverMeasurements, SCHEMA, validate_measurements
+from release.latency_context import LOCAL, runtime_context
 
 
 def chart(zone_name, *, days=1, metric="cost", dst=False):
@@ -47,10 +48,13 @@ def main(diagnostic_document=None):
     evidence = {"synthetic_only": True, "script_disabled": True, "views": []}
     if diagnostic_document is not None:
         evidence.update(diagnostic_only=True, qualification_eligible=False)
-    with VisualEvidence(args.output, "hover") as audit, sync_playwright() as playwright:
-        measurements = HoverMeasurements()
-        audit.data.update(observation_contract=SCHEMA, observations=measurements.rows)
+    timing = runtime_context() if diagnostic_document is None else dict(LOCAL)
+    deferred = timing["execution"] == "hosted"
+    with VisualEvidence(args.output, "hover", synthetic_only=diagnostic_document is None) as audit, sync_playwright() as playwright:
+        measurements = HoverMeasurements(deferred=deferred)
+        audit.data.update(observation_contract=SCHEMA, observations=measurements.rows, timing_context=timing)
         for engine in ("chromium", "webkit", "firefox"):
+            limit = 2.0 if deferred and engine == "webkit" else .25
             browser = getattr(playwright, engine).launch()
             context = browser.new_context(java_script_enabled=False)
             page = context.new_page()
@@ -86,15 +90,15 @@ def main(diagnostic_document=None):
                                         point = prepare_pointer(page, hit, handle)
                                         durations.append(observe_input(page, handle,
                                             lambda: page.mouse.move(point["x"], point["y"]),
-                                            visible=True, phase="hover", record=record))
+                                            visible=True, phase="hover", record=record, limit=limit))
                                         text = tooltip.inner_text()
                                         assert "74.197783" not in text and "e+" not in text
                                         assert "$74.20" in text if scenario != "tokens" else "139.03 M tokens" in text
                                         assert target.get_attribute("href").endswith("issued=" + str(index))
                                         assert tooltip.evaluate("e=>{const b=e.getBoundingClientRect(),p=e.closest('.ub-scroll').getBoundingClientRect();return b.left>=p.left-1&&b.right<=p.right+1&&e.scrollWidth<=e.clientWidth+1}"), (engine, scenario, width, text)
                                         observe_input(page, handle, lambda: page.mouse.move(0, 0),
-                                            visible=False, phase="hide", record=record)
-                                        observe_keyboard(page, handle, targets, index, record=record)
+                                            visible=False, phase="hide", record=record, limit=limit)
+                                        observe_keyboard(page, handle, targets, index, record=record, limit=limit)
                                         if index < 2:
                                             page.keyboard.press("Tab")
                                             assert targets.nth(index+1).evaluate("e=>e===document.activeElement")
@@ -108,12 +112,13 @@ def main(diagnostic_document=None):
                                         page.locator("main").screenshot(path=str(args.output / f"{scenario}-{theme}-{width}.png"))
                                     evidence["views"].append({"engine": engine, "scenario": scenario,
                                         "theme": theme, "width": width, "hover_seconds": durations,
-                                        "hover_focus_within_250ms": True, "tooltip_contained": True,
+                                        "timing_disposition": "deferred-known-latency" if deferred and engine == "webkit" else "passed",
+                                        "tooltip_contained": True,
                                         "account_hit_preserved": True})
             finally:
                 context.close()
                 browser.close()
-        audit.data["observation_summary"] = validate_measurements(audit.data)
+        audit.data["observation_summary"] = validate_measurements(audit.data, deferred=deferred)
     (args.output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print(json.dumps({"views": len(evidence["views"]), "script_disabled": True}))
 

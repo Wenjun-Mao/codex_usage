@@ -118,6 +118,8 @@ def prior_intents(api, qualified, current_run, current_attempt, blobs=None):
                     "qualification_attempt": qualified["qualification_attempt"], "manifest_sha256": qualified["manifest_sha256"],
                     "publisher_sha": revision, "target": target, "package": qualified["manifest"]["packages"][target],
                     "origin": {"run": run["id"], "attempt": marker["attempt"], "job": "publish"}}
+                if "latency_binding" in qualified:
+                    expected["latency_binding"] = qualified["latency_binding"]
                 require(canonical(record) == canonical(expected), "Intent identity differs")
                 original_jobs = api.jobs(run["id"], marker["attempt"])
                 original = next(job for job in original_jobs if job["name"] == "Publish qualified packages")
@@ -146,6 +148,8 @@ def verify_complete(api, qualified, blobs=None, retained_reader=None):
     publisher = original_successful_job(api, run["id"], promotion["attempt"], "Publish qualified packages")
     expected = {"qualification_run": qualified["qualification_run"], "qualification_attempt": qualified["qualification_attempt"],
         "source": qualified["source"], "packages": qualified["manifest"]["packages"]}
+    if "latency_binding" in qualified:
+        expected["latency_binding"] = qualified["latency_binding"]
     actual = [json.loads(value) for value in markers(api.logs(publisher["id"]), "CODEX_PROMOTION_COMPLETE ")]
     require(canonical(actual) == canonical([expected]), "Missing or ambiguous original publisher completion")
     from .git_journal import Journal

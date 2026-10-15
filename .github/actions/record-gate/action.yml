@@ -26,6 +26,7 @@ runs:
     - name: Bind producer receipt
       shell: bash
       env:
+        GH_TOKEN: ${{ github.token }}
         GATE: ${{ inputs.gate }}
         PAYLOAD: ${{ inputs.payload }}
         ARTIFACT_ID: ${{ steps.payload.outputs.artifact-id }}

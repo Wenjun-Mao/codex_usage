@@ -19,7 +19,7 @@ class VisualEvidence:
         self.output = Path(output)
         self.output.mkdir(parents=True, exist_ok=True)
         self.started = perf_counter()
-        self.data = {"schema": 1, "suite": suite, "status": "incomplete",
+        self.data = {"schema": 2 if suite == "hover" else 1, "suite": suite, "status": "incomplete",
             "synthetic_only": synthetic_only, "completed": [], "current": None,
             "assertions": list(ASSERTIONS[suite]), "documents": {},
             "environment": {"python": platform.python_version(), "platform": platform.platform(),
@@ -94,7 +94,7 @@ class VisualEvidence:
             self.data["status"] = "diagnostic-only"
             self.save()
             return False
-        self.data["status"] = "passed"
+        self.data["status"] = "functional-complete" if self.data["suite"] == "hover" else "passed"
         try:
             validate_inventory(self.data, self.data["suite"])
         except Exception as error:
