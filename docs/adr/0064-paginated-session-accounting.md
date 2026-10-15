@@ -118,6 +118,41 @@ output components; they are not necessarily billed responses. No magnitude-based
 filter is introduced here. Universal response/billing reconstruction and usable
 compaction companions remain outside this foundation's qualified claims.
 
+## Staged Semantic Repairs
+
+A rebuild tracks its discovered physical key across slices while retaining the
+original live source key as the installation precondition. Staging may advance
+without changing report authority. Do not mistake the old logical slot for the
+staged checkpoint key or restart the staged capture on every slice.
+Use versioned staging paths: retain older unbound parser stages without adopting
+their checkpoints. Persist the captured owner's fingerprint and first qualified
+header independently of parser rows. After interruption, bind an already-saved
+checkpoint's header before further parsing or schema handling. Check provenance
+before destructive reset; malformed or unbound evidence cannot authorize reuse.
+Schema resets and failed retries cannot silently rebind that authority.
+Refuse changed logical identity or a cross-slice
+header/lineage change, including a downgrade to ordinary-session parsing.
+
+Install a complete stage, its source-key change, normalized replacement, revision
+and dependent invalidation in one transaction. Readers observe either authority,
+never a parser/ledger half-swap. A complete retained checkpoint does not qualify
+an errored stage. Recheck the live origin and attached stage, and require trusted
+replacement bindings after normalization before retirement can commit.
+Even a byte-identical, same-row-count semantic
+repair creates a new normalized generation: append heuristics cannot prove that
+the old values implement the corrected accounting contract. Retain old normalized
+events as superseded with a content-free `source-rebuild` receipt binding the
+captured origin, header contract and history-boundary digests. Copy all
+source-scoped workset facts, including quota cache; do not alter captured account
+readings or credit observations.
+
+Refuse an occupied destination with retained facts or a shorter paginated stage
+that would discard a retained suffix. Check the source snapshot before verification
+and before commit. Failure rolls back the authority swap and retains staging for
+retry. This contract does not authorize replacing unresolved sibling replicas,
+skip full repair qualification, or substitute for mixed-writer quiescence and the
+fresh source/revision checks required for live application.
+
 ## Remaining Qualification
 
 Add bounded upgrade discovery and dependency-aware invalidation without global

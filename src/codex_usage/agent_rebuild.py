@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from codex_usage.agent_capture import session_dirs_for_home
+from codex_usage.agent_rebuild_authority import (
+    assert_attached_stage,
+    assert_installed_authority,
+    assert_live_rebuild_authority,
+    bind_rebuild_authority,
+    load_rebuild_source,
+    validate_staged_capture,
+)
 from codex_usage.agent_paths import agent_data_dir, ledger_database_path
 from codex_usage.agent_private_files import (
     ensure_private_directory,
@@ -13,7 +21,8 @@ from codex_usage.agent_private_files import (
     ensure_private_sqlite_files,
 )
 from codex_usage.ledger_schema import open_ledger
-from codex_usage.ledger_sync import synchronize_parser_workset
+from codex_usage.ledger_sync import synchronize_parser_workset_in_transaction
+from codex_usage.ledger_rebuild_receipts import supersede_rebuilt_generations
 from codex_usage.parser import parse_session_append
 from codex_usage.session_cache_checkpoints import load_parser_checkpoint
 from codex_usage.session_cache_refresh import refresh_files
@@ -30,6 +39,7 @@ _WORKSET_TABLES = (
     "session_metadata",
     "transition_candidates",
     "image_operations",
+    "quota_cache",
     "parser_checkpoints",
     "speed_cache_facts",
     "speed_cache_tools",
@@ -111,31 +121,37 @@ def rebuild_stale_source_slice(
     ensure_private_file(staging_path)
     try:
         connection.row_factory = sqlite3.Row
+        authority = bind_rebuild_authority(connection, source)
         schema = _ensure_schema(connection)
+        staged_entry = _staged_entry(connection, entry)
+        worklist = [staged_entry]
         outcome = refresh_files(
             connection,
             [entry.session_dir],
-            [entry],
+            worklist,
             rebuilt=schema.created or schema.reset,
             max_workers=1,
             max_parse_bytes=max_bytes,
             history_inventory=history_inventory,
         )
-        checkpoint = load_parser_checkpoint(connection, source_key, path)
+        staged_entry = worklist[0]
+        checkpoint = load_parser_checkpoint(connection, staged_entry.file_key, path)
         captured = checkpoint.byte_offset if checkpoint is not None else 0
+        successful = validate_staged_capture(connection, staged_entry, checkpoint, authority)
     finally:
         connection.close()
         ensure_private_sqlite_files(staging_path)
 
-    complete = checkpoint is not None and captured == entry.size_bytes
+    complete = successful and checkpoint is not None and captured == entry.size_bytes
     if complete:
         _install_completed_rebuild(
             ledger_path,
             staging_path,
             entry,
+            staged_entry,
             checkpoint,
+            authority,
         )
-        synchronize_parser_workset(ledger_path)
         _remove_staging_files(staging_path)
     return RebuildSliceResult(
         source_key=source_key,
@@ -146,16 +162,19 @@ def rebuild_stale_source_slice(
     )
 
 
+def _staged_entry(connection, entry):
+    rows = connection.execute("select file_key from files where path=?", (str(entry.path),)).fetchall()
+    if len(rows) > 1:
+        raise RuntimeError("staged rebuild has ambiguous source ownership")
+    if not rows:
+        return entry
+    key = str(rows[0]["file_key"])
+    return replace(entry, file_key=key, file_key_is_fallback=key.startswith("codex-usage:fallback:path:"))
+
+
 def _load_stale_source(ledger_path: Path, source_key: str) -> sqlite3.Row:
     with open_ledger(ledger_path, read_only=True) as connection:
-        row = connection.execute(
-            """
-            select source_key, path, session_dir, storage_state
-            from ledger_sources
-            where source_key = ? and is_stale = 1 and is_missing = 0
-            """,
-            (source_key,),
-        ).fetchone()
+        row = load_rebuild_source(connection, source_key)
     if row is None:
         raise ValueError(f"stale source is no longer available: {source_key}")
     return row
@@ -163,16 +182,21 @@ def _load_stale_source(ledger_path: Path, source_key: str) -> sqlite3.Row:
 
 def _staging_path(codex_home: Path, source_key: str) -> Path:
     digest = hashlib.sha256(source_key.encode()).hexdigest()
-    return agent_data_dir(codex_home) / "rebuilds" / f"{digest}.sqlite3"
+    return agent_data_dir(codex_home) / "rebuilds" / f"accounting-v1-{digest}.sqlite3"
 
 
 def _install_completed_rebuild(
     ledger_path: Path,
     staging_path: Path,
     entry: SessionFileInventoryEntry,
+    staged_entry: SessionFileInventoryEntry,
     checkpoint,
+    authority,
 ) -> None:
     before = entry.path.stat()
+    if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+            entry.source_device, entry.source_inode, entry.size_bytes, entry.mtime_ns):
+        raise OSError("source changed before the rebuilt checkpoint was verified")
     parse_session_append(
         entry.path,
         checkpoint,
@@ -197,8 +221,20 @@ def _install_completed_rebuild(
                 or not str(current["error"] or "").startswith(STALE_ERROR_PREFIX)
             ):
                 raise RuntimeError("stale source changed before rebuild commit")
-            _replace_workset_rows(connection, entry.file_key)
-            _mark_rebuilt_tasks_dirty(connection, entry.file_key)
+            assert_live_rebuild_authority(connection, entry.file_key, authority)
+            assert_attached_stage(connection, staged_entry, checkpoint)
+            _check_identity_target(connection, entry.file_key, staged_entry.file_key)
+            _mark_rebuilt_tasks_dirty(connection, staged_entry.file_key, entry.file_key)
+            _replace_workset_rows(connection, entry.file_key, staged_entry.file_key)
+            from codex_usage.session_cache_source_identity import record_physical_identity
+            record_physical_identity(connection, checkpoint)
+            # Byte-identical semantic repairs can retain the same row count.
+            # Force a new normalized generation, not the append fast path.
+            supersede_rebuilt_generations(connection, entry.file_key, staged_entry.file_key, checkpoint, authority)
+            synchronize_parser_workset_in_transaction(connection)
+            assert_installed_authority(connection, staged_entry, checkpoint)
+            if _file_snapshot(entry.path.stat()) != _file_snapshot(before):
+                raise OSError("source changed before rebuild commit")
             connection.commit()
         except BaseException:
             connection.rollback()
@@ -210,24 +246,43 @@ def _install_completed_rebuild(
 def _replace_workset_rows(
     connection: sqlite3.Connection,
     source_key: str,
+    staged_key: str,
 ) -> None:
     for table in _WORKSET_TABLES:
         columns = _table_columns(connection, table)
         selected = ", ".join(columns)
-        connection.execute(f"delete from {table} where file_key = ?", (source_key,))
+        connection.execute(f"delete from {table} where file_key in (?, ?)", (source_key, staged_key))
         connection.execute(
             f"insert into {table} ({selected}) "
             f"select {selected} from rebuild.{table} where file_key = ?",
-            (source_key,),
+            (staged_key,),
         )
     file_columns = _table_columns(connection, "files")
     selected = ", ".join(file_columns)
-    connection.execute("delete from files where file_key = ?", (source_key,))
+    connection.execute("delete from files where file_key in (?, ?)", (source_key, staged_key))
     connection.execute(
         f"insert into files ({selected}) "
         f"select {selected} from rebuild.files where file_key = ?",
-        (source_key,),
+        (staged_key,),
     )
+
+
+def _check_identity_target(connection, source_key, staged_key):
+    if source_key == staged_key:
+        return
+    retained = connection.execute("""select 1 from ledger_generations g
+        join ledger_sources s using(source_id)
+        where s.source_key=? and g.status!='superseded' limit 1""", (staged_key,)).fetchone()
+    if retained is not None:
+        raise RuntimeError("rebuilt source identity target already has retained facts")
+    target = connection.execute("select parsed_at from files where file_key=?", (staged_key,)).fetchone()
+    if target is None:
+        return
+    populated = target["parsed_at"] or any(connection.execute(
+        f"select 1 from {table} where file_key=? limit 1", (staged_key,)).fetchone()
+        for table in _WORKSET_TABLES)
+    if populated:
+        raise RuntimeError("rebuilt source identity target already has retained facts")
 
 
 def _table_columns(connection: sqlite3.Connection, table: str) -> tuple[str, ...]:
@@ -240,6 +295,7 @@ def _table_columns(connection: sqlite3.Connection, table: str) -> tuple[str, ...
 def _mark_rebuilt_tasks_dirty(
     connection: sqlite3.Connection,
     source_key: str,
+    previous_key: str,
 ) -> None:
     task_ids = {
         str(row[0])
@@ -253,14 +309,16 @@ def _mark_rebuilt_tasks_dirty(
         for row in connection.execute(query, (source_key,))
         if row[0]
     }
+    from codex_usage.session_cache_generations import affected_task_ids_for_file
+    task_ids.update(affected_task_ids_for_file(connection, previous_key))
     connection.executemany(
         "insert or ignore into dirty_transition_tasks (thread_id) values (?)",
         ((task_id,) for task_id in sorted(task_ids)),
     )
 
 
-def _file_snapshot(stat) -> tuple[int, int, int, int]:
-    return (int(stat.st_dev), int(stat.st_ino), stat.st_size, stat.st_mtime_ns)
+def _file_snapshot(stat) -> tuple[int, int, int, int, int]:
+    return (int(stat.st_dev), int(stat.st_ino), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
 
 def _remove_staging_files(path: Path) -> None:

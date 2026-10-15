@@ -38,35 +38,41 @@ def synchronize_parser_workset(
     with open_ledger(ledger_path) as connection:
         connection.execute("begin immediate")
         try:
-            changed = reconcile_accounting(connection)
-            changed |= _sync_sources(connection)
-            changed |= _sync_transitions(connection)
-            if force_image_events:
-                rebuild_image_events(connection)
-                changed = True
-            if force_normalized_ownership or _normalized_ownership_requires_rebuild(
-                connection
-            ):
-                rebuild_normalized_events(connection)
-                connection.execute(
-                    "insert or replace into ledger_meta (key, value) values (?, ?)",
-                    (
-                        _NORMALIZED_OWNERSHIP_VERSION_KEY,
-                        str(_NORMALIZED_OWNERSHIP_VERSION),
-                    ),
-                )
-                changed = True
-            changed |= reconcile_accounting(connection)
-            revision = (
-                increment_ledger_revision(connection)
-                if changed
-                else _current_revision(connection)
+            revision, changed = synchronize_parser_workset_in_transaction(
+                connection,
+                force_normalized_ownership=force_normalized_ownership,
+                force_image_events=force_image_events,
             )
-            synchronize_speed(connection, usage_changed=changed)
             connection.commit()
         except BaseException:
             connection.rollback()
             raise
+    return revision, changed
+
+
+def synchronize_parser_workset_in_transaction(
+    connection: sqlite3.Connection,
+    *,
+    force_normalized_ownership: bool = False,
+    force_image_events: bool = False,
+) -> tuple[int, bool]:
+    """Keep a workset replacement and its report authority in one commit."""
+    if not connection.in_transaction:
+        raise RuntimeError("parser synchronization requires an owned transaction")
+    changed = reconcile_accounting(connection)
+    changed |= _sync_sources(connection)
+    changed |= _sync_transitions(connection)
+    if force_image_events:
+        rebuild_image_events(connection)
+        changed = True
+    if force_normalized_ownership or _normalized_ownership_requires_rebuild(connection):
+        rebuild_normalized_events(connection)
+        connection.execute("insert or replace into ledger_meta (key, value) values (?, ?)",
+                           (_NORMALIZED_OWNERSHIP_VERSION_KEY, str(_NORMALIZED_OWNERSHIP_VERSION)))
+        changed = True
+    changed |= reconcile_accounting(connection)
+    revision = increment_ledger_revision(connection) if changed else _current_revision(connection)
+    synchronize_speed(connection, usage_changed=changed)
     return revision, changed
 
 
