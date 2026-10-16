@@ -1,0 +1,59 @@
+name: Collector runtime experiment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  PYTHONPATH: ${{ github.workspace }}/src
+concurrency:
+  group: collector-runtime-experiment-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native:
+    name: ${{ matrix.configuration }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [macos-26, windows-2025]
+        configuration: [current313, common313, common315]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.configuration == 'common315' && '3.15.0' || '3.13.12' }}
+      - uses: astral-sh/setup-uv@v8.2.0
+      - name: Prepare isolated environment
+        shell: bash
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+        run: |
+          if [[ "$CONFIGURATION" == current313 ]]; then
+            uv sync --frozen --all-groups
+          else
+            uv venv --python "$(python -c 'import sys; print(sys.executable)')" .venv
+            uv pip install --python .venv -r experiments/collector-runtime/common-requirements.txt
+          fi
+      - name: Focused compatibility and frozen monetary parity
+        shell: bash
+        run: |
+          if [[ -x .venv/bin/python ]]; then PY=.venv/bin/python; else PY=.venv/Scripts/python.exe; fi
+          "$PY" -m pytest -q tests/test_agent_worker_bootstrap.py tests/test_parse_project_identity.py tests/test_project_continuity.py tests/test_speed_projection.py tests/test_agent_api.py tests/test_agent_runtime.py tests/test_collector_smoke_owner.py
+          "$PY" scripts/check_speed_parity.py
+      - name: Build and verify actual native collector
+        shell: bash
+        run: |
+          if [[ -x .venv/bin/python ]]; then PY=.venv/bin/python; else PY=.venv/Scripts/python.exe; fi
+          "$PY" experiments/collector-runtime/check.py --output output/runtime-experiment
+      - name: Retain synthetic compatibility proof, never private input
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-${{ matrix.configuration }}-${{ matrix.os }}
+          path: output/runtime-experiment/*.json
+          if-no-files-found: warn
+          retention-days: 14

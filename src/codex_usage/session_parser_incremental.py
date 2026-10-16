@@ -59,6 +59,7 @@ from codex_usage.session_history import (
 )
 from codex_usage.session_history_models import PaginatedHistoryError
 from codex_usage.session_usage_record import usage_record
+from codex_usage.session_project_identity import ParseProjectIdentity
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +115,7 @@ def _parse_session_chunk(
     bytes_read = 0
     checkpoint_offset = start_offset
     content_metrics = StorageContentMetrics()
+    project_identity = ParseProjectIdentity()
 
     try:
         with path.open("rb", buffering=SESSION_READ_BUFFER_BYTES) as handle:
@@ -392,7 +394,8 @@ def _parse_session_chunk(
                     continue
 
                 records.append(
-                    usage_record(path, metadata, timestamp, delta, model=current_model,
+                    usage_record(path, metadata, timestamp, delta,
+                                 identity=project_identity.resolve(metadata), model=current_model,
                                  turn_id=current_turn_id, effort=current_effort, mode=current_mode)
                 )
                 if root_session_is_fork and is_root_session:
@@ -400,6 +403,7 @@ def _parse_session_chunk(
                 speed.finish(records[-1], next_record_index + len(records) - 1, metadata.cli_version)
                 checkpoint_offset = line_end
 
+            project_identity.validate()
             current_path_stat = path.stat()
             if (
                 int(current_path_stat.st_dev) != source_device

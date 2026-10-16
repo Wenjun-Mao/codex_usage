@@ -36,7 +36,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller exited with code $LASTEXITCODE" }
     & $binaryPath --help | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Packaged agent help failed" }
-    uv run python scripts/smoke-test-packaged-agent.py --executable $binaryPath
+    uv run python scripts/smoke-test-packaged-agent.py --executable $binaryPath `
+        --parallel-evidence output/qualification/package-win32-x64/collector-parallel.json
     if ($LASTEXITCODE -ne 0) { throw "Packaged agent smoke failed" }
 }
 finally {

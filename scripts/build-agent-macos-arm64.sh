@@ -32,4 +32,5 @@ uv run --group package pyinstaller \
 
 chmod +x "$binary_path"
 "$binary_path" --help >/dev/null
-uv run python scripts/smoke-test-packaged-agent.py --executable "$binary_path"
+uv run python scripts/smoke-test-packaged-agent.py --executable "$binary_path" \
+  --parallel-evidence output/qualification/package-darwin-arm64/collector-parallel.json

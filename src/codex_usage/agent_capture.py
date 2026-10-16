@@ -76,6 +76,7 @@ def capture_once(
     max_workers: int | None = None,
     auto_transitions: bool = True,
     preferred_paths: tuple[str, ...] = (),
+    audit_path: Path | None = None,
 ) -> CaptureResult:
     ledger_path = ledger_database_path(codex_home)
     started = monotonic()
@@ -95,6 +96,9 @@ def capture_once(
             preferred_paths=preferred_paths,
         )
         stats = outcome.stats
+        if audit_path is not None:
+            from codex_usage.parallel_audit import write_capture_audit
+            write_capture_audit(audit_path, run_id=run_id, usage_run=outcome.usage_run)
         # Every capture source (startup, scheduled, and explicit manual) makes
         # bounded historical-image progress.  The agent coalesces these calls
         # onto its one heavy-I/O lane before capture_once is entered.

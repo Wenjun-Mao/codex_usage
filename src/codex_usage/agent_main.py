@@ -2,24 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import signal
 import sys
 import threading
 from dataclasses import replace
 from pathlib import Path
-
-from codex_usage.agent_local_data import reset_local_data
-from codex_usage.agent_paths import validate_codex_home
-from codex_usage.agent_parent import start_parent_monitor
-from codex_usage.agent_runtime import (
-    AgentAlreadyRunningError,
-    CodexUsageAgent,
-)
-from codex_usage.agent_service import (
-    background_agent_status,
-    uninstall_background_agent,
-)
-from codex_usage.agent_settings import load_agent_settings, save_agent_settings
 
 
 def build_agent_parser() -> argparse.ArgumentParser:
@@ -33,6 +21,7 @@ def build_agent_parser() -> argparse.ArgumentParser:
     parser.add_argument("--launch-id", help=argparse.SUPPRESS)
     parser.add_argument("--settings-file", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--capture-once", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--capture-audit", type=Path, help=argparse.SUPPRESS)
     controls = parser.add_mutually_exclusive_group()
     controls.add_argument("--uninstall-service", action="store_true", help=argparse.SUPPRESS)
     controls.add_argument("--service-status", action="store_true", help=argparse.SUPPRESS)
@@ -43,6 +32,14 @@ def build_agent_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Frozen child invocations are diverted before importing the application.
+    from codex_usage.agent_local_data import reset_local_data
+    from codex_usage.agent_paths import validate_codex_home
+    from codex_usage.agent_parent import start_parent_monitor
+    from codex_usage.agent_runtime import AgentAlreadyRunningError, CodexUsageAgent
+    from codex_usage.agent_service import background_agent_status, uninstall_background_agent
+    from codex_usage.agent_settings import load_agent_settings, save_agent_settings
+
     parser = build_agent_parser()
     args = parser.parse_args(argv)
     if args.parent_pid is not None and args.parent_pid <= 0:
@@ -74,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         process_owner="transient" if args.parent_pid is not None else "background",
         parent_pid=args.parent_pid,
         launch_id=args.launch_id,
+        capture_audit_path=args.capture_audit,
     )
     try:
         agent.start(port=args.port)
@@ -117,4 +115,5 @@ def _print_control_result(payload: dict[str, object]) -> int:
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     raise SystemExit(main())

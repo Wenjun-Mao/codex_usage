@@ -71,6 +71,23 @@ child SQLite guards, oracle equivalence, a Windows root-exits/child-survives
 Job-ownership smoke, and a manual non-publishing dual-native workflow before
 tag as a pre-publish gate on macOS Apple Silicon and Windows x64.
 
+### Frozen Collector Bootstrap And Evidence
+
+The collector is frozen from `agent_main.py`, not the CLI entrypoint. It calls
+`multiprocessing.freeze_support()` before ordinary argument parsing and heavy
+application imports. Child flags are not accepted by the application's parser.
+Both cached-load and refresh-only APIs propagate pool infrastructure/fallback
+counters; file errors remain distinct and keep their prior generation.
+
+Package acceptance must exercise the actual collector over HTTP, with twelve
+substantive files, at least two non-parent workers and overlapping parse spans,
+zero fallback/errors, zero-byte unchanged capture, appended deltas, exact serial
+oracle records and owned-tree shutdown. An explicitly requested audit replaces
+one private content-free run-bound file; ordinary captures write no audit.
+Qualification requires this proof bound to the embedded executable's SHA-256
+and native target. The old one-file smoke remains useful but cannot qualify
+parallel execution. Missing proof fails closed.
+
 ## Rejected Alternatives
 
 - Threads would not provide the required process isolation or make worker

@@ -400,6 +400,8 @@ def refresh_cached_session_data(
         outcome,
         stats=replace(
             outcome.stats,
+            worker_infrastructure_errors=int(bool(outcome.usage_run.infrastructure_error)),
+            worker_serial_fallbacks=int(outcome.usage_run.used_serial_fallback),
             storage_metadata_reads=storage_refresh.metadata_reads,
             storage_files_reused=storage_refresh.files_reused,
             storage_files_missing_marked=storage_refresh.files_missing_marked,

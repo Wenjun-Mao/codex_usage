@@ -42,6 +42,25 @@ reduction. Returned raw points, deduplication, conflicts, cross-day boundaries,
 endpoints and extrema are unchanged. Hour aggregation reuses its per-day calendar,
 including DST occurrences. No monetary arithmetic or cache identity changes.
 
+### Parse-Scoped Identity Reuse (2026-10-16)
+
+Usage-delta construction reuses an identity only within one parse chunk and
+contiguous effective `(cwd, recorded origin, recorded commit, session ID)` scope.
+Resolve lazily when a record is emitted, and resolve again after a scope switch.
+Before a chunk succeeds, freshly resolve every identity used by its records,
+including earlier scopes, without a shared checkout cache. A changed result
+rejects the chunk through the existing bounded OSError retry/file-error path,
+preserving previously committed rows and checkpoints. Parent reconciliation
+remains independent and fresh; it cannot validate every earlier metadata scope.
+
+No identity or witness is serialized in checkpoints or kept across chunks,
+captures, retries or files. This removes per-response checkout/config/ancestry
+work without URL/name shortcuts or stale global state. It preserves ADR 0035
+and adds a worker-exit freshness check, not an atomic filesystem lock through
+the later parent commit. The prior per-record resolver had that same final
+resolution-to-commit race. A stronger atomic checkout authority contract would
+require a separate design, not a cache pretending to provide it.
+
 ## Alternatives And Consequences
 
 Rejected skipping capture invalidation, dropping historical observations, retaining

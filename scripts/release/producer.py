@@ -69,7 +69,9 @@ def validate_payload(metadata, files, gate, *, origin=None, journal=None):
     elif gate in ("core", "metadata"):
         metadata["tests"] = validate_python(files, gate)
     elif gate.startswith("package-"):
+        from .collector_proof import validate_collector_proof
         metadata["extension_tests"] = validate_extension(files)
+        metadata["collector_parallel"] = validate_collector_proof(files, metadata["package"])
     return metadata
 
 

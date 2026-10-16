@@ -51,6 +51,22 @@ def require_actual_parallel(
         raise RuntimeError(f"{label}: actual process parallelism not observed")
 
 
+def write_capture_audit(path: Path, *, run_id: int, usage_run: ParallelRunReport) -> Path:
+    """Replace one explicitly requested private audit, never accumulate history."""
+    if run_id <= 0:
+        raise ValueError("run_id must be greater than zero")
+    payload = {
+        "version": 1,
+        "capture_run_id": run_id,
+        "parent_pid": os.getpid(),
+        "sys_platform": sys.platform,
+        "machine": platform.machine(),
+        "usage_run": _audit_run(usage_run),
+    }
+    atomic_write(path, json.dumps(payload, indent=2) + "\n")
+    return path
+
+
 def validate_target_architecture(
     expected_target: ExpectedTarget,
     *,

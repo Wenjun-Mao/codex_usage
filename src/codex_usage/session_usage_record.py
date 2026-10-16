@@ -1,10 +1,8 @@
 """Attach source metadata and current model context to one observed usage delta."""
 from codex_usage.models import UsageRecord, usage_role_from_is_subagent
-from codex_usage.project_identity import resolve_project_identity
 
 
-def usage_record(path, metadata, timestamp, delta, *, model, turn_id, effort, mode):
-    identity = resolve_project_identity(metadata)
+def usage_record(path, metadata, timestamp, delta, *, identity, model, turn_id, effort, mode):
     return UsageRecord(
         timestamp=timestamp, usage=delta, session_id=metadata.session_id,
         file_path=path, usage_role=usage_role_from_is_subagent(metadata.is_subagent),

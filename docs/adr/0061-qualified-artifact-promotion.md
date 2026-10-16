@@ -28,6 +28,13 @@ parity, bounded-work guards, cross-browser/painted-meter/screenshot behavior,
 native macOS evidence, and official public catalog/download hash verification.
 Native Windows coverage limits remain disclosed.
 
+Collector package receipts additionally require an executable-hash/native-target
+bound real HTTP parallelism proof: complete cold byte/checkpoint/record progress,
+independent cold and append serial oracles, overlapping workers without fallback,
+zero-work capture and observed forced-timeout tree cleanup. These facts belong
+to original package execution, not a source-only or one-file smoke. Missing proof
+cannot qualify under an older package case inventory. See ADR 0019.
+
 A versioned receipt binds:
 
 - Repository identity, source commit, package version, supported targets and

@@ -60,6 +60,7 @@ class CodexUsageAgent:
         process_owner: str = "background",
         parent_pid: int | None = None,
         launch_id: str | None = None,
+        capture_audit_path: Path | None = None,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
     ) -> None:
@@ -67,6 +68,7 @@ class CodexUsageAgent:
         self.process_owner = process_owner
         self.parent_pid = parent_pid
         self.launch_id = launch_id
+        self._capture_audit_path = capture_audit_path
         self.settings = load_agent_settings(settings_file)
         self.codex_home = Path(self.settings.codex_home)
         self._clock = clock
@@ -390,6 +392,7 @@ class CodexUsageAgent:
                     request_kind=request_kind,
                     auto_transitions=self.settings.auto_project_transitions,
                     preferred_paths=preferred_paths,
+                    audit_path=self._capture_audit_path,
                 ),
             )
             self._capture_future = future

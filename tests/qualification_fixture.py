@@ -35,6 +35,21 @@ def package_bytes(target="darwin-arm64", version="2.12.2"):
         archives.AGENTS[target]: b"collector-" + target.encode()})
 
 
+def collector_proof(target):
+    return {"contract": "collector-parallel-http-v1", "oracle_equal": True,
+        "collector_sha256": sha256(b"collector-"+target.encode()).hexdigest(),
+        "cold": {"version": 1, "capture_run_id": 1, "parent_pid": 100,
+            "completed_events": 12000, "coverage_complete": True, "pending_files": 0, "pending_bytes": 0,
+            "source_bytes_read": 21600000, "parsed_bytes": 21500000, "corpus_bytes": 21500000, "oracle_equal": True,
+            "sys_platform": "darwin" if target == "darwin-arm64" else "win32",
+            "machine": "arm64" if target == "darwin-arm64" else "AMD64",
+            "usage_run": {"resolved_worker_count": 4, "worker_pids": [101, 102, 103, 104],
+                "max_concurrency": 4, "used_serial_fallback": False,
+                "infrastructure_error": "", "span_count": 12, "file_error_count": 0}},
+        "unchanged_source_bytes": 0, "append_events": 12,
+        "cleanup": {"forced_timeout": True, "collector_observed_alive": True, "collector_observed_exited": True}}
+
+
 def visual_evidence(suite, *, hover=None):
     result = {"schema": 2 if suite == "hover" else 1, "suite": suite,
         "status": "functional-complete" if suite == "hover" else "passed", "synthetic_only": True,
@@ -100,7 +115,8 @@ class FixtureAPI(GitHub):
                 "summaries": [{"success": True, "counts": {"tests": len(names), "passed": len(names),
                     "failed": 0, "cancelled": 0, "skipped": 0, "todo": 0, "suites": 0}}]}
             return {"package.vsix": package_bytes(gate.removeprefix("package-"), self.source["version"]),
-                "extension-tests.xml": ElementTree.tostring(xml), "extension-inventory.json": policy.canonical(inventory)}
+                "extension-tests.xml": ElementTree.tostring(xml), "extension-inventory.json": policy.canonical(inventory),
+                "collector-parallel.json": policy.canonical(collector_proof(gate.removeprefix("package-")))}
         if gate in ("metadata", "core"):
             validator = load_tool("verification.test_inventory")
             required = json.loads(validator.BASELINE.read_text())["required"]

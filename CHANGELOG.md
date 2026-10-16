@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.12.4 - 2026-10-16
+
+- Correct frozen collector worker startup so multi-file captures use the bounded
+  process pool instead of silently recovering through serial parsing. Report
+  infrastructure fallback counters consistently through capture results.
+- Reuse project identity within a parse chunk, freshly validating every used
+  identity before accepting it. Preserve checkpoint and attribution semantics.
+- Require shipped-collector HTTP lifecycle, real overlapping workers, no-op and
+  append proof with exact serial-oracle records for both platform packages.
+
 ## 2.12.3 - 2026-10-15
 
 - Resolve paginated-task accounting from validated physical-rollout lineage,
