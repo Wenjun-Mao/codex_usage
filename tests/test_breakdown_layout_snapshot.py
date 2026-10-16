@@ -15,7 +15,7 @@ def valid_snapshot():
         "axes": [{"visible": True, "font": "12px", "boxes": [box]}],
         "titlesDated": 2, "titleCount": 2, "linksDated": 2, "linkCount": 2,
         "linksIssued": True, "svg": 1, "windowPickers": 1, "rightAxes": 0,
-        "oldContext": False, "timeAxes": [{"font": "12px", "rect": {"left": 0, "right": 100},
+        "oldContext": False, "diagnosticSections": 0, "timeAxes": [{"font": "12px", "rect": {"left": 0, "right": 100},
             "ticks": [{"glyph": {"left": 0, "right": 20}, "span": {"left": 0, "right": 20}, "error": 0},
                 {"glyph": {"left": 80, "right": 100}, "span": {"left": 80, "right": 100}, "error": 0}]}]}
 
@@ -23,13 +23,13 @@ def valid_snapshot():
 @pytest.mark.parametrize("fault", ["scripts", "sections", "sectionFits", "controlsFit",
     "axis-hidden", "axis-font", "axis-glyph", "titlesDated", "linksDated", "linksIssued",
     "linkCount", "svg", "windowPickers", "oldContext", "tick-font", "glyph-overlap",
-    "span-overflow", "alignment"])
+    "span-overflow", "alignment", "diagnosticSections"])
 def test_original_invariants_remain_sensitive(fault):
     sample = valid_snapshot()
     state = {"view": "time", "overlay": "none"}
     assert_layout(sample, "fixture", state)
-    if fault in ("scripts", "sections", "svg", "titlesDated", "linksDated", "linkCount", "windowPickers"):
-        sample[fault] += 1 if fault in ("scripts", "sections", "svg") else -1 if fault != "linkCount" else -2
+    if fault in ("scripts", "sections", "svg", "titlesDated", "linksDated", "linkCount", "windowPickers", "diagnosticSections"):
+        sample[fault] += 1 if fault in ("scripts", "sections", "svg", "diagnosticSections") else -1 if fault != "linkCount" else -2
     elif fault in ("sectionFits", "controlsFit", "linksIssued", "oldContext"):
         sample[fault] = not sample[fault]
     elif fault.startswith("axis-"):

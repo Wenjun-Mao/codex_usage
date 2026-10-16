@@ -123,6 +123,29 @@ def test_private_allowance_action_uses_existing_authenticated_report_transport()
         server.stop()
 
 
+def test_allowance_diagnostics_is_explicit_and_requires_authentication():
+    class Agent(_StubAgent):
+        calls = 0
+        def allowance_diagnostics(self):
+            self.calls += 1
+            return {"schema_version": 1, "text": "bounded diagnostics"}
+    agent = Agent()
+    server = AgentHttpServer(agent, token="x"*40)
+    server.start()
+    try:
+        assert agent.calls == 0
+        for headers, expected in (({}, 401),
+            ({"Authorization": "Bearer " + "x"*40, "Origin": "null"}, 403),
+            ({"Authorization": "Bearer " + "x"*40}, 200)):
+            status, payload = _request(server.port, headers=headers, path="/v1/allowance/diagnostics")
+            assert status == expected
+            if status == 200:
+                assert json.loads(payload) == {"schema_version": 1, "text": "bounded diagnostics"}
+        assert agent.calls == 1
+    finally:
+        server.stop()
+
+
 @pytest.mark.parametrize("path,method", [
     ("/v1/companion/health", "GET"), ("/v1/companion/query", "POST"),
 ])

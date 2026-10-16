@@ -4,7 +4,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import unquote
 
-from allowance_period_fixture import allowance_period_fixture, dense_period_fixture, install_history_cache, official_display_fixture
+from allowance_period_fixture import (
+    allowance_period_fixture, dense_period_fixture, install_history_cache,
+    official_display_fixture, reset_economics_fixture,
+)
 from codex_usage.agent_reports import render_ledger_report
 from verification.visual_cases import PERIOD_HISTORY_STATES, THEMES, WIDTHS, identity
 
@@ -15,6 +18,10 @@ def check_period_matrix(page, engine, audit):
     screenshots.mkdir(exist_ok=True)
     with TemporaryDirectory(prefix="allowance-period-ui-") as directory:
         variants = []
+        reset_home = Path(directory) / "reset-economics"
+        reset_home.mkdir()
+        reset_report = reset_economics_fixture(reset_home)
+        reset_now = install_history_cache(reset_home, reset_report)
         for variant in ("official-conflicts", "uncertain-current", "lone-current"):
             home = Path(directory) / variant
             home.mkdir()
@@ -36,6 +43,11 @@ def check_period_matrix(page, engine, audit):
                         _check_period_view(page, first, render, scenario, width, screenshots,
                                            f"{engine}-{scenario}-{theme}-{width}")
                         if scenario == "period-history":
+                            economic = render_ledger_report(reset_home, range_name="all", project_keys=[], theme=theme,
+                                timezone_name="America/Toronto", now=reset_now)
+                            audit.document(f"reset-economics-{theme}", economic.html)
+                            _check_reset_economics(page, economic, reset_report, screenshots,
+                                                   f"{engine}-reset-economics-{theme}-{width}")
                             for variant, variant_home, variant_now in variants:
                                 extra = render_ledger_report(variant_home, range_name="all", project_keys=[], theme=theme,
                                     timezone_name="America/Toronto", now=variant_now)
@@ -52,7 +64,7 @@ def _check_period_view(page, first, render, scenario, width, screenshots, key):
     assert page.locator("script").count() == 0
 
     def disclose():
-        summary = page.get_by_text("Probe, coverage, and allowance history", exact=True)
+        summary = page.locator(".allowance-history-panel > summary")
         if not summary.evaluate("e => e.parentElement.open"):
             summary.focus()
             summary.press("Enter")
@@ -82,6 +94,7 @@ def _check_period_view(page, first, render, scenario, width, screenshots, key):
             summary.press("Enter")
 
     disclose()
+    assert page.get_by_text("Diagnostics", exact=True).count() == 0
     periods = page.get_by_role("list", name="Allowance period history")
     dense = scenario == "period-history-dense"
     assert periods.locator(":scope > li").count() == (12 if dense else 2)
@@ -140,17 +153,15 @@ def _check_period_view(page, first, render, scenario, width, screenshots, key):
 
 def _check_current(page, report, variant, screenshots, key):
     page.set_content(report.html)
-    summary = page.get_by_text("Probe, coverage, and allowance history", exact=True)
+    summary = page.locator(".allowance-history-panel > summary")
     summary.focus()
     summary.press("Enter")
     periods = page.get_by_role("list", name="Allowance period history")
     current = periods.locator("li").filter(has=page.locator("strong", has_text="Current"))
     assert current.count() == 1
-    assert "Opening unobserved" in current.inner_text()
-    if variant == "uncertain-current":
-        assert "Current · uncertain boundary" in current.inner_text()
-    else:
-        assert current.locator("strong").inner_text() == "Current"
+    assert "Start unknown" in current.inner_text()
+    assert current.locator("strong").inner_text() == "Current"
+    assert "7 days" not in current.inner_text()
     if variant == "official-conflicts":
         assert periods.locator("li").count() == 1
         uncertain = page.locator(".allowance-uncertain")
@@ -159,8 +170,41 @@ def _check_current(page, report, variant, screenshots, key):
         uncertain.locator(":scope > summary").press("Enter")
         assert uncertain.locator(":scope > ol > li").count() >= 1
     if variant == "lone-current":
-        assert "Capture details (1)" in current.inner_text()
+        assert current.get_by_role("link", name="Details", exact=True).count() == 1
         assert "Observed 2026-10-31 to 2026-11-01" not in current.inner_text()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     current.scroll_into_view_if_needed()
+    page.screenshot(path=str(screenshots / f"{key}.png"))
+
+
+def _check_reset_economics(page, rendered, source, screenshots, key):
+    from codex_usage.report_numbers import summary_money, percentage_text
+    page.set_content(rendered.html)
+    summary = page.locator(".allowance-history-panel > summary")
+    summary.focus()
+    summary.press("Enter")
+    table = page.locator(".allowance-reset-periods")
+    assert table.is_visible()
+    assert table.get_by_role("columnheader", name="API-equivalent usage", exact=True).count() == 1
+    assert table.get_by_role("columnheader", name="100% allowance value (est.)", exact=True).count() == 1
+    rows = table.locator("tbody tr")
+    assert rows.count() == 3
+    assert "Start unknown" not in table.inner_text() and "End unknown" not in table.inner_text()
+    assert "Next reset" in rows.first.inner_text() and "Current" in rows.first.inner_text()
+    for index, period in enumerate(source["reset_history"]["periods"]):
+        cells = rows.nth(index).locator("td")
+        assert summary_money(period["usage_usd"]) in cells.nth(0).inner_text()
+        assert cells.nth(1).inner_text() == percentage_text(period["allowance_used"])+"%"
+        if period["allowance_value"] is not None:
+            assert cells.nth(2).inner_text() == summary_money(period["allowance_value"])
+    assert source["reset_history"]["periods"][0]["allowance_value"] is not None
+    link = rows.first.get_by_role("link", name="Details", exact=True)
+    link.focus()
+    assert link.evaluate("e => e === document.activeElement")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    region = page.get_by_role("region", name="Allowance reset periods")
+    if page.viewport_size["width"] == 360:
+        assert region.evaluate("e => e.scrollWidth > e.clientWidth && getComputedStyle(e).overflowX === 'auto'")
+        region.evaluate("e => e.scrollLeft=0")
+    region.scroll_into_view_if_needed()
     page.screenshot(path=str(screenshots / f"{key}.png"))

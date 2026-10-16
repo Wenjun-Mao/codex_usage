@@ -62,6 +62,38 @@ def action(report, **fields):
     return next(a for a in nav["actions"] if a["state"] == dict(nav["state"], **fields))
 
 
+def test_compact_history_upgrade_replaces_warm_revision_39_wrapper(tmp_path, monkeypatch):
+    import codex_usage.agent_reports as reports
+
+    seeded(tmp_path)
+    original = reports.render_html_report
+
+    def legacy(*args, **kwargs):
+        path = original(*args, **kwargs)
+        path.write_text(path.read_text().replace(
+            '<details class="allowance-history-panel"><summary>Allowance history</summary>',
+            '<details><summary>Probe, coverage, and allowance history</summary>'))
+        return path
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reports, "REPORT_RENDER_REVISION", 39)
+        patch.setattr(reports, "render_html_report", legacy)
+        old = render(tmp_path)
+        assert "Probe, coverage, and allowance history" in old.html
+        assert render(tmp_path).cache_hit
+
+    assert reports.REPORT_RENDER_REVISION > 39
+    upgraded = render(tmp_path)
+    assert not upgraded.cache_hit
+    assert upgraded.ledger_revision == old.ledger_revision
+    assert "Probe, coverage, and allowance history" not in upgraded.html
+    assert '<details class="allowance-history-panel"><summary>Allowance history</summary>' in upgraded.html
+    assert render(tmp_path).cache_hit
+    detail = render(tmp_path, action(upgraded, kind="periods", index=0))
+    assert '<details class="allowance-history-panel" open>' in detail.html
+    assert '<details><summary>Diagnostics</summary>' not in detail.html
+
+
 def test_all_periods_and_uncertain_fragments_remain_reachable_with_bounded_html(tmp_path):
     _, source = seeded(tmp_path, dense=True)
     current = render(tmp_path)
@@ -80,7 +112,8 @@ def test_all_periods_and_uncertain_fragments_remain_reachable_with_bounded_html(
         selected = next(a for a in current.allowance_navigation["actions"] if a["state"]["kind"] == kind)
         detail = render(tmp_path, selected)
         assert detail.html.count('class="allowance-observations"') == 1
-        assert '<details open><summary>Probe, coverage, and allowance history' in detail.html
+        assert '<details class="allowance-history-panel" open><summary>Allowance history' in detail.html
+        assert '<details><summary>Diagnostics</summary>' not in detail.html
 
 
 def test_fit_and_capture_pagination_default_newest_and_optional_oldest(tmp_path):
@@ -122,6 +155,7 @@ def test_new_page_uses_cached_evidence_only_and_revisited_page_never_decodes_his
             "codex_usage.allowance_queries._build_from_costs", "codex_usage.allowance_index._build_from_costs",
             "codex_usage.allowance_index._price_missing_events", "codex_usage.allowance_pace.fit_paces",
             "codex_usage.allowance_display_history.display_history", "codex_usage.allowance_capture.probe_allowance",
+            "codex_usage.allowance_reset_periods.reset_periods", "codex_usage.allowance_reset_economics.reset_history",
             "codex_usage.ledger_queries.query_ledger_records",
         ):
             stack.enter_context(patch(target, forbidden))
@@ -133,6 +167,20 @@ def test_new_page_uses_cached_evidence_only_and_revisited_page_never_decodes_his
             hit = render(tmp_path, older_action)
             assert hit.html == older.html and hit.cache_hit
             assert render(tmp_path).cache_hit
+
+
+def test_reset_economics_details_replay_cached_summary_and_retained_exact_captures(tmp_path):
+    report = fixtures.reset_economics_fixture(tmp_path)
+    fixtures.install_history_cache(tmp_path, report)
+    first = render(tmp_path)
+    assert 'aria-label="Allowance reset periods"' in first.html
+    assert "API-equivalent usage" in first.html and "100% allowance value (est.)" in first.html
+    issued = action(first, kind="periods", index=0)
+    with patch("codex_usage.allowance_reset_economics.reset_history", side_effect=AssertionError("regrouped")):
+        detail = render(tmp_path, issued)
+        assert 'class="allowance-observations"' in detail.html
+        assert '<details class="allowance-history-panel" open>' in detail.html
+        assert render(tmp_path, issued).html == detail.html
 
 
 @pytest.mark.parametrize("fields", [{"period_page": True}, {"uncertain_page": -1}, {"capture_page": "1"},

@@ -48,3 +48,18 @@ For version 2.7.1, the Daily Summary remains immediately visible while the
 bounded per-agent table is a closed-by-default native `details` disclosure.
 Its summary remains keyboard-operable, and presentation does not reduce or
 otherwise change the complete selected agent-day CSV contract.
+
+## Owner Review: Daily Summary Only (2026-10-15)
+
+The ID-heavy Agents table cannot explain what an agent did, why it was delegated
+or its outcome. Collapsing it does not make the accounting dump a useful activity
+view. Remove that table and its styles from the dashboard, rather than relabeling
+IDs or adding more accounting columns. Keep Daily Summary, its interpretation
+note and the complete host-owned CSV export unchanged. A future task-activity
+view needs recognizable task context and outcomes and is outside this change.
+
+Do not change aggregation, attribution, selected populations or CSV rows. The
+renderer no longer reads/formats per-agent rows; HTML revision44 invalidates
+revision43 caches. Guardrails conserve daily/CSV totals, exercise exports beyond
+the former50-row display limit, forbid rendering agent detail, and verify the
+old-table cache upgrade followed by warm reuse. This is not release approval.

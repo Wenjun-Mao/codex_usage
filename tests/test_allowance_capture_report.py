@@ -130,17 +130,16 @@ def test_current_estimate_is_primary_and_older_qualified_value_is_collapsed():
     assert report["headline"] is current
     markup = render_allowance_section(report)
     assert "Current · provisional" in markup and "$1,375.00" in markup
-    summary = markup.split('<details><summary>Probe, coverage, and allowance history')[0]
+    summary = markup.split('<details class="allowance-history-panel"><summary>Allowance history')[0]
     assert "Observed 2026-09-19–2026-09-24" in summary
     assert "codex · pro · 7 days" not in summary
     assert "Low/provisional confidence" not in summary
     assert "Latest completed · qualified" not in markup
-    assert "$1,069.59" not in markup.split('<details><summary>Probe, coverage, and allowance history')[0]
+    assert "$1,069.59" not in markup.split('<details class="allowance-history-panel"><summary>Allowance history')[0]
     assert "$1,069.59" in markup.split('<details><summary>Reset windows and capture details</summary>')[1]
     assert "Earlier qualified estimates (latest 1 of 1" in markup
-    assert markup.index("Probe, coverage, and allowance history") < markup.index("Last checked")
-    assert markup.index("Probe, coverage, and allowance history") < markup.index("Latest window fit: 25 percentage points")
-    assert markup.index("Latest window fit:") > markup.index("</div></div>")
+    assert "<summary>Diagnostics</summary>" not in markup
+    assert "Last checked" not in markup and "Latest window fit:" not in markup
     assert "<svg" not in markup and "Qualified completed-window trend" not in markup
     assert "<script" not in markup
 
@@ -164,13 +163,13 @@ def test_just_reset_nine_point_window_uses_dated_same_series_previous_estimate()
     assert report["headline"] is old
     assert report["headline_previous"]
     markup = render_allowance_section(report)
-    summary = markup.split('<details><summary>Probe, coverage, and allowance history')[0]
+    summary = markup.split('<details class="allowance-history-panel"><summary>Allowance history')[0]
     assert "Previous window" in summary
     assert "Observed 2026-08-24–2026-08-31" in summary
     assert "codex · pro · 7 days" in summary
     assert "$1,200.00" in summary
     assert "Current · provisional" not in summary
-    assert "Previous window fit: 25 percentage points" in markup
+    assert "Previous window fit:" not in markup
 
 
 @pytest.mark.parametrize(
@@ -202,7 +201,7 @@ def test_ten_point_current_window_takes_over_from_previous_fallback():
     assert report["headline"] is current
     assert not report["headline_previous"]
     markup = render_allowance_section(report)
-    summary = markup.split('<details><summary>Probe, coverage, and allowance history')[0]
+    summary = markup.split('<details class="allowance-history-panel"><summary>Allowance history')[0]
     assert "Current · provisional" in summary
     assert "Observed 2026-09-01–2026-09-02" in summary
     assert "$1,400.00" in summary
@@ -217,10 +216,10 @@ def test_unpriced_latest_window_falls_back_without_entering_priced_history():
     assert report["headline"] is previous
     assert report["history"] == [previous]
     assert "$1,200.00" in render_allowance_section(report).split(
-        '<details><summary>Probe, coverage, and allowance history'
+        '<details class="allowance-history-panel"><summary>Allowance history'
     )[0]
     assert "$1,200.00" in render_allowance_section(report).split(
-        '<details><summary>Probe, coverage, and allowance history'
+        '<details class="allowance-history-panel"><summary>Allowance history'
     )[1]
     assert "$0.00" not in render_allowance_section(report)
 
@@ -323,7 +322,7 @@ def test_multiple_series_keep_qualified_history_in_collapsed_details():
     report = _report([same, other, current])
     markup = render_allowance_section(report)
     assert report["qualified"] == [same, other]
-    assert "$1,069.00" not in markup.split('<details><summary>Probe, coverage, and allowance history')[0]
+    assert "$1,069.00" not in markup.split('<details class="allowance-history-panel"><summary>Allowance history')[0]
     assert "$500.00" in markup.split('<details><summary>Reset windows and capture details</summary>')[1]
     assert "extra-model · pro · 5 hours" in markup
 
@@ -358,7 +357,7 @@ def test_summary_retains_series_for_multiple_active_buckets_and_historic_headlin
          "used_percent": 8, "resets_at": None}
     )
     summary = render_allowance_section(multiple).split(
-        '<details><summary>Probe, coverage, and allowance history'
+        '<details class="allowance-history-panel"><summary>Allowance history'
     )[0]
     assert "codex · pro · 7 days" in summary
 
@@ -366,7 +365,7 @@ def test_summary_retains_series_for_multiple_active_buckets_and_historic_headlin
                          limit_id="extra-model", duration=300)
     history_report = _report([historical])
     summary = render_allowance_section(history_report).split(
-        '<details><summary>Probe, coverage, and allowance history'
+        '<details class="allowance-history-panel"><summary>Allowance history'
     )[0]
     assert "extra-model · pro · 5 hours" in summary
     assert "High confidence" in summary

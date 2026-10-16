@@ -10,9 +10,48 @@ from codex_usage.allowance_store import store_observations
 from codex_usage.ledger_schema import increment_ledger_revision, ledger_revision, open_ledger
 from codex_usage.report_allowance import render_allowance_section
 from codex_usage.allowance_history_navigation import DEFAULT_STATE, navigation
+from codex_usage.allowance_display_history import display_history
+from codex_usage.report_allowance_history import period_history
 
 fixtures = load_tool("allowance_period_fixture")
 synthetic_report = fixtures.allowance_period_fixture
+
+
+def test_compact_history_leads_with_captured_reset_times_not_seven_day_inference():
+    from dataclasses import replace
+    from datetime import timedelta
+    from html.parser import HTMLParser
+
+    at = datetime(2026, 10, 1, 8, tzinfo=UTC)
+    first = QuotaObservation(at.isoformat(), "codex", "primary", "pro", 60, 10080,
+                             int(at.timestamp())+7200, 3)
+    second = replace(first, timestamp=(at+timedelta(hours=3)).isoformat(), used_percent=10,
+                     resets_at=first.resets_at+7*86400)
+    missing = replace(second, timestamp=(at+timedelta(hours=4)).isoformat(), used_percent=20, reset_credits=None)
+    early = replace(second, timestamp=(at+timedelta(hours=5)).isoformat(), used_percent=2, reset_credits=2)
+    points = [first, second, missing, early]
+    history = display_history(points, {p: {"Live probe"} for p in points}, [], [early])
+    report = dict(display_history=history, windows=[])
+    nav = navigation(report, "synthetic")
+    markup = period_history(report, UTC, nav=nav)
+
+    class Text(HTMLParser):
+        def handle_data(self, data):
+            values.append(data)
+
+    values = []
+    Text().feed(markup)
+    shown = "".join(values)
+    assert "Oct 01, 10:00 – by Oct 01, 13:00" in shown
+    assert "by Oct 01, 13:00 – Now" in shown
+    assert "Next reset Oct 08, 10:00" in shown
+    assert "Start unknown – Oct 01, 10:00" in shown
+    assert "7 days" not in shown and "Capture details" not in shown and "Fits (" not in shown
+    assert shown.count("Details") == 3
+    selected = navigation(report, "synthetic", dict(DEFAULT_STATE, kind="periods", index=1))
+    detail = period_history(report, UTC, nav=selected)
+    assert "after 2026-10-01 11:00" in detail and "by 2026-10-01 13:00" in detail
+    assert "Actual start not established" not in detail
 
 
 def test_local_dst_dates_bounded_captures_and_single_fit_claim(tmp_path):
@@ -34,7 +73,11 @@ def test_local_dst_dates_bounded_captures_and_single_fit_claim(tmp_path):
     assert "No observations captured yet" not in markup
     assert "deadline rebase" in markup
     assert "Current" in markup and "Actual start not established" in markup
-    assert "Coverage ended" in markup
+    assert "Partial" in markup
+    assert '<summary>Diagnostics</summary>' not in markup
+    history_panel = markup.split('<summary>Allowance history</summary>')[1]
+    assert "signed net elapsed-time rate" not in history_panel
+    assert "Account lifetime tokens" not in history_panel
     assert former == {key: report[key] for key in former}
 
 

@@ -63,7 +63,8 @@ Repeated/partial hours retain chronological keys and visible offsets. Complete
 day/hour command lists are disclosures, not substitutes for aligned axes.
 Bucket hover/accessibility names include date/time, project/model context and
 value. Visible bounds omit implementation microsecond padding; exact raw rows
-remain inspectable. Scope/accounting explanations are progressive disclosures.
+remain inspectable. Scope/accounting explanations belong to explicit programmatic
+audit inspection, not ordinary dashboard navigation (owner review, 2026-10-15).
 
 The weekly overlay is account-wide historical known-weekly readings, with a
 visible limit/plan legend and a fixed percentage axis. Nonweekly and missing-duration evidence stays in
@@ -131,8 +132,8 @@ balance changes may include purchases and never prove individual event debits.
 Reuse the prepared capture-causal continuity checkpoints to enumerate every
 retained weekly portion, including ambiguous/unknown-plan portions. Stable IDs
 bind limit, observed opening and boundary identity, never labels or array order.
-Collapsed evidence entries carry plan/limit/boundary context and issued exact
-interval inspection. Freshness never replaces the selected calendar range. Bounds are observed endpoints,
+Programmatic evidence commands retain plan/limit/boundary context and issued exact
+interval inspection, without default dashboard entries. Freshness never replaces the selected calendar range. Bounds are observed endpoints,
 not nominal openings or a claim of whole-window coverage. Preserve raw conflicts.
 
 Estimated credits use already-valued Standard credits in all composition paths;
@@ -193,7 +194,7 @@ series uses neutral text color, compact dots and an explicit right-axis label;
 additional account identities have separately keyed colors. Only the latest
 captured point per account identity is enlarged, and its value/timestamp appears
 in the account key. Usage colors are keyed immediately above the bars. Dense
-boundary diagnostics belong in account evidence disclosure, not the primary key.
+boundary diagnostics belong in programmatic inspection, not the primary key.
 These are unconnected actual readings, not interpolated allowance curves. All
 retained boundary points and exact-day inspection remain unchanged; presentation
 must never manufacture reset annotations or hide conflicts to simplify the plot.
@@ -212,6 +213,24 @@ stack boundary, not open circles resembling separate point annotations. Segment
 values and additive geometry are never inflated to create minimum-height bars.
 Exact values remain in mark titles and issued inspection. These readability
 changes do not change valuation, capture coverage or account attribution.
+
+### Dashboard And Audit Separation (2026-10-15)
+
+Owner review accepts the chart but removes `Scope and continuity evidence`,
+`Small segments` and `Account overlay evidence` from human navigation. Collapsing
+these controls still constructed every continuity row and URL and sent them to
+the webview. Ordinary renders now build neither those rows nor their explanatory
+markup. Existing receipt-bound programmatic continuity audits remain available
+for accounting parity checks; only an explicit diagnostic action builds its
+single-interval context. There is no dashboard link to that diagnostic view.
+
+Keep the accepted chart, point/tick geometry, accessible names, human day/hour/
+project inspection and exact account-day readings unchanged. Brief unavailable
+or conflicting-reading warnings remain because they affect interpretation.
+Removing diagnostic prose never permits dropping captures, repricing usage or
+claiming a faster database query. HTML revision41 replaces old chart markup
+without invalidating account/composition partitions. Tests must cover absence of
+these disclosures, upgrade from warm revision40 HTML and unchanged audit access.
 
 ## Alternatives And Consequences
 

@@ -36,10 +36,11 @@ def test_exact_current_anchor_remains_primary_when_boundary_is_uncertain():
     assert not any(f["current"] for f in result["uncertain"])
     report = dict(windows=[], display_history=result, history=[], qualified=[], headline=None)
     markup = period_history(report, UTC, nav=navigation(report, "synthetic"))
-    assert "Current · uncertain boundary" in markup and "Opening unobserved" in markup
-    assert "Captured reset" in markup
+    assert "Current" in markup and "Start unknown" in markup
+    assert "Next reset" in markup
+    assert "7 days" not in markup
     assert current[0]["next_reset"] == points[-1].resets_at
-    assert "Observed 2026-11-01 to 2026-11-01" in markup
+    assert "Now" in markup
     assert "start" not in current[0]
     restored = decode_report(encode_report(report))
     assert restored == report

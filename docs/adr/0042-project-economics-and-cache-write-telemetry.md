@@ -55,7 +55,9 @@ the weighted benchmark.
 ## Per-Model Presentation Candidate: 2026-10-14
 
 The primary within-project comparison exposes average API-equivalent cost per
-response, responses per turn, compact tokens per turn and measured model turns.
+response, average cost per turn, responses per turn, compact tokens per turn and
+measured model turns. The October15 owner review adds cost per turn beside cost
+per response in the primary table, rather than requiring secondary inspection.
 Response cost averages use fully priced measured responses; turn cost averages
 still use fully priced measured turns. A mixed-model turn participates once in
 each model's population, so model turn counts must not be added to infer project

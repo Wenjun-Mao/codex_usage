@@ -336,9 +336,28 @@ records the parser/lineage defect and guards; private usage figures stay outside
   affected continuations; a one-record what-if is not blanket clearance. Preserve
   unaffected monetary goldens, genuine spent branches and official quota data.
 - Integrate source serially before C/E; source-only nonpublishing qualification
-  cannot claim live P completion. Owner leaves the active narrative-forge source's repair pending; do not stop its task or let startup silently repair it. Rebuild the preview from corrected private data; P/UI/release gates remain.
+  cannot claim live P completion. The owner initially left the active narrative-forge source pending, then confirmed it idle and closed VS Code. Approved targeted live repair now passes under maintenance locks; raw logs remain untouched. Fresh release qualification is still required.
 
 ### R: Period-First Allowance History
+
+Owner subsequently approves removing the Diagnostics panel. Retain only concise
+relevant freshness/coverage warnings and opt-in, bounded Copy Diagnostics from
+already-cached aggregate evidence. Never build diagnostic paragraphs in normal
+rendering or start capture to copy support data. HTML43 invalidates old panels.
+The owner now approves removing the ID-heavy Agents table while preserving Daily
+Summary and the complete CSV export. This is renderer-only, not a replacement
+task-activity feature or changed accounting; HTML44 invalidates old table markup.
+
+The latest owner review supersedes compact raw-fragment labels with actual
+reset-period economics: one primary account meter, reset-to-reset local times,
+API-equivalent dollars used, captured allowance used, and one original fitted
+value per 100% allowance. Recognize official deadline changes plus meter restarts
+even when banked credits are unchanged. Approximate times remain marked, not
+invented. ADR 0044's reset-period refinement defines lifecycle/identity separation,
+half-open cost ownership, partial/unknown coverage and post-full calibration
+cutoffs. Report10/HTML42 require a refreshed private preview and owner review;
+earlier source qualification does not cover this changed summary. Live P and
+publication gates are unchanged.
 
 The renderer lists each conservative fit segment as a reset window. Unsupported
 material meter drops split segments; each then repeats the same insufficient/
@@ -348,6 +367,11 @@ unknown label. That is not evidence of a distinct subscription reset period.
   with local observed dates, current/ended status and next reset when supported.
   Distinguish observed coverage from actual start; never invent a full seven-day
   period by subtracting duration or use exact reset timestamps as stable identity.
+- Owner review (2026-10-15): lead with actual captured reset boundaries, not
+  `7 days`; distinguish next announced reset from actual closure. Keep banked
+  reset intervals honest with `by` labels, unknown starts explicit, and technical
+  diagnostics in a separate closed disclosure after the compact history.
+  This follow-up needs renewed UI review and matching source qualification.
 - Derive display groups from compatible limit/plan/duration and boundary evidence.
   Keep genuine scheduled/banked resets and plan changes separate; deadline rebases
   or conflicts cannot silently join periods. Assign uncertain fragments only with
@@ -367,9 +391,16 @@ unknown label. That is not evidence of a distinct subscription reset period.
 
 ### U: Within-Project Model Comparison
 
-Implemented; owner acceptance remains pending. The [UI checkpoint](../release/2026-10-14-model-economics-checkpoint.md)
+Owner review (2026-10-15) accepts Usage & Allowance Breakdown subject to removing
+the Scope/continuity, Small segments and Account overlay evidence disclosures.
+Keep the accepted visualization and useful drills; retain programmatic audit
+access without building diagnostic rows/URLs in ordinary dashboard rendering.
+Refresh the private preview; this acceptance does not clear the deferred live
+repair or authorize publication of an unmatched source candidate.
+
+Implemented; owner accepted the reviewed UI on October 15. The [UI checkpoint](../release/2026-10-14-model-economics-checkpoint.md)
 records the renderer, upgrade-cache guard and verification. Primary model rows
-show cost/response, responses/turn, compact tokens/turn and measured turns;
+show cost/response, cost/turn (October15 review), responses/turn, compact tokens/turn and measured turns;
 secondary details preserve totals, shares, priceability and exact denominators.
 Existing measured populations remain unchanged; mixed-model turn counts are
 nonadditive, not model-quality claims. Preserve bounded display precision,
@@ -414,7 +445,7 @@ preapproval below. The restarted Goal carries these permissions into implementat
 | Stage E and release candidate selection | Already conditionally authorized; choose an unused eligible version >=2.12.3 and record exact source/proof; no release tag while UI acceptance is pending |
 | Local full-dashboard review window | Approved: one new disposable Local Preview VS Code profile with in-memory secrets, reading a private local ledger snapshot only; no capture, production installation/profile change or private-data upload; open when owner is ready, not while asleep |
 | Stage F publication | Held by the latest instruction until owner UI acceptance; prior Goal approval cannot bypass this review |
-| P accounting repair | Approved: targeted live repair after verified private backup/rollback, including old-collector cutover. Latest owner instruction leaves the active narrative-forge source pending; no task stop or silent startup repair. Raw logs remain untouched |
+| P accounting repair | Approved: targeted live repair after verified private backup/rollback, including old-collector cutover. Owner later confirmed the task idle and closed VS Code. Available-base live corrections and report reconciliation pass; no foreign task stop or raw-log edit |
 | D4 candidate bindings | Approved October 15: at most four append-only source-bound records for reserved 2.12.3, C/E plus two corrective iterations; pinned journal/scope, no rewrite, blind retry or publication before UI acceptance |
 | Next-release revision | Owner requests period-first history R and defers A/B until after the next release; D4's explicit hosted WebKit timing exception is candidate-bound, not authority for other failed checks or more diagnostics |
 
@@ -459,9 +490,9 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 - [x] U passes integrated renderer/core/extension and inventory-bound browser checks.
 - [x] Owner added P's parser fix and targeted repair to the Goal scope.
 - [x] Owner defers A/B beyond the next release and requests period-first history R.
-- [ ] P passes lineage regressions, snapshot repair/reconciliation and approved live application.
+- [x] P passes lineage regressions, fresh snapshot/restore, targeted live application and derived-report reconciliation; unavailable historical bases remain explicit gaps.
 - [x] R preserves calculations and passes period/grouping/render/cache regressions.
-- [ ] P/R/U receive owner acceptance in the full-dashboard Local Preview.
+- [x] Owner accepts the reviewed full-dashboard UI and requests release on October 15; subsequent approved live P repair is independently verified.
 - [ ] D4's candidate-bound exception is explicit and failure-local pilots remain strict.
 - [ ] A-B establish and fix the cause after the next release; not a current release gate.
 - [x] C-D passes at disabled `f376c273`; [receipt](../release/2026-10-15-source-qualification.md) records normal/retry/native/dry-run proof. E must repeat it.
@@ -469,6 +500,21 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 - [ ] F follows owner UI acceptance and both public target hashes are verified.
 
 ## Implementation Checkpoint
+
+October 15 owner review accepts the full dashboard and requests release. The
+owner subsequently confirmed narrative-forge main idle and closed VS Code. Both
+maintenance locks were free; a fresh coherent backup, database/stage restore
+drill, bounded frozen-input replay and exact direct-fact reconciliation passed.
+Two available-base sources were corrected, every other financial source and all
+official quota/credit readings were preserved, and raw sources stayed unchanged.
+Full/indexed allowance, codec and cold/warm HTML checks passed without starting
+a collector. Missing historical bases remain named gaps, not invented repairs.
+A compatible released collector is required before ordinary capture resumes.
+Independent release review reproduces reset-history plan/clock continuity and
+simultaneous-conflict defects. Production-query regressions guard nonoverlapping
+periods, additive dollars, valid fit selection and full conflict checks; report11/
+HTML45 invalidate earlier summaries without repricing trusted events. Renew all
+source-bound qualification after the final fixes; no tag or upload has occurred.
 
 Disabled source `f376c273` passes C/D; 2.12.3 source activation is being prepared.
 Early gates, isolated visual jobs, batched snapshots, exact-artifact/original-attempt
@@ -484,7 +530,7 @@ all hosted suites/native and frozen monetary/work guards pass; E needs fresh com
 P's [foundation](../adr/0064-paginated-session-accounting.md) and replay confirm the carried event.
 Replicas cover compatible longest copies, missing canonical retention and partial handoffs; staged semantic repairs preserve evidence and install atomically across source-key changes.
 [Retained accounting](../adr/0065-retained-accounting-authority.md) selects whole proven projections; [runtime compatibility](../adr/0066-accounting-capability-handshake.md) passes 74 inventory-validated extension cases.
-[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md), dependent invalidation and [writer fencing](../adr/0068-ledger-writer-fencing.md) are implemented, including explicit maintenance lock borrowing. [Alternate replay inputs](../adr/0069-missing-source-replay-authority.md) pass private frozen-prefix repair/oracle/restore checks. Cutover is approved but unchanged; owner defers the active narrative-forge source. Fresh bounded inputs, quiescent backup/CAS, stage archive and compatible handoff remain required.
+[Upgrade discovery](../adr/0067-bounded-accounting-upgrade-discovery.md), dependent invalidation and [writer fencing](../adr/0068-ledger-writer-fencing.md) are implemented, including explicit maintenance lock borrowing. [Alternate replay inputs](../adr/0069-missing-source-replay-authority.md) pass private frozen-prefix repair/oracle/restore checks. Approved live maintenance now passes fresh backup/CAS, stage archive/restore, exact source reconciliation and derived-report checks. Old collectors must not resume against the upgraded ledger; matching release qualification remains required.
 
 The [pilot](../release/2026-10-13-qualification-pilot.md) and
 [profile](../research/2026-10-13-verification-and-release-profile.md) retain chronology/costs.

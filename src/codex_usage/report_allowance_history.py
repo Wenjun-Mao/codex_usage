@@ -3,9 +3,9 @@ from datetime import datetime
 import json
 from urllib.parse import quote
 
-from codex_usage.allowance_display_history import SUPPORTED
 from codex_usage.allowance_history_navigation import (
     CAPTURE_LIMIT, DEFAULT_STATE, FIT_LIMIT, PERIOD_LIMIT, page_slice, selection,
+    report_history,
 )
 
 
@@ -40,32 +40,62 @@ def _observed(history, fragment, timezone):
     return f"Observed {dates[0]} to {dates[1]}"
 
 
+def _time(timestamp, timezone):
+    from codex_usage.report_allowance import text
+    value = datetime.fromtimestamp(timestamp, timezone)
+    return (f'<time datetime="{text(value.isoformat())}" title="{text(value.isoformat())}">'
+            f'{text(value.strftime("%b %d, %H:%M"))}</time>')
+
+
+def _edge(boundary, timezone):
+    prefix = "by " if boundary["earliest"] != boundary["latest"] else ""
+    return prefix + _time(boundary["latest"], timezone)
+
+
+def _window(history, fragment, timezone):
+    opening, closure = fragment.get("reset_opening"), fragment.get("reset_closure")
+    if opening or closure or fragment["current"]:
+        start = _edge(opening, timezone) if opening else "Start unknown"
+        end = _edge(closure, timezone) if closure else "Now" if fragment["current"] else "End unknown"
+        return f"{start} – {end}"
+    return _observed(history, fragment, timezone)
+
+
+def _boundary_details(fragment, timezone):
+    from codex_usage.report_allowance import _local_reset, text
+    rows = []
+    for key, label in (("reset_opening", "Opening reset"), ("reset_closure", "Closing reset")):
+        boundary = fragment.get(key)
+        if boundary:
+            first, last = [_local_reset(boundary[field], timezone)[1] for field in ("earliest", "latest")]
+            stamp = last if first == last else f"after {first}, by {last}"
+            rows.append(f"{label}: {text(stamp)} ({text(boundary['kind'])}).")
+    if not fragment.get("reset_opening"):
+        rows.append("Actual start not established.")
+    return " ".join(rows)
+
+
 def _fragment(report, fragment, timezone, link):
-    from codex_usage.report_allowance import _local_reset, series_label, text
+    from codex_usage.report_allowance import text
     reset = fragment["next_reset"]
     next_reset = ""
-    if reset is not None and (fragment["current"] or not fragment["uncertain"] and not fragment["ended_by"]):
-        iso, label = _local_reset(reset, timezone)
-        reset_label = "Captured reset" if fragment["current"] else "Next reset"
-        next_reset = f' · {reset_label} <time datetime="{text(iso)}">{text(label)}</time>'
-    status = ("Current · uncertain boundary" if fragment["current"] and fragment["uncertain"] else
-              "Current" if fragment["current"] else "Uncertain" if fragment["uncertain"] else
-              "Ended" if fragment["ended_by"] in SUPPORTED | {"plan change"} else
-              "Coverage ended" if fragment["ended_by"] else "Last observed")
-    counts = f'Capture details ({len(fragment["capture_indices"])}) · Fits ({len(fragment["fit_indices"])})'
-    opening = " · Opening unobserved" if fragment["boundary"] not in SUPPORTED else ""
+    if reset is not None and fragment["current"]:
+        next_reset = f' · Next reset {_time(reset, timezone)}'
+    status = "Current" if fragment["current"] else "Reset" if fragment.get("reset_closure") else "Partial"
+    identity = f'{text(fragment["limit_id"])} · {text(fragment["plan"] or "Unknown plan")}'
+    detail = " · " + (link("Details") or "Details")
     return (
         '<li class="allowance-history-item">'
-        f'<div class="allowance-history-heading"><span class="allowance-history-series">{series_label(fragment)}</span>'
+        f'<div class="allowance-history-heading"><span class="allowance-history-series">'
+        f'{_window(report["display_history"], fragment, timezone)}</span>'
         f'<strong>{status}</strong></div>'
-        f'<p class="allowance-history-meta">{text(_observed(report["display_history"], fragment, timezone))}{opening}{next_reset}</p>'
-        f'{link(counts) or text(counts)}</li>'
+        f'<p class="allowance-history-meta">{identity}{next_reset}{detail}</p></li>'
     )
 
 
 def period_history(report, timezone, *, nav=None):
     from codex_usage.report_allowance import text, series_label
-    history = report["display_history"]
+    history = report_history(report)
     state = nav["state"] if nav else dict(DEFAULT_STATE)
 
     def rows(kind):
@@ -82,8 +112,9 @@ def period_history(report, timezone, *, nav=None):
         expanded = " open" if state["kind"] in ("uncertain", "cross") or state["uncertain_page"] else ""
         cross_link = _link(nav, dict(state, kind="cross", index=-1, fit_page=0, capture_page=0,
                                     capture_order="newest"), f"Uncertain / cross-boundary fits ({len(cross)})")
+        label = "Capture diagnostics" if "reset_history" in report else "Uncertain readings"
         uncertain_markup = (
-            f'<details class="allowance-uncertain"{expanded}><summary>Uncertain readings ({count})</summary>'
+            f'<details class="allowance-uncertain"{expanded}><summary>{label} ({count})</summary>'
             f'<p>{len(uncertain)} fragments · Newest first · {len(cross)} cross-boundary fits.</p>'
             f'{_pages(nav, state, "uncertain_page", len(uncertain), PERIOD_LIMIT, "uncertain fragments", reset=True)}'
             f'<ol class="allowance-history">{rows("uncertain")}</ol>{cross_link}</details>'
@@ -93,19 +124,25 @@ def period_history(report, timezone, *, nav=None):
         owner = selection(history, state)
         label = ("Uncertain / cross-boundary fits" if state["kind"] == "cross" else
                  f'{series_label(owner)} · {text(_observed(history, owner, timezone))}')
-        boundary = (f'<p>Boundary: {text(owner["boundary"])} · End: {text(owner["ended_by"] or "not observed")}. '
-                    'Actual start not established.</p>' if state["kind"] != "cross" else "")
+        boundary = (f'<p>{_boundary_details(owner, timezone)}</p>'
+                    f'<p>Boundary: {text(owner["boundary"])} · End: {text(owner["ended_by"] or "not observed")}.</p>'
+                    if state["kind"] != "cross" else "")
         if owner.get("evidence_reasons"):
             boundary += f'<p>Evidence: {text("; ".join(owner["evidence_reasons"]))}</p>'
         detail = (f'<div class="allowance-history-inspection"><h4>{label}</h4>{boundary}'
                   f'{_captures(history, owner["capture_indices"], timezone, nav, state)}'
                   f'{_fits(report, owner["fit_indices"], timezone, nav, state)}</div>')
+    if "reset_history" in report:
+        from codex_usage.report_allowance_reset_periods import reset_table
+        primary = reset_table(history, timezone, nav, state)
+        noun = "reset periods"
+    else:
+        primary = f'<ol class="allowance-history" aria-label="Allowance period history">{rows("periods")}</ol>'
+        noun = "observed periods"
     return (
-        '<h3>Allowance history</h3>'
-        f'<p class="allowance-history-count">{len(periods)} observed periods · Newest first · '
-        f'{len(history["captures"])} exact captures. Observed coverage is not the subscription start.</p>'
+        f'<p class="allowance-history-count">{len(periods)} {noun} · Newest first</p>'
         f'{_pages(nav, state, "period_page", len(periods), PERIOD_LIMIT, "periods", reset=True)}'
-        f'<ol class="allowance-history" aria-label="Allowance period history">{rows("periods")}</ol>'
+        f'{primary}'
         f'{uncertain_markup}{detail}'
     )
 

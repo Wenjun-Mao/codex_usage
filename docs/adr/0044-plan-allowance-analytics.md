@@ -158,13 +158,37 @@ readings do not remove uncertainty without supported boundary/identity evidence.
 Initial coverage is left-censored: no duration-subtracted or actual start is
 invented. Only the exact active-series capture anchor can mark a period current.
 Current membership is independent of fit confidence, known opening or reset
-certainty. An anchored uncertain range remains a primary `Current · uncertain
-boundary` row; a lone active anchor is a current observed point with opening
+certainty. An anchored uncertain range remains a primary `Current`
+row with boundary evidence in Details; a lone active anchor is a current observed point with opening
 unobserved, never an inferred full-duration period. Other uncertain fragments
 remain in the collapsed uncertain-reading group.
 Unanchored open coverage is labeled last observed, not current or ended.
-Unsupported boundaries end coherent observed coverage, labeled `Coverage ended`,
+Unsupported boundaries end coherent observed coverage, labeled `Partial`,
 not a proven reset period.
+
+**Owner-review refinement (2026-10-15):** lead with a compact `Allowance history`
+disclosure before the separate, closed `Diagnostics` disclosure. History rows
+show reset-to-reset local times, a short Current/Reset/Partial status and one
+Details link; nominal bucket duration is not a reset-window label. A scheduled
+crossing records the previously captured deadline as the boundary. A banked
+reset records the interval from the last actual reset-credit reading to the
+first decreased reading, displayed as `by` the latter time; intervening readings
+without credit metadata do not narrow it. A simultaneous credit decrease and
+deadline crossing retains that interval, not a false exact reset instant.
+Skipped scheduled cycles cannot borrow an earlier closure as the current opening.
+A current window ends at Now and
+shows its next captured deadline separately, never as an already observed close.
+Missing opening/closure evidence stays unknown; coverage-only rows remain
+observed ranges. Do not subtract seven days or join source-authority lanes to
+invent boundaries. Full boundary intervals, counts, captures and fits remain
+behind Details; diagnostic paragraphs do not precede the history.
+These additive presentation edges and report revision 9 invalidate derived
+allowance reports without repricing events. They do not alter monetary windows,
+headline, pace selection, official quota facts or raw capture ownership.
+HTML render revision 40 separately replaces revision-39 full-dashboard wrappers;
+replacing the paged history slot alone cannot repair an old enclosing disclosure.
+The upgrade regression warms old HTML, checks unchanged ledger revision and a
+fresh compact wrapper, then verifies warm reuse and issued-detail expansion.
 
 Official display continuity advances only on already-loaded live-member
 readings. Interleaved stale/conflicting task snapshots cannot rebase, consume
@@ -202,6 +226,88 @@ navigation. Every count has a supported inspection path in the companion.
 **Rejected:** changing estimator segmentation to match display; deriving display
 from fitted windows; silently joining uncertain suffixes under a shared deadline.
 These either change monetary facts or hide unsupported evidence.
+
+### Reset-Period Economics Refinement (2026-10-15)
+
+**Subsequent owner review:** remove the standing Diagnostics disclosure entirely,
+not merely collapse it. Normal rendering must not format diagnostic paragraphs.
+Keep short freshness/coverage warnings beside affected readings/estimates;
+raw forecast limiting reasons are not human-facing messages. `Codex Usage: Copy
+Diagnostics` is an explicit command-palette action, not another dashboard control.
+Its authenticated loopback `GET /v1/allowance/diagnostics` reads one read-only
+ledger snapshot and selected aggregate fields from the matching derived cache.
+A cold/outdated cache reports missing calculation evidence; it never triggers
+capture, probes, fitting, repricing, source reads or HTML generation. The command
+handler uses discovery only, not supervisor acquisition; normal extension-startup
+capture scheduling is unchanged. Export excludes raw captures, task/project contents,
+paths and authentication details, allow-lists scalar support fields, bounds text
+to48KiB and declares omitted pace rows. Copy only after payload validation;
+failures leave the clipboard unchanged. HTML revision43 replaces old panels.
+Existing detailed history navigation remains; this is not accounting removal.
+
+The compact fragment list still did not answer when the account actually reset,
+how many API-equivalent dollars were used, or the value of a full allowance.
+Official deadline advances plus meter restarts in the private snapshot occurred
+while banked-reset credits stayed unchanged. Conservative fit/display continuity
+could not represent these early resets. Shorter fragment labels were rejected.
+
+Add `reset_history`, separate from unchanged fits and raw `display_history`.
+One primary meter owns account-wide dollars: prefer active weekly, otherwise
+longest active duration; prefer `codex` among eligible limits, then lexical ID.
+Never duplicate account dollars across simultaneous limits. Official readings
+establish reset boundaries. A changed deadline plus restarted meter supports an
+early reset without decreased banked credits; credits alone are not a weekly
+reset. Reject an explicit transient return to the previous clock/meter, but do
+not require repeated intermediate deadlines between consecutive resets. Carry
+explicit metadata observation times through gaps. Plan changes split identity
+coverage, not proof of a reset. Slots are not identity.
+
+Resolve a leading missing plan at its first known official endpoint, so a later
+different known plan still ends that identity. A plan change clears inherited
+reset-clock and banked-credit continuity; an old plan's deadline cannot create a
+retroactive reset before the new identity's opening. Every confirmed reset also
+starts fresh continuity from its explicit metadata only: a credit-backed reset
+with no new clock must not retain the previous period's deadline, or consume the
+same meter restart again when delayed clock/credit metadata arrives.
+Task-based time refinement
+checks every simultaneous candidate for conflicts before selecting compatible
+evidence. Filtering by the preferred clock first would hide contradictory
+readings and falsely narrow dollar bounds. Cache validation rejects overlapping
+periods in the same account series; production-query regressions reconcile costs,
+fit selection and codec round trips across these cases.
+Report revision 11 and HTML revision 45 invalidate the earlier reset summaries
+without repricing trusted events or changing the monetary fit algorithm.
+
+Scheduled boundaries use the captured previous deadline only for a single cycle.
+Other resets retain the official before/after interval; compatible nonconflicting
+task snapshots may narrow it, never create/revert it or choose the final meter.
+Reconcile official endpoints after retroactive scheduled boundaries. Do not
+subtract duration to invent an opening. Use `~` for approximate timing, `Captured
+from` for initial partial coverage, and show the next deadline separately.
+Skipped-cycle uncertainty does not establish complete subscription history.
+
+Each row shows period times, known local API-equivalent usage, last official
+allowance-used percentage, and one compatible contained original fit's value per
+100% allowance. Spending and estimated capacity are distinct. Select the valid
+fit with widest measured span, latest endpoint as tie-break; never sum/average
+fits or substitute spending divided by quota. Enforce the first official full
+meter cutoff using calibration `fit_end`, not the raw post-full tail. Total usage
+still includes credit-funded activity. Reuse the trusted valued-event prefix
+with explicit half-open `[start,end)` ownership and inclusive current endpoint.
+Retain boundary known-dollar and unpriced-token min/max. Partial coverage is not
+zero spending. Included free reviews remain excluded consistently with current
+known-USD accounting. These are local estimates, not bills or entitlement.
+
+Report revision 10 and HTML revision 42 invalidate presentation caches without
+repricing or changing raw schema, populations, fits, headline or pace. Both
+histories share one canonical capture pool with independently validated ownership
+and bounded issued Details. Orphan fragments remain closed capture diagnostics.
+Guardrails cover early/consecutive resets, metadata gaps, conflicts, plan changes,
+multiple limits, saturation, half-open and unknown attribution, valid pre-full
+fits with raw tails, codec validation and cached detail replay. Existing browser
+inventories remain with extra semantic-table replay; private read-only SQL sums
+independently reconcile period dollars. Owner review and matching qualification
+remain separate release gates.
 
 **Consequences and guardrails:** report revision 7 invalidates older derived
 payloads; HTML revision 37 invalidates old presentation. Cache format 2 stores a
@@ -591,8 +697,9 @@ usage; report tests forbid source reads and probes. Quota storage is independent
 
 The frozen monetary parity gate preserves every field in its original oracle.
 For an oracle predating period-first history, it permits only the explicitly
-named additive `allowance.display_history` presentation contract, records that
-addition in its receipt, and checks its exact top-level list shape. Unknown
+named additive `allowance.display_history` and `allowance.reset_history`
+presentation contracts, records those additions in its receipt, and checks their
+exact top-level shape and reset reference/total validity. Unknown
 additions and changed financial fields still fail. An oracle already containing
-display history compares that field exactly too; period behavior itself remains
+either history compares that field exactly too; period behavior itself remains
 covered by mandatory grouping, rendering and browser cases.

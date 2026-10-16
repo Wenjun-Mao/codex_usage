@@ -54,6 +54,6 @@ def render_history(connection, base_html, context, state, status, timezone, sink
                       lambda _: "<!-- allowance-history:start -->" + cached["section"] + "<!-- allowance-history:end -->",
                       base_html, count=1, flags=re.DOTALL)
     if state != DEFAULT_STATE:
-        rendered = rendered.replace('<details><summary>Probe, coverage, and allowance history</summary>',
-                                    '<details open><summary>Probe, coverage, and allowance history</summary>', 1)
+        rendered = rendered.replace('<details class="allowance-history-panel"><summary>Allowance history</summary>',
+                                    '<details class="allowance-history-panel" open><summary>Allowance history</summary>', 1)
     return rendered, nav, key not in writes

@@ -2,7 +2,7 @@
 from datetime import UTC, datetime, tzinfo
 from html import escape
 
-from codex_usage.report_allowance_pace import pace_details, pace_rows
+from codex_usage.report_allowance_pace import pace_rows
 from codex_usage.report_allowance_credits import credit_details, credit_heading
 from codex_usage.report_numbers import percentage_text
 
@@ -233,6 +233,9 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None, histor
             f'{text(_reading_label(status.get("probe_status")))} · '
             f'{observation_time}</p>'
         )
+        if status.get("probe_status") in {"stale", "partial"}:
+            observation_markup += ('<p class="muted allowance-warning">Reading outdated. '
+                                   '<a href="command:codexUsage.captureNow">Capture usage</a> to refresh.</p>')
         paces = report.get("paces", [])
         pace_markup = pace_rows(paces[index], status.get("probe_status"), timezone=timezone, now=now) if index < len(paces) else ""
         buckets.append(
@@ -279,13 +282,12 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None, histor
             f'<th title="{text(_SOURCE_DESCRIPTION)}">Slot · Source</th><th>Reset</th>'
             f'</tr></thead><tbody>{captures}</tbody></table></div></details></details>'
         )
-    recovery = status["recovery"]
     latest = report["windows"][-1] if report["windows"] else None
     headline = report.get("headline")
     headline_previous = report.get("headline_previous", headline is not None and headline is not latest)
     show_headline_series = _headline_needs_series(report, headline or latest)
-    evidence_label = "Previous window fit" if headline_previous else "Latest window fit"
-    highlighted_evidence = evidence_line(headline, evidence_label) if headline else ""
+    estimate_warning = ('<p class="muted allowance-warning">Estimate uses incomplete history.</p>'
+                        if headline and not headline.get("coverage_complete", True) else "")
     history = report.get("history", [])
     older_qualified = [window for window in qualified if window is not headline]
     shown_qualified = older_qualified[-3:]
@@ -318,25 +320,16 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None, histor
         f'<div class="allowance-buckets">{"".join(buckets) or "<p>No current quota reading is available.</p>"}</div>'
         '<h3>Observed API-equivalent value per 100% allowance</h3>'
         f'<div class="allowance-economics">{economic_summary(headline, latest=latest, show_series=show_headline_series, is_previous=headline_previous)}</div>'
-        '<details><summary>Probe, coverage, and allowance history</summary>'
-        '<p class="muted">Workload-specific local estimate, not cash or a contractual allowance. '
-        'Other devices and missing history may change it.</p>'
-        '<p class="muted">VS Code capture stops when VS Code closes. Quota snapshots missed during that time may not be reconstructable.</p>'
-        f'{highlighted_evidence}{pace_details(report.get("paces", []), status.get("probe_status"), now=now)}'
-        f'<p>Plan: {text(status["plan"] or "Unavailable")} · Probe: {text(status["probe_status"])} · '
-        f'Last checked: {_observation_time(status["last_probe_at"], timezone)} · '
-        f'Last observed: {_observation_time(status.get("last_observed_at"), timezone)}</p>'
-        f'<p>Probe diagnostic: {text(status.get("diagnostics") or "None")}</p>'
-        f'<p>Bounded recovered history: {recovery["complete"]} sources checked, '
-        f'{recovery["pending"]} pending, {recovery["unavailable"]} unavailable. Endpoint sampling is partial.</p>'
-        f'<p>Account lifetime tokens (coverage diagnostic only): {text(status["lifetime_tokens"] if status["lifetime_tokens"] is not None else "Unavailable")}</p>'
+        f'{estimate_warning}'
+        '<details class="allowance-history-panel"><summary>Allowance history</summary>'
         f'{history_markup}</details>'
         f'{extra_details}</section>'
     )
 
 
 def allowance_css():
-    return """
+    from codex_usage.report_allowance_reset_periods import css
+    return css() + """
 .plan-allowance { margin: 18px 0; padding: 20px; border: 1px solid var(--border, var(--line)); border-radius: 12px; overflow-wrap: anywhere; }
 .allowance-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
 .allowance-heading h2 { margin: 0; }

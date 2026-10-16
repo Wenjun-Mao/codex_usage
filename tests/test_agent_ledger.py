@@ -78,6 +78,59 @@ def test_model_comparison_upgrade_invalidates_old_html_and_keeps_warm_cache(tmp_
     assert warm.cache_hit and warm.html == upgraded.html
 
 
+def test_model_turn_cost_upgrade_invalidates_revision_38_html(tmp_path, monkeypatch):
+    home = tmp_path / ".codex"
+    _write_session(home, "turn-cost-upgrade", total=100)
+    assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
+    arguments = dict(range_name="all", project_keys=[], theme="night", timezone_name="UTC")
+    original_render = reports_module.render_html_report
+
+    def old_render(*args, **kwargs):
+        path = original_render(*args, **kwargs)
+        path.write_text(path.read_text().replace("Cost / turn", "Turn cost absent from primary"))
+        return path
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reports_module, "REPORT_RENDER_REVISION", 38)
+        patch.setattr(reports_module, "render_html_report", old_render)
+        old = render_ledger_report(home, **arguments)
+        assert "Turn cost absent from primary" in old.html
+        assert render_ledger_report(home, **arguments).cache_hit
+
+    assert reports_module.REPORT_RENDER_REVISION > 38
+    upgraded = render_ledger_report(home, **arguments)
+    assert not upgraded.cache_hit and "Cost / turn" in upgraded.html
+    assert "Turn cost absent from primary" not in upgraded.html
+    assert upgraded.ledger_revision == old.ledger_revision
+    warm = render_ledger_report(home, **arguments)
+    assert warm.cache_hit and warm.html == upgraded.html
+
+
+def test_agents_table_removal_invalidates_revision_43_html_and_keeps_daily_summary(tmp_path, monkeypatch):
+    home = tmp_path / ".codex"
+    _write_session(home, "agents-upgrade", total=100)
+    assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
+    arguments = dict(range_name="all", project_keys=[], theme="night", timezone_name="UTC")
+    original = reports_module.render_html_report
+    def legacy(*args, **kwargs):
+        path = original(*args, **kwargs)
+        path.write_text(path.read_text().replace("<h3>Daily Summary</h3>",
+            '<h3>Daily Summary</h3><h3>Agents</h3><details class="agent-activity-agents"><summary>Old agent IDs</summary></details>'))
+        return path
+    with monkeypatch.context() as patch:
+        patch.setattr(reports_module, "REPORT_RENDER_REVISION", 43)
+        patch.setattr(reports_module, "render_html_report", legacy)
+        old = render_ledger_report(home, **arguments)
+        assert "agent-activity-agents" in old.html
+        assert render_ledger_report(home, **arguments).cache_hit
+    upgraded = render_ledger_report(home, **arguments)
+    assert upgraded.ledger_revision == old.ledger_revision and not upgraded.cache_hit
+    assert "Daily Summary" in upgraded.html
+    assert "agent-activity-agents" not in upgraded.html and "<h3>Agents</h3>" not in upgraded.html
+    warm = render_ledger_report(home, **arguments)
+    assert warm.cache_hit and warm.html == upgraded.html
+
+
 def test_capture_populates_durable_ledger_and_reports_without_jsonl_reads(
     tmp_path: Path,
     monkeypatch,

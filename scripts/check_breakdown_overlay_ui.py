@@ -92,7 +92,7 @@ def main():
                                 }"""), (engine, label, width, "time alignment")
                                 assert "right axis" in chart.locator(".ub-account-title").get_attribute("title")
                                 assert chart.locator(".ub-meter-legend").is_visible()
-                                assert not chart.locator(".ub-overlay-evidence").get_attribute("open")
+                                assert chart.locator(".ub-overlay-evidence,.ub-resolution-evidence").count() == 0
                                 assert "Dense boundary evidence" not in chart.inner_text()
                                 marks = chart.locator(".ub-account-point")
                                 assert marks.count() == len(readings), (engine, label, marks.count())
@@ -104,17 +104,16 @@ def main():
                                 last.hover()
                                 assert last.evaluate("e => getComputedStyle(e).r") == "3px", (engine, label)
                                 page.mouse.move(0, 0)
-                                disclosure = chart.locator(".ub-overlay-evidence summary")
-                                disclosure.focus()
-                                disclosure.press("Enter")
-                                assert chart.locator(".ub-overlay-evidence").get_attribute("open") is not None
-                                disclosure.press("Enter")
+                                account_key = chart.locator(".ub-meter-legend span").first
+                                account_key.focus()
+                                assert account_key.evaluate("e => e === document.activeElement && e.matches(':focus-visible')")
+                                assert account_key.get_attribute("aria-label") == account_key.get_attribute("title")
                                 chart.locator("h2").click()
                                 if engine == "chromium" and width in (1440, 360):
                                     chart.screenshot(path=str(args.output / f"{label}-{theme}-{width}.png"))
                                 evidence["views"].append({"engine": engine, "case": label, "theme": theme,
                                     "width": width, "script_disabled": True, "captured_points": marks.count(),
-                                    "synthetic_only": True, "separate_account_key": True, "hover": True, "keyboard_evidence": True})
+                                    "synthetic_only": True, "separate_account_key": True, "hover": True, "keyboard_account_key": True})
                 if args.frozen_html:
                     for theme in ("day", "night"):
                         for width in (1440, 760, 360):

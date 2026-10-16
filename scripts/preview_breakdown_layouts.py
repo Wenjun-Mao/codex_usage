@@ -168,7 +168,7 @@ def verify(output, views):
                         assert chart.locator(".ub-right-axis").count() == 1
                         assert chart.locator("svg circle:not(.ub-account-point)").count() == 0
                         assert chart.locator(".ub-account-point").count() > 0
-                        assert not chart.locator(".ub-overlay-evidence").get_attribute("open")
+                        assert chart.locator(".ub-overlay-evidence,.ub-resolution-evidence").count() == 0
                         page.locator('.ub-controls a[aria-current="true"]').first.focus()
                         latest = chart.locator('.ub-account-point[data-latest="true"]').first
                         latest.hover()

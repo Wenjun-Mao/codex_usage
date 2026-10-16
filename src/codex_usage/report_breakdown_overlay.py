@@ -100,10 +100,6 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
         marks.append(f'<circle class="ub-account-point" data-boundary="{str(bool(p.get("_boundary"))).lower()}" data-latest="{str(last).lower()}" data-at="{at:.6f}" cx="{x:.3f}" cy="{y:.3f}" r="{2 if last else .65}" fill="{color(p)}" stroke="{color(p)}" role="img" aria-label="{title}"><title>{title}</title></circle>')
     unavailable = f'<p class="ub-note">{kind.title()} overlay unavailable: no supported in-domain captured readings. Original evidence remains inspectable.</p>' if not valid else ""
     conflict_notice = '<p class="ub-note">Conflicting account readings are disclosed in exact inspection, not combined into a weekly meter.</p>' if kind == "weekly" and any(len(v) > 1 for v in signatures.values()) else ""
-    mandatory = sum(bool(p.get("_boundary")) for p in valid)
-    density = f'<p class="ub-note">Dense boundary evidence: {mandatory:,} captured boundary points are preserved individually, beyond the ordinary display budget.</p>' if mandatory > 720 else ""
-    evidence = (f'<details class="ub-overlay-evidence"><summary>Account overlay evidence</summary>{conflict_notice}{density}'
-        '<p class="ub-note">Captured points only; no joining or interpolation across gaps, resets or corrections.</p></details>')
     warning = '<p class="ub-note">Conflicting account readings excluded from the overlay.</p>' if conflict_notice else ""
     return CapturedLayer("".join(marks), axis, name, "" if inspection else key,
-        table + unavailable + conflict_notice if inspection else unavailable + warning + evidence)
+        table + unavailable + conflict_notice if inspection else unavailable + warning)

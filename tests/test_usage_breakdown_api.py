@@ -30,13 +30,17 @@ class SyntheticReports:
         return render_ledger_report(self.home, timezone_name=self.timezone, now=self.now,
             auto_transitions=self.transitions, **kwargs)
 
+    def allowance_diagnostics(self):
+        from codex_usage.allowance_diagnostics import allowance_diagnostics
+        return allowance_diagnostics(self.home, now=self.now)
 
-def request(server, action=None, range_name="all"):
+
+def request(server, action=None, range_name="all", *, path=None):
     connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
     query = {"range": range_name, "theme": "day"}
     if action is not None:
         query["breakdown_action"] = json.dumps(action)
-    connection.request("GET", "/v1/report?" + urlencode(query), headers={"Authorization": "Bearer " + "x" * 40})
+    connection.request("GET", path or "/v1/report?" + urlencode(query), headers={"Authorization": "Bearer " + "x" * 40})
     response = connection.getresponse()
     result = response.status, json.loads(response.read())
     connection.close()
@@ -69,7 +73,11 @@ def test_api_stale_expiry_rebase_slots_and_multi_series(tmp_path):
         agent.now = AT + timedelta(minutes=1)
         rebased = request(server)[1]
         assert rebased["breakdown_navigation"]["state"]["basis"] == "selected"
-        assert "deadline rebase" in rebased["html"]
+        assert "deadline rebase" not in rebased["html"]
+        code, copied = request(server, path="/v1/allowance/diagnostics")
+        assert code == 200
+        evidence = json.loads(copied["text"])["evidence"]
+        assert any(p["boundary"] == "deadline rebase" for p in evidence["paces"])
         agent.now = AT + timedelta(minutes=6)
         expired = request(server)[1]
         assert expired["breakdown_navigation"]["state"]["basis"] == "selected"

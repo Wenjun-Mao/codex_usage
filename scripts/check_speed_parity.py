@@ -18,8 +18,24 @@ from observed_speed_fixture import AT, append_rows, response, write_source
 
 
 def assert_frozen_parity(expected, candidate):
-    """Preserve all original facts; name the one additive presentation contract."""
+    """Preserve all original facts; name and validate additive history views."""
     added = []
+    if "reset_history" not in expected["allowance"] and "reset_history" in candidate["allowance"]:
+        from codex_usage.allowance_report_codec import _validate_display_history
+        history = candidate["allowance"]["reset_history"]
+        fields = {"captures", "periods", "uncertain", "cross_boundary_fit_indices", "kind"}
+        if (not isinstance(history, dict) or set(history) != fields
+                or history["kind"] != "reset-period-economics-v1"
+                or any(type(history[key]) is not list for key in fields-{"kind"})
+                or history["captures"] != candidate["allowance"].get("display_history", {}).get("captures")):
+            raise AssertionError("invalid additive allowance reset-history contract")
+        try:
+            _validate_display_history(candidate["allowance"], "reset_history")
+        except (ValueError, KeyError, TypeError) as error:
+            raise AssertionError("invalid additive allowance reset-history contract") from error
+        added.append("allowance.reset_history")
+        candidate = dict(candidate, allowance={key: value for key, value in candidate["allowance"].items()
+                                               if key != "reset_history"})
     if "display_history" not in expected["allowance"] and "display_history" in candidate["allowance"]:
         history = candidate["allowance"]["display_history"]
         fields = {"captures", "periods", "uncertain", "cross_boundary_fit_indices"}

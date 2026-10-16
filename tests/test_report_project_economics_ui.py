@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from pathlib import Path
 
 from codex_usage.aggregation import (
@@ -57,6 +58,8 @@ def test_report_renders_compact_accessible_project_economics_from_precomputed_le
     assert '<th scope="row">gpt-5.6-sol</th>' in html
     assert 'aria-label="Average API-equivalent cost per response"' in html
     assert "Cost / resp." in html
+    assert 'aria-label="Average API-equivalent cost per turn"' in html
+    assert "Cost / turn" in html
     assert "Responses / turn" in html
     assert "Tokens / turn" in html
     assert "Measured turns" in html
@@ -129,7 +132,7 @@ def test_aggregated_response_cohorts_hide_float_noise_but_keep_exact_details() -
     primary = markup.split('<table class="project-economics-models"', 1)[1].split(
         "</table>", 1
     )[0]
-    assert primary.count("$0.1000") == 2
+    assert primary.count("$0.1000") == 4
     assert "0.10000000000000002" not in primary
     assert "Exact: $0.1" in markup
     assert "Exact: $0.10000000000000002" in markup
@@ -154,6 +157,74 @@ def test_economics_display_numbers_distinguish_zero_and_tiny_costs() -> None:
     assert compact_token_count(2_400) == "2.4K"
     assert compact_token_count(1_250_000) == "1.25M"
     assert compact_token_count(None) == "Unavailable"
+
+
+def test_primary_turn_cost_uses_fully_priced_model_turns_not_response_averages() -> None:
+    report = build_project_economics((
+        _valued_record("shared", "gpt-6.1-sol", 100, 0.1),
+        _valued_record("shared", "gpt-6.1-sol", 100, 0.1),
+        _valued_record("", "gpt-6.1-sol", 100, 99.0),
+        _valued_record("shared", "gpt-6-astra", 100, 0.3),
+        _valued_record("partial-a", "partial", 100, 0.2),
+        _valued_record("partial-a", "partial", 100, 0.0, unpriced=100),
+        _valued_record("partial-b", "partial", 100, 0.4),
+        _valued_record("unpriced-turn", "no-priced-turns", 100, 0.2),
+        _valued_record("unpriced-turn", "no-priced-turns", 100, 0.0, unpriced=100),
+        _valued_record("zero", "gpt-6-luna", 100, 0.0),
+        _valued_record("", "no-turn", 100, 0.5),
+    ))
+    parsed = _PrimaryRows()
+    parsed.feed(render_project_economics_section(report))
+
+    assert parsed.rows["gpt-6.1-sol"][1:3] == [
+        ("$0.1000", "2 of 2 responses priceable"),
+        ("$0.2000", "1 of 1 turns priceable"),
+    ]
+    assert parsed.rows["gpt-6-astra"][2] == ("$0.3000", "1 of 1 turns priceable")
+    assert parsed.rows["partial"][1:3] == [
+        ("$0.3000", "2 of 3 responses priceable"),
+        ("$0.4000", "1 of 2 turns priceable"),
+    ]
+    assert parsed.rows["no-priced-turns"][1:3] == [
+        ("$0.2000", "1 of 2 responses priceable"), ("Unavailable", ""),
+    ]
+    assert parsed.rows["gpt-6-luna"][2] == ("$0.0000", "1 of 1 turns priceable")
+    assert parsed.rows["no-turn"][1:3] == [("Unavailable", ""), ("Unavailable", "")]
+    assert all(len(row) == 6 for row in parsed.rows.values())
+
+
+class _PrimaryRows(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.active = False
+        self.rows = {}
+        self.row = []
+        self.cell = None
+        self.title = ""
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "table":
+            self.active = attrs.get("class") == "project-economics-models"
+        elif self.active and tag == "tr":
+            self.row = []
+        elif self.active and tag in ("td", "th"):
+            self.cell, self.title = [], ""
+        elif self.active and tag == "span" and self.cell is not None:
+            self.title = attrs.get("title", "")
+
+    def handle_data(self, data):
+        if self.active and self.cell is not None:
+            self.cell.append(data)
+
+    def handle_endtag(self, tag):
+        if self.active and tag in ("td", "th"):
+            self.row.append(("".join(self.cell), self.title))
+            self.cell = None
+        elif self.active and tag == "tr" and self.row[0][0] != "Model":
+            self.rows[self.row[0][0]] = self.row
+        elif tag == "table":
+            self.active = False
 
 
 def test_project_economics_empty_populations_remain_inspectable() -> None:

@@ -1,8 +1,11 @@
 # Qualified VSIX Promotion
 
-Status: source-only C/D passes at `f376c273`; 2.12.3 activation is being prepared
-and must receive fresh matching qualification. Live repair and owner UI acceptance
-remain pending; no eligible tag or publication is authorized yet.
+Status: the owner accepted the full-dashboard UI on October 15 and requested
+release. The follow-up source still needs fresh matching qualification. The
+owner subsequently confirmed narrative-forge idle and closed VS Code; the
+approved backed-up live repair and derived-report reconciliation now pass.
+Historical C/D proof does not qualify later source edits. Freeze and qualify
+the reviewed candidate before any release tag or publication.
 All pilots must pass before release use. This guide does not
 authorize commits, CI, tags, publisher credentials or publication by itself.
 Authority: [ADR 0061](../adr/0061-qualified-artifact-promotion.md),

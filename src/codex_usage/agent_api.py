@@ -63,6 +63,8 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                     self._json(HTTPStatus.OK, agent.status_payload())
                 elif path == "/v1/settings":
                     self._json(HTTPStatus.OK, agent.settings.to_dict())
+                elif path == "/v1/allowance/diagnostics":
+                    self._json(HTTPStatus.OK, agent.allowance_diagnostics())
                 elif path == "/v1/projects":
                     self._json(HTTPStatus.OK, {"projects": agent.projects()})
                 elif path == "/v1/tasks":

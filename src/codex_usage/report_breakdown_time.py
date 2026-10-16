@@ -93,7 +93,6 @@ def time_view(info, state, nav, timezone, partition, ranking, command, uri, deta
             local = datetime.fromisoformat(day).replace(tzinfo=timezone)
             _, _, _, exact = overlay(raw, state["overlay"], max(info["start"], local.timestamp()), min(info["end"], (local+timedelta(days=1)).timestamp()), timezone, COLORS, inspection=True)
             content += '<h3>Exact account readings · ' + day + '</h3>' + exact
-        content += '<p class="ub-note">Actual captured endpoints/extrema and continuity boundaries; no averaging or interpolation. Inspect each local day for every original reading and interval.</p>'
     content += '<details><summary>Inspect every ' + ("day" if daily else "hour occurrence") + '</summary><div class="ub-hour-labels">' + ''.join(command(nav, state, b["day"] + " " + b["label"], **({"grain": "hourly", "day": b["day"], "detail": "day:" + b["day"]} if daily else {"detail": "hour:" + b["key"]})) for b in buckets) + '</div></details>'
     if state["detail"].startswith(("day:", "hour:")):
         kind, key = state["detail"].split(":", 1)

@@ -32,14 +32,14 @@ def test_balance_shares_heading_and_cautions_are_folded_without_more_paragraphs(
     plain["status"].pop("credits")
     plain.pop("credits")
     markup = render_allowance_section(report, timezone=ZoneInfo("America/Toronto"))
-    prefix = markup.split('<details><summary>Probe, coverage, and allowance history')[0]
-    without = render_allowance_section(plain).split('<details><summary>Probe, coverage, and allowance history')[0]
+    prefix = markup.split('<details class="allowance-history-panel"><summary>Allowance history')[0]
+    without = render_allowance_section(plain).split('<details class="allowance-history-panel"><summary>Allowance history')[0]
     heading = prefix.split('<div class="allowance-heading">')[1].split("</div>")[0]
     assert "Plan Allowance</h2>" in heading and "61,964.84 credits" in heading
     assert prefix.count("<p") == without.count("<p")
     assert "again" not in markup and "Included allowance available" not in markup
     assert "Workload-specific" not in prefix and "VS Code capture stops" not in prefix
-    assert "Workload-specific" in markup and "VS Code capture stops" in markup
+    assert "Workload-specific" not in markup and "VS Code capture stops" not in markup
     assert 'title="Current balance · 2026-10-02 08:00 EDT · Exact balance: 61964.8392100000"' in markup
     assert markup.index("Credit balance captures") > markup.index("Reset windows and capture details")
     assert "<script" not in markup and "<details open" not in markup

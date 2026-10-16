@@ -19,6 +19,7 @@ class Continuity:
     reset: int | None = None
     reset_seen: float | None = None
     credits: int | None = None
+    credits_seen: float | None = None
 
     def push(self, group):
         point, reset, credits = group.point, group.reset, group.credits
@@ -32,10 +33,12 @@ class Continuity:
                   "unknown boundary" if self.previous and self.previous.used_percent - point.used_percent >= 5 else "")
         if reason:
             self.reset = self.reset_seen = self.credits = None
+            self.credits_seen = None
         if reset is not None:
             self.reset, self.reset_seen = reset, group.time
         if credits is not None:
             self.credits = credits
+            self.credits_seen = group.time
         self.previous = point
         return reason
 

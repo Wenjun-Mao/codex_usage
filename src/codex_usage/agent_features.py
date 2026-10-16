@@ -113,6 +113,10 @@ class AgentFeatures:
     def projects(self) -> list[dict[str, object]]:
         return load_projects(self._ledger_path)
 
+    def allowance_diagnostics(self) -> dict[str, object]:
+        from codex_usage.allowance_diagnostics import allowance_diagnostics
+        return allowance_diagnostics(self._codex_home)
+
     def tasks(self, project_key: str | None = None) -> list[dict[str, object]]:
         return load_tasks(self._ledger_path, project_key=project_key)
 

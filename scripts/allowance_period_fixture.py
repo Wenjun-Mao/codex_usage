@@ -29,7 +29,11 @@ def allowance_period_fixture(directory):
                       last_probe_at=points[-1].timestamp, last_observed_at=points[-1].timestamp)
         preparation = AllowancePreparation(connection)
         costs = [(datetime.fromisoformat(p.timestamp).timestamp(), 1.0, 0) for p in points]
-        return _build_from_costs(connection, costs, status=status, preparation=preparation)
+        report = _build_from_costs(connection, costs, status=status, preparation=preparation)
+        # Retain the legacy capture-fragment fixture for compatibility/navigation
+        # coverage; reset_economics_fixture exercises the new primary UI.
+        report.pop("reset_history")
+        return report
 
 
 def dense_period_fixture(directory):
@@ -70,6 +74,27 @@ def official_display_fixture(directory, variant):
                       last_probe_at=live[-1].timestamp, last_observed_at=live[-1].timestamp)
         costs = [(datetime.fromisoformat(p.timestamp).timestamp(), 1.0, 0)
                  for p in sorted(live+tasks, key=lambda p: p.timestamp)]
+        report = _build_from_costs(connection, costs, status=status, preparation=AllowancePreparation(connection))
+        report.pop("reset_history")
+        return report
+
+
+def reset_economics_fixture(directory):
+    at = datetime(2026, 11, 1, 3, 30, tzinfo=UTC)
+    def point(hour, used, reset):
+        return QuotaObservation((at+timedelta(hours=hour)).isoformat(), "codex", "primary", "pro",
+                                used, 10080, int((at+timedelta(hours=reset)).timestamp()), 2)
+    live = [point(0, 80, 5), point(.9, 90, 5)]
+    live += [point(1+i*.4, i*10, 8) for i in range(6)]
+    live += [point(4+i*.2, i*10, 10) for i in range(6)]
+    tasks = [point(.95, 0, 8), point(3.95, 0, 10)]
+    with open_ledger(directory / "synthetic.sqlite3") as connection:
+        store_observations(connection, live, source_key="official", provenance="live")
+        store_observations(connection, tasks, source_key="tasks", provenance="parsed")
+        status = allowance_status(connection)
+        status.update(active_buckets=[live[-1].to_dict()], plan="pro", probe_status="fresh",
+                      last_probe_at=live[-1].timestamp, last_observed_at=live[-1].timestamp)
+        costs = [(datetime.fromisoformat(p.timestamp).timestamp(), 5., 0) for p in live]
         return _build_from_costs(connection, costs, status=status, preparation=AllowancePreparation(connection))
 
 

@@ -9,6 +9,15 @@ from codex_usage.allowance_windows import seconds
 SUPPORTED = {"scheduled reset", "reset credit decrease"}
 
 
+def _reset_boundary(reason, time, previous_reset, credits_seen, credit_drop):
+    if reason in SUPPORTED and credit_drop and credits_seen is not None:
+        # Missing credit metadata cannot narrow the actual reset interval.
+        return dict(kind=reason, earliest=credits_seen, latest=time)
+    if reason == "scheduled reset":
+        return dict(kind=reason, earliest=previous_reset, latest=previous_reset)
+    return None
+
+
 def _identities(timeline):
     plans = [{p.plan for p in points if p.plan} for _, points in timeline]
     labels = [next(iter(values)) if len(values) == 1 else "" for values in plans]
@@ -69,7 +78,13 @@ def _segment(points, positions):
                 group = Group.from_points(time, members)
                 existing = active.get(duration)
                 continuity = existing[1] if existing else Continuity()
+                previous_reset, credits_seen = continuity.reset, continuity.credits_seen
+                credit_drop = continuity.credits is not None and group.credits is not None and group.credits < continuity.credits
                 reason = continuity.push(group) if not group.conflict else "observation conflict"
+                boundary = _reset_boundary(reason, time, previous_reset, credits_seen, credit_drop)
+                # A distant advanced deadline may skip entire unobserved cycles.
+                skipped = (reason == "scheduled reset" and
+                           (duration is None or group.reset - previous_reset > duration * 60 + 60))
                 if group.conflict:
                     continuity = Continuity()
                 if reason in SUPPORTED:
@@ -79,6 +94,7 @@ def _segment(points, positions):
                 if existing is None or reason:
                     if existing:
                         existing[0]["ended_by"] = reason
+                        existing[0]["reset_closure"] = boundary
                     fragment = {
                         "limit_id": limit, "duration_minutes": duration, "plan": identity[0],
                         "boundary": reason or ("plan change" if plan_change else
@@ -86,6 +102,7 @@ def _segment(points, positions):
                         "uncertain": uncertain or bool(existing and existing[0]["uncertain"] and reason not in SUPPORTED),
                         "capture_indices": [], "fit_indices": [], "ended_by": "",
                         "current": False, "next_reset": None,
+                        "reset_opening": None if skipped else boundary, "reset_closure": None,
                     }
                     fragments.append(fragment)
                     active[duration] = (fragment, continuity)

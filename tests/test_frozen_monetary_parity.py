@@ -74,3 +74,17 @@ def test_an_oracle_that_already_contains_display_history_remains_fully_strict(re
         candidate["allowance"]["display_history"]["periods"].append({"current": True})
     with pytest.raises(AssertionError, match="changed frozen evidence"):
         assert_frozen_parity(expected, candidate)
+
+
+def test_additive_reset_history_is_reference_validated_and_existing_oracle_stays_strict(tmp_path):
+    report = load_tool("allowance_period_fixture").reset_economics_fixture(tmp_path)
+    candidate = {"allowance": report}
+    expected = deepcopy(candidate)
+    expected["allowance"].pop("reset_history")
+    assert assert_frozen_parity(expected, candidate) == ["allowance.reset_history"]
+    invalid = deepcopy(candidate)
+    invalid["allowance"]["reset_history"]["periods"][0]["usage_usd"] = float("nan")
+    with pytest.raises(AssertionError, match="invalid additive"):
+        assert_frozen_parity(expected, invalid)
+    with pytest.raises(AssertionError, match="changed frozen"):
+        assert_frozen_parity(candidate, invalid)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -110,11 +111,28 @@ def test_agent_activity_conserves_selected_ledger_records_and_csv_is_complete() 
 
     html = render_agent_activity_section(activity)
     assert "<h3>Daily Summary</h3>" in html
-    assert '<details class="agent-activity-agents">' in html
-    assert "<h3>Agents</h3>" in html
-    assert "<summary>Show 5 of 5 agents by total tokens.</summary>" in html
-    assert "<details class=\"agent-activity-agents\" open" not in html
-    assert "Export Agent Activity CSV includes every selected agent-day row." in html
+    assert "agent-activity-agents" not in html and "<h3>Agents</h3>" not in html
+    assert html.count("<table>") == 1
+    assert "Narrative forge" not in html and "Éditeur" not in html
+
+
+def test_dashboard_never_reads_agent_detail_rows_and_csv_retains_every_agent():
+    records = [_record(f"agent-{i}", "2026-03-08T06:00:00+00:00", i+1, role="root") for i in range(75)]
+    activity = build_agent_activity(records, {}, UTC)
+    class UnusedAgentRows:
+        def __getitem__(self, _key):
+            raise AssertionError("Dashboard read per-agent rows")
+        def __iter__(self):
+            raise AssertionError("Dashboard iterated per-agent rows")
+        def __len__(self):
+            raise AssertionError("Dashboard counted per-agent rows")
+    html = render_agent_activity_section(replace(activity, agent_rows=UnusedAgentRows()))
+    assert "Daily Summary" in html and "2,850" in html
+    assert "agent-activity-agents" not in html
+    rows = list(csv.DictReader(io.StringIO(agent_activity_csv(activity))))
+    assert len(rows) == 75
+    assert {row["agent_id"] for row in rows} == {f"agent-{i}" for i in range(75)}
+    assert sum(int(row["total_tokens"]) for row in rows) == 2850
 
 
 def _record(

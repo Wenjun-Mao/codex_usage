@@ -9,7 +9,7 @@ from codex_usage.allowance_models import QuotaObservation
 from codex_usage.allowance_queries import build_allowance_report
 from codex_usage.allowance_store import store_observations
 from codex_usage.ledger_schema import open_ledger
-from codex_usage.report_allowance import render_allowance_section
+from codex_usage.report_allowance import _observation_time, render_allowance_section
 from test_allowance_capture_report import _report, _window
 
 
@@ -118,8 +118,9 @@ def test_diagnostic_probe_times_use_the_report_timezone():
     report["status"]["last_probe_at"] = "2026-09-30T19:28:13.002605+00:00"
     report["status"]["last_observed_at"] = "2026-09-30T19:13:07.827407+00:00"
     markup = render_allowance_section(report, timezone=ZoneInfo("America/Toronto"))
-    assert "2026-09-30 15:28:13.002 EDT" in markup
-    assert "2026-09-30 15:13:07.827 EDT" in markup
+    assert "2026-09-30 15:28:13.002 EDT" not in markup
+    assert "2026-09-30 15:28:13.002 EDT" in _observation_time(report["status"]["last_probe_at"], ZoneInfo("America/Toronto"))
+    assert "2026-09-30 15:13:07.827 EDT" in _observation_time(report["status"]["last_observed_at"], ZoneInfo("America/Toronto"))
 
 
 def test_missing_or_malformed_times_and_source_labels_remain_safe():
@@ -131,4 +132,5 @@ def test_missing_or_malformed_times_and_source_labels_remain_safe():
     assert "Unknown source" in _markup(_point().to_dict())
     report = _report([])
     report["status"]["last_probe_at"] = ""
-    assert "Last checked: Not captured" in render_allowance_section(report)
+    assert "Last checked:" not in render_allowance_section(report)
+    assert _observation_time("", ZoneInfo("UTC")) == "Not captured"

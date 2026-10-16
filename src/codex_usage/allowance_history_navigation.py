@@ -13,6 +13,10 @@ DEFAULT_STATE = dict(period_page=0, uncertain_page=0, kind="", index=-1,
                      fit_page=0, capture_page=0, capture_order="newest")
 
 
+def report_history(report):
+    return report.get("reset_history", report["display_history"])
+
+
 class AllowanceScopeExpired(ValueError):
     """A real issued command no longer belongs to this report/account scope."""
 
@@ -76,7 +80,7 @@ def selection(history, state):
 
 def navigation(report, context, state=None):
     state = validate_state(DEFAULT_STATE if state is None else state)
-    history = report["display_history"]
+    history = report_history(report)
     for kind in ("periods", "uncertain"):
         if state[("period" if kind == "periods" else kind) + "_page"] > max(0, (len(history[kind])-1)//PERIOD_LIMIT):
             raise ValueError("Allowance history page outside report")

@@ -39,7 +39,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = pricing_revision()
-REPORT_RENDER_REVISION = 38
+REPORT_RENDER_REVISION = 45
 
 
 @dataclass(frozen=True, slots=True)

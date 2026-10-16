@@ -41,6 +41,7 @@
   },
   "activationEvents": [
     "onCommand:codexUsage.openDashboard",
+    "onCommand:codexUsage.copyDiagnostics",
     "onCommand:codexUsage.captureNow",
     "onCommand:codexUsage.openTaskTransfer",
     "onCommand:codexUsage.analyzeTaskStorage",
@@ -70,6 +71,10 @@
       {
         "command": "codexUsage.exportAgentActivityCsv",
         "title": "Codex Usage: Export Agent Activity CSV"
+      },
+      {
+        "command": "codexUsage.copyDiagnostics",
+        "title": "Codex Usage: Copy Diagnostics"
       },
       {
         "command": "codexUsage.selectProjects",

@@ -66,12 +66,13 @@ def project_economics_css() -> str:
     .project-economics-projects { display: grid; gap: 6px; min-width: 0; }.project-economics-project { border: 1px solid var(--border); border-radius: 7px; background: var(--surface); padding: 0 10px; min-width: 0; }.project-economics-project[open] { padding-bottom: 10px; }
     .project-economics-project > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 42px; }.project-economics-project-summary { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }.project-economics-project-body { padding: 2px 0 0; min-width: 0; }
     .project-economics-table-wrap { max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; }
-    .project-economics-models { margin: 8px 0 0; min-width: 840px; table-layout: fixed; }
+    .project-economics-models { margin: 8px 0 0; min-width: 1030px; table-layout: fixed; }
     .project-economics-models th:first-child, .project-economics-models td:first-child { width: 190px; }
     .project-economics-models th:nth-child(2), .project-economics-models td:nth-child(2) { width: 220px; }
-    .project-economics-models th:nth-child(3), .project-economics-models td:nth-child(3) { width: 145px; }
+    .project-economics-models th:nth-child(3), .project-economics-models td:nth-child(3) { width: 190px; }
     .project-economics-models th:nth-child(4), .project-economics-models td:nth-child(4) { width: 145px; }
-    .project-economics-models th:nth-child(5), .project-economics-models td:nth-child(5) { width: 140px; }
+    .project-economics-models th:nth-child(5), .project-economics-models td:nth-child(5) { width: 145px; }
+    .project-economics-models th:nth-child(6), .project-economics-models td:nth-child(6) { width: 140px; }
     .project-economics-models thead th:first-child, .project-economics-models tbody th[scope="row"] { position: sticky; left: 0; box-shadow: 1px 0 0 var(--border); }
     .project-economics-models thead th:first-child { z-index: 2; background: var(--surface-soft); }
     .project-economics-models tbody th[scope="row"] { z-index: 1; background: var(--surface); color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
@@ -114,9 +115,9 @@ def _render_project(project: ProjectEconomics) -> str:
         tuple(model.metrics.average_cost_per_turn for model in project.models)
     )
     model_rows = "".join(
-        _render_primary_model(model, response_cost)
-        for model, response_cost in zip(
-            project.models, response_cost_labels, strict=True
+        _render_primary_model(model, response_cost, turn_cost)
+        for model, response_cost, turn_cost in zip(
+            project.models, response_cost_labels, turn_cost_labels, strict=True
         )
     )
     detail_rows = "".join(
@@ -140,6 +141,8 @@ def _render_project(project: ProjectEconomics) -> str:
         '<thead><tr><th scope="col">Model</th>'
         '<th scope="col" class="num" aria-label="Average API-equivalent cost per response" '
         'title="Average API-equivalent cost per response">Cost / resp.</th>'
+        '<th scope="col" class="num" aria-label="Average API-equivalent cost per turn" '
+        'title="Average API-equivalent cost per turn">Cost / turn</th>'
         '<th scope="col" class="num">Responses / turn</th>'
         '<th scope="col" class="num">Tokens / turn</th>'
         '<th scope="col" class="num">Measured turns</th>'
@@ -159,7 +162,7 @@ def _render_project(project: ProjectEconomics) -> str:
     )
 
 
-def _render_primary_model(model: ModelEconomics, response_cost: str) -> str:
+def _render_primary_model(model: ModelEconomics, response_cost: str, turn_cost: str) -> str:
     metrics = model.metrics
     turns = format_int(metrics.turn_count)
     sample_warning = (
@@ -170,7 +173,8 @@ def _render_primary_model(model: ModelEconomics, response_cost: str) -> str:
     return (
         "<tr>"
         f'<th scope="row">{html.escape(model.label)}</th>'
-        f'<td class="num">{_primary_money(response_cost, metrics)}</td>'
+        f'<td class="num">{_primary_money(response_cost, metrics.average_cost_per_response, _priced_response_detail(metrics))}</td>'
+        f'<td class="num">{_primary_money(turn_cost, metrics.average_cost_per_turn, _priced_turn_detail(metrics))}</td>'
         f'<td class="num" title="{_turn_response_detail(metrics)}">{_number_or_unavailable(metrics.responses_per_turn)}</td>'
         f'<td class="num" title="{_coverage_detail(model.coverage)}">{compact_token_count(metrics.tokens_per_turn)}</td>'
         f'<td class="num">{turns}{sample_warning}</td>'
@@ -200,11 +204,10 @@ def _render_model_detail(model: ModelEconomics, turn_cost: str) -> str:
     )
 
 
-def _primary_money(label: str, metrics: TurnMetrics) -> str:
-    if metrics.average_cost_per_response is None:
+def _primary_money(label: str, value: float | None, denominator: str) -> str:
+    if value is None:
         return html.escape(label)
-    title = _priced_response_detail(metrics)
-    return f'<span title="{html.escape(title, quote=True)}">{html.escape(label)}</span>'
+    return f'<span title="{html.escape(denominator, quote=True)}">{html.escape(label)}</span>'
 
 
 def _detail_money(label: str, value: float | None, denominator: str) -> str:

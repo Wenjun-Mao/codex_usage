@@ -207,11 +207,11 @@ def _check_report_content(page, report, state, theme, history_colors):
             "No current quota reading is available.", exact=True
         ).is_visible()
 
-    diagnostics = page.locator("details").filter(
-        has_text="Probe, coverage, and allowance history"
-    )
-    assert diagnostics.count() == 1
-    diagnostics_summary = diagnostics.locator("summary")
+    history_panel = page.locator(".allowance-history-panel")
+    assert page.get_by_text("Diagnostics", exact=True).count() == 0
+    diagnostics_summary = history_panel.locator(":scope > summary")
+    if report["status"]["probe_status"] in {"stale", "partial"}:
+        page.get_by_role("link", name="Capture usage", exact=True).last.focus()
     page.keyboard.press("Tab")
     focus = diagnostics_summary.evaluate(
         "e => { const probe = document.createElement('span'); probe.style.color = 'var(--accent)'; e.append(probe); "
@@ -223,22 +223,21 @@ def _check_report_content(page, report, state, theme, history_colors):
     assert focus["outlineStyle"] == "solid" and focus["outlineWidth"] == "2px"
     assert focus["outlineColor"] == focus["accent"]
     diagnostics_summary.press("Enter")
-    assert diagnostics.evaluate("e => e.open")
-    assert diagnostics.locator("details").count() == 0
+    assert history_panel.evaluate("e => e.open")
     if report["history"]:
-        history = diagnostics.locator(".allowance-history")
+        history = history_panel.locator(".allowance-history")
         assert history.count() == 1
         assert history.locator("li").count() == min(12, len(report["history"]))
         assert history.locator("li").first.inner_text().startswith("codex · pro · 7 days")
         assert history.evaluate("e => e.scrollWidth <= e.clientWidth")
         if state == "previous-window":
             assert history.locator("li").first.inner_text().find("2026-08-29") == -1
-            assert diagnostics.get_by_text("Previous window fit:").is_visible()
-        history_colors[theme] = diagnostics.locator(
+        history_colors[theme] = history_panel.locator(
             ".allowance-history-meta"
         ).first.evaluate("e => getComputedStyle(e).color")
     else:
-        assert diagnostics.get_by_text("No valid priced window estimate yet.").is_visible()
+        assert history_panel.get_by_text("No valid priced window estimate yet.").is_visible()
+    assert page.get_by_text("Previous window fit:").count() == 0
     if state == "insufficient":
         assert page.get_by_text("Insufficient data").count() == 1
     summary = page.locator("summary", has_text="Reset windows and capture details")

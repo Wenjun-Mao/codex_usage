@@ -7,10 +7,12 @@
 - Resolve paginated-task accounting from validated physical-rollout lineage,
   avoiding repeated inherited counters while preserving genuine new deltas and
   uncertain historical evidence. Bound recovery and fence incompatible writers.
-- Compare models within a project by cost per response, responses per turn and
-  tokens per turn, with compact values, priceability and measured populations.
-- Group allowance history by evidence-backed periods, keeping uncertain readings
-  and exact capture details inspectable without merging or changing monetary fits.
+- Compare models within a project by cost per response, cost per turn, responses
+  per turn and tokens per turn, with compact values and measured populations.
+- Show actual or bracketed reset periods, their API-equivalent usage, allowance
+  used and estimated full-allowance value without changing monetary fits.
+- Remove diagnostic-heavy chart disclosures and the ID-heavy Agents table;
+  preserve Daily Summary, complete CSV export and explicit Copy Diagnostics.
 - Accept canonical background-collector descriptors and keep long report/capture
   requests free from inherited socket idle timeouts.
 - Qualify platform packages once and explicitly promote those exact bytes.

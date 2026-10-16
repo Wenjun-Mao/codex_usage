@@ -120,7 +120,7 @@ def test_below_resolution_values_use_ticks_not_circles_or_inflated_bars():
     assert "luna: $0.0001" in ticks[0].find("desc").text
     assert not any(mark.tag == "circle" for mark in svg)
     assert document.count('<rect') == 1
-    assert 'class="ub-resolution-evidence"' in document
+    assert 'class="ub-resolution-evidence"' not in document and "Small segments" not in document
 
 
 def test_multiple_account_identities_remain_visible():

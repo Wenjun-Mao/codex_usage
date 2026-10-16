@@ -89,6 +89,7 @@ def main() -> None:
                                 for header in (
                                     "Model",
                                     "Cost / resp.",
+                                    "Cost / turn",
                                     "Responses / turn",
                                     "Tokens / turn",
                                     "Measured turns",
@@ -97,6 +98,19 @@ def main() -> None:
                                 assert primary.locator("thead th:nth-child(2)").get_attribute(
                                     "aria-label"
                                 ) == "Average API-equivalent cost per response"
+                                assert primary.locator("thead th:nth-child(3)").get_attribute(
+                                    "aria-label"
+                                ) == "Average API-equivalent cost per turn"
+                                sol = primary.locator("tbody tr").filter(
+                                    has=page.locator("th[scope=row]", has_text="gpt-6.1-sol")
+                                )
+                                assert sol.locator("td").count() == 5
+                                assert sol.locator("td").nth(0).locator("span").get_attribute(
+                                    "title"
+                                ) == "2 of 2 responses priceable"
+                                assert sol.locator("td").nth(1).locator("span").get_attribute(
+                                    "title"
+                                ) == "1 of 1 turns priceable"
                                 primary_text = primary.inner_text()
                                 for value in (
                                     "gpt-6.1-sol",

@@ -100,7 +100,9 @@ def test_dated_scopes_stale_anchor_and_original_event_membership(tmp_path):
     stale = render(tmp_path, now=AT+timedelta(hours=2))
     actions = [a for a in stale.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")]
     assert len(actions) == 0 and stale.breakdown_navigation["state"]["basis"] == "selected"
-    historical = stale
+    assert "observed continuity fragment" not in stale.html
+    audit = next(a for a in stale.breakdown_navigation["actions"] if a["state"]["detail"].startswith("evidence:"))
+    historical = render(tmp_path, audit, now=AT+timedelta(hours=2))
     assert "scheduled reset" in historical.html
     assert "codex / pro" in historical.html and "observed continuity fragment" in historical.html
     with pytest.raises(ValueError, match="expired"):
@@ -176,14 +178,21 @@ def test_no_current_and_ambiguous_conflict_portions_remain_accessible(tmp_path):
         connection.commit()
     first = render(tmp_path)
     assert first.breakdown_navigation["state"]["basis"] == "selected"
-    assert "observation conflict" in first.html
+    assert "Scope and continuity evidence" not in first.html
     actions = [a for a in first.breakdown_navigation["actions"] if a["state"]["basis"].startswith("window:")]
     assert not actions
     with open_ledger(path, read_only=True) as connection:
         key = connection.execute("select cache_key from rendered_reports where cache_key like 'breakdown:%:metadata'").fetchone()[0]
-        conflicts = [w for w in load(connection, key)["evidence"]["windows"].values() if w["ambiguous"]]
+        windows = load(connection, key)["evidence"]["windows"]
+        conflicts = [w for w in windows.values() if w["ambiguous"]]
         assert conflicts and all(w["plan"] == "" for w in conflicts), "do not choose a plan for conflicting captures"
-    assert all(render(tmp_path, a).breakdown_navigation["state"] == a["state"] for a in actions)
+    audits = [a for a in first.breakdown_navigation["actions"]
+              if a["state"]["detail"] in {"evidence:" + k for k, w in windows.items() if w["ambiguous"]}]
+    assert audits
+    for audit in audits:
+        inspected = render(tmp_path, audit)
+        assert inspected.breakdown_navigation["state"] == audit["state"]
+        assert "observation conflict" in inspected.html
 
 
 def test_mixed_offsets_and_equivalent_instants_never_create_false_debit(tmp_path):

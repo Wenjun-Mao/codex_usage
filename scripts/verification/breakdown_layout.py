@@ -38,6 +38,8 @@ SNAPSHOT = """() => {
         finiteMissing:text.includes('No finite valid balances among in-domain captures'),
         capturesMissing:text.includes('No in-domain balance captures'),offset:text.includes('Axis offset:'),
         oldContext:text.includes('Full-range daily context'),
+        diagnosticSections:find('details > summary').filter(s=>
+            ['Scope and continuity evidence','Small segments','Account overlay evidence'].includes(s.textContent)).length,
         controlsFit:find('.ub-controls').every(g=>g.scrollWidth<=g.clientWidth+1)};
 }"""
 
@@ -70,6 +72,7 @@ def assert_layout(snapshot, label, state):
     else:
         assert len(snapshot["timeAxes"]) == 0 and snapshot["rightAxes"] == 0
     assert not snapshot["oldContext"]
+    assert snapshot["diagnosticSections"] == 0, label
     for axis in snapshot["timeAxes"]:
         assert axis["font"] == "12px"
         for field in ("glyph", "span"):

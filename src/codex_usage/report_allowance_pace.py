@@ -45,13 +45,7 @@ def _message(pace, status, now, timezone):
     if state == "reported full":
         return "Meter reports 100% used"
     if state == "unmeasurable":
-        reason = pace.get("calibrated_reason") or pace.get("reason", "")
-        if "insufficient signed movement" in pace.get("reason", ""):
-            reason += "; " if reason != "insufficient signed movement" else ""
-            if reason == "insufficient signed movement":
-                reason = ""
-            reason += "direct measurement needs at least two net percentage points within this period"
-        return "Pace not yet measurable" + (f" ({escape(reason)})" if reason else "")
+        return "Not enough data to forecast yet."
     if state == "missing reset":
         return "Forecast awaiting fresh capture"
     exhaustion, reset = pace["exhaustion"], pace["reset"]

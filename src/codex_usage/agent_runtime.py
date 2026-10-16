@@ -247,6 +247,9 @@ class CodexUsageAgent:
     def projects(self) -> list[dict[str, object]]:
         return self._features.projects()
 
+    def allowance_diagnostics(self) -> dict[str, object]:
+        return self._features.allowance_diagnostics()
+
     def companion_query(self, payload: dict[str, object]) -> dict[str, object]:
         return self._features.companion.query(
             payload, capture=self.capture_now, runtime_status=self.status_payload,

@@ -10,13 +10,18 @@ from codex_usage.report_usage_breakdown_chart import COLORS, css
 from codex_usage.report_breakdown_time import time_view
 
 
-def command(nav, state, label, **changes):
+def issue(nav, state, **changes):
     target = {**state, **changes}
     args = {"scope": nav["scope"], "state": target}
     if args not in nav["actions"]:
         nav["actions"].append(args)
+    return args
+
+
+def command(nav, state, label, **changes):
+    args = issue(nav, state, **changes)
     uri = "command:codexUsage.navigateBreakdown?" + quote(json.dumps([args], separators=(",", ":")), safe="")
-    active = ' aria-current="true"' if target == state else ""
+    active = ' aria-current="true"' if args["state"] == state else ""
     return f'<a href="{html.escape(uri, quote=True)}"{active}>{html.escape(label)}</a>'
 
 
@@ -56,17 +61,13 @@ def render_breakdown(metadata, info, state, nav, reason, timezone, partition, *,
         controls.append('<details class="ub-window-picker"><summary>' + labels[state["overlay"]] + '</summary><div>' +
             ''.join(command(nav, state, label, overlay=value) for value, label in labels.items()) + '</div></details>')
     content = f'<p class="ub-note">Selected range: {info["min_date"]} to {info["max_date"]} · {"Complete" if metadata["complete"] else "Partial"} local baseline</p>'
-    accounting = 'Usage follows global project selection. ' if global_filtered else 'Captured local usage is not proof of complete account workload. '
-    accounting += 'Language tokens include cached input and included reviews. Dedicated codex-auto-review approval checks are free for ChatGPT subscription use after the October 6 announcement: zero estimated credits, with tokens retained and API-excluded. Earlier review pricing remains unknown. API-equivalent dollars are not subscription charges. Images remain separate. Account overlays are account-wide, never project-filtered. Empty/future spans are unobserved, not measured zero workload.'
-    content += '<details><summary>Scope and continuity evidence</summary><p class="ub-note">' + html.escape(accounting) + f' Calendar membership {info["interval_notation"]}.</p>'
-    if reason:
-        content += '<p class="ub-note">' + html.escape(reason) + '</p>'
-    for key, window in metadata["evidence"]["windows"].items():
-        content += '<p class="ub-note">' + html.escape(f'{window["start"]} to {window["end"]} | {window["limit_id"]} / {window["plan"] or "plan unavailable"} | {window["boundary"]} | observed continuity fragment, not a complete reset cycle') + '</p>'
-        content += command(nav, state, "Inspect continuity interval", detail="evidence:" + key)
-    content += '</details>'
+    # Programmatic audit commands remain issued, without building dashboard rows
+    # or command URLs for every historical continuity fragment.
+    for key in metadata["evidence"]["windows"]:
+        issue(nav, state, detail="evidence:" + key)
     if state["detail"].startswith("evidence:"):
         key = state["detail"][9:]
+        content += _audit_context(metadata["evidence"]["windows"][key], info, reason, global_filtered)
         evidence_info = partition(key + ":summary", {})
         evidence_rows = [dict(v, project=p, label=project["label"], model=m) for p, project in evidence_info["projects"].items() for m, v in project["models"].items()]
         content += '<details open><summary>Capture-causal interval inspection, not calendar totals</summary>' + detail_table(evidence_rows, evidence_info["calibration"], nav, state, selected_projects=info["projects"]) + '</details>'
@@ -92,4 +93,14 @@ def render_breakdown(metadata, info, state, nav, reason, timezone, partition, *,
     content += '<details><summary>All selected-range project/model values</summary>' + detail_table(rows, info["calibration"], nav, state, selected_projects=info["projects"]) + '</details>'
     values = info["total"]
     content += f'<p class="ub-note">Selected range totals: {compact_decimal(values["tokens"], unit="tokens")} tokens; {compact_decimal(values["cost"], unit="cost")} known API-equivalent; {values["unknown"]:,} unknown-price tokens; {values["api_excluded"]:,} API-excluded review tokens; {compact_decimal(values["credits"])} known estimated Standard credits; {values["credit_unknown"]:,} unknown-credit tokens. Estimates are not observed debits.</p>'
-    return css() + f'<section class="section usage-breakdown" data-scope="{nav["scope"]}" data-state="{html.escape(json.dumps(state), quote=True)}"><h2>Usage &amp; Allowance Breakdown</h2><nav class="ub-controls" aria-label="Usage breakdown controls">{"".join(controls)}</nav>{content}</section>'
+    return css() + f'<section class="section usage-breakdown" data-scope="{nav["scope"]}" data-calibration-status="{html.escape(reason, quote=True)}" data-state="{html.escape(json.dumps(state), quote=True)}"><h2>Usage &amp; Allowance Breakdown</h2><nav class="ub-controls" aria-label="Usage breakdown controls">{"".join(controls)}</nav>{content}</section>'
+
+
+def _audit_context(window, info, reason, global_filtered):
+    """Explain one explicitly requested audit; no diagnostic entrypoint in the UI."""
+    accounting = 'Usage follows global project selection. ' if global_filtered else 'Captured local usage is not proof of complete account workload. '
+    accounting += 'Language tokens include cached input and included reviews. Dedicated codex-auto-review approval checks are free for ChatGPT subscription use after the October 6 announcement: zero estimated credits, with tokens retained and API-excluded. Earlier review pricing remains unknown. API-equivalent dollars are not subscription charges. Images remain separate. Account overlays are account-wide, never project-filtered. Empty/future spans are unobserved, not measured zero workload.'
+    context = f'{window["start"]} to {window["end"]} | {window["limit_id"]} / {window["plan"] or "plan unavailable"} | {window["boundary"]} | observed continuity fragment, not a complete reset cycle'
+    return ('<details><summary>Scope and continuity evidence</summary>'
+        f'<p class="ub-note">{html.escape(accounting)} Calendar membership {info["interval_notation"]}.</p>'
+        f'<p class="ub-note">{html.escape(reason)}</p><p class="ub-note">{html.escape(context)}</p></details>')

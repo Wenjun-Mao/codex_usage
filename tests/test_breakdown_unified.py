@@ -106,11 +106,65 @@ def test_free_auto_review_explanation_stays_in_folded_scope_evidence(tmp_path):
     breakdown_home(tmp_path)
     report = render(tmp_path)
     section = report.html.split('<section class="section usage-breakdown"', 1)[1]
+    assert "Scope and continuity evidence" not in section
+    audit = next(a for a in report.breakdown_navigation["actions"] if a["state"]["detail"].startswith("evidence:"))
+    report = render(tmp_path, audit)
+    section = report.html.split('<section class="section usage-breakdown"', 1)[1]
     disclosure = section.split('<summary>Scope and continuity evidence</summary>', 1)[1].split('</details>', 1)[0]
     assert "codex-auto-review approval checks are free for ChatGPT subscription use" in disclosure
     assert "zero estimated credits, with tokens retained and API-excluded" in disclosure
     assert "Earlier review pricing remains unknown" in disclosure
     assert "<details open><summary>Scope and continuity evidence" not in section
+
+
+def test_dashboard_never_builds_diagnostic_rows_but_retains_issued_audits(tmp_path, monkeypatch):
+    import codex_usage.report_usage_breakdown as renderer
+    breakdown_home(tmp_path, extended=True)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Dashboard generated diagnostic-only context")
+
+    monkeypatch.setattr(renderer, "_audit_context", forbidden)
+    current = render(tmp_path)
+    for changes in ({}, {"metric": "tokens"}, {"metric": "credits"}, {"grain": "hourly"},
+                    {"group": "project"}, {"overlay": "balance"}, {"view": "project"}):
+        if changes:
+            current = move(tmp_path, current, **changes)
+        section = current.html.split('<section class="section usage-breakdown"', 1)[1]
+        assert not any(label in section for label in (
+            "Scope and continuity evidence", "Small segments", "Account overlay evidence", "Inspect continuity interval"))
+        assert any(a["state"]["detail"].startswith("evidence:") for a in current.breakdown_navigation["actions"])
+
+
+def test_uncluttered_chart_replaces_revision_40_html_without_repreparing_usage(tmp_path, monkeypatch):
+    import codex_usage.agent_reports as reports
+    import codex_usage.report_usage_breakdown as renderer
+    breakdown_home(tmp_path)
+    original = renderer.render_breakdown
+
+    def legacy(*args, **kwargs):
+        return original(*args, **kwargs).replace('<h2>Usage &amp; Allowance Breakdown</h2>',
+            '<h2>Usage &amp; Allowance Breakdown</h2><details><summary>Scope and continuity evidence</summary></details>')
+
+    with monkeypatch.context() as old:
+        old.setattr(reports, "REPORT_RENDER_REVISION", 40)
+        old.setattr(renderer, "render_breakdown", legacy)
+        before = render(tmp_path)
+        assert "Scope and continuity evidence" in before.html
+        assert render(tmp_path).cache_hit
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Presentation upgrade repeated accounting work")
+
+    monkeypatch.setattr("codex_usage.breakdown_reports.prepare", forbidden)
+    monkeypatch.setattr("codex_usage.breakdown_reports.prepare_evidence", forbidden)
+    monkeypatch.setattr("codex_usage.breakdown_reports.prepare_interval", forbidden)
+    assert reports.REPORT_RENDER_REVISION > 40
+    after = render(tmp_path)
+    assert after.ledger_revision == before.ledger_revision
+    assert "Scope and continuity evidence" not in after.html
+    assert render(tmp_path).html == after.html
+    assert render(tmp_path).cache_hit
 
 
 def test_historical_only_project_evidence_never_issues_calendar_drill(tmp_path):

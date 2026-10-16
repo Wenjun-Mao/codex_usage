@@ -149,12 +149,16 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
                                         coverage_complete=coverage_complete)
     qualified, headline = allowance_highlights(windows)
     latest = windows[-1] if windows else None
+    history = display_history(points, provenance, windows, anchors, live_points=live_points)
+    from codex_usage.allowance_reset_economics import reset_history
     return {
         "status": status, "credits": credits, "paces": paces, "windows": windows,
         "qualified": qualified, "headline": headline,
         "headline_previous": headline is not None and headline is not latest,
         "history": allowance_history(windows),
-        "display_history": display_history(points, provenance, windows, anchors, live_points=live_points),
+        "display_history": history,
+        "reset_history": reset_history(history, live_points, anchors, windows, prefix,
+                                       coverage_complete=coverage_complete),
     }
 
 

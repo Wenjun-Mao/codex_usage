@@ -37,8 +37,8 @@ def test_boundary_density_changes_no_account_observations():
     assert all(float(n.attrib["r"]) < 1 for n in list(nodes)[:-1])
     assert float(nodes[-1].attrib["r"]) == 2
     assert "right axis" in name and "100%" in axis
-    assert "12,240 captured boundary points" in evidence
-    assert evidence.index('class="ub-overlay-evidence"') < evidence.index("Dense boundary evidence")
+    assert "Account overlay evidence" not in evidence and "Dense boundary evidence" not in evidence
+    assert "Exact captured allowance readings" not in evidence
 
 
 def test_separate_capture_stretches_are_never_joined():
@@ -50,7 +50,7 @@ def test_separate_capture_stretches_are_never_joined():
     assert all(n.tag == "circle" for n in nodes)
     assert "95%" not in evidence
     assert "90% remaining" in evidence
-    assert "no joining or interpolation" in evidence
+    assert "Account overlay evidence" not in evidence
 
 
 def test_account_series_labels_bind_latest_capture_and_identity():

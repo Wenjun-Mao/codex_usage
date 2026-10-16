@@ -65,6 +65,47 @@ def test_scheduled_and_early_banked_reset_are_separate_without_inferred_starts()
     assert "start" not in result["periods"][0]
 
 
+def test_reset_edges_follow_actual_credit_evidence_and_scheduled_deadline():
+    points = [point(0, 60, reset_credits=2), point(.5, 65, reset_credits=None),
+              point(1, 10, reset_credits=1),
+              point(6, 20, resets_at=point(0, 1).resets_at + 18000, reset_credits=1)]
+    result = grouped(points, anchors=[points[-1]])
+    current, early, initial = result["periods"]
+    edge = dict(kind="reset credit decrease", earliest=AT.timestamp(), latest=AT.timestamp()+3600)
+    assert early["reset_opening"] == initial["reset_closure"] == edge
+    scheduled = dict(kind="scheduled reset", earliest=points[0].resets_at, latest=points[0].resets_at)
+    assert current["reset_opening"] == early["reset_closure"] == scheduled
+    assert initial["reset_opening"] is None and current["reset_closure"] is None
+    assert current["reset_opening"]["latest"] != current["next_reset"] - 604800
+
+
+@pytest.mark.parametrize("damage", [
+    {"earliest": True}, {"latest": float("nan")}, {"earliest": 2e10}, {"kind": "deadline rebase"},
+])
+def test_codec_rejects_invalid_reset_edges(damage):
+    result = grouped([point(0, 60, reset_credits=2), point(1, 10, reset_credits=1)])
+    result["periods"][0]["reset_opening"].update(damage)
+    with pytest.raises(ValueError, match="reset boundary"):
+        encode_report(dict(windows=[], history=[], qualified=[], headline=None, display_history=result))
+
+
+def test_skipped_scheduled_cycles_do_not_borrow_prior_closure_as_current_opening():
+    points = [point(0, 60, reset_credits=2),
+              point(20, 10, reset_credits=2, resets_at=point().resets_at + 20*3600)]
+    result = grouped(points, anchors=[points[-1]])
+    assert result["periods"][0]["reset_opening"] is None
+    assert result["periods"][1]["reset_closure"]["latest"] == points[0].resets_at
+
+
+def test_credit_drop_crossing_deadline_retains_interval_not_a_false_exact_instant():
+    points = [point(0, 60, reset_credits=2),
+              point(6, 10, reset_credits=1, resets_at=point().resets_at + 5*3600)]
+    result = grouped(points)
+    edge = result["periods"][0]["reset_opening"]
+    assert edge["earliest"] == AT.timestamp() and edge["latest"] == AT.timestamp()+6*3600
+    assert edge["kind"] == "scheduled reset"
+
+
 def test_missing_clocks_and_credits_keep_supported_prior_evidence_not_inferred_start():
     points = [point(0, 60, reset_credits=2), point(1, 65, resets_at=None, reset_credits=None),
               point(6, 10, resets_at=point().resets_at + 18000, reset_credits=2)]

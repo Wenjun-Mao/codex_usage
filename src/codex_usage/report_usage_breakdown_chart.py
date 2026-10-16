@@ -18,7 +18,6 @@ def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=N
     slots = {label: COLORS[i % len(COLORS)] for i, label in enumerate(labels)}
     marks = []
     hover_targets = []
-    tiny = False
     for index, values in enumerate(bars):
         local_step = step
         left = index * step
@@ -38,7 +37,6 @@ def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=N
             if value <= 0:
                 continue
             if size < 1 or bar_width < 1:
-                tiny = True
                 parts.append(f'<line class="ub-tiny-segment" x1="{x:.3f}" x2="{x+bar_width:.3f}" y1="{bottom:.3f}" y2="{bottom:.3f}" stroke="{slots[label]}" stroke-width=".75" vector-effect="non-scaling-stroke"><desc>{exact} (below chart resolution)</desc></line>')
             else:
                 parts.append(f'<rect x="{x:.3f}" y="{bottom - size:.3f}" width="{bar_width:.3f}" height="{size:.6f}" fill="{slots[label]}"><desc>{exact}</desc></rect>')
@@ -68,7 +66,7 @@ def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=N
         labels=[((display_names or {}).get(label, label), slots[label]) for label in labels
             if not display_names or label in visible], width=width, height=height, kind=account_overlay,
         hover_targets="".join(hover_targets))
-    return content + ('<details class="ub-resolution-evidence"><summary>Small segments</summary><p class="ub-note">Colored ticks mark nonzero segments below chart resolution. Values remain available in hover and details.</p></details>' if tiny else "")
+    return content
 
 
 def css():

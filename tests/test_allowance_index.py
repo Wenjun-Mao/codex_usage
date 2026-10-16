@@ -329,3 +329,45 @@ def test_report_revision_refreshes_provenance_without_repricing_events(tmp_path,
     _compare(ledger)
     with open_ledger(ledger, read_only=True) as connection:
         assert [tuple(row) for row in connection.execute("select * from allowance_event_costs")] == costs
+
+
+def test_reset_boundary_fix_replaces_old_report_and_html_without_repricing(tmp_path, monkeypatch):
+    import codex_usage.agent_reports as reports
+
+    home = tmp_path / "codex"
+    sessions = home / "sessions"
+    sessions.mkdir(parents=True)
+    _session(sessions / "rollout-task-1.jsonl", [100])
+    monkeypatch.setattr("codex_usage.allowance_capture.probe_allowance",
+                        lambda *_: QuotaRead("2026-09-02T10:00:00+00:00", diagnostics="test"))
+    assert capture_once(home, request_kind="manual", max_workers=1).outcome == "success"
+    ledger = ledger_database_path(home)
+    with open_ledger(ledger) as connection:
+        store_observations(connection, [_point(0, 10), _point(2, 20)],
+                           source_key="fixture", provenance="live")
+        increment_ledger_revision(connection)
+        connection.commit()
+    arguments = dict(range_name="all", project_keys=[], theme="night", timezone_name="UTC")
+    with monkeypatch.context() as old:
+        old.setattr(allowance_index, "ALLOWANCE_REPORT_REVISION", 10)
+        old.setattr(reports, "REPORT_RENDER_REVISION", 44)
+        legacy = render_ledger_report(home, **arguments)
+        assert render_ledger_report(home, **arguments).cache_hit
+    with open_ledger(ledger) as connection:
+        costs = [tuple(row) for row in connection.execute("select * from allowance_event_costs")]
+        connection.execute("update allowance_report_cache set report_json='{}' where pricing_revision not like '%:pace-state'")
+        connection.execute("update rendered_reports set html='obsolete reset table'")
+        connection.commit()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("a reset-presentation revision repriced existing events")
+
+    monkeypatch.setattr(allowance_index, "estimate_cost", forbidden)
+    assert allowance_index.ALLOWANCE_REPORT_REVISION > 10 and reports.REPORT_RENDER_REVISION > 44
+    upgraded = render_ledger_report(home, **arguments)
+    assert not upgraded.cache_hit and upgraded.ledger_revision == legacy.ledger_revision
+    assert "obsolete reset table" not in upgraded.html
+    warm = render_ledger_report(home, **arguments)
+    assert warm.cache_hit and warm.html == upgraded.html
+    with open_ledger(ledger, read_only=True) as connection:
+        assert [tuple(row) for row in connection.execute("select * from allowance_event_costs")] == costs

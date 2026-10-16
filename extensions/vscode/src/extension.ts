@@ -15,6 +15,7 @@ import { chooseProjects } from "./projectSelection";
 import { selectCustomRange } from "./customRangeSelection";
 import { migrateLegacyUsage } from "./legacyMigration";
 import { DashboardNavigation } from "./dashboardNavigation";
+import { registerDiagnosticsCommand } from "./diagnosticsCommand";
 
 const RANGE_VALUES: readonly Exclude<ReportRange, "custom">[] = ["today", "yesterday", "7d", "30d", "month", "all"];
 const THEME_VALUES: readonly ReportTheme[] = ["auto", "day", "night"];
@@ -49,6 +50,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     resolveExecutable: () => resolveBundledAgent(context.extensionUri.fsPath),
   });
   const acquireClient = () => acquireAgentClient(true);
+  registerDiagnosticsCommand(context, vscode);
   taskTransferClient = new TaskTransferClient(acquireClient, output);
   const storage = new StorageClient(acquireClient, output, refreshVisibleDashboard);
   context.subscriptions.push(

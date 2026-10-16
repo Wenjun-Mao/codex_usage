@@ -2,7 +2,57 @@
 
 Date: 2026-10-14. Nonpublishing local checkpoint, not release qualification.
 
+October15 final owner review accepts the full-dashboard UI and requests release.
+The entries below retain the earlier review chronology. Latest ordinary UI has
+per-model cost/turn, reset-period economics, no inline Diagnostics/evidence panels
+or ID-heavy Agents table, and unchanged Daily Summary/complete CSV export. Support
+diagnostics are a bounded, explicit Copy Diagnostics command instead.
+The owner later confirmed narrative-forge idle and closed VS Code; approved
+backed-up live repair and full/indexed report reconciliation now pass. Independent release
+review found old-plan clock carry-over, filtered simultaneous conflicts and
+unresolved leading plan metadata in reset-history construction. Their fixes and
+production-query/codec/cache regressions advance report11/HTML45; later matching
+hosted qualification is still required. This local checkpoint is not publication.
+
+October15 owner review requests cost/turn beside cost/response in primary model
+rows. This follow-up reuses the existing fully priced model-turn metric and
+advances HTML render revision38 to39; no accounting population changes. Earlier
+source qualification at515c1445 does not qualify this changed renderer. Renew
+matching qualification after final owner UI review, before release.
+
+The same owner review also requests compact allowance history with actual reset
+boundaries instead of nominal seven-day labels. History now precedes a separate
+closed Diagnostics section; bounded Details retain capture/fit evidence. Report
+revision9 adds evidence-backed reset edges without changing monetary populations
+or formulas. HTML revision40 replaces the previously reviewed revision39 wrapper;
+an upgrade regression covers that warm-cache path. Local follow-up checks: 362 allowance tests, 216 browser cases plus
+36 meter checks across Chromium/WebKit/Firefox, Ruff and whitespace checks pass.
+Visual evidence: `output/playwright/allowance-history-compact-final/`.
+These are local UI checks,
+not fresh hosted qualification or owner acceptance. The live active-source repair
+remains pending by owner instruction.
+
+October15 chart review accepts Usage & Allowance Breakdown except diagnostic
+clutter. HTML revision41 removes Scope/continuity, Small segments and Account
+overlay evidence from ordinary navigation without constructing historical rows
+or command URLs. Explicit receipt-bound programmatic audits, exact day/hour/
+project drills, warnings and chart geometry remain. Local verification: 174
+breakdown/API/work/layout tests and 90 cross-browser overlay cases pass; full
+chart-layout replay and private preview refresh are recorded in ignored evidence.
+This is not publication approval or fresh hosted source qualification.
+
 ## Scope
+
+Latest October15 owner review rejects the compact fragment list as unhelpful.
+Report10/HTML42 now add a separate reset-lifecycle economic view: actual or
+bracketed reset times, period API-equivalent usage, allowance used and one
+contained original full-allowance estimate. The corrected private snapshot now
+groups actual reset periods rather than individual display fragments. Read-only
+independent SQL event-price sums reconcile each row; private usage figures remain
+in local receipts, not Git. This is a frozen snapshot, not a current live
+reading. Original fits/headline/paces and financial populations
+remain unchanged. New cache/codec/navigation, lifecycle and browser guardrails
+are required; owner acceptance and matching source qualification remain open.
 
 Within each project, primary model rows now expose average cost per response,
 responses per turn, compact tokens per turn and measured turns. All models share
