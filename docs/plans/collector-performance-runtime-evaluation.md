@@ -7,20 +7,26 @@ qualification are covered. Publication, installation and runtime/Rust adoption
 remain separate owner decisions.
 
 Progress: private report baseline, bootstrap/stat fixes and parse-scoped identity
-reuse implemented; local macOS frozen checks pass. Separate 2.12.4 qualification
-and runtime/Rust comparisons are in progress. No candidate is qualified yet.
+reuse implemented. Current/common 3.13 and common 3.15 native compatibility
+checks pass on both supported targets. Runtime/Rust evaluation recommends
+retaining Python 3.13. Separate 2.12.4 VSIX qualification remains blocked on
+the future-candidate timing contract approval. No candidate is release-qualified.
 See [implementation evidence](../research/2026-10-16-collector-implementation.md).
 
 Current execution checkpoints:
 - Baselines: ten paired capture/report runs; private report input reproduces
   the loading delay. Capture workload is synthetic, not a private-source claim.
-- Bootstrap/identity: implemented and locally verified; fresh native Windows
-  evidence and final qualification remain outstanding.
-- 3.15: coherent dependencies and macOS frozen compatibility pass; approximately
+- Bootstrap/identity: implemented; local and hosted native frozen checks pass on
+  macOS ARM64 and Windows x64. Full VSIX qualification remains outstanding.
+- 3.15: coherent dependencies and both-target frozen compatibility pass; approximately
   2% operation gains fail the adoption gate. Keep 3.13.
 - Rust: isolated resumable prototype and parity checks; two blocks show about
   19.5% cold-capture benefit, below the 20% gate. Keep it unshipped; no further
   performance blocks are authorized by the measurement protocol.
+- Source `b7b603e03a54d62d912a2dffc18df3cbf5b00652` was committed/pushed and
+  executed in one nonpublishing six-configuration hosted run, `38970001352`.
+  All six jobs passed without a rerun. No normal qualification, journal binding,
+  release tag, Marketplace publication or extension installation was attempted.
 - Hosted qualification: the prior timing slot cannot authorize a new release.
   A narrowly scoped future-candidate qualification contract is awaiting owner
   review. No old journal binding, publication authority or tolerance is reused.

@@ -44,6 +44,14 @@ Parent CPU was recorded; child CPU and concurrent process-tree memory were not.
 No dispatch threshold is shipped: earlier single-run tiny-append differences
 do not meet the optional end-to-end benefit gate.
 
+A separate post-optimization serial profile records 36 total repository
+resolutions (0.012 s cumulative) rather than the earlier 12,012. Structural
+projection remains material: 72,012 calls / 5.955 s cumulative out of 11.142 s
+instrumented cold capture. Normalized-ledger synchronization is 1.868 s.
+These nested diagnostic times are not unprofiled latency estimates. The Rust
+trial preserves the same row-reader call graph, rather than claiming a gain
+from removing duplicate Python work in only one configuration.
+
 ## Representative Report Measurement
 
 A coherent private SQLite backup was made through a read-only source connection;
@@ -79,13 +87,25 @@ with explicit `--install-dir --no-bin --no-registry`; no default runtime remains
 changed. B/C environments share Pydantic 2.14.1/core 2.50.1, PyInstaller 6.22.3
 and hooks 2026.7. The old hooks pin was correctly rejected as incompatible;
 the Pydantic exact core dependency was not overridden. Watchdog 6.0.0 built
-from source on macOS 3.15. Native Windows remains untested.
+from source on macOS 3.15. Subsequent hosted checks pass on Windows too.
 
 Actual macOS frozen collectors built for current 3.13, common-dependency 3.13
 and common-dependency 3.15. Each passed the new real HTTP/worker test and legacy
 smoke in an external sandbox denying live home data, foreign processes and
 outbound networking. Those local wrapper hashes are not qualified artifact
 identities. Final source/package-bound qualification remains required.
+
+The single hosted [runtime compatibility run](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38970001352)
+passed all six jobs at source `b7b603e03a54d62d912a2dffc18df3cbf5b00652`:
+A/B/C on macOS ARM64 and Windows x64. Independent readback validates every
+retained collector proof against its executable hash and source, ordinary GIL
+enabled / JIT disabled runtime identity, three overlapping workers on macOS
+and four on Windows, 12,000 cold records with complete checkpoint progress,
+independent serial oracles, and observed forced-timeout collector exit.
+The watcher delivered an actual file event and joined shutdown on every host.
+No rerun was needed. Total elapsed time was 8m 40s at two jobs concurrently;
+individual jobs took 2m 7s to 3m 7s. These are compiled-collector compatibility
+results, not full VSIX, native VS Code replay, release qualification or adoption.
 
 Ten paired B/C measurements isolate the runtime/build from dependency changes:
 
@@ -108,6 +128,11 @@ depends on small differences. macOS collector size grows from 11,793,136 bytes
 for B to 13,084,480 for C. Recommendation: retain the current 3.13 runtime,
 not a 3.15 migration for speed. Both builds are ordinary GIL-enabled, JIT off.
 
+These are runtime/build comparisons, not a pure interpreter attribution:
+the uv-managed 3.13.12 build uses Clang 22.1.1 / SQLite 3.50.4, while 3.15.0 uses
+Clang 23.1.3 / SQLite 3.53.1. Python dependencies are identical for B/C, but those
+native build differences remain part of the tested distribution.
+
 A/B ten-pair control: cold capture 2.575 to 2.570 s, unchanged 0.020 to 0.020 s,
 tiny append 0.134 to 0.136 s, larger append 0.347 to 0.344 s. The dependency
 upgrade alone contributes no material capture benefit either.
@@ -119,7 +144,10 @@ first full-suite probe found a JSON-conversion instrumentation mismatch plus
 documentation/version changes during that probe; these are preserved rather
 than counted as a passing full suite. The adapter now uses the same dedicated
 JSON decoder primitive as the Python scanner, with no assertion relaxation.
-The relevance/projection regression now passes all 30 adjacent cases.
+The relevance/projection regression now passes all 30 adjacent cases. A fresh
+copy of the final 2.12.4 source with only this adapter substituted passes the
+same full 3,109-case suite (one platform skip). Import-path verification confirms
+that validation loaded the native adapter, not the Python oracle.
 
 Two bounded ten-pair blocks replace only structural projection, retaining the
 same Python row reader, interpreter, dependencies, byte budgets and record
@@ -143,10 +171,12 @@ both-target, total-latency and concurrent-memory gates and owner review.
 
 ## Verification And Open Qualification Gate
 
-Final local candidate checks: 3,104 Python tests passed, one Windows-only skip;
+Final local candidate checks: 3,109 Python tests passed, one Windows-only skip;
 86 extension tests passed; Ruff, frozen monetary parity and bounded-work checks
 passed. No live capture, account call, ledger repair, VS Code
 installation/restart, private upload, release tag or publication occurred.
+The private frozen input hash was checked again unchanged; redundant report
+copies were removed after profiles and aggregate evidence were preserved.
 
 Independent review found and drove four acceptance fixes: keep the driver and
 collector in one outer process group/Job, check complete cold records before
