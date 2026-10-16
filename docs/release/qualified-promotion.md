@@ -1,11 +1,10 @@
 # Qualified VSIX Promotion
 
-Status: the owner accepted the full-dashboard UI on October 15 and requested
-release. The follow-up source still needs fresh matching qualification. The
-owner subsequently confirmed narrative-forge idle and closed VS Code; the
-approved backed-up live repair and derived-report reconciliation now pass.
-Historical C/D proof does not qualify later source edits. Freeze and qualify
-the reviewed candidate before any release tag or publication.
+Status: 2.12.3 is published with both public target hashes verified. The
+[published receipt](2026-10-15-2.12.3-published.md) binds the final source, fresh
+normal/failure-retry/dry-run proof, explicit promotion, accepted UI and completed
+approved live repair. Historical proof never qualifies later source edits;
+future candidates require their own version, authority and matching proof.
 All pilots must pass before release use. This guide does not
 authorize commits, CI, tags, publisher credentials or publication by itself.
 Authority: [ADR 0061](../adr/0061-qualified-artifact-promotion.md),

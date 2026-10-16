@@ -1,6 +1,7 @@
 # ADR 0063: Real Input Observation Budget
 
-Status: implementation candidate, 2026-10-13; fresh full qualification required.
+Status: Released in 2.12.3 with the approved hosted WebKit timing deferral,
+not a latency fix; [qualification and limits](../release/2026-10-15-2.12.3-published.md).
 
 ## Context
 

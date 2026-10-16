@@ -1,6 +1,8 @@
 # Reviewed 2.12.3 Candidate
 
 Date: 2026-10-15, America/Toronto. Candidate preparation, not publication proof.
+Subsequently released: [immutable 2.12.3 publication receipt](2026-10-15-2.12.3-published.md).
+The preparation chronology below is retained; the receipt records final proof.
 
 ## Owner Gates
 

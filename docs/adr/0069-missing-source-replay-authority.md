@@ -1,6 +1,7 @@
 # ADR 0069: Alternate Replay Inputs Do Not Move Retained Checkpoints
 
-Status: Implemented; targeted disposable repair and restore qualified, live/release gates pending.
+Status: Released in 2.12.3; targeted disposable/live repair and restore pass for
+available bases. Missing bases remain explicit gaps; [receipt](../release/2026-10-15-2.12.3-published.md).
 
 ## Problem
 

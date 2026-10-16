@@ -1,6 +1,6 @@
 # ADR 0065: Retained Accounting Authority Is Not Parser Authority
 
-Status: Implemented; release qualification pending.
+Status: Released in 2.12.3; [qualification and publication receipt](../release/2026-10-15-2.12.3-published.md).
 
 ## Problem
 

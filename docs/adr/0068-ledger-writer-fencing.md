@@ -1,6 +1,7 @@
 # ADR 0068: Ledger Writer Compatibility And Quiescent Upgrades
 
-Status: Implemented; private repair and release qualification pending.
+Status: Released in 2.12.3; private repair, writer compatibility and release
+qualification pass; [receipt](../release/2026-10-15-2.12.3-published.md).
 
 ## Problem
 

@@ -1,7 +1,7 @@
 # ADR 0064: Paginated Session Accounting
 
-Status: selected for the next candidate; parser/capture foundation implemented,
-upgrade discovery, lineage audit and targeted repair not yet qualified.
+Status: Released in 2.12.3; approved backed-up targeted live repair and source-bound
+qualification pass. Missing historical bases remain gaps; [receipt](../release/2026-10-15-2.12.3-published.md).
 
 ## Context
 

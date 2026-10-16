@@ -1,8 +1,7 @@
 # ADR 0061: Qualified Artifact Promotion
 
-Status: Accepted; disabled source `f376c273` passes current-source C/D on October 15.
-Stage E prepares source-level activation for 2.12.3; its changed source requires
-fresh complete qualification. Live P application, owner UI acceptance and F remain held.
+Status: Released in 2.12.3 with fresh normal/retry/dry-run proof, exact-package
+promotion and both official hashes verified; [publication receipt](../release/2026-10-15-2.12.3-published.md).
 Owner selected explicit promotion; see the
 [implementation plan](../plans/verification-and-release-efficiency.md).
 

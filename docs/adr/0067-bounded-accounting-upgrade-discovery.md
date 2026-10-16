@@ -1,6 +1,7 @@
 # ADR 0067: Bounded Accounting Upgrades And Capture-Scoped Retries
 
-Status: Implemented; release and live-repair qualification pending.
+Status: Released in 2.12.3; approved targeted live repair passes, while missing
+historical bases remain gaps; [receipt](../release/2026-10-15-2.12.3-published.md).
 
 ## Problem
 

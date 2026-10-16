@@ -1,6 +1,6 @@
 # ADR 0062: Native Observation Transport
 
-Status: implementation candidate, 2026-10-13. Fresh hosted qualification required.
+Status: Released in 2.12.3; [qualification and publication receipt](../release/2026-10-15-2.12.3-published.md).
 
 ## Context
 

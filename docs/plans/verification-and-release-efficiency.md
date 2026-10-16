@@ -1,7 +1,10 @@
 # Verification And Release Efficiency
 
-Date: 2026-10-13; revised 2026-10-15. Source-only C/D passes at `f376c273`;
-Stage E prepares 2.12.3 activation, requiring fresh matching proof. P/UI/F remain held.
+Date: 2026-10-13; completed-release checkpoint 2026-10-15 (America/Toronto).
+P/R/U and C-F pass for released 2.12.3 at `28f4de27`, including owner UI
+acceptance, approved live repair and both public package hashes. The
+[published receipt](../release/2026-10-15-2.12.3-published.md) is final authority;
+older checkpoint text below preserves implementation chronology.
 The owner defers A/B's hosted WebKit latency diagnosis/correction until after the
 next release, accepting that known limitation for that candidate only.
 Scope agreed: faster failure-local gates, exact qualified-artifact promotion,
@@ -500,6 +503,16 @@ possible upload, stop automatic retries and reconcile public bytes/history first
 - [ ] F follows owner UI acceptance and both public target hashes are verified.
 
 ## Implementation Checkpoint
+
+Final checkpoint: 2.12.3 is publicly verified at `28f4de27`. Normal
+38834244683/a1, controlled probe 38835458788/a1-a2 and dry-run 38837070758/a1
+pass independent reconciliation. Promotion 38837230951/a1 publishes the exact
+qualified packages; both official downloads/catalog hashes match. Owner UI and
+approved backed-up live maintenance gates pass. No installed extension, raw log,
+secret/settings or unrelated `apps/` was changed. A/B remains deferred, not fixed;
+see the release receipt for the source-bound D4 limits and missing-history gaps.
+
+### Earlier Preparation Checkpoints
 
 October 15 owner review accepts the full dashboard and requests release. The
 owner subsequently confirmed narrative-forge main idle and closed VS Code. Both

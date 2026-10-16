@@ -1,6 +1,6 @@
 # ADR 0066: Accounting Compatibility Is Separate From API Availability
 
-Status: Implemented; release qualification pending.
+Status: Released in 2.12.3; [qualification and publication receipt](../release/2026-10-15-2.12.3-published.md).
 
 ## Problem
 
