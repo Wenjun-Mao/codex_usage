@@ -10,15 +10,17 @@ Progress: private report baseline, bootstrap/stat fixes and parse-scoped identit
 reuse implemented. Current/common 3.13 and common 3.15 native compatibility
 checks pass on both supported targets. Runtime/Rust evaluation recommends
 retaining Python 3.13. The owner approved the normal hosted WebKit observation
-policy on October 16; its implementation and full 2.12.4 VSIX qualification are
-in progress. No candidate is release-qualified.
+policy on October 16. Full 2.12.4 VSIX qualification and independent local
+inspection and promotion dry-run passed on source `3a906f5f`.
+No candidate has been tagged, published or installed.
 See [implementation evidence](../research/2026-10-16-collector-implementation.md).
 
 Current execution checkpoints:
 - Baselines: ten paired capture/report runs; private report input reproduces
   the loading delay. Capture workload is synthetic, not a private-source claim.
 - Bootstrap/identity: implemented; local and hosted native frozen checks pass on
-  macOS ARM64 and Windows x64. Full VSIX qualification remains outstanding.
+  macOS ARM64 and Windows x64. Full VSIX qualification and exact-package native
+  acceptance pass on source `3a906f5f`.
 - 3.15: coherent dependencies and both-target frozen compatibility pass; approximately
   2% operation gains fail the adoption gate. Keep 3.13.
 - Rust: isolated resumable prototype and parity checks; two blocks show about
@@ -26,13 +28,16 @@ Current execution checkpoints:
   performance blocks are authorized by the measurement protocol.
 - Source `b7b603e03a54d62d912a2dffc18df3cbf5b00652` was committed/pushed and
   executed in one nonpublishing six-configuration hosted run, `38970001352`.
-  All six jobs passed without a rerun. No normal qualification, journal binding,
-  release tag, Marketplace publication or extension installation was attempted.
+  All six jobs passed without a rerun. This was compatibility evidence, separate
+  from the subsequent normal qualification of source `3a906f5f`.
 - Hosted qualification: the prior timing slot cannot authorize a new release.
   The owner approved the future-candidate policy in ADR 0071. Hosted WebKit's
   250 ms observations are reported, with a two-second functional ceiling;
   other engines/local/native remain strict. No old journal binding or publication
-  authority is reused. Full package qualification and dry-run remain outstanding.
+  authority is reused. Normal qualification `38987823051`, attempt 1, passed
+  all 11 jobs; independent inspection confirms both exact VSIX packages and
+  native acceptance. Promotion dry-run `38988734228` passed with the publish
+  job skipped. No journal writes, tag, publication or installation occurred.
 
 ## Outcome And Decisions
 
@@ -67,8 +72,8 @@ runtime source is `28f4de27d8d8267548dba820943d6a695ba84a32`.
 | Capture stats report zero fallbacks despite that failure | Reproduced; refresh-only API omits propagation from `usage_run` | Shared capture diagnostics |
 | Repository identity is resolved for each usage delta | Source and instrumented synthetic profile | Parse-scoped identity work |
 | Structural JSON projection is material CPU work | Instrumented synthetic profile; real-workload share not established | Bounded row scanner |
-| Current report delay is explained by those parser costs | Not established; synthetic reports do not reproduce it | Measure report preparation separately |
-| Python 3.15 or Rust offers a material user-visible gain | Untested | Controlled experiments, not assumed migration |
+| Current report delay is explained by those parser costs | Representative profile instead locates allowance-history preparation; first report remains about 8.9 seconds | Separate report-preparation follow-up |
+| Python 3.15 or Rust offers a material user-visible gain | About 2% for 3.15, about 19.5% cold capture for the Rust spike; neither meets the adoption gate | Retain Python 3.13 and the Python scanner |
 
 Preserve [ADR 0019](../adr/0019-bounded-parallel-cache-refresh.md)'s maximum
 four spawned workers, parent-owned SQLite, ordered eight-file commits, observable

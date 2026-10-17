@@ -228,3 +228,42 @@ complete collection/JUnit inventory passes the independent preserved-case
 validator; the focused trust-boundary group passed 257 cases. Independent review
 reported no remaining actionable issues. The production journal head was read
 as `7fad92fccf43e82580ddbd82748a14b6763ec6c5`; no journal writes were performed.
+
+## Full 2.12.4 Qualification
+
+Normal run [38987823051](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38987823051),
+attempt 1, passed all 11 jobs without reruns. Exact source:
+`3a906f5fcae3910f18aba39fd6216b42077bc806`; contract:
+`90598f01513f1f8a73d2cf7b0720f7509f7f09fb002abba2dbdab2cf759e948b`.
+Created 2026-10-17 00:45:22 UTC; completed 00:56:52 UTC, 11m30s elapsed
+(October 16 in the owner's timezone). Both package jobs include extension tests,
+frozen parallel/HTTP/oracle/cleanup proof, archive validation and legacy handoff.
+The native job used the exact qualified macOS package and pinned isolated VS Code.
+
+Independent `qualification.py inspect` revalidated the original producer jobs,
+source/contract closure, raw hover artifact, hosted manifest, native safety and
+input proof, and both exact package bytes. Status is `qualified-not-published`.
+Manifest SHA-256:
+`f3cf9f085e76b80fd83815ce90e4caebceca4b9bb674bf56ccc6c138b829e836`.
+
+| Target | Exact VSIX SHA-256 |
+| --- | --- |
+| darwin-arm64 | `adb94af9ae6fde8fedbe9ba83ca363d5bce81e15cf86c5dc7a3b73b5c79e009a` |
+| win32-x64 | `5cfa6a69c94f899a1e6e90d2f910e5f08cbc0e9b6335324435272ba541b814b0` |
+
+All 648 raw tooltip observations remain accounted for, including 216 hosted
+WebKit observations. One exceeded the 250 ms reporting threshold: WebKit hover
+414.4 ms. Other WebKit maxima: hide 23.8 ms, keyboard 14.2 ms. Chromium's maximum
+was 32.1 ms, Firefox's 49.4 ms. Summary status is `hosted-webkit-observed`, with
+zero deferred observations and one strict exceedance, not a claim of a latency
+fix. The inspected hover receipt's retained SHA matches the downloaded JSON:
+`c8552cd5e0d61d5d6ec3c6f571e8270f2ce628b605c5cd4cb51ba8f68a82c2b4`.
+
+Credential-free promotion dry-run
+[38988734228](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38988734228)
+selected exactly qualification run `38987823051`, attempt 1, and passed. The
+validation job succeeded in 38 seconds; the publishing job was skipped. Its
+downloaded `qualified.json` is byte-identical to independent local inspection.
+The production journal head remains
+`7fad92fccf43e82580ddbd82748a14b6763ec6c5`. No release tag, Marketplace upload,
+installation, live capture, account operation, journal write or renewed tracing.

@@ -1,6 +1,7 @@
 # ADR 0071: Hosted Tooltip Observation Policy
 
-Status: Owner-approved October 16, 2026; implemented, qualification pending.
+Status: Owner-approved October 16, 2026; normal hosted/native qualification
+passed on source `3a906f5f`; publication remains a separate owner decision.
 
 ## Problem
 
