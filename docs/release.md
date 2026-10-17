@@ -1,9 +1,23 @@
 # VSIX Releases
 
-Codex Usage 2.12.3 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.12.4 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
+
+## 2.12.4 Published Receipt
+
+Both Marketplace downloads are verified against the exact qualified packages.
+The [published receipt](release/2026-10-16-2.12.4-published.md) binds source,
+normal qualification, dry-run, explicit promotion, before-upload journal receipts
+and official target hashes. No packages were rebuilt on promotion or uploaded
+again while waiting for public validation. No installed extension was changed.
+
+This release fixes frozen collector worker startup, preserves fallback diagnostics
+and reuses freshly validated parse-chunk project identity. Python remains 3.13;
+neither experimental Python 3.15 nor Rust was adopted. Hosted WebKit threshold
+timings are reported under ADR 0071, not silently passed. First-report allowance-
+history preparation remains a separate performance task, not a claimed fix here.
 
 ## 2.12.3 Published Receipt
 

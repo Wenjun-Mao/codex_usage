@@ -267,3 +267,21 @@ downloaded `qualified.json` is byte-identical to independent local inspection.
 The production journal head remains
 `7fad92fccf43e82580ddbd82748a14b6763ec6c5`. No release tag, Marketplace upload,
 installation, live capture, account operation, journal write or renewed tracing.
+
+## Authorized Publication
+
+After the owner explicitly requested release, `v2.12.4` was created at the exact
+qualified source `3a906f5fcae3910f18aba39fd6216b42077bc806`. Explicit promotion
+[38993041981, attempt 1](https://github.com/Wenjun-Mao/codex_usage/actions/runs/38993041981)
+passed; both exact packages returned successful upload without rebuilding.
+Independent original-publisher and append-only journal verification passed.
+The two new before-upload intents are sequences 6/7, with journal head
+`583bb21490fdd3891caa2243e167fe7a4a518f55`; the five prior records are unchanged.
+
+At 2026-10-17 02:07 UTC (October 16, 22:07 EDT), both official targets were
+validated and their downloaded VSIX hashes exactly matched the qualified
+packages and catalog declarations. No retry upload was used during propagation.
+The [published receipt](../release/2026-10-16-2.12.4-published.md) records immutable
+identities, qualification, timing limits and shipped scope. Local installed
+extensions, live ledgers, raw logs, Codex quota/account probes, settings and
+unrelated owner work were untouched; Python 3.15/Rust remain unadopted.

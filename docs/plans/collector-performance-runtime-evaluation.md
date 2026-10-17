@@ -3,16 +3,18 @@
 Date: 2026-10-16, America/Toronto.
 Status: implementation approved 2026-10-16 via Relay direct. Local scoped edits,
 isolated builds/experiments and the proposed scoped commit/push/nonpublishing
-qualification are covered. Publication, installation and runtime/Rust adoption
-remain separate owner decisions.
+qualification are covered. The owner separately approved release on October 16;
+2.12.4 publication and public hash verification are complete. Installation and
+runtime/Rust adoption remain separate owner decisions.
 
 Progress: private report baseline, bootstrap/stat fixes and parse-scoped identity
 reuse implemented. Current/common 3.13 and common 3.15 native compatibility
 checks pass on both supported targets. Runtime/Rust evaluation recommends
 retaining Python 3.13. The owner approved the normal hosted WebKit observation
 policy on October 16. Full 2.12.4 VSIX qualification and independent local
-inspection and promotion dry-run passed on source `3a906f5f`.
-No candidate has been tagged, published or installed.
+inspection and promotion dry-run passed on source `3a906f5f`. The exact qualified
+packages are published as `v2.12.4`, with both official target hashes verified.
+No installed extension or live ledger was changed by this release work.
 See [implementation evidence](../research/2026-10-16-collector-implementation.md).
 
 Current execution checkpoints:
@@ -37,7 +39,9 @@ Current execution checkpoints:
   authority is reused. Normal qualification `38987823051`, attempt 1, passed
   all 11 jobs; independent inspection confirms both exact VSIX packages and
   native acceptance. Promotion dry-run `38988734228` passed with the publish
-  job skipped. No journal writes, tag, publication or installation occurred.
+  job skipped. The subsequent owner-authorized promotion `38993041981` passed,
+  retained before-upload journal sequences 6/7, and both public package hashes
+  match qualification. See the [published receipt](../release/2026-10-16-2.12.4-published.md).
 
 ## Outcome And Decisions
 

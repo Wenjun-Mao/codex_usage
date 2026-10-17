@@ -1,9 +1,11 @@
 # Qualified VSIX Promotion
 
-Status: 2.12.3 is published with both public target hashes verified. The
-[published receipt](2026-10-15-2.12.3-published.md) binds the final source, fresh
-normal/failure-retry/dry-run proof, explicit promotion, accepted UI and completed
-approved live repair. Historical proof never qualifies later source edits;
+Status: 2.12.4 is published with both public target hashes verified. The
+[latest receipt](2026-10-16-2.12.4-published.md) binds its qualified source,
+normal/dry-run proof, explicit promotion and retained before-upload intents.
+The [2.12.3 receipt](2026-10-15-2.12.3-published.md) retains its earlier
+failure/retry proof, accepted UI, completed approved live repair and immutable
+timing exception. Historical proof never qualifies later source edits;
 future candidates require their own version, authority and matching proof.
 All pilots must pass before release use. This guide does not
 authorize commits, CI, tags, publisher credentials or publication by itself.
@@ -151,12 +153,14 @@ No package build or full test rerun belongs on the promotion path.
 
 ## Authorized Publication
 
-Stage E changes `PROMOTION_ENABLED` only in reviewed, fingerprinted source. False
-still refuses before proof transport/file access; True is not sufficient authority.
-Require freshly qualified enabled/versioned source, its release-purpose D4 binding,
-completed live repair and owner UI acceptance before any tag or publishing action.
-No environment/input flag bypasses these gates. Do not delete retained history or
-infer safe retries from surviving run counters/catalog absence.
+Change `PROMOTION_ENABLED` only in reviewed, fingerprinted source. False still
+refuses before proof transport/file access; True is not sufficient authority.
+Require freshly qualified enabled/versioned source, explicit owner release
+approval and any candidate-specific UI/live-data prerequisites before tagging or
+publishing. Legacy 2.12.3 still requires its release-purpose D4 binding; later
+normal candidates use ADR 0071, not a reused binding or a new mandatory exception.
+No environment/input flag bypasses these gates. Do not delete retained history
+or infer safe retries from surviving run counters/catalog absence.
 
 Only after the new process is accepted and the owner explicitly authorizes a
 release, create the matching version tag at the qualified SHA and dispatch:
