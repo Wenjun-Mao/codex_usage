@@ -195,3 +195,36 @@ timing binding through an ordinary append. New approval alone does not make
 that structural restriction disappear. No journal rewrite, tolerance change
 or tracing campaign is included here. This must be resolved explicitly before
 claiming complete hosted/native qualification of the new candidate.
+
+## Approved Normal Hosted Timing Policy
+
+The owner reviewed the original 250 ms guard and approved removing hosted
+WebKit threshold observations as automatic release blockers on October 16.
+[ADR 0071](../adr/0071-hosted-tooltip-observation-policy.md) defines the normal
+policy from 2.12.4: preserve all real inputs, states, raw times and per-phase
+maxima; report threshold exceedances; enforce the finite two-second functional
+ceiling. Chromium, Firefox, local checks and native VS Code remain strict.
+This does not resolve the WebKit observation cause or authorize renewed tracing.
+
+Policy is selected from verified source identity and validated throughout the
+producer/freeze/inspection/publication path. New candidates omit the legacy D4
+binding. No journal format, origin pin, old record, possible-upload fence or
+publication permission changes. A synthetic new-version publication after
+frozen old receipts preserves every old record and rejects duplicate targets.
+
+The independent reviewer identified pre-existing native boolean timing samples
+being accepted as zero. Require finite real numeric samples instead, with
+negative tests for booleans, invalid values and the exact 250 ms boundary.
+
+Local verification: 3,156 Python tests passed, one existing Windows-only skip;
+86 extension tests passed; Ruff, exact frozen monetary parity, bounded-work
+checks and `git diff --check` passed. Full VSIX qualification and dry-run
+promotion remain pending; no tag, publication, installation or live data writes.
+
+Final review also tightened summary-only exceedance bounds against each phase's
+actual observation inventory and added modern-path publication-negative tests.
+The final full run passed 3,176 tests with one existing platform skip. Its
+complete collection/JUnit inventory passes the independent preserved-case
+validator; the focused trust-boundary group passed 257 cases. Independent review
+reported no remaining actionable issues. The production journal head was read
+as `7fad92fccf43e82580ddbd82748a14b6763ec6c5`; no journal writes were performed.

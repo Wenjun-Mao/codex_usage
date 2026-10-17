@@ -79,6 +79,14 @@ def test_native_preparation_extracts_exact_assets_and_only_declared_metadata_pat
         native.prepare_extension(repo, extension, vsix)
 
 
+@pytest.mark.parametrize("value", [False, True, None, ".01", -.1, .25, float("nan"), float("inf"), 10**1000])
+def test_native_latency_samples_are_finite_numbers_not_boolean_passes(value):
+    hosted, manifest, package, evidence = bound_native()
+    evidence["hover_and_tab"]["hover_seconds"][0] = value
+    with pytest.raises(ValueError, match="hover/focus"):
+        native.validate_native(evidence, hosted, manifest, package)
+
+
 def test_contract_identity_normalizes_checkout_endings_not_semantic_changes(tmp_path, monkeypatch):
     root = tmp_path
     file = root / "source.py"

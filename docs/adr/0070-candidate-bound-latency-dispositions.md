@@ -2,6 +2,10 @@
 
 Status: Approved binding 1 and source-only C/D pass October 15; E's changed source needs a fresh binding and qualification. P/UI/F remain held.
 
+Historical contract for the published 2.12.3 exception. Normal hosted policy
+from 2.12.4 is defined in [ADR 0071](0071-hosted-tooltip-observation-policy.md);
+its introduction does not alter any retained binding or publication record.
+
 ## Problem
 
 The owner defers the existing hosted WebKit timing investigation for one release.

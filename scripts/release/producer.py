@@ -51,10 +51,9 @@ def validate_payload(metadata, files, gate, *, origin=None, journal=None):
             visual[child] = {key: evidence[key] for key in
                 ("schema", "suite", "status", "synthetic_only", "assertions", "completed")}
             if child == "hover":
-                deferred = validate_context(evidence.get("timing_context"), source=metadata["source"],
+                policy = validate_context(evidence.get("timing_context"), source=metadata["source"],
                     origin=origin, journal=journal)
-                require(deferred, "Hosted hover proof requires the candidate-bound disposition")
-                summary = validate_measurements(evidence, deferred=deferred)
+                summary = validate_measurements(evidence, policy=policy)
                 require(evidence.get("observation_summary") == summary, "Tooltip raw observations/summary differ")
                 visual[child]["observation_summary"] = summary
                 visual[child]["timing_context"] = evidence["timing_context"]

@@ -13,7 +13,7 @@ from release.native import validate_native, write_native_input
 from release.policy import JOBS, PROMOTION_BLOCKER, PROMOTION_ENABLED, PROMOTION_WORKFLOW, REPOSITORY, ROOT, SCHEMA, TARGETS, canonical, contract_blobs, contract_identity, fingerprint, package_version, positive, require
 from release.producer import make_receipt, marker, source_context
 from release.proofs import Proofs
-from release.latency_context import current_binding
+from release.latency_context import validate_timing_fields
 
 
 def proof_reader(args, *, completed):
@@ -60,7 +60,7 @@ def inspect_qualified(proofs, directory):
         data = proof["files"][proof["receipt"]["manifest"]["package_file"]]
         (directory / f"codex-usage-companion-{target}.vsix").write_bytes(data)
     result = {"schema": SCHEMA, "status": "qualified-not-published", "source": manifest["source"],
-        "latency_binding": manifest["latency_binding"], "timing_disposition": manifest["timing_disposition"],
+        **validate_timing_fields(manifest, journal=proofs.journal),
         "qualification_run": proofs.run_id, "qualification_attempt": proofs.attempt,
         "hosted": proofs.reference(hosted), "native": proofs.reference(native), "manifest": manifest,
         "manifest_sha256": fingerprint(manifest)}
@@ -155,10 +155,8 @@ def main(argv=None):
         require(result.get("manifest_sha256") == fingerprint(result["manifest"])
             and result["source"] == result["manifest"]["source"]
             and result["source"]["contract"] == contract_identity(ROOT), "Publisher source/manifest identity changed")
-        require(result.get("latency_binding") is not None
-            and result["latency_binding"] == result["manifest"].get("latency_binding")
-            and result.get("timing_disposition") == result["manifest"].get("timing_disposition") == "deferred-known-latency",
-            "Publisher D4 binding/disposition changed after validation")
+        require(validate_timing_fields(result, publication=True) == validate_timing_fields(
+            result["manifest"], publication=True), "Publisher timing policy changed after validation")
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True).stdout.strip()
         require(head == result["promotion"]["publisher_sha"], "Publisher revision changed after validation")
         for target in TARGETS:
@@ -176,7 +174,7 @@ def main(argv=None):
         else:
             result = inspect_qualified(proofs, args.output)
             if args.command == "validate-publication":
-                current_binding(result["source"], result["latency_binding"], proofs.journal, publication=True)
+                validate_timing_fields(result, journal=proofs.journal, publication=True)
                 result["promotion"] = check_promotion_dispatch(proofs.api, result["source"], args.ref,
                     args.promotion_run, args.promotion_attempt)
                 if os.environ.get("GITHUB_ACTIONS") == "true":

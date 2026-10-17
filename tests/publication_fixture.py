@@ -13,8 +13,8 @@ history = load_tool("release.publication_history")
 class PublicationFixture(FixtureAPI):
     publisher_sha = "d"*40
 
-    def __init__(self, *, purpose="release", probe=False):
-        super().__init__(version="2.12.3", binding_purpose=purpose, probe=probe)
+    def __init__(self, *, purpose="release", probe=False, version="2.12.3"):
+        super().__init__(version=version, binding_purpose=purpose, probe=probe)
         manifest = self.reader().freeze()
         self.add_gate("hosted", {"hosted.json": policy.canonical(manifest)})
         hosted, manifest = self.reader().hosted()
@@ -23,7 +23,7 @@ class PublicationFixture(FixtureAPI):
             "host.json": policy.canonical({**policy.HOST, "executable_sha256": "e"*64})})
         self.publisher_tree = self.blobs.copy()
         self.publication = {**self.run_data, "id": 88, "workflow_id": self.journal.config["workflow_id"],
-            "path": policy.PROMOTION_WORKFLOW, "head_branch": "v2.12.3", "run_attempt": 1}
+            "path": policy.PROMOTION_WORKFLOW, "head_branch": "v" + version, "run_attempt": 1}
         self.validation_job = {"id": 5000, "name": "Validate qualification", "status": "completed",
             "conclusion": "success", "started_at": "2026-10-15T00:00:00Z",
             "completed_at": "2026-10-15T00:00:10Z"}
@@ -31,7 +31,7 @@ class PublicationFixture(FixtureAPI):
     def raw(self, endpoint):
         if endpoint == f"{self.prefix}/actions/runs/88":
             return policy.canonical(self.publication)
-        if endpoint == f"{self.prefix}/git/ref/tags/v2.12.3":
+        if endpoint == f"{self.prefix}/git/ref/tags/v{self.source['version']}":
             return policy.canonical({"object": {"type": "commit", "sha": self.source["sha"]}})
         if endpoint == f"{self.prefix}/compare/{self.source['sha']}...main":
             return policy.canonical({"merge_base_commit": {"sha": self.source["sha"]}, "status": "identical"})
@@ -51,6 +51,7 @@ class PublicationFixture(FixtureAPI):
         monkeypatch.setattr(qualification, "proof_reader", lambda *args, **kwargs: self.reader())
         monkeypatch.setattr(qualification, "contract_identity", lambda *args: self.source["contract"])
         monkeypatch.setattr(qualification, "contract_blobs", lambda *args: self.blobs.copy())
+        monkeypatch.setattr(load_tool("release.latency_context"), "Journal", lambda *_: self.journal)
 
         def git_head(command, **kwargs):
             assert command == ["git", "rev-parse", "HEAD"]
@@ -59,13 +60,13 @@ class PublicationFixture(FixtureAPI):
         monkeypatch.setattr(qualification.subprocess, "run", git_head)
         for name, value in {"GITHUB_ACTIONS": "true", "GITHUB_JOB": "publish", "GITHUB_RUN_ID": "88",
             "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SHA": self.source["sha"],
-            "GITHUB_REF": "refs/tags/v2.12.3"}.items():
+            "GITHUB_REF": "refs/tags/v" + self.source["version"]}.items():
             monkeypatch.setenv(name, value)
         monkeypatch.delenv("VSCE_PAT", raising=False)
 
     def validate(self, qualification, directory):
         qualification.main(["validate-publication", "--run", "77", "--attempt", "1",
-            "--ref", "refs/tags/v2.12.3", "--promotion-run", "88", "--promotion-attempt", "1",
+            "--ref", "refs/tags/v" + self.source["version"], "--promotion-run", "88", "--promotion-attempt", "1",
             "--output", str(directory)])
         return json.loads((directory / "qualified.json").read_text())
 

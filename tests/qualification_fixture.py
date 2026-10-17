@@ -6,7 +6,7 @@ from zipfile import ZipFile
 from xml.etree import ElementTree
 
 from release_tooling_support import load_tool
-from hover_measurement_fixture import PROCESS, hosted_measurements, measurements
+from hover_measurement_fixture import PROCESS, hosted_measurements, measure, measurements
 
 policy = load_tool("release.policy")
 archives = load_tool("release.archives")
@@ -60,13 +60,18 @@ def visual_evidence(suite, *, hover=None):
 
 
 class FixtureAPI(GitHub):
-    def __init__(self, *, version="2.12.2", binding_purpose="nonpublishing", probe=False):
+    def __init__(self, *, version="2.12.2", binding_purpose="nonpublishing", probe=False, webkit_seconds=.01):
         super().__init__()
         self.responses, self.bodies, self.uploads, self.job_rows = {}, {}, [], {}
         self.source = {"repository": policy.REPOSITORY, "repository_id": 123,
             "sha": "a" * 40, "version": version, "contract": "b" * 64,
             "workflow": policy.WORKFLOW, "probe": probe}
         self.hover, self.journal = hosted_measurements(self.source, purpose=binding_purpose)
+        for row in self.hover["observations"]:
+            if row["case"]["engine"] == "webkit":
+                row["seconds"] = webkit_seconds
+        self.hover["observation_summary"] = measure.validate_measurements(self.hover,
+            policy=load_tool("release.latency_context").hosted_policy(self.source))
         self.run_data = {"id": 77, "run_attempt": 1, "head_sha": self.source["sha"],
             "repository": {"id": 123, "full_name": policy.REPOSITORY}, "head_repository": {"id": 123},
             "event": "workflow_dispatch", "path": policy.WORKFLOW, "head_branch": "main",

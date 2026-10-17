@@ -17,9 +17,9 @@ def test_even_fast_hosted_webkit_samples_are_deferred_not_silently_passed():
     rows = webkit_rows(evidence)
     assert len(rows) == 216
     assert all(row["disposition"] == measure.DEFERRED for row in rows)
-    summary = measure.validate_measurements(evidence, deferred=True)
+    summary = measure.validate_measurements(evidence, policy=measure.DEFERRED)
     assert summary["status"] == measure.DEFERRED and summary["deferred_observations"] == 216
-    assert measure.validate_summary(summary, deferred=True) == summary
+    assert measure.validate_summary(summary, policy=measure.DEFERRED) == summary
     with pytest.raises(ValueError):
         measure.validate_measurements(evidence)
 
@@ -30,11 +30,11 @@ def test_functional_observation_bound_is_finite_and_still_includes_transport(sec
     for row in webkit_rows(evidence):
         row["seconds"] = seconds
     if passes:
-        summary = measure.validate_measurements(evidence, deferred=True)
+        summary = measure.validate_measurements(evidence, policy=measure.DEFERRED)
         assert summary["maximum_seconds"]["webkit"] == dict.fromkeys(measure.PHASES, seconds)
     else:
         with pytest.raises(ValueError, match="budget"):
-            measure.validate_measurements(evidence, deferred=True)
+            measure.validate_measurements(evidence, policy=measure.DEFERRED)
 
 
 @pytest.mark.parametrize("fault", ["false-pass", "hidden", "baseline", "keyboard", "missing", "duplicate", "strict-engine"])
@@ -56,7 +56,7 @@ def test_deferral_does_not_cover_other_failures_or_engines(fault):
     else:
         evidence["observations"][0]["seconds"] = .3
     with pytest.raises(ValueError):
-        measure.validate_measurements(evidence, deferred=True)
+        measure.validate_measurements(evidence, policy=measure.DEFERRED)
 
 
 def test_local_evidence_stays_strict_and_policy_bounds_match_the_binding():

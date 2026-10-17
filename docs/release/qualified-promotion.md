@@ -80,6 +80,22 @@ This downloads and validates the exact packages and trusted native receipt.
 `qualified-not-published` is not tag/publication approval. Artifacts currently
 expire after 14 days; renew qualification instead of rebuilding on promotion.
 
+## Tooltip Timing Policy
+
+From source version 2.12.4, normal hosted qualification does not need a latency
+exception or journal binding. Hosted WebKit observations use a finite two-second
+functional limit; raw timings, per-phase maxima and the count at or above 250 ms
+remain in the proof as `hosted-webkit-observed`, not a strict timing pass.
+Chromium, Firefox, local browser checks and native VS Code retain the 250 ms guard.
+All cases, functional assertions, process limits and raw-artifact validation stay
+required. Policy is derived from the independently verified source version.
+
+Legacy 2.12.3 evidence retains its exact source-bound exception and immutable
+publication receipts. Do not prepare a new D4 binding for later versions or reuse
+the old slot. Normal publication still requires all qualification, tag, source,
+package and independently retained possible-upload checks. See
+[ADR 0071](../adr/0071-hosted-tooltip-observation-policy.md).
+
 ## Read-Only Input Diagnostic
 
 When input/observation latency fails without a confirmed product root cause,

@@ -12,7 +12,7 @@ from .archives import inspect_payload
 from .policy import GATES, JOBS, REPOSITORY, SCHEMA, TARGETS, WORKFLOW, positive, require
 from .producer import MARKER, artifact_name, validate_payload
 from .git_journal import Journal
-from .latency_context import current_binding, validate_context
+from .latency_context import timing_fields, validate_context, validate_timing_fields
 
 
 def unique_job(jobs, name):
@@ -103,9 +103,9 @@ class Proofs:
             for child in children:
                 validate_inventory(manifest["visual"][child], child)
                 if child == "hover":
-                    deferred = validate_context(manifest["visual"][child].get("timing_context"),
+                    policy = validate_context(manifest["visual"][child].get("timing_context"),
                         source=receipt["source"], origin=origin, journal=self.journal)
-                    validate_summary(manifest["visual"][child].get("observation_summary"), deferred=deferred)
+                    validate_summary(manifest["visual"][child].get("observation_summary"), policy=policy)
                     validate_process(manifest["visual"][child].get("process"))
         files = None
         if payload:
@@ -145,9 +145,8 @@ class Proofs:
         sources = [proof["receipt"]["source"] for proof in proofs.values()]
         require(all(source == sources[0] for source in sources), "Mixed qualification sources")
         reference = proofs["visual-hover"]["receipt"]["manifest"]["visual"]["hover"]["timing_context"]["binding"]
-        current_binding(sources[0], reference, self.journal)
         return {"schema": SCHEMA, "source": sources[0], "run": self.run_id,
-            "latency_binding": reference, "timing_disposition": "deferred-known-latency",
+            **timing_fields(sources[0], reference, journal=self.journal),
             "originating_attempt": self.attempt,
             "gates": {gate: self.reference(proof) for gate, proof in proofs.items()},
             "packages": {target: proofs[f"package-{target}"]["receipt"]["manifest"]["package"] for target in TARGETS}}
@@ -165,8 +164,8 @@ class Proofs:
                 payload=gate == "visual-hover")
             require(self.reference(proof) == reference, "Frozen producer identity mismatch")
             if gate == "visual-hover":
-                require(manifest.get("latency_binding") == proof["receipt"]["manifest"]["visual"]["hover"]["timing_context"]["binding"],
-                    "Frozen D4 binding differs from raw producer proof")
-        require(manifest.get("timing_disposition") == "deferred-known-latency", "Missing frozen D4 disposition")
-        current_binding(manifest["source"], manifest.get("latency_binding"), self.journal)
+                context = proof["receipt"]["manifest"]["visual"]["hover"]["timing_context"]
+                require(validate_timing_fields(manifest, journal=self.journal) == timing_fields(
+                    manifest["source"], context["binding"], journal=self.journal),
+                    "Frozen timing policy differs from raw producer proof")
         return hosted, manifest

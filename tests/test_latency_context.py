@@ -18,7 +18,7 @@ def valid():
 
 def test_local_context_is_strict_and_never_reads_the_journal():
     assert context.runtime_context({}) == context.LOCAL
-    assert context.validate_context(dict(context.LOCAL)) is False
+    assert context.validate_context(dict(context.LOCAL)) == context.STRICT
     value, journal = valid()
     with pytest.raises(ValueError, match="cannot qualify"):
         context.validate_context(dict(context.LOCAL), source=value["source"], origin=ORIGIN, journal=journal)
@@ -35,7 +35,7 @@ def test_hosted_runtime_resolves_fresh_candidate_after_actual_source_verificatio
     env = {"GITHUB_ACTIONS": "true", "GITHUB_JOB": "visual", "GITHUB_RUN_ID": "77", "GITHUB_RUN_ATTEMPT": "1"}
     assert context.runtime_context(env, journal=journal) == value
     assert len(seen) == 1
-    assert context.validate_context(value, source=value["source"], origin=ORIGIN, journal=journal) is True
+    assert context.validate_context(value, source=value["source"], origin=ORIGIN, journal=journal) == context.DEFERRED
 
 
 def test_environment_claim_alone_or_wrong_job_cannot_authorize_a_deferral(monkeypatch):

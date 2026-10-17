@@ -84,3 +84,4 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0068: Ledger Writer Fencing](0068-ledger-writer-fencing.md)
 - [0069: Missing Source Replay Authority](0069-missing-source-replay-authority.md)
 - [0070: Candidate-Bound Latency Dispositions](0070-candidate-bound-latency-dispositions.md)
+- [0071: Hosted Tooltip Observation Policy](0071-hosted-tooltip-observation-policy.md)

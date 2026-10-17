@@ -1,6 +1,7 @@
 """Qualified-package input preparation and exact native replay evidence."""
 from hashlib import sha256
 import json
+from math import isfinite
 from pathlib import Path
 import shutil
 
@@ -85,7 +86,8 @@ def validate_native(evidence, hosted, manifest, package):
     hover = evidence.get("hover_and_tab", {})
     require(hover.get("hover_within_250ms") is True and hover.get("script_disabled") is True
         and hover.get("numeric_format_readable") is True and hover.get("native_title_inheritance_suppressed") is True
-        and len(hover.get("hover_seconds", [])) == 2 and all(0 <= value < .25 for value in hover["hover_seconds"])
+        and len(hover.get("hover_seconds", [])) == 2 and all(
+            type(value) in (int, float) and 0 <= value < .25 and isfinite(value) for value in hover["hover_seconds"])
         and hover.get("tab_traversal") == "CDP focus origin; real Tab reaches next usage bar",
         "Missing native hover/focus evidence")
     require("--use-inmemory-secretstorage" in evidence.get("credential_isolation", ""), "Native credentials not isolated")

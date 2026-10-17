@@ -9,8 +9,9 @@ remain separate owner decisions.
 Progress: private report baseline, bootstrap/stat fixes and parse-scoped identity
 reuse implemented. Current/common 3.13 and common 3.15 native compatibility
 checks pass on both supported targets. Runtime/Rust evaluation recommends
-retaining Python 3.13. Separate 2.12.4 VSIX qualification remains blocked on
-the future-candidate timing contract approval. No candidate is release-qualified.
+retaining Python 3.13. The owner approved the normal hosted WebKit observation
+policy on October 16; its implementation and full 2.12.4 VSIX qualification are
+in progress. No candidate is release-qualified.
 See [implementation evidence](../research/2026-10-16-collector-implementation.md).
 
 Current execution checkpoints:
@@ -28,8 +29,10 @@ Current execution checkpoints:
   All six jobs passed without a rerun. No normal qualification, journal binding,
   release tag, Marketplace publication or extension installation was attempted.
 - Hosted qualification: the prior timing slot cannot authorize a new release.
-  A narrowly scoped future-candidate qualification contract is awaiting owner
-  review. No old journal binding, publication authority or tolerance is reused.
+  The owner approved the future-candidate policy in ADR 0071. Hosted WebKit's
+  250 ms observations are reported, with a two-second functional ceiling;
+  other engines/local/native remain strict. No old journal binding or publication
+  authority is reused. Full package qualification and dry-run remain outstanding.
 
 ## Outcome And Decisions
 

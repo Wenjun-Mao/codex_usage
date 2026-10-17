@@ -9,8 +9,8 @@ PROCESS = {"schema": 1, "status": "completed", "seconds": 100.,
     "limit_seconds": 600, "ownership": "owned-process-tree"}
 
 
-def measurements(*, deferred=False, context=None):
-    log = measure.HoverMeasurements(deferred=deferred)
+def measurements(*, policy=measure.STRICT, context=None):
+    log = measure.HoverMeasurements(policy=policy)
     for case in cases.expected_cases("hover"):
         for target in range(3):
             record = log.recorder(case, target)
@@ -18,9 +18,9 @@ def measurements(*, deferred=False, context=None):
                 record({"phase": phase, "seconds": .01,
                     "baseline": deepcopy(measure.HIDDEN) if phase != "hide" else None,
                     "matched": deepcopy(measure.MATCHED[phase])})
-    result = {"observation_contract": measure.SCHEMA, "observations": log.rows,
+    result = {"observation_contract": measure.observation_schema(policy), "observations": log.rows,
         "timing_context": context or {"execution": "local", "source": None, "origin": None, "binding": None}}
-    result["observation_summary"] = measure.validate_measurements(result, deferred=deferred)
+    result["observation_summary"] = measure.validate_measurements(result, policy=policy)
     return result
 
 
@@ -33,7 +33,8 @@ def hosted_measurements(source=None, *, attempt=1, purpose="nonpublishing"):
         value["source"] = {key: source[key] for key in value["source"]}
     else:
         source = dict(value["source"], probe=False)
-    ack = anchor(fixture, value)
+    policy = load_tool("release.latency_context").hosted_policy(source)
+    ack = anchor(fixture, value) if policy == measure.DEFERRED else None
     context = {"execution": "hosted", "source": deepcopy(source),
         "origin": {"run": 77, "attempt": attempt, "job": "visual"}, "binding": ack}
-    return measurements(deferred=True, context=context), fixture.journal
+    return measurements(policy=policy, context=context), fixture.journal

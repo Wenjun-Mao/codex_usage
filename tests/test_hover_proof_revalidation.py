@@ -19,3 +19,14 @@ def test_raw_hover_payload_is_required_at_both_independent_validation_stages(sta
     corrupt_hover_payload(api)
     with pytest.raises(ValueError, match="Downloaded artifact digest/size mismatch"):
         getattr(api.reader(), "hosted" if stage == "hosted-inspect" else "freeze")()
+
+
+@pytest.mark.parametrize("stage", ["freeze", "hosted-inspect"])
+def test_observed_policy_also_revalidates_raw_artifacts_at_each_stage(stage):
+    api = FixtureAPI(version="2.12.4")
+    if stage == "hosted-inspect":
+        manifest = api.reader().freeze()
+        api.add_gate("hosted", {"hosted.json": policy.canonical(manifest)})
+    corrupt_hover_payload(api)
+    with pytest.raises(ValueError, match="Downloaded artifact digest/size mismatch"):
+        getattr(api.reader(), "hosted" if stage == "hosted-inspect" else "freeze")()
