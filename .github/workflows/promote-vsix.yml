@@ -1,8 +1,13 @@
 name: Promote Qualified VSIX
-run-name: "Promote qualified run=${{ inputs.qualification_run }} attempt=${{ inputs.qualification_attempt }} dry-run=${{ inputs.dry_run }}"
+run-name: "Promote qualified run=${{ inputs.qualification_run }} attempt=${{ inputs.qualification_attempt }} dry-run=${{ inputs.dry_run }} request=${{ inputs.request_id }}"
 on:
   workflow_dispatch:
     inputs:
+      request_id:
+        description: "Optional coordinator UUID; correlation only, never publication authority"
+        required: false
+        type: string
+        default: ""
       qualification_run:
         description: Exact successful qualification run ID
         required: true
@@ -41,6 +46,10 @@ jobs:
           echo "CODEX_PUBLISHER_CHECKOUT $sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/qualification-tools
+      - name: Validate optional coordinator correlation
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: uv run python scripts/release_process.py validate-request "$REQUEST_ID"
       - name: Inspect or validate exact proof
         shell: bash
         env:

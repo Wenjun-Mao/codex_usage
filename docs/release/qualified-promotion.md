@@ -31,6 +31,43 @@ Only authorized, scoped commits/pushes may establish that candidate on `main`.
 
 ## Nonpublishing Qualification
 
+### On-Demand Coordinator
+
+Use the retained, committed and pushed `main` candidate. Stage new code/tests
+before preflight; unrelated untracked `apps/` and research reports are preserved.
+Select the previous verified release tag explicitly:
+
+```sh
+uv run python scripts/release_process.py preflight --base v2.12.5 --output output/releases/NEXT-process
+uv run python scripts/release_process.py prepare --base v2.12.5 --output output/releases/NEXT-process
+uv run python scripts/release_process.py dry-run --run RUN_ID --attempt ATTEMPT --output output/releases/NEXT-process
+```
+
+`prepare` reuses only matching complete local evidence; `--reuse PATH/preflight.json`
+can select the same checked pass from another output directory. Full hosted gates
+are never reduced. Each explicit prepare output identifies a nonpublishing run;
+use a separate output only for a separately intended qualification, not blind retry.
+
+Only after owner release approval, select the exact qualified run for promotion:
+
+```sh
+uv run python scripts/release_process.py promote --run RUN_ID --attempt ATTEMPT --output output/releases/NEXT-process
+uv run python scripts/release_process.py resume --output output/releases/NEXT-process
+```
+
+Promote performs inspection/dry-run, exact-tag reconciliation, existing hosted
+promotion, independent public checks and deterministic receipt generation. It
+does not commit/push source or documentation or install an extension. Commit only
+the generated receipt/status files after reviewing them. Resume never initiates a
+new publication boundary. `--wait-seconds` bounds each workflow observation; exit 2
+means pending reconciliation. No automatic retries or local publisher credentials.
+
+`process.json`, canonical publication intents and timing evidence stay under
+ignored `output/releases/`; don't delete/reset them after an uncertain result.
+The checkout-wide lock covers different output directories. A new output cannot
+erase prior publication intent. Recheck failed workflows or uploads manually
+before any new side effect; catalog absence never permits re-upload.
+
 The fixed journals have already been initialized and pinned in
 `scripts/release/journal-origins.json`. The following commands document that
 one-time operation, not a normal release step; do not rerun them:

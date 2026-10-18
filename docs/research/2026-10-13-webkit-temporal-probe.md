@@ -72,7 +72,7 @@ and a causal intervention support it.
 
 The owner has approved this bounded extension. Tool privilege/system-wide scope
 exceptions, additional batches and official toolchain updates are approved in
-the [autonomy review](../plans/verification-and-release-efficiency.md#autonomy-approval-review),
+the [autonomy review](../plans/verification-and-release-efficiency-history.md#autonomy-approval-review),
 subject to its boundaries. Stages B-F remain gated; `PROMOTION_ENABLED` remains false.
 
 ## Resumed Batch 1: Capability Before Collection

@@ -55,6 +55,15 @@ def test_release_workflow_has_no_native_app_jobs_or_toolchain() -> None:
         assert forbidden not in workflow
 
 
+def test_optional_request_correlation_is_validated_and_never_a_publication_override() -> None:
+    for text in (read_workflow(), PROMOTION.read_text()):
+        assert "request=${{ inputs.request_id }}" in text
+        assert "request_id:" in text and 'default: ""' in text
+        assert 'scripts/release_process.py validate-request "$REQUEST_ID"' in text
+    promotion = PROMOTION.read_text()
+    assert promotion.index("Validate optional coordinator correlation") < promotion.index("Inspect or validate exact proof")
+
+
 def test_platform_vsix_packages_are_built_and_published_independently() -> None:
     text = read_workflow()
     package = extract_workflow_job(text, "package")
@@ -68,7 +77,7 @@ def test_platform_vsix_packages_are_built_and_published_independently() -> None:
     assert "verify-vsix-archive.py" in package
     assert "accept_disposable_handoff.js" in package
     assert "codex-usage-companion-$TARGET.vsix" in package
-    assert "max-parallel: 2" in visual and "fail-fast: false" in visual
+    assert "max-parallel: 3" in visual and "fail-fast: false" in visual
     assert "suite: [screenshots-allowance, speed, breakdown, overlay, hover]" in visual
     assert "if: always()" in visual and "**/failure.png" in visual
     assert "needs: [metadata, core, package, visual]" in hosted

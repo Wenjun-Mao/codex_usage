@@ -55,7 +55,7 @@ def contract_files(root=ROOT):
         ".github/workflows/journal-pilot.yml", "scripts/publication_journal.py", "scripts/release/journal-origins.json",
         ".github/actions/record-publication-intent/action.yml", "scripts/publication_intent.py",
         ".github/actions/qualification-tools/action.yml", "scripts/qualification.py",
-        "scripts/run_visual_suite.py", "scripts/check_usage_breakdown_webview.py",
+        "scripts/run_visual_suite.py", "scripts/release_process.py", "scripts/check_usage_breakdown_webview.py",
         "scripts/verify-vsix-archive.py", "scripts/verify_marketplace_release.cjs",
         "scripts/publish_qualified_vsix.cjs", "scripts/download_native_host.py",
         "extensions/vscode/scripts/cliEntrypoints.js",

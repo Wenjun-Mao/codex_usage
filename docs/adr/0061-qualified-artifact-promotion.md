@@ -77,6 +77,49 @@ delay is pending validation, not a reason to re-upload or replace a version.
 
 ## Alternatives And Consequences
 
+### On-Demand Coordination (October 17 Follow-Up)
+
+The owner approved three-slot visual qualification, affected-visual local preflight
+and a thin on-demand coordinator after the 2.12.5 profile. This implements the
+existing explicit promotion decision, not automatic tag publication or new owner
+authority. `release_process.py prepare` remains nonpublishing; `promote` explicitly
+selects a qualified run/attempt and calls existing independent validators. No PAT,
+build, ledger access or background service belongs in the local coordinator.
+
+Local preflight conservatively selects complete suites from an explicit release
+base, including deleted/new/renamed inputs. Unknown or shared changes select all.
+Reuse requires matching actual source/tool/environment identities and raw complete
+suite inventories; local passes never qualify hosted artifacts. A source change
+still renews all hosted gates. Visual concurrency is three isolated standard
+macOS jobs, with unchanged engine order, cases and observation policy.
+
+Optional canonical UUID4 inputs identify workflow requests through trusted run
+metadata and exact run-name fields. They do not certify execution or grant upload
+authority. Record dispatch intent before its call; lost acknowledgments use bounded
+correlation, never latest-run selection or redelivery. See the official
+[dispatch](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event)
+and [workflow-run interfaces](https://docs.github.com/en/rest/actions/workflow-runs).
+
+A checkout-wide lock protects local coordination across output directories.
+Canonical per-candidate tag/dry-run/promotion intents survive changing an output
+directory; local snapshots are hints. Remote tag/run/source/proof/public bytes
+are revalidated on resume. Existing foreign promotion dispatches stop a new one.
+No local flag can bypass publisher proof, anchored intents or public-hash checks.
+Generic resume observes/reconciles only; new publication boundaries need explicit
+promote mode under current owner release authority. Failed/partial/unknown upload
+outcomes remain pending, never permission to attempt another upload.
+
+Generated receipts pin their first independently verified presentation timestamp
+and identities while rechecking fresh official bytes. Later verification, including
+crossing Toronto midnight, cannot rewrite a published receipt. Manual documentation
+edits stop generation. Post-upload progress stays explicitly publication-pending
+until both public targets pass; dry-run revalidation never rolls that status back
+to "not published". Failed receipt writing/pushing is not a publication failure.
+
+Earlier manual commands remain the fallback after read-only reconciliation.
+Publication, production-journal writes and a live automated canary remain outside
+the implementation pilot approval. Preserve historical receipts and immutable tags.
+
 Keeping full preflight and tag qualification preserves today's flow but repeats
 most work and native proof when builds differ. Qualifying only at the tag is
 simpler but removes prepublication candidate proof. Reproducible builds alone

@@ -1,8 +1,13 @@
 name: Platform VSIX
-run-name: "Qualify Codex Usage VSIX ref=${{ github.ref_name }} probe=${{ inputs.fail_case != '' }}"
+run-name: "Qualify Codex Usage VSIX ref=${{ github.ref_name }} probe=${{ inputs.fail_case != '' }} request=${{ inputs.request_id }}"
 on:
   workflow_dispatch:
     inputs:
+      request_id:
+        description: "Optional coordinator UUID; correlation only, never qualification authority"
+        required: false
+        type: string
+        default: ""
       fail_case:
         description: "Explicit synthetic case-key failure, first attempt only; never a release candidate"
         required: false
@@ -31,6 +36,10 @@ jobs:
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF" = refs/heads/main
       - uses: ./.github/actions/qualification-tools
+      - name: Validate optional coordinator correlation
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: uv run python scripts/release_process.py validate-request "$REQUEST_ID"
       - name: Fail early on independent metadata, history and workflow contracts
         env:
           PYTHONPATH: scripts
@@ -128,7 +137,7 @@ jobs:
     needs: metadata
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 3
       matrix:
         suite: [screenshots-allowance, speed, breakdown, overlay, hover]
     runs-on: macos-26
