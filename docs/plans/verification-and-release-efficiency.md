@@ -1,8 +1,9 @@
 # Verification And Release Efficiency
 
-Date: 2026-10-17 (America/Toronto). Status: owner approved implementation with
-Relay Direct, including the bounded commit/push/nonpublishing pilot bundle below.
-Production tags and publication remain excluded from this assignment.
+Date: 2026-10-17 (America/Toronto). Status: implemented and nonpublishing-qualified
+with Relay Direct within the approved pilot budget. See the
+[measured results](../research/2026-10-17-release-efficiency-pilots.md).
+Production tags and publication remained excluded from this assignment.
 
 This follow-up covers all three improvements selected after the
 [2.12.5 wall-time profile](../research/2026-10-17-release-2.12.5-profile.md):
@@ -255,9 +256,15 @@ Implementation checkpoint:
 - [x] Conservative preflight and three-slot workflow contracts implemented with focused tests.
 - [x] On-demand coordination, canonical intents and receipt generation implemented.
 - [x] Complete independent safety re-review, Python/extension suites, Ruff and accounting guards.
-- [ ] Complete the full local visual preflight.
-- [ ] Complete the two declared nonpublishing qualifications, observer resume and dry-run.
-- [ ] Record measured results and final implementation readiness; no publication.
+- [x] Complete the full local visual preflight.
+- [x] Complete the two declared nonpublishing qualifications, observer resume and dry-run.
+- [x] Record measured results and final implementation readiness; no publication.
+
+Both complete qualifications used source `8b1226a0`, taking 9m12s and 8m28s
+versus the historical 12m19s. The dry-run passed with its publisher skipped and
+matching inspection bytes, but took 47s versus 29s previously. Documentation-only
+closeout follows these same-source pilots. No production canary or dashboard
+loading work was performed.
 
 Use retained `main` serially; preserve unrelated owner changes, untracked `apps/`
 and consultant reports. If the coordinator fails, preserve state and use existing

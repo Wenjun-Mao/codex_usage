@@ -12,9 +12,13 @@ All pilots must pass before release use. This guide does not
 authorize commits, CI, tags, publisher credentials or publication by itself.
 Authority: [ADR 0061](../adr/0061-qualified-artifact-promotion.md),
 [implementation plan](../plans/verification-and-release-efficiency.md) and
-[historical release receipts](../release.md). Current nonpublishing evidence:
-[October 15 source qualification](2026-10-15-source-qualification.md), with the
-[earlier pilot chronology](2026-10-13-qualification-pilot.md) retained.
+[historical release receipts](../release.md). Latest nonpublishing evidence:
+[October 17 efficiency pilots](../research/2026-10-17-release-efficiency-pilots.md),
+including two complete same-source qualifications, observer resume and one
+credential-free dry-run. These do not replace published 2.12.5 packages or
+authorize a live automated publishing canary. The
+[October 15 source qualification](2026-10-15-source-qualification.md) and
+[earlier pilot chronology](2026-10-13-qualification-pilot.md) are retained.
 
 ## Candidate Preparation
 
