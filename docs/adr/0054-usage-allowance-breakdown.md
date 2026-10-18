@@ -243,6 +243,10 @@ retain native titles in this text-only change; the speed chart's immediate-toolt
 mechanism is separate and must not add per-capture CSS/HTML to dense allowance
 history. A breakdown-only HTML revision replaces cached section markup without
 invalidating prepared account partitions or monetary calculations.
+Visual dated-mark checks validate readable account clocks against each unchanged
+`data-at` instant at minute precision, including numeric offsets and repeated hours;
+they must not require ISO text in the human tooltip or merely accept any year-like
+substring. Usage-mark date checks remain unchanged.
 
 ## Alternatives And Consequences
 

@@ -130,6 +130,14 @@ tooltips do not cover one another; leaving the hovered point restores focus insp
 No product scripts, timers, animation delay or CSP changes are needed. Existing
 source-bound hosted WebKit observation policy (ADR 0071) applies; local observations
 remain strictly below 250 ms. Record hover, hide and real-Tab times without retries.
+The initial 2.12.5 candidate observed one hosted Chromium hide at 281.6 ms;
+its cause is unestablished, not fixed by the CSS change. Preserve failed evidence
+and report input-call versus style-read durations on any future threshold failure,
+without extra DOM calls, subtracting transport time or changing the total budget.
+The initial speed harness also used `Locator.evaluate`, which resolves and disposes
+a fresh handle on each timed read. Pin the tooltip once before observation, as
+the established hover suite does, and dispose it even after failure. This corrects
+test-side selector-adoption overhead without asserting it caused the 281.6 ms sample.
 An explicit speed HTML render revision invalidates only that cache; it must
 not bump monetary/allowance render identities or force new timing aggregation.
 Cache-upgrade tests retain ledger/speed revisions, forbid historical monetary

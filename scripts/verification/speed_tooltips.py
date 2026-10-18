@@ -15,16 +15,28 @@ def observe(tooltip, action, *, visible, limit=.25):
     assert state(tooltip)['hidden' if visible else 'visible'], 'tooltip baseline mismatch'
     started = perf_counter()
     action()
+    input_returned = perf_counter()
     matched = state(tooltip)
     seconds = perf_counter() - started
-    assert seconds < limit, {'phase': 'show' if visible else 'hide', 'seconds': seconds}
+    assert seconds < limit, {'phase': 'show' if visible else 'hide', 'seconds': seconds,
+        'input_seconds': input_returned-started, 'style_seconds': seconds-(input_returned-started),
+        'state': matched}
     assert matched['visible' if visible else 'hidden'], matched
     return seconds
 
 
 def check_point(page, scope, point, *, screenshot=None, limit=.25):
     key = point.get_attribute('data-speed-tip')
-    tooltip = scope.locator(f'.speed-tooltip[data-speed-tip-for="{key}"]')
+    tooltip = scope.locator(f'.speed-tooltip[data-speed-tip-for="{key}"]').element_handle()
+    assert tooltip is not None
+    try:
+        return _check_point(page, scope, point, tooltip, screenshot=screenshot, limit=limit)
+    finally:
+        tooltip.dispose()
+
+
+def _check_point(page, scope, point, tooltip, *, screenshot, limit):
+    key = point.get_attribute('data-speed-tip')
     assert point.locator('title').count() == 0
     page.mouse.move(0, 0)
     page.evaluate('document.activeElement.blur()')

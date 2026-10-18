@@ -1,5 +1,19 @@
 """One transport snapshot preserving the breakdown's per-node invariants."""
 
+ACCOUNT_DATE_CHECK = """(text, at) => {
+    const line = text.split('\\n')[1] ?? '';
+    const m = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\\d{1,2}), (\\d{4}) at (\\d{2}):(\\d{2}) \\(UTC([+-])(\\d{2}):(\\d{2})(?::(\\d{2}))?\\)$/.exec(line);
+    if (!m || !Number.isFinite(at)) return false;
+    const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(m[1]);
+    const [day,year,hour,minute] = m.slice(2,6).map(Number);
+    if (hour>23 || minute>59 || +m[7]>23 || +m[8]>59 || +(m[9]??0)>59) return false;
+    const clock = Date.UTC(year,month,day,hour,minute), date = new Date(clock);
+    if (date.getUTCMonth()!==month || date.getUTCDate()!==day) return false;
+    const offset = (+m[7]*3600 + +m[8]*60 + +(m[9]??0)) * (m[6]==='-' ? -1 : 1);
+    const captured = (clock-offset*1000)/1000;
+    return at>=captured && at<captured+60;
+}"""
+
 SNAPSHOT = """() => {
     const sections = [...document.querySelectorAll('.usage-breakdown')];
     if (sections.length !== 1) return {sections: sections.length};
@@ -23,7 +37,10 @@ SNAPSHOT = """() => {
                     span:span.getBoundingClientRect().toJSON(),
                     error:Math.abs(t.getBoundingClientRect().left-rect.left-(+t.dataset.at-start)/
                         Math.max(.000001,end-start)*a.clientWidth)};})};});
-    const titles=find('svg rect,svg circle,svg path,svg .ub-tiny-segment').map(m=>m.querySelector('title,desc')?.textContent??'');
+    const datedAccount = ACCOUNT_DATE_CHECK;
+    const titles=find('svg rect,svg circle,svg path,svg .ub-tiny-segment').map(m=>({
+        text:m.querySelector('title,desc')?.textContent??'',
+        account:m.classList.contains('ub-account-point'),at:Number(m.dataset.at)}));
     const links=find('.ub-hover-target[href]').map(a=>({label:a.getAttribute('aria-label')??'',href:a.getAttribute('href')}));
     const text=e.innerText;
     return {sections:sections.length,scripts:document.querySelectorAll('script').length,
@@ -32,7 +49,7 @@ SNAPSHOT = """() => {
         rightAxes:find('.ub-right-axis').length,rightText:e.querySelector('.ub-right-axis')?.innerText.trim(),
         rightTicks:find('.ub-right-axis span').map(x=>x.textContent),
         legend:e.querySelector('.ub-meter-legend')?.innerText??'',
-        titlesDated:titles.filter(t=>t.includes('2026-')).length,titleCount:titles.length,
+        titlesDated:titles.filter(t=>t.account ? datedAccount(t.text,t.at) : t.text.includes('2026-')).length,titleCount:titles.length,
         linksDated:links.filter(a=>a.label.includes('2026-')).length,linkCount:links.length,
         linksIssued:links.every(a=>a.href.startsWith('command:codexUsage.navigateBreakdown?')),
         finiteMissing:text.includes('No finite valid balances among in-domain captures'),
@@ -41,7 +58,7 @@ SNAPSHOT = """() => {
         diagnosticSections:find('details > summary').filter(s=>
             ['Scope and continuity evidence','Small segments','Account overlay evidence'].includes(s.textContent)).length,
         controlsFit:find('.ub-controls').every(g=>g.scrollWidth<=g.clientWidth+1)};
-}"""
+}""".replace('ACCOUNT_DATE_CHECK', ACCOUNT_DATE_CHECK)
 
 
 def assert_layout(snapshot, label, state):

@@ -13,6 +13,11 @@ The candidate makes speed-chart tooltips immediate and readable, and reformats
 account tooltips with remaining values and local capture times. Account marks
 retain native popup timing. Scoped HTML revisions preserve prepared accounting
 and timing facts; no runtime, schema, prices or live data are changed.
+The [first qualification](https://github.com/Wenjun-Mao/codex_usage/actions/runs/39084822193)
+failed on an obsolete ISO-text visual assertion and a 281.6 ms hosted Chromium
+input-through-style observation. Its diagnostics are preserved. The date oracle
+now checks readable account times against captured instants; timing diagnostics
+split input/style calls without loosening limits. The timing cause remains unknown.
 
 ## 2.12.4 Published Receipt
 

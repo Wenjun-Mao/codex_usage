@@ -1,5 +1,8 @@
 """Each old layout invariant still rejects a broken snapshot."""
 from copy import deepcopy
+from datetime import datetime
+import json
+import subprocess
 
 import pytest
 
@@ -73,3 +76,22 @@ def test_account_and_project_conditional_contracts():
     sample["rightAxes"] = 1
     with pytest.raises(AssertionError):
         assert_layout(sample, "project", {"view": "project", "overlay": "none"})
+
+
+@pytest.mark.parametrize('clock,instant,valid', [
+    ('Oct 17, 2026 at 11:58 (UTC-04:00)', '2026-10-17T15:58:07.747999+00:00', True),
+    ('Nov 1, 2026 at 01:30 (UTC-04:00)', '2026-11-01T05:30:00+00:00', True),
+    ('Nov 1, 2026 at 01:30 (UTC-05:00)', '2026-11-01T06:30:00+00:00', True),
+    ('Oct 17, 2026 at 21:43 (UTC+05:45)', '2026-10-17T15:58:00+00:00', True),
+    ('Nov 1, 2026 at 01:30 (UTC-04:00)', '2026-11-01T06:30:00+00:00', False),
+    ('Oct 17, 2026 at 11:57 (UTC-04:00)', '2026-10-17T15:58:00+00:00', False),
+    ('Sep 31, 2026 at 11:58 (UTC-04:00)', '2026-10-01T15:58:00+00:00', False),
+    ('Oct 17, 2026 at 25:58 (UTC-04:00)', '2026-10-17T15:58:00+00:00', False),
+    ('Captured sometime in 2026', '2026-10-17T15:58:00+00:00', False),
+])
+def test_readable_account_dates_match_exact_capture_instants(clock, instant, valid):
+    check = load_tool('verification.breakdown_layout').ACCOUNT_DATE_CHECK
+    arguments = ['23% weekly allowance remaining\n' + clock, datetime.fromisoformat(instant).timestamp()]
+    result = subprocess.run(['node', '-e', f'console.log(({check})(...JSON.parse(process.argv[1])))',
+        json.dumps(arguments)], capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == str(valid).lower()
