@@ -110,7 +110,10 @@ invalidates HTML only, preserving timing facts and monetary caches. Browser
 guardrails cover marker identity, focus/hover spread, label collisions and
 narrow-container bounds under the unchanged script-free CSP.
 
-### Immediate, Readable Tooltips (2026-10-17, Local Candidate)
+### Immediate, Readable Tooltips (2026-10-17, Published In 2.12.5)
+
+The [published receipt](../release/2026-10-17-2.12.5-published.md) binds the
+qualified source, complete checks and exact public packages.
 
 Point/overview inspection uses the same compact model names as the end labels,
 readable local dates/clocks with their captured numeric UTC offsets, and separate

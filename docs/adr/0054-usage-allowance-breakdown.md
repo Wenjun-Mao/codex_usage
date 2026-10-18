@@ -232,7 +232,10 @@ claiming a faster database query. HTML revision41 replaces old chart markup
 without invalidating account/composition partitions. Tests must cover absence of
 these disclosures, upgrade from warm revision40 HTML and unchanged audit access.
 
-## Readable Account Tooltips (2026-10-17, Local Candidate)
+## Readable Account Tooltips (2026-10-17, Published In 2.12.5)
+
+The [published receipt](../release/2026-10-17-2.12.5-published.md) binds the
+qualified source, complete checks and exact public packages.
 
 Account mark tooltips lead with the remaining percentage/credits, followed by a
 minute-resolution time in the chart timezone, readable account/source labels and

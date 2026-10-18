@@ -1,23 +1,20 @@
 # VSIX Releases
 
-Codex Usage 2.12.4 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.12.5 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
 
-## 2.12.5 Candidate
+## 2.12.5 Published Receipt
 
-The owner approved a small tooltip release on October 17, 2026. Qualification and
-publication are pending; 2.12.4 remains the latest verified published version.
-The candidate makes speed-chart tooltips immediate and readable, and reformats
-account tooltips with remaining values and local capture times. Account marks
-retain native popup timing. Scoped HTML revisions preserve prepared accounting
-and timing facts; no runtime, schema, prices or live data are changed.
-The [first qualification](https://github.com/Wenjun-Mao/codex_usage/actions/runs/39084822193)
-failed on an obsolete ISO-text visual assertion and a 281.6 ms hosted Chromium
-input-through-style observation. Its diagnostics are preserved. The date oracle
-now checks readable account times against captured instants; timing diagnostics
-split input/style calls without loosening limits. The timing cause remains unknown.
+Both public Marketplace packages match the exact qualified bytes. The
+[published receipt](release/2026-10-17-2.12.5-published.md) records qualification,
+explicit promotion, retained upload intents and public target hashes, including
+the first candidate's failures and the corrected verification contracts.
+Speed-chart tooltips are immediate and readable; account tooltips lead with the
+remaining value and local capture time, but retain native popup timing. Scoped
+HTML revisions preserve prepared accounting and timing facts. No runtime, schema,
+prices, live data or installed extension changed during release work.
 
 ## 2.12.4 Published Receipt
 
