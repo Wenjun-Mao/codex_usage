@@ -1,6 +1,9 @@
 """Shared fixed-size speed markers and compact, unambiguous model labels."""
 import html
 import re
+from datetime import date, datetime
+
+from codex_usage.report_calendar import calendar_label
 
 
 MARKERS = (
@@ -31,6 +34,10 @@ def short_model_label(model):
     return f'{match[2].title()} {match[1]}' if match else model
 
 
+def bucket_label(bucket):
+    return calendar_label(datetime.fromisoformat(bucket) if "T" in bucket else date.fromisoformat(bucket))
+
+
 def series_labels(endpoints, slots, *, top, span):
     if not endpoints:
         return ''
@@ -45,10 +52,10 @@ def series_labels(endpoints, slots, *, top, span):
     labels = []
     for point, y in zip(ordered, positions):
         model = point['model']
+        key = f'series-{endpoints.index(point)}'
         labels.append(
             f'<span class="speed-series-label" style="top:{y:.2f}px;'
-            f'color:var(--model-{slots[model]})" title="{html.escape(model, quote=True)}; '
-            f'{html.escape(point["bucket"], quote=True)}">'
+            f'color:var(--model-{slots[model]})" data-speed-tip="{key}">'
             f'<strong>{html.escape(short_model_label(model))}</strong>'
             f'<small>{point["median"]:.1f} tok/s</small></span>'
         )

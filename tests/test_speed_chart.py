@@ -1,9 +1,13 @@
 from datetime import UTC, datetime
+from copy import deepcopy
 import re
+from xml.etree import ElementTree
+
+import pytest
 
 from codex_usage.report_speed import render_speed, speed_css
 from codex_usage.report_speed_chart import nice_scale, render_plot, selection_band, tick_indices, x_position
-from codex_usage.report_speed_marks import MARKERS, series_labels, short_model_label
+from codex_usage.report_speed_marks import MARKERS, bucket_label, series_labels, short_model_label
 from codex_usage.model_presentation import assign_model_color_slots
 from codex_usage.report_speed import detail
 from codex_usage.speed_queries import calendar_buckets
@@ -117,7 +121,7 @@ def test_spread_and_small_samples_have_separate_point_semantics():
     assert 'class="speed-point speed-point-small"' in rendered
     assert 'class="speed-interval"' in rendered
     assert 'stroke-dasharray' not in rendered
-    assert 'middle 50% 40.0-46.0; 8 responses' in rendered
+    assert 'Typical range (middle 50%): 40.0-46.0 tokens/s&#10;8 responses across 2 tasks' in rendered
     assert len(rows) == 1 and '<td>40.0-46.0</td>' in rows[0]
 
 
@@ -125,7 +129,11 @@ def test_last_measured_label_survives_trailing_gaps_without_connecting_them():
     rendered, _ = render_plot([point('2026-10-07')], ['2026-10-07', '2026-10-08'],
                              ['gpt-6.1-sol'], {'gpt-6.1-sol': 6}, detail)
     assert '<small>43.0 tok/s</small>' in rendered
-    assert 'title="gpt-6.1-sol; 2026-10-07"' in rendered
+    root = ElementTree.fromstring(rendered)
+    label = root.find(".//span[@class='speed-series-label']")
+    assert label.get('title') is None and label.get('data-speed-tip') == 'series-0'
+    tooltip = root.find(".//span[@data-speed-tip-for='series-0']")
+    assert [line.text for line in tooltip] == ['Sol 6.1', 'Oct 7, 2026', 'Median speed: 43.0 tokens/s']
     assert 'stroke-width="2"' not in rendered
 
 
@@ -153,3 +161,76 @@ def test_decorative_segments_cannot_intercept_marker_hover():
                              {'gpt-6.1-sol': 6}, detail)
     assert rendered.count('class="speed-trend"') == 1
     assert '.speed-grid,.speed-trend { pointer-events:none; }' in speed_css()
+
+
+@pytest.mark.parametrize('bucket,label', [
+    ('2026-10-17', 'Oct 17, 2026'),
+    ('2026-10-17T20:00:00-04:00', 'Oct 17, 2026 at 20:00 (UTC-04:00)'),
+    ('2026-11-01T01:00:00-04:00', 'Nov 1, 2026 at 01:00 (UTC-04:00)'),
+    ('2026-11-01T01:00:00-05:00', 'Nov 1, 2026 at 01:00 (UTC-05:00)'),
+    ('2026-10-17T20:00:00+05:45', 'Oct 17, 2026 at 20:00 (UTC+05:45)'),
+    ('2026-10-17T20:00:00+10:30', 'Oct 17, 2026 at 20:00 (UTC+10:30)'),
+    ('2026-10-17T00:00:00+00:00', 'Oct 17, 2026 at 00:00 (UTC+00:00)'),
+])
+def test_tooltip_dates_are_readable_without_losing_bucket_offsets(bucket, label):
+    assert bucket_label(bucket) == label
+
+
+def test_point_tooltip_has_labeled_lines_and_preserves_exact_detail_rows():
+    bucket = '2026-10-17T20:00:00-04:00'
+    stats = {**point(bucket, value=57.6, n=11), 'p25': 54.7, 'p75': 60.2, 'tasks': 3, 'sources': 3}
+    before = deepcopy(stats)
+    rendered, rows = render_plot([stats], [bucket], ['gpt-6.1-sol'], {'gpt-6.1-sol': 6}, detail)
+    root = ElementTree.fromstring(rendered)
+    target = root.find('.//a')
+    expected = ['Sol 6.1', 'Oct 17, 2026 at 20:00 (UTC-04:00)',
+        'Median speed: 57.6 tokens/s', 'Typical range (middle 50%): 54.7-60.2 tokens/s',
+        '11 responses across 3 tasks', 'Small sample (fewer than 20 responses)']
+    tooltip = root.find(".//span[@data-speed-tip-for='point-0']")
+    assert [line.text for line in tooltip] == expected
+    assert target.get('aria-label').splitlines() == expected
+    assert target.find('title') is None
+    assert 'sources' not in ''.join(tooltip.itertext())
+    assert root.find('.//time').get('datetime') == bucket
+    row = ElementTree.fromstring(rows[0])
+    assert row.find('th').text == 'gpt-6.1-sol'
+    assert [cell.text for cell in row.findall('td')] == [bucket, '57.6', '54.7-60.2', '11', '3', '3']
+    assert stats == before
+
+
+def test_tooltip_counts_use_grouping_pluralization_and_conditional_sample_note():
+    label = detail({**point('2026-10-17', n=1200), 'tasks': 1})
+    assert label.splitlines()[-1] == '1,200 responses across 1 task'
+    assert 'Small sample' not in label
+    assert detail({'median': None, 'n': 4}).splitlines() == [
+        'Not enough data', '4 eligible responses (at least 5 needed)']
+    assert '1 eligible response (at least 5 needed)' in detail({'median': None, 'n': 1})
+
+
+def test_unknown_model_names_are_escaped_in_readable_tooltips():
+    model = 'custom-<unsafe>"&'
+    bucket = '2026-10-17'
+    rendered, _ = render_plot([point(bucket, model=model)], [bucket], [model], {model: 1}, detail)
+    root = ElementTree.fromstring(rendered)
+    assert root.find('.//a').get('aria-label').startswith(model + '\nOct 17, 2026\n')
+    assert root.find(".//span[@data-speed-tip-for='point-0']/strong").text == model
+    assert root.findall('.//unsafe') == []
+
+
+def test_speed_tooltips_are_script_free_without_native_point_popup_or_delay():
+    bucket = '2026-10-17'
+    rendered, _ = render_plot([point(bucket)], [bucket], ['gpt-6.1-sol'], {'gpt-6.1-sol': 6}, detail)
+    root = ElementTree.fromstring(rendered)
+    assert root.findall('.//svg//title') == []
+    assert root.findall('.//script') == []
+    tip = root.find(".//span[@data-speed-tip-for='point-0']")
+    assert tip.get('role') == 'tooltip' and tip.get('aria-hidden') == 'true'
+    rules = ''.join(style.text for style in root.findall('.//style'))
+    assert ':hover)' in rules and ':focus-visible)' in rules
+    assert ':not(:has([data-speed-tip]:hover))' in rules
+    assert 'transition:none' in speed_css()
+    overview, _ = render_plot([point(bucket)], [bucket], ['gpt-6.1-sol'], {'gpt-6.1-sol': 6}, detail, overview=True)
+    root = ElementTree.fromstring(overview)
+    assert root.findall('.//title') == [] and root.findall('.//a') == []
+    assert root.find('.//circle').get('data-speed-tip') == 'overview-0'
+    assert root.find(".//span[@data-speed-tip-for='overview-0']") is not None

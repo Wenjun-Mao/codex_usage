@@ -1,6 +1,7 @@
 """Dense account captures stay distinct from additive usage stacks."""
 from datetime import UTC, datetime, timedelta
 from xml.etree import ElementTree
+from zoneinfo import ZoneInfo
 
 from codex_usage.report_breakdown_overlay import overlay
 from codex_usage.report_usage_breakdown_chart import COLORS
@@ -62,7 +63,8 @@ def test_account_series_labels_bind_latest_capture_and_identity():
     assert "codex · weekly · pro · 30% remaining" in evidence
     assert "additional · weekly · plus · 75% remaining" in evidence
     for n in nodes:
-        assert n.attrib["aria-label"].startswith("Weekly allowance · right axis")
+        assert '% weekly allowance remaining\n' in n.attrib["aria-label"]
+        assert n.attrib['aria-label'].endswith('Account-wide · right axis')
         assert n.attrib["aria-label"] == n.find("title").text
     # The ordinary single account overlay is always neutral, not a model color.
     assert nodes[-1].attrib["fill"] != nodes[0].attrib["fill"]
@@ -91,3 +93,31 @@ def test_simultaneous_balance_conflict_never_picks_a_latest_value():
     assert 'data-latest="true"' in marks
     assert "Credit balance · conflicting latest captures" in evidence
     assert "4 K credits" not in evidence and "5 K credits" not in evidence
+
+
+def test_allowance_tooltip_leads_with_remaining_and_uses_chart_local_time():
+    point = reading(0, timestamp='2026-10-17T15:58:07.747999+00:00',
+                    used_percent=77, provenance='Live probe')
+    marks, _, _, _ = overlay([point], 'weekly', AT.timestamp(), AT.timestamp()+14*86400,
+                             ZoneInfo('America/Toronto'), COLORS)
+    node = ElementTree.fromstring('<g>' + marks + '</g>')[0]
+    assert node.find('title').text.splitlines() == [
+        '23% weekly allowance remaining', 'Oct 17, 2026 at 11:58 (UTC-04:00)',
+        'Codex · Pro · Live reading', 'Account-wide · right axis']
+    assert node.attrib['aria-label'] == node.find('title').text
+    assert point['timestamp'] == '2026-10-17T15:58:07.747999+00:00'
+    assert node.attrib['data-at'] == f'{datetime.fromisoformat(point["timestamp"]).timestamp():.6f}'
+    _, _, _, exact = overlay([point], 'weekly', AT.timestamp(), AT.timestamp()+14*86400,
+                             UTC, COLORS, inspection=True)
+    assert point['timestamp'] in exact and '77% used' in exact
+
+
+def test_allowance_tooltip_distinguishes_repeated_local_hours_and_reading_sources():
+    points = [reading(0, timestamp=stamp, provenance='Recovered task snapshot, Task snapshot')
+              for stamp in ('2026-11-01T05:30:00+00:00', '2026-11-01T06:30:00+00:00')]
+    start = datetime(2026, 11, 1, tzinfo=UTC).timestamp()
+    marks, _, _, _ = overlay(points, 'weekly', start, start+86400, ZoneInfo('America/Toronto'), COLORS)
+    nodes = ElementTree.fromstring('<g>' + marks + '</g>')
+    assert 'at 01:30 (UTC-04:00)' in nodes[0].find('title').text
+    assert 'at 01:30 (UTC-05:00)' in nodes[1].find('title').text
+    assert 'Historical task reading, Task reading' in nodes[0].find('title').text

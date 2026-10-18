@@ -8,6 +8,7 @@ from codex_usage.report_breakdown_balances import balance_ticks, balances
 from codex_usage.breakdown_display import reduce_points
 from codex_usage.report_breakdown_numbers import compact_decimal
 from codex_usage.report_numbers import percentage_text
+from codex_usage.report_calendar import calendar_label
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,9 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
     if kind == "none":
         return CapturedLayer()
     in_domain = [p for p in points if start <= datetime.fromisoformat(p["timestamp"]).timestamp() < end]
+    def captured_time(p):
+        moment = datetime.fromisoformat(p["timestamp"])
+        return calendar_label(moment.astimezone(timezone) if timezone is not None else moment)
     if kind == "weekly":
         signatures = {}
         for p in in_domain:
@@ -43,7 +47,13 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
         def coordinate(p):
             return height * p["used_percent"] / 100
         def label(p):
-            return f'Weekly allowance · right axis | {p["timestamp"]} | {p["limit_id"]} / {p["plan"]} | {percentage_text(100-p["used_percent"])}% remaining | {p["provenance"]}'
+            names = {"Live probe": "Live reading", "Task snapshot": "Task reading",
+                     "Recovered task snapshot": "Historical task reading"}
+            source = ', '.join(names.get(value, value) for value in str(p['provenance']).split(', '))
+            account = 'Codex' if p['limit_id'] == 'codex' else p['limit_id']
+            plan = p['plan'].title() if p['plan'] in ('pro', 'plus', 'free') else p['plan']
+            return (f'{percentage_text(100-p["used_percent"])}% weekly allowance remaining\n'
+                    f'{captured_time(p)}\n{account} · {plan} · {source}\nAccount-wide · right axis')
         def group(p):
             return p["limit_id"], p["plan"]
         def color(p):
@@ -65,7 +75,8 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
                 context.prec = max(40, len(minimum.as_tuple().digits) + len(maximum.as_tuple().digits) + 4)
                 return height * (1-float((Decimal(p["balance"])-minimum)/(maximum-minimum))) if maximum != minimum else height/2
         def label(p):
-            return f'Credit balance · right axis | {p["timestamp"]} | balance {compact_decimal(p["balance"])} credits | {p["plan"] or "plan unavailable"}'
+            return (f'{compact_decimal(p["balance"])} credits remaining\n{captured_time(p)}\n'
+                    f'{p["plan"] or "Plan unavailable"}\nAccount-wide · right axis')
         def group(p):
             return "balance",
         def color(p):
@@ -85,9 +96,10 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
         if compact_single:
             value = percentage_text(100-p["used_percent"]) + "%" if kind == "weekly" else compact_decimal(p["balance"]) + " credits"
             text = "Conflicting latest captures" if ambiguous_latest else "Latest: " + value
-        detail = "Latest capture is ambiguous" if ambiguous_latest else "Latest captured in selected range | " + name + " | " + label(p)
+        detail = "Latest capture is ambiguous" if ambiguous_latest else "Latest capture in selected range\n" + label(p)
         swatch = "" if compact_single else f'<i class="ub-account-swatch" style="background:{color(p)}"></i>'
-        key_items.append(f'<span tabindex="0" title="{html.escape(detail, quote=True)}" aria-label="{html.escape(detail, quote=True)}">{swatch}{html.escape(text)}</span>')
+        detail = html.escape(detail, quote=True).replace('\n', '&#10;')
+        key_items.append(f'<span tabindex="0" title="{detail}" aria-label="{detail}">{swatch}{html.escape(text)}</span>')
     key = '<div class="ub-legend ub-meter-legend">' + ''.join(key_items) + '</div>'
     marks = []
     # Preserve exact points. Daily captures are partitioned; no averaging,
@@ -95,7 +107,7 @@ def captured_layer(points, kind, start, end, timezone, colors, *, width=720, hei
     for p in reduce_points(valid, kind, start, end):
         at = datetime.fromisoformat(p["timestamp"]).timestamp()
         x, y = (at-start)/max(.000001, end-start)*width, coordinate(p)
-        title = html.escape(label(p), quote=True)
+        title = html.escape(label(p), quote=True).replace('\n', '&#10;')
         last = datetime.fromisoformat(p["timestamp"]) == datetime.fromisoformat(latest[group(p)]["timestamp"])
         marks.append(f'<circle class="ub-account-point" data-boundary="{str(bool(p.get("_boundary"))).lower()}" data-latest="{str(last).lower()}" data-at="{at:.6f}" cx="{x:.3f}" cy="{y:.3f}" r="{2 if last else .65}" fill="{color(p)}" stroke="{color(p)}" role="img" aria-label="{title}"><title>{title}</title></circle>')
     unavailable = f'<p class="ub-note">{kind.title()} overlay unavailable: no supported in-domain captured readings. Original evidence remains inspectable.</p>' if not valid else ""

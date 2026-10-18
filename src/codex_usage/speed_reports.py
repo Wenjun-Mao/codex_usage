@@ -14,6 +14,8 @@ from codex_usage.report_speed import render_speed, summary_html
 from codex_usage.speed_queries import chart_navigation, speed_aggregates, store_aggregates
 from codex_usage.speed_store import revision
 
+SPEED_RENDER_REVISION = 2
+
 
 def render_speed_report(codex_home, *, speed_granularity=None, speed_window_start=None, speed_window_scope=None, _snapshot=None, **kwargs):
     from codex_usage.agent_reports import _render_base_ledger_report, RenderedLedgerReport
@@ -30,7 +32,7 @@ def render_speed_report(codex_home, *, speed_granularity=None, speed_window_star
         base = _render_base_ledger_report(codex_home, _snapshot=connection, **kwargs)
         speed_revision = revision(connection)
         nav = chart_navigation(connection, report_range, keys, timezone, kwargs["now"], speed_granularity, speed_window_start, speed_window_scope)
-        identity = [hashlib.sha256(base.html.encode()).hexdigest(), speed_revision, nav, base.status.speed]
+        identity = [hashlib.sha256(base.html.encode()).hexdigest(), speed_revision, nav, base.status.speed, SPEED_RENDER_REVISION]
         key = "html:" + hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         cached = connection.execute("select html from speed_html_cache where cache_key=?", (key,)).fetchone()
         if cached:

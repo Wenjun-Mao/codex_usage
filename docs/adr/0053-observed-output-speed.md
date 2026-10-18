@@ -110,6 +110,31 @@ invalidates HTML only, preserving timing facts and monetary caches. Browser
 guardrails cover marker identity, focus/hover spread, label collisions and
 narrow-container bounds under the unchanged script-free CSP.
 
+### Immediate, Readable Tooltips (2026-10-17, Local Candidate)
+
+Point/overview inspection uses the same compact model names as the end labels,
+readable local dates/clocks with their captured numeric UTC offsets, and separate
+labeled lines for median speed, typical middle-50% range, responses/tasks and
+the small-sample note. Accessible labels carry the same text. Source-file counts and exact ISO bucket
+identities remain in the detailed table. Daily buckets stay dates; repeated or
+fractional-offset hours are not merged or relabeled into another timezone.
+
+Native SVG titles caused the reported multi-second wait; their browser-controlled
+delay cannot be removed by text formatting. Replace point, overview and end-label
+titles with HTML tooltip siblings, exposed immediately by scoped CSS `:has()` on
+hover/focus. Keep point geometry, accessible labels, interval behavior and
+keyboard-detail links unchanged. Tooltips fit the full chart container even when
+the plot itself is narrow; they neither intercept pointer events nor add tab stops.
+Within a chart, pointer hover takes priority over retained keyboard focus so two
+tooltips do not cover one another; leaving the hovered point restores focus inspection.
+No product scripts, timers, animation delay or CSP changes are needed. Existing
+source-bound hosted WebKit observation policy (ADR 0071) applies; local observations
+remain strictly below 250 ms. Record hover, hide and real-Tab times without retries.
+An explicit speed HTML render revision invalidates only that cache; it must
+not bump monetary/allowance render identities or force new timing aggregation.
+Cache-upgrade tests retain ledger/speed revisions, forbid historical monetary
+or timing work, and require the following unchanged render to hit its cache.
+
 Hourly aggregation and calendar enumeration share a nominal local-clock-hour
 identity with the observed fixed UTC offset. Rounding with a ZoneInfo object can
 re-resolve the offset inside a partially skipped/repeated hour; stepping UTC

@@ -232,6 +232,18 @@ claiming a faster database query. HTML revision41 replaces old chart markup
 without invalidating account/composition partitions. Tests must cover absence of
 these disclosures, upgrade from warm revision40 HTML and unchanged audit access.
 
+## Readable Account Tooltips (2026-10-17, Local Candidate)
+
+Account mark tooltips lead with the remaining percentage/credits, followed by a
+minute-resolution time in the chart timezone, readable account/source labels and
+the account-wide right-axis cue. Preserve numeric UTC offsets for repeated local
+hours. Raw UTC timestamps, reported percentages and provenance remain unchanged
+in exact inspection; no captures or geometry are merged or repriced. Account marks
+retain native titles in this text-only change; the speed chart's immediate-tooltip
+mechanism is separate and must not add per-capture CSS/HTML to dense allowance
+history. A breakdown-only HTML revision replaces cached section markup without
+invalidating prepared account partitions or monetary calculations.
+
 ## Alternatives And Consequences
 
 Rejected a second pricing index and using allowance_event_costs as dashboard

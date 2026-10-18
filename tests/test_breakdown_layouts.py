@@ -77,8 +77,8 @@ def test_axis_keys_belong_to_the_corresponding_marks():
     assert all("right axis" in point.attrib["aria-label"] for point in account_marks(document))
     header = document.split('<div class="ub-linked-heading ub-account-heading">', 1)[1].split('</div></div>', 1)[0]
     assert visible_text(header) == "Allowance Remaining Latest: 20%"
-    assert "account-wide" in header and "codex / pro" in header
-    assert "2026-10-04T04:00:00+00:00" in header and 'tabindex="0"' in header
+    assert "account-wide" in header and "Codex · Pro" in header
+    assert "Oct 4, 2026 at 04:00 (UTC+00:00)" in header and 'tabindex="0"' in header
 
 
 def test_no_account_selection_has_one_usage_plot_and_no_account_key():

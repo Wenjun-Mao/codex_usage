@@ -5,6 +5,15 @@ Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
 
+## 2.12.5 Candidate
+
+The owner approved a small tooltip release on October 17, 2026. Qualification and
+publication are pending; 2.12.4 remains the latest verified published version.
+The candidate makes speed-chart tooltips immediate and readable, and reformats
+account tooltips with remaining values and local capture times. Account marks
+retain native popup timing. Scoped HTML revisions preserve prepared accounting
+and timing facts; no runtime, schema, prices or live data are changed.
+
 ## 2.12.4 Published Receipt
 
 Both Marketplace downloads are verified against the exact qualified packages.

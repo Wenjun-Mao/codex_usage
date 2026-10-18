@@ -99,7 +99,7 @@ def test_weekly_overlay_uses_the_same_bounded_percentage_contract(used, label):
     layer = captured_layer([point], "weekly", start.timestamp(), start.timestamp()+86400,
         UTC, ["#087ea4"], compact_key=True)
     assert "Latest: " + label in layer.key
-    assert label + " remaining" in layer.marks
+    assert label + " weekly allowance remaining" in layer.marks
     exact = captured_layer([point], "weekly", start.timestamp(), start.timestamp()+86400,
         UTC, ["#087ea4"], inspection=True)
     assert repr(used) + "% used" in exact.evidence

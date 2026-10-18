@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.12.5 - 2026-10-17
+
+- Make output-speed tooltips easier to scan with readable local dates, labeled
+  speed/range lines and a compact response/task sample note.
+- Show speed-chart tooltips immediately on hover or keyboard focus, without the
+  browser's native popup delay. Lead allowance tooltips with the remaining value
+  and display capture times in the chart's local timezone.
+
 ## 2.12.4 - 2026-10-16
 
 - Correct frozen collector worker startup so multi-file captures use the bounded

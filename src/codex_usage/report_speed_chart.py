@@ -3,7 +3,8 @@ import html
 from datetime import date
 from math import ceil, floor, log10
 
-from codex_usage.report_speed_marks import marker, series_labels
+from codex_usage.report_speed_marks import bucket_label, marker, series_labels, short_model_label
+from codex_usage.report_speed_tooltips import tooltip
 
 PLOT_HEIGHT = 224
 PLOT_TOP = 10
@@ -57,7 +58,7 @@ def tick_html(buckets, granularity):
             if len(buckets) == 1:
                 edge = "middle"
             ticks.append(f'<time class="speed-tick speed-tick-{edge}" datetime="{html.escape(bucket, quote=True)}" '
-                         f'title="{html.escape(bucket, quote=True)}" style="left:{x_position(index, len(buckets)):.4f}%">'
+                         f'title="{html.escape(bucket_label(bucket), quote=True)}" style="left:{x_position(index, len(buckets)):.4f}%">'
                          f'<span>{day}</span>{clock}</time>')
         groups.append(f'<div class="speed-ticks speed-ticks-{name}">{"".join(ticks)}</div>')
     return f'<div class="speed-x-axis">{"".join(groups)}</div>'
@@ -91,7 +92,7 @@ def render_plot(points, buckets, models, slots, detail, *, overview=False, highl
     selected = [point for point in points if point["bucket"] in bucket_set]
     ceiling, ticks = nice_scale(selected)
     height, top, span = (54, 6, 42) if overview else (PLOT_HEIGHT, PLOT_TOP, PLOT_SPAN)
-    marks, rows, endpoints = [], [], []
+    marks, rows, endpoints, tooltips = [], [], [], []
     if highlight:
         marks.append(selection_band(buckets, *highlight))
     if not overview:
@@ -114,15 +115,18 @@ def render_plot(points, buckets, models, slots, detail, *, overview=False, highl
                              f'x2="{x:.4f}%" y2="{y:.2f}" stroke="{color}" stroke-width="2"/>')
             previous = (x, y)
             latest = point
-            label = html.escape(f"{model}, {bucket}: {detail(point)}", quote=True)
+            description = f"{short_model_label(model)}\n{bucket_label(bucket)}\n{detail(point)}"
+            label = html.escape(description, quote=True).replace("\n", "&#10;")
+            key = f'{"overview" if overview else "point"}-{len(tooltips)}'
+            tooltips.append(tooltip(key, description, x))
             if overview:
-                marks.append(f'<circle cx="{x:.4f}%" cy="{y:.2f}" r="2.5" fill="{color}" '
-                             f'role="img" aria-label="{label}"><title>{label}</title></circle>')
+                marks.append(f'<circle data-speed-tip="{key}" cx="{x:.4f}%" cy="{y:.2f}" r="2.5" fill="{color}" '
+                             f'role="img" aria-label="{label}"/>')
                 continue
             target = f"speed-detail-{len(rows)}"
             small = ' speed-point-small' if point["small"] else ''
             marks.append(f'<a class="speed-point{small}" href="#{target}" tabindex="0" '
-                         f'aria-label="{label}" style="color:{color}"><title>{label}</title>'
+                         f'data-speed-tip="{key}" aria-label="{label}" style="color:{color}">'
                          f'<line class="speed-interval" x1="{x:.4f}%" x2="{x:.4f}%" '
                          f'y1="{top + span * (1 - point["p25"] / ceiling):.2f}" '
                          f'y2="{top + span * (1 - point["p75"] / ceiling):.2f}" '
@@ -138,10 +142,14 @@ def render_plot(points, buckets, models, slots, detail, *, overview=False, highl
     svg = (f'<svg width="100%" height="{height}" role="group" aria-label="{label}">'
            f'{"".join(marks)}</svg>')
     if overview:
-        return svg, rows
+        return f'<div class="speed-hover-scope">{svg}{"".join(tooltips)}</div>', rows
+    for index, endpoint in enumerate(endpoints):
+        description = (f'{short_model_label(endpoint["model"])}\n{bucket_label(endpoint["bucket"])}\n'
+                       f'Median speed: {endpoint["median"]:.1f} tokens/s')
+        tooltips.append(tooltip(f'series-{index}', description, 100))
     axis = "".join(f'<span style="top:{top + span * (1 - value / ceiling):.2f}px">{value:g}</span>' for value in reversed(ticks))
     granularity = "hourly" if buckets and "T" in buckets[0] else "daily"
     return (f'<div class="speed-chart"><div class="speed-unit">tok/s</div>'
-            f'<div class="speed-chart-grid"><div class="speed-y-axis" aria-hidden="true">{axis}</div>'
+            f'<div class="speed-chart-grid speed-hover-scope"><div class="speed-y-axis" aria-hidden="true">{axis}</div>'
             f'<div class="speed-plot">{svg}{tick_html(buckets, granularity)}</div>'
-            f'{series_labels(endpoints, slots, top=top, span=span)}</div></div>'), rows
+            f'{series_labels(endpoints, slots, top=top, span=span)}{"".join(tooltips)}</div></div>'), rows

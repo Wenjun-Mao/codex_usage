@@ -129,6 +129,42 @@ def test_warm_and_window_change_do_no_timing_scan_or_monetary_work(tmp_path, mon
     assert render(speed_granularity="hourly").cache_hit
 
 
+def test_speed_tooltip_upgrade_invalidates_only_speed_html(tmp_path, monkeypatch):
+    from codex_usage import speed_reports
+    from codex_usage.speed_store import revision
+    write_source(tmp_path)
+    capture_once(tmp_path, request_kind="manual", max_workers=1)
+    arguments = dict(range_name="all", project_keys=[], theme="day", timezone_name="UTC", now=AT)
+    original_render = speed_reports.render_speed
+
+    def old_render(*args, **kwargs):
+        return original_render(*args, **kwargs).replace('Median speed:', 'Legacy tooltip speed:')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(speed_reports, 'SPEED_RENDER_REVISION', 0)
+        patch.setattr(speed_reports, 'render_speed', old_render)
+        old = render_ledger_report(tmp_path, **arguments)
+        assert 'Legacy tooltip speed:' in old.html
+        assert render_ledger_report(tmp_path, **arguments).cache_hit
+    with open_ledger(ledger_database_path(tmp_path), read_only=True) as connection:
+        before = revision(connection)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Tooltip upgrade revisited monetary history or timing facts')
+
+    monkeypatch.setattr('codex_usage.agent_reports.materialize_ledger', forbidden)
+    monkeypatch.setattr('codex_usage.agent_reports.indexed_allowance_report', forbidden)
+    monkeypatch.setattr('codex_usage.ledger_queries._row_to_usage_record', forbidden)
+    monkeypatch.setattr('codex_usage.speed_queries._row_to_usage_record', forbidden)
+    upgraded = render_ledger_report(tmp_path, **arguments)
+    assert not upgraded.cache_hit
+    assert 'Median speed: 300.0 tokens/s' in upgraded.html and 'Legacy tooltip speed:' not in upgraded.html
+    assert upgraded.ledger_revision == old.ledger_revision
+    assert render_ledger_report(tmp_path, **arguments).cache_hit
+    with open_ledger(ledger_database_path(tmp_path), read_only=True) as connection:
+        assert revision(connection) == before
+
+
 def test_seven_day_windows_clamp_without_changing_global_range(tmp_path):
     write_source(tmp_path)
     capture_once(tmp_path, request_kind="manual", max_workers=1)

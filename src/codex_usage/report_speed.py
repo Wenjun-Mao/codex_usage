@@ -8,22 +8,29 @@ from codex_usage.model_presentation import assign_model_color_slots, model_displ
 from codex_usage.speed_queries import calendar_buckets
 from codex_usage.report_speed_chart import date_label, render_plot
 from codex_usage.report_speed_marks import legend_marker
+from codex_usage.report_speed_tooltips import css as tooltip_css
 
 
 def summary_html(stats: dict | None) -> str:
     if not stats or stats["median"] is None:
         return '<span title="Fewer than five eligible responses">Unavailable</span>'
-    label = detail(stats)
+    label = html.escape(detail(stats), quote=True).replace("\n", "&#10;")
     marker = ' <small class="speed-small">Small sample</small>' if stats["small"] else ""
-    return f'<span title="{html.escape(label, quote=True)}">{stats["median"]:.1f}</span>{marker}'
+    return f'<span title="{label}">{stats["median"]:.1f}</span>{marker}'
 
 
 def detail(stats):
     if stats["median"] is None:
-        return f'{stats["n"]} eligible responses; insufficient evidence'
-    return (f'{stats["median"]:.1f} tok/s; middle 50% {stats["p25"]:.1f}-{stats["p75"]:.1f}; '
-            f'{stats["n"]} responses; {stats["tasks"]} tasks; {stats["sources"]} sources'
-            + ("; small sample" if stats["small"] else ""))
+        plural = "" if stats["n"] == 1 else "s"
+        return f'Not enough data\n{stats["n"]:,} eligible response{plural} (at least 5 needed)'
+    responses = f'{stats["n"]:,} response' + ("" if stats["n"] == 1 else "s")
+    tasks = f'{stats["tasks"]:,} task' + ("" if stats["tasks"] == 1 else "s")
+    lines = [f'Median speed: {stats["median"]:.1f} tokens/s',
+        f'Typical range (middle 50%): {stats["p25"]:.1f}-{stats["p75"]:.1f} tokens/s',
+        f'{responses} across {tasks}']
+    if stats["small"]:
+        lines.append("Small sample (fewer than 20 responses)")
+    return "\n".join(lines)
 
 
 def command(nav, granularity, window_start=None, label=""):
@@ -129,4 +136,4 @@ def speed_css():
     .speed-evidence summary { cursor:pointer; }.speed-small { display:block; color:var(--highlight); font-size:10px; }
     .speed-evidence tr:target { outline:2px solid var(--highlight); }
     @media(max-width:430px) { .speed-heading h2 { font-size:18px; }.speed-window { gap:4px; } }
-    """
+    """ + tooltip_css()

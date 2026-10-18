@@ -81,6 +81,35 @@ def render(home, range_name="today", **kwargs):
         theme="night", timezone_name=kwargs.pop("timezone_name", "UTC"), now=AT, **kwargs)
 
 
+def test_tooltip_render_upgrade_reuses_account_and_monetary_preparation(tmp_path, monkeypatch):
+    from codex_usage import report_usage_breakdown as renderer
+    breakdown_home(tmp_path, extended=True)
+    original = renderer.render_breakdown
+
+    def legacy(*args, **kwargs):
+        return original(*args, **kwargs).replace('weekly allowance remaining', 'legacy allowance tooltip')
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(reports, 'BREAKDOWN_RENDER_REVISION', 0)
+        patcher.setattr(renderer, 'render_breakdown', legacy)
+        before = render(tmp_path)
+        assert 'legacy allowance tooltip' in before.html
+        assert render(tmp_path).html == before.html
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Tooltip upgrade revisited historical accounting')
+
+    for name in ('prepare', 'prepare_account', 'display_day', 'value_records', 'query_ledger_records'):
+        monkeypatch.setattr(reports, name, forbidden)
+    monkeypatch.setattr('codex_usage.agent_reports.materialize_ledger', forbidden)
+    monkeypatch.setattr('codex_usage.allowance_estimation.estimate_window', forbidden)
+    after = render(tmp_path)
+    assert 'weekly allowance remaining' in after.html and 'legacy allowance tooltip' not in after.html
+    assert before.ledger_revision == after.ledger_revision
+    assert before.breakdown_navigation['scope'] != after.breakdown_navigation['scope']
+    assert render(tmp_path).html == after.html
+
+
 def test_report_prepares_only_requested_days_and_caches_each_overlay(tmp_path):
     breakdown_home(tmp_path, extended=True, days=12)
     with patch.object(reports, "display_day", wraps=reports.display_day) as display:

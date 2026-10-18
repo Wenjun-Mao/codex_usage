@@ -12,9 +12,12 @@ from codex_usage.agent_reports import render_ledger_report
 from observed_speed_fixture import AT, chart_home, converging_chart
 from verification.visual_cases import identity
 from verification.visual_evidence import VisualEvidence
+from verification.speed_tooltips import check_point
+from verification.hover_measurements import STRICT
+from release.latency_context import runtime_context, validate_context
 
 
-def assert_chart_layout(section):
+def assert_chart_layout(section, *, tooltip_screenshot=None, tooltip_limit=.25):
     chart = section.locator(".speed-chart")
     if not chart.count():
         assert section.locator(".speed-empty").is_visible()
@@ -57,13 +60,21 @@ def assert_chart_layout(section):
         stroke = float(point.locator(".speed-marker").evaluate("e => getComputedStyle(e).strokeWidth").removesuffix("px")) / 2
         assert mark["x"] - stroke >= bounds["x"]
         assert mark["x"] + mark["width"] + stroke <= bounds["x"] + bounds["width"]
-        assert "middle 50%" in point.get_attribute("aria-label")
+        label = point.get_attribute("aria-label")
+        assert "Median speed:" in label and "Typical range (middle 50%):" in label
+        assert "tokens/s\n" in label and " responses across " in label
+        assert "T00:00:" not in label and ";" not in label
+        assert point.locator("title").count() == 0
         assert point.locator('.speed-interval').evaluate("e => getComputedStyle(e).visibility") == 'visible'
         assert point.evaluate("e => getComputedStyle(e).outlineStyle") == 'none'
         point.press("Enter")
         target = section.locator(point.get_attribute("href"))
         assert target.count() == 1 and target.is_visible(), "point detail stayed hidden"
-    hover_point = plot.locator('svg a').first
+    points = plot.locator('svg a')
+    times = [check_point(section.page, chart.locator('.speed-chart-grid'), point,
+                        screenshot=tooltip_screenshot if index == 0 else None, limit=tooltip_limit)
+             for index, point in enumerate((points.first, points.last))]
+    hover_point = points.first
     hover_point.locator('.speed-marker').hover()
     assert hover_point.locator('.speed-interval').evaluate("e => getComputedStyle(e).visibility") == 'visible'
     section.locator('.speed-unit').hover()
@@ -76,7 +87,7 @@ def assert_chart_layout(section):
     assert section.locator("details").get_attribute("open") is not None
     summary.press("Enter")
     return {"empty": False, "visible_ticks": len(labels), "plot_width": bounds["width"],
-            "points": plot.locator("svg a").count(), "keyboard_detail": True}
+            "points": points.count(), "keyboard_detail": True, "tooltip_seconds": times}
 
 
 def main():
@@ -84,7 +95,11 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("output/playwright/observed-speed"))
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    evidence = {"synthetic_only": True, "browser_views": [], "performance": {}}
+    timing = runtime_context()
+    origin = {**timing['origin'], 'job_key': 'visual'} if timing['execution'] == 'hosted' else None
+    policy = validate_context(timing, source=timing['source'], origin=origin)
+    evidence = {"synthetic_only": True, "browser_views": [], "performance": {},
+                "timing_context": timing, "timing_policy": policy}
     with VisualEvidence(args.output, "speed") as audit, TemporaryDirectory(prefix="speed-ui-") as raw:
         home = Path(raw)
         started = perf_counter()
@@ -110,6 +125,7 @@ def main():
         evidence["performance"]["warm_monetary_materializations"] = 0
         with sync_playwright() as playwright:
             for engine in ("chromium", "webkit", "firefox"):
+                limit = 2.0 if engine == 'webkit' and policy != STRICT else .25
                 browser = getattr(playwright, engine).launch()
                 context = browser.new_context(java_script_enabled=False)
                 try:
@@ -124,7 +140,7 @@ def main():
                                 page.set_viewport_size({'width': width, 'height': 900})
                                 page.goto(document.resolve().as_uri())
                                 section = page.locator('.observed-speed')
-                                layout = assert_chart_layout(section)
+                                layout = assert_chart_layout(section, tooltip_limit=limit)
                                 assert page.locator("script").count() == 0
                                 assert section.locator('.speed-series-label').count() == 3
                                 if engine == 'chromium':
@@ -161,7 +177,9 @@ def main():
                                     assert section.locator(".speed-legend span").count() == 3
                                     box = section.bounding_box()
                                     assert box and box["x"] >= 0 and box["x"] + box["width"] <= width + 1
-                                    layout = assert_chart_layout(section)
+                                    tooltip_shot = (args.output / f'{theme}-{name}-{suffix}-tooltip.png'
+                                        if engine == 'chromium' and theme == 'night' and name == 'hourly' else None)
+                                    layout = assert_chart_layout(section, tooltip_screenshot=tooltip_shot, tooltip_limit=limit)
                                     if name == "empty-week":
                                         assert layout["empty"]
                                         assert section.locator(".speed-overview circle").count() > 0
@@ -176,6 +194,13 @@ def main():
                 finally:
                     context.close()
                     browser.close()
+    evidence['tooltip_observations'] = {}
+    for engine in ('chromium', 'webkit', 'firefox'):
+        values = [value for view in evidence['browser_views'] if view['engine'] == engine
+                  for sample in view.get('tooltip_seconds', []) for value in sample.values()]
+        evidence['tooltip_observations'][engine] = {
+            'count': len(values), 'max_seconds': max(values),
+            'at_or_above_250ms': sum(value >= .25 for value in values)}
     (args.output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print(json.dumps({"browser_views": len(evidence["browser_views"]), "performance": evidence["performance"]}))
 

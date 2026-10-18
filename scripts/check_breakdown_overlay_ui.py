@@ -98,6 +98,11 @@ def main():
                                 assert marks.count() == len(readings), (engine, label, marks.count())
                                 assert marks.evaluate_all("es => es.every(e => e.tagName === 'circle' && e.getAttribute('aria-label').includes('right axis'))")
                                 last = chart.locator('.ub-account-point[data-latest="true"][fill="var(--text)"]').first
+                                tooltip = last.get_attribute('aria-label')
+                                assert tooltip == last.locator('title').text_content()
+                                assert tooltip.endswith('Account-wide · right axis')
+                                assert len(tooltip.splitlines()) == 4 and ' at ' in tooltip
+                                assert 'T00:' not in tooltip and ' | ' not in tooltip
                                 point_color = last.evaluate("e => getComputedStyle(e).fill")
                                 text_color = chart.locator(".ub-account-title").evaluate("e => getComputedStyle(e).color")
                                 assert point_color == text_color, (engine, label, point_color, text_color)

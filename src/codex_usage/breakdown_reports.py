@@ -23,6 +23,7 @@ from codex_usage.parser import finalize_session_records
 from codex_usage.project_transitions import apply_project_transitions
 
 BREAKDOWN_REVISION = 8
+BREAKDOWN_RENDER_REVISION = 1
 
 
 def digest(value):
@@ -222,7 +223,8 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_acti
                 key = prefix + name
             return writes[key] if key in writes else load(connection, key) or default
         info = partition(state["basis"] + ":summary", {})
-        scope = digest([identity, REPORT_RENDER_REVISION, metadata["evidence"], reason, live_evidence_state(live), state])
+        scope = digest([identity, REPORT_RENDER_REVISION, BREAKDOWN_RENDER_REVISION,
+                        metadata["evidence"], reason, live_evidence_state(live), state])
         nav = {"scope": scope, "state": state, "actions": [], "evidence_state": live_evidence_state(live)}
         section_key = prefix + "section:" + scope
         cached_section = connection.execute("select html from rendered_reports where cache_key=?", (section_key,)).fetchone()
