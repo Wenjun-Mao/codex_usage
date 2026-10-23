@@ -2,16 +2,11 @@
 import json
 import math
 from collections import defaultdict
+from codex_usage.allowance_capture_codec import decode_captures, encode_captures, point_key as _point_key
 
-REPORT_CACHE_FORMAT_REVISION = 2
+REPORT_CACHE_FORMAT_REVISION = 3
 REPORT_FORMAT = f"allowance-window-references-{REPORT_CACHE_FORMAT_REVISION}"
 LEGACY_REPORT_FORMAT = "allowance-window-references-1"
-
-
-def _point_key(point):
-    if not isinstance(point, dict):
-        raise ValueError("Invalid allowance capture")
-    return json.dumps(point, sort_keys=True, separators=(",", ":"))
 
 
 def _index(value, size, label):
@@ -39,12 +34,16 @@ def encode_report(report):
     data["headline"] = reference(report["headline"])
     history = report.get("display_history")
     captures = list(history["captures"]) if history is not None else []
-    capture_positions = {_point_key(point): index for index, point in enumerate(captures)}
-    if len(capture_positions) != len(captures):
-        raise ValueError("Duplicate allowance capture")
+    capture_positions = None
+    object_positions = {id(point): index for index, point in enumerate(captures)}
 
     def point_reference(point):
+        nonlocal capture_positions
+        if id(point) in object_positions:
+            return object_positions[id(point)]
         key = _point_key(point)
+        if capture_positions is None:
+            capture_positions = {_point_key(p): i for i, p in enumerate(captures)}
         if key not in capture_positions:
             if history is not None:
                 raise ValueError("Allowance window capture outside display history")
@@ -62,21 +61,25 @@ def encode_report(report):
         if reset["captures"] is not history["captures"] and reset["captures"] != history["captures"]:
             raise ValueError("Reset history must share canonical captures")
         data["reset_history"] = {key: value for key, value in reset.items() if key != "captures"}
-    return json.dumps({"format": REPORT_FORMAT, "captures": captures, "report": data})
+    schemas, rows = encode_captures(captures)
+    return json.dumps({"format": REPORT_FORMAT, "capture_schemas": schemas,
+                       "captures": rows, "report": data})
 
 
 def decode_report(payload):
     encoded = json.loads(payload)
     format_id = encoded.get("format")
-    if format_id not in {REPORT_FORMAT, LEGACY_REPORT_FORMAT}:
+    if format_id not in {REPORT_FORMAT, "allowance-window-references-2", LEGACY_REPORT_FORMAT}:
         if "format" in encoded:
             raise ValueError("Unknown allowance cache format")
         return encoded
     report = encoded["report"]
     windows = report["windows"]
-    if format_id == REPORT_FORMAT:
-        captures = encoded["captures"]
-        if not isinstance(captures, list) or len({_point_key(p) for p in captures}) != len(captures):
+    if format_id != LEGACY_REPORT_FORMAT:
+        captures = (decode_captures(encoded.get("capture_schemas"), encoded["captures"])
+                    if format_id == REPORT_FORMAT else encoded["captures"])
+        if format_id != REPORT_FORMAT and (not isinstance(captures, list)
+                or len({_point_key(p) for p in captures}) != len(captures)):
             raise ValueError("Invalid or duplicate allowance captures")
         used = set()
         for item in windows:

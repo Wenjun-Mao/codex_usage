@@ -323,6 +323,11 @@ def estimate_cost(
     entry = _schedule_entry_for_model(API_PRICING_USD_SCHEDULE, model, at)
     if entry is None:
         return None
+    return cost_for_entry(usage, entry)
+
+
+def cost_for_entry(usage: TokenUsage, entry: EffectiveModelRate) -> CostBreakdown:
+    """Value one response using its resolved effective entry, including context tier."""
     rate = entry.rate_for_usage(usage)
 
     ordinary_input_usd = usage.ordinary_input_tokens / 1_000_000 * rate.input_per_1m
@@ -351,6 +356,10 @@ def estimate_codex_credits(
     rate = credit_rate_for_model(model, at=at)
     if rate is None:
         return None
+    return credits_for_rate(usage, rate)
+
+
+def credits_for_rate(usage: TokenUsage, rate: ModelRate) -> CreditBreakdown:
 
     ordinary_input_credits = usage.ordinary_input_tokens / 1_000_000 * rate.input_per_1m
     cache_write_input_credits = (

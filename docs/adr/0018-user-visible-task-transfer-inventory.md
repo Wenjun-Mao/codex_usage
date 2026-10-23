@@ -1,7 +1,7 @@
 # ADR 0018: User-Visible Task Transfer Inventory
 
 ## Status
-Accepted
+Superseded by [ADR 0076](0076-retire-task-transfer.md) in 2.13.0.
 
 ## Context
 Codex stores user tasks and internal subagent sessions in the same JSONL tree. Task Transfer also reused usage parsing and full synchronization planning before selection, causing incorrect counts and multi-minute browse latency.

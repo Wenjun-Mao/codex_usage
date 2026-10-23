@@ -168,10 +168,6 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                         HTTPStatus.OK,
                         agent.migrate_legacy(dict(raw_precedence)),
                     )
-                elif path == "/v1/transfer/inventory":
-                    self._json(HTTPStatus.OK, agent.transfer_inventory(payload))
-                elif path == "/v1/transfer/execute":
-                    self._json(HTTPStatus.OK, agent.execute_transfer(payload))
                 elif path == "/v1/shutdown":
                     self._json(HTTPStatus.ACCEPTED, {"stopping": True})
                     threading.Timer(0.05, agent.request_shutdown).start()

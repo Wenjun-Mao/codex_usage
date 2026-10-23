@@ -106,7 +106,7 @@ def test_windows_launch_environment_and_cleanup_contract(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "WindowsJob", Job)
     monkeypatch.setattr(module, "windows_runtime", lambda: True)
     monkeypatch.setattr(module.subprocess, "Popen", lambda *a, **kw: launched.append((a, kw)) or process)
-    monkeypatch.setattr(module, "_stop_process_tree", stopped.append)
+    monkeypatch.setattr(module, "stop_app_server_process_tree", stopped.append)
     with AppServerRpc("codex.exe", tmp_path) as rpc:
         assert rpc.call("account/read") == {"ok": True}
     assert launched[0][1]["creationflags"] == 512

@@ -105,6 +105,18 @@ def ensure_tracking(connection):
         connection.execute(sql)
 
 
+def tracking_valid(connection):
+    definitions = trigger_definitions()
+    contract = hashlib.sha256(json.dumps(definitions, sort_keys=True).encode()).hexdigest()
+    tables = {row[0] for row in connection.execute("select name from sqlite_master where type='table'")}
+    if not {"allowance_window_tracking", "allowance_window_cache", "allowance_window_dirty"} <= tables:
+        return False
+    previous = connection.execute("select contract from allowance_window_tracking").fetchone()
+    installed = dict(connection.execute(
+        "select name, sql from sqlite_master where type='trigger' and substr(name,1,18)='allowance_windows_'"))
+    return bool(previous and previous[0] == contract and installed == definitions)
+
+
 def repair_existing_tracking(connection):
     """Recover optional tracking before a writable connection can capture.
 

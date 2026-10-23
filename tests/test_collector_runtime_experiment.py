@@ -48,7 +48,7 @@ def test_empty_ci_host_accepts_unresolved_fallback_but_rejects_real_cli(monkeypa
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    monkeypatch.setattr("codex_usage.codex_registration.discover_codex_executables", lambda: ("codex",))
+    monkeypatch.setattr("codex_usage.codex_runtime.discover_codex_executables", lambda: ("codex",))
     monkeypatch.setattr(module.shutil, "which", lambda candidate: None)
     module.require_disposable_host()
     monkeypatch.setattr(module.shutil, "which", lambda candidate: "/installed/codex")

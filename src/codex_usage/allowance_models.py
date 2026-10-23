@@ -7,8 +7,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 
+class _ObservationMemo:
+    # Derived scalar slots are not evidence fields and never enter serialization.
+    __slots__ = ("_identity_hash", "_timestamp_seconds")
+
+
 @dataclass(frozen=True, slots=True)
-class QuotaObservation:
+class QuotaObservation(_ObservationMemo):
     timestamp: str
     limit_id: str
     slot: str
@@ -17,6 +22,24 @@ class QuotaObservation:
     duration_minutes: int | None
     resets_at: int | None
     reset_credits: int | None = None
+
+    def __hash__(self):
+        try:
+            return self._identity_hash
+        except AttributeError:
+            value = hash((self.timestamp, self.limit_id, self.slot, self.plan, self.used_percent,
+                          self.duration_minutes, self.resets_at, self.reset_credits))
+            object.__setattr__(self, "_identity_hash", value)
+            return value
+
+    @property
+    def timestamp_seconds(self):
+        try:
+            return self._timestamp_seconds
+        except AttributeError:
+            value = datetime.fromisoformat(self.timestamp).timestamp()
+            object.__setattr__(self, "_timestamp_seconds", value)
+            return value
 
     def to_dict(self):
         return {

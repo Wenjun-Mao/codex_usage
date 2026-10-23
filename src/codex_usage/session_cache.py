@@ -49,6 +49,7 @@ from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     collect_session_file_inventory,
 )
+from codex_usage.sqlite_writer_admission import admit_sqlite_writer
 
 CACHE_DB_NAME = "usage-cache-v9.sqlite3"
 LEGACY_CACHE_DB_NAMES = (
@@ -145,6 +146,13 @@ def resolve_cache_dir(session_dirs: list[Path], cache_dir: Path | None = None) -
 
 @contextmanager
 def _open_cache_connection(path: Path):
+    with admit_sqlite_writer(path):
+        with _cache_connection(path) as connection:
+            yield connection
+
+
+@contextmanager
+def _cache_connection(path: Path):
     connection = sqlite3.connect(path)
     try:
         from codex_usage.ledger_writer_contract import authorize_cache_connection

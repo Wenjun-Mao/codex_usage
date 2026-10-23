@@ -38,7 +38,23 @@ class _ScheduleKey:
 
 
 def schedule_entry_for_model(schedule, model, at=None):
-    timeline = _compiled_schedule(_ScheduleKey(schedule)).get(model.strip().casefold())
+    return _entry_at(_compiled_schedule(_ScheduleKey(schedule)).get(model.strip().casefold()), at)
+
+
+class ScheduleResolver:
+    """One immutable schedule binding per valuation, with request-local aliases."""
+
+    def __init__(self, schedule):
+        self.compiled = _compiled_schedule(_ScheduleKey(schedule))
+        self.models = {}
+
+    def entry(self, model, at=None):
+        if model not in self.models:
+            self.models[model] = self.compiled.get(model.strip().casefold())
+        return _entry_at(self.models[model], at)
+
+
+def _entry_at(timeline, at):
     if timeline is None:
         return None
     effective_at = normalize_effective_at(at)

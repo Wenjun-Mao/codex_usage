@@ -152,7 +152,6 @@ def _check_usage(page: Page, theme: str) -> None:
     page.get_by_role("heading", name="Token Usage", exact=True).wait_for()
     page.get_by_role("heading", name="Plan Allowance", exact=True).wait_for()
     page.get_by_role("link", name="Capture Usage", exact=True).wait_for()
-    page.get_by_role("link", name="Task Transfer", exact=True).wait_for()
     assert page.locator('a[href="command:codexUsage.refreshDashboard"]').count() == 0
     assert page.get_by_role("link", name="Open App", exact=True).count() == 0
     assert page.locator(".project-role-group").count() > 0
@@ -188,7 +187,7 @@ def _check_storage(page: Page, theme: str) -> None:
     page.get_by_role("heading", name="Largest Task Trees", exact=True).wait_for()
     page.get_by_text("Build onboarding flow", exact=True).wait_for()
     assert page.get_by_role("link", name="Analyze", exact=True).count() >= 1
-    assert page.get_by_role("link", name="Task Transfer", exact=True).count() == 1
+    assert page.get_by_role("link", name="Task Transfer", exact=True).count() == 0
     assert page.get_by_role("link", name="Reload storage inventory", exact=True).count() == 1
 
 

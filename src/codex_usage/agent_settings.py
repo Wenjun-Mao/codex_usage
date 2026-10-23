@@ -33,6 +33,7 @@ class AgentSettings:
     timezone: str | None = None
     theme: str = "auto"
     auto_project_transitions: bool = True
+    # Preserve legacy configuration without accessing or activating the folder.
     transfer_folder: str = ""
     schema_version: int = SETTINGS_SCHEMA_VERSION
 

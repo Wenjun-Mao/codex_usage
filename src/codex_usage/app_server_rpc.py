@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from codex_usage import __version__
-from codex_usage.codex_registration import _stop_process_tree
+from codex_usage.codex_runtime import stop_app_server_process_tree
 from codex_usage.windows_job import WindowsJob
 
 
@@ -76,7 +76,7 @@ class AppServerRpc:
                 self.job.close()
                 self.job = None
             else:
-                _stop_process_tree(self.process)
+                stop_app_server_process_tree(self.process)
             try:
                 self.process.wait(timeout=2)
             except subprocess.TimeoutExpired:

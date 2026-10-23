@@ -2,6 +2,9 @@
 
 Status: Accepted; Desktop project-registry guardrails partially superseded by ADR 0029
 
+Task Transfer behavior superseded by [ADR 0076](0076-retire-task-transfer.md)
+in 2.13.0. The original decision below is retained as historical evidence.
+
 Date: 2026-07-23
 
 ## Context

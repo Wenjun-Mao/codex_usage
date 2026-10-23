@@ -14,7 +14,7 @@ from codex_usage.breakdown_aggregation import aggregate
 from codex_usage.breakdown_evidence import prepare_evidence, weekly_anchors
 from codex_usage.breakdown_intervals import BreakdownInterval
 from codex_usage.breakdown_preparation import prepare_account
-from codex_usage.breakdown_readings import display_day
+from codex_usage.breakdown_day_cache import reused_display_day as display_day
 from codex_usage.breakdown_commands import BreakdownScopeExpired, issued_action, receipt, prune_receipts, RECEIPT_PREFIX
 from codex_usage.breakdown_state import validate_state
 from codex_usage.ledger_queries import query_ledger_records, query_ledger_status, query_ledger_transitions
@@ -35,11 +35,12 @@ def load(connection, key):
     return json.loads(row[0]) if row else None
 
 
-def store(path, revision, payloads):
+def store(path, revision, payloads, *, history_cache=None, dependency=None):
     from codex_usage.agent_reports import PRICING_REVISION
+    from codex_usage.dashboard_preparation_tracking import token
     with open_ledger(path) as writer:
         writer.execute("begin immediate")
-        if ledger_revision(writer) != revision:
+        if ledger_revision(writer) != revision or dependency is None or token(writer) != dependency:
             return
         writer.executemany("insert or replace into rendered_reports values (?,?,?,?,?)",
             [(k, revision, PRICING_REVISION, datetime.now(UTC).isoformat(), v if isinstance(v, str) else json.dumps(v))
@@ -47,6 +48,8 @@ def store(path, revision, payloads):
         prune_receipts(writer)
         from codex_usage.allowance_history_navigation import RECEIPT_PREFIX as allowance_prefix
         prune_receipts(writer, prefix=allowance_prefix)
+        if history_cache is not None:
+            history_cache.finish(writer)
         writer.commit()
 
 
@@ -134,9 +137,11 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_acti
         start_date=kwargs.get("start_date"), end_date=kwargs.get("end_date"), now=kwargs["now"])
     keys = sorted(set(kwargs["project_keys"] or []))
     path = ledger_database_path(codex_home)
-    writes, sink = {}, {}
+    writes, sink, encoded_writes = {}, {}, {}
     with open_ledger(path, read_only=True) as connection:
         connection.execute("begin")
+        from codex_usage.dashboard_preparation_tracking import token
+        dependency = token(connection)
         status = query_ledger_status(connection, now=kwargs["now"])
         from codex_usage.allowance_history_reports import context_identity, prepare_state, render_history
         history_context = context_identity(status, kwargs, report_range, path)
@@ -201,7 +206,15 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_acti
                 cached = account_read(name)
                 if cached is None:
                     display_start = monotonic()
-                    cached = display_day(name, timezone, account_read)
+                    def encoded_read(suffix):
+                        key = metadata["account_prefix"] + suffix
+                        if key in writes:
+                            if key not in encoded_writes:
+                                encoded_writes[key] = json.dumps(writes[key])
+                            return encoded_writes[key]
+                        row = connection.execute("select html from rendered_reports where cache_key=?", (key,)).fetchone()
+                        return row[0] if row else None
+                    cached = display_day(name, timezone, encoded_read, sink["quota"].history_cache)
                     writes[metadata["account_prefix"] + name] = cached
                     cold_seconds += monotonic() - display_start
                 return cached
@@ -244,6 +257,7 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_acti
         rendered = rendered.replace('<section class="section observed-speed"', section + '<section class="section observed-speed"', 1)
         rendered, history_nav, history_hit = render_history(connection, rendered, history_context, history_state,
                                                            status, timezone, sink, writes)
-    store(path, status.revision, writes)
+    writes.update(encoded_writes)
+    store(path, status.revision, writes, history_cache=sink["quota"].__dict__.get("history_cache"), dependency=dependency)
     return RenderedLedgerReport(rendered, base.ledger_revision, base.cache_hit and not cold_seconds and history_hit,
         monotonic() - started, base.status, base.speed_navigation, nav, history_nav)

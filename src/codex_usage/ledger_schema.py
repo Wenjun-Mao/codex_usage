@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Iterator
 from codex_usage.ledger_writer_contract import (
@@ -10,6 +10,7 @@ from codex_usage.ledger_writer_contract import (
     admit_ledger_privacy_paths,
 )
 from codex_usage.cache_refresh_lock import validate_owned_cache_refresh_lock
+from codex_usage.sqlite_writer_admission import admit_sqlite_writer
 
 import codex_usage.session_cache_schema as parser_schema
 from codex_usage.agent_private_files import (
@@ -20,6 +21,10 @@ from codex_usage.agent_private_files import (
 
 
 LEDGER_REVISION_KEY = "ledger_revision"
+
+
+class ReadOnlyLedgerConnection(sqlite3.Connection):
+    """Marker for mode=ro handles eligible for immutable snapshot reuse."""
 
 
 def configure_ledger_connection(connection: sqlite3.Connection, *, journal_mode=True) -> None:
@@ -40,10 +45,26 @@ def open_ledger(
     maintenance_agent_lock=None,
     maintenance_cache_refresh_lock=None,
 ) -> Iterator[sqlite3.Connection]:
+    admission = nullcontext() if read_only else admit_sqlite_writer(path)
+    with admission:
+        with _open_ledger_connection(path, read_only=read_only,
+                maintenance_agent_lock=maintenance_agent_lock,
+                maintenance_cache_refresh_lock=maintenance_cache_refresh_lock) as connection:
+            yield connection
+
+
+@contextmanager
+def _open_ledger_connection(
+    path: Path,
+    *,
+    read_only: bool,
+    maintenance_agent_lock,
+    maintenance_cache_refresh_lock,
+) -> Iterator[sqlite3.Connection]:
     if maintenance_cache_refresh_lock is not None:
         validate_owned_cache_refresh_lock(path, maintenance_cache_refresh_lock)
     if read_only:
-        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True, factory=ReadOnlyLedgerConnection)
     else:
         path = admit_ledger_privacy_paths(path)
         ensure_private_directory(path.parent)
@@ -64,6 +85,8 @@ def open_ledger(
             )
             from codex_usage.allowance_window_tracking import repair_existing_tracking
             repair_existing_tracking(connection)
+            from codex_usage.dashboard_preparation_tracking import prepare_writer
+            prepare_writer(connection)
         yield connection
     except BaseException as error:
         primary = error

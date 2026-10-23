@@ -64,12 +64,14 @@ def speed_aggregates(connection, report_range, project_keys, timezone, *, auto_t
         join ledger_projects p on p.project_id=c.project_id
         left join ledger_speed_identities i on i.response_id=f.response_id
         where {' and '.join(clauses)} order by f.timestamp_us, f.generation_id, f.record_index""", args).fetchall()
-    records = [_row_to_usage_record(row) for row in rows]
+    selected = set(project_keys)
+    # Ownership matters only when selecting projects. Account-wide speed uses
+    # normalized model, task and timestamp facts, not full priced usage records.
+    records = [_row_to_usage_record(row) for row in rows] if selected else [None] * len(rows)
     # Normalized events already follow the parser's verified ownership rebuild;
     # temporal transitions must still be applied before any project filter.
-    if auto_transitions:
+    if selected and auto_transitions:
         records = apply_project_transitions(records, query_ledger_transitions(connection))
-    selected = set(project_keys)
     groups, daily, hourly = defaultdict(list), defaultdict(list), defaultdict(list)
     reasons = Counter()
     for row, record in zip(rows, records):
@@ -85,13 +87,14 @@ def speed_aggregates(connection, report_range, project_keys, timezone, *, auto_t
             reasons[reason] += 1
             continue
         sample = {"rate": fact["usage"][3] * 1000 / (fact["end_ms"] - fact["start_ms"]),
-                  "task": record.session_id, "source": row["source_id"]}
-        local = record.timestamp.astimezone(timezone)
+                  "task": record.session_id if record is not None else str(row["task_id"]), "source": row["source_id"]}
+        local = (record.timestamp if record is not None else datetime.fromisoformat(row["timestamp"])).astimezone(timezone)
+        model = record.model if record is not None else row["model_key"]
         day = local.date().isoformat()
         hour = hour_bucket(local)
-        groups[record.model].append(sample)
-        daily[(record.model, day)].append(sample)
-        hourly[(record.model, hour)].append(sample)
+        groups[model].append(sample)
+        daily[(model, day)].append(sample)
+        hourly[(model, hour)].append(sample)
     result = {
         "summaries": {model: describe(samples) for model, samples in sorted(groups.items())},
         "daily": [{"model": m, "bucket": b, **describe(s)} for (m, b), s in sorted(daily.items())],

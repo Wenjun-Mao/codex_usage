@@ -19,6 +19,7 @@ from codex_usage.models import (
 )
 from codex_usage.model_presentation import model_display_sort_key
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
+from codex_usage.summary_accumulator import SummaryAccumulator
 
 OTHER_MODEL_KEY = "__codex_usage_other_models__"
 OTHER_MODEL_LABEL = "Other"
@@ -79,10 +80,10 @@ def build_report_breakdown_from_valued(
             f"visual_model_limit must be between 0 and {MAX_VISUAL_MODEL_COUNT}"
         )
 
-    project_role_model: dict[str, dict[UsageRole, dict[str, UsageSummary]]] = {}
-    project_totals: dict[str, UsageSummary] = {}
+    project_role_model: dict[str, dict[UsageRole, dict[str, SummaryAccumulator]]] = {}
+    project_totals: dict[str, SummaryAccumulator] = {}
     project_labels: dict[str, str] = {}
-    model_totals: dict[str, UsageSummary] = {}
+    model_totals: dict[str, SummaryAccumulator] = {}
 
     for valued in valued_records:
         record = valued.record
@@ -90,14 +91,20 @@ def build_report_breakdown_from_valued(
             continue
         record_summary = valued.summary
         project_labels[record.project_key] = record.project_label
-        project_totals[record.project_key] = _add(
+        project_totals[record.project_key] = _accumulate(
             project_totals.get(record.project_key), record_summary
         )
-        model_totals[record.model] = _add(model_totals.get(record.model), record_summary)
+        model_totals[record.model] = _accumulate(model_totals.get(record.model), record_summary)
         role_models = project_role_model.setdefault(record.project_key, {}).setdefault(
             record.usage_role, {}
         )
-        role_models[record.model] = _add(role_models.get(record.model), record_summary)
+        role_models[record.model] = _accumulate(role_models.get(record.model), record_summary)
+
+    project_totals = {key: value.freeze() for key, value in project_totals.items()}
+    model_totals = {key: value.freeze() for key, value in model_totals.items()}
+    project_role_model = {project: {role: {model: value.freeze() for model, value in models.items()}
+                                   for role, models in roles.items()}
+                          for project, roles in project_role_model.items()}
 
     visual_models = _visual_models(model_totals, visual_model_limit)
     model_rows = tuple(
@@ -135,6 +142,13 @@ def build_report_breakdown_from_valued(
     )
     _validate_breakdown(report)
     return report
+
+
+def _accumulate(existing, value):
+    if existing is None:
+        return SummaryAccumulator(value)
+    existing.add(value)
+    return existing
 
 
 def _add(summary: UsageSummary | None, value: UsageSummary) -> UsageSummary:

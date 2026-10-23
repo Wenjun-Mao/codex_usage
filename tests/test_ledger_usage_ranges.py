@@ -31,10 +31,10 @@ def test_union_seeks_timestamp_index_and_decodes_only_union_members(tmp_path, mo
     import codex_usage.ledger_queries as queries
     decoded = []
     original = queries._row_to_usage_record
-    def checked(row):
+    def checked(row, metadata):
         assert lo < row["timestamp_us"] <= hi
         decoded.append(row["event_id"])
-        return original(row)
+        return original(row, metadata)
     monkeypatch.setattr(queries, "_row_to_usage_record", checked)
     with open_ledger(path, read_only=True) as connection:
         records = query_ledger_records(connection, bounds_union=ranges)

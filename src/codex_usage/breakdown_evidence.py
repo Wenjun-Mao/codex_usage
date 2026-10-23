@@ -17,7 +17,7 @@ def weekly_anchors(status):
 
 def prepare_evidence(connection, report, now, *, preparation=None):
     preparation = preparation or AllowancePreparation(connection)
-    points, provenance, _ = preparation.raw
+    points, _, _ = preparation.raw
     anchors = weekly_anchors(report["status"])
     prepared = preparation.pace({(p.limit_id, 10080) for p in points if p.duration_minutes == 10080})
     reason = "weekly live evidence unavailable"
@@ -38,7 +38,7 @@ def prepare_evidence(connection, report, now, *, preparation=None):
                      "plan": evidence.plan, "boundary": evidence.boundary,
                      "full_at": evidence.reported_full_at, "corrections": evidence.corrections}
     # Preserve every reading, identity and source, including conflicting points.
-    captured = [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in points]
+    captured = [preparation.captures.exported(p) for p in points]
     return {"cycle": cycle, "reason": reason, "points": captured,
             "windows": observed_windows(prepared), "balances": prepare_balances(connection),
             "paces": report.get("paces", [])}

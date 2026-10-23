@@ -87,7 +87,7 @@ def _fragment(report, fragment, timezone, link):
     return (
         '<li class="allowance-history-item">'
         f'<div class="allowance-history-heading"><span class="allowance-history-series">'
-        f'{_window(report["display_history"], fragment, timezone)}</span>'
+        f'{_window(report_history(report), fragment, timezone)}</span>'
         f'<strong>{status}</strong></div>'
         f'<p class="allowance-history-meta">{identity}{next_reset}{detail}</p></li>'
     )

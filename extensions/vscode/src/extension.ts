@@ -8,7 +8,6 @@ import { decorateUsageReport, renderError, renderLoading, renderStorageReport, W
 import { collectorSetupChoices, projectTransitionChoices } from "./setupPresentation";
 import { chooseCodexHome, configureCaptureInterval } from "./collectorConfiguration";
 import { StorageClient } from "./storageClient";
-import { TaskTransferClient } from "./taskTransferClient";
 import type { AgentActivityExport, AgentSettings, AgentStatus, CustomDateRange, ProjectSummary, ReportRange, ReportTheme, ReportView, StorageSnapshot } from "./types";
 import { usageReportNeedsRefresh, usageStatusFingerprint } from "./usageRefreshPolicy";
 import { chooseProjects } from "./projectSelection";
@@ -27,7 +26,6 @@ let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
 let contextRef: vscode.ExtensionContext;
 let agentSupervisor: AgentSupervisor;
-let taskTransferClient: TaskTransferClient;
 let activeView: ReportView = "usage";
 let refreshSerial = 0;
 let statusTimer: NodeJS.Timeout | undefined;
@@ -51,7 +49,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   const acquireClient = () => acquireAgentClient(true);
   registerDiagnosticsCommand(context, vscode);
-  taskTransferClient = new TaskTransferClient(acquireClient, output);
   const storage = new StorageClient(acquireClient, output, refreshVisibleDashboard);
   context.subscriptions.push(
     output,
@@ -80,11 +77,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.showUsageView", () => selectView("usage")),
     vscode.commands.registerCommand("codexUsage.showStorageView", () => selectView("storage")),
     vscode.commands.registerCommand("codexUsage.reviewProjectTransitions", reviewTransitions),
-    vscode.commands.registerCommand("codexUsage.openTaskTransfer", () => taskTransferClient.menu()),
-    vscode.commands.registerCommand("codexUsage.importTasks", () => taskTransferClient.run("import")),
-    vscode.commands.registerCommand("codexUsage.exportTasks", () => taskTransferClient.run("export")),
-    vscode.commands.registerCommand("codexUsage.reviewTransferStatus", () => taskTransferClient.run("status")),
-    vscode.commands.registerCommand("codexUsage.chooseTransferFolder", () => taskTransferClient.chooseFolder()),
     vscode.commands.registerCommand("codexUsage.analyzeTaskStorage", (treeId?: unknown) => storage.analyze(treeId)),
     vscode.commands.registerCommand("codexUsage.configure", configureCollector),
     vscode.commands.registerCommand("codexUsage.handoffLegacyService", handoffLegacyService),
@@ -328,7 +320,6 @@ async function configureCollector(): Promise<void> {
   }
   if (selected.action === "interval") await configureCaptureInterval(client, refreshStatus);
   else if (selected.action === "transitions") await configureProjectTransitions(client);
-  else if (selected.action === "transferFolder") await taskTransferClient.chooseFolder(client);
   else if (selected.action === "migration") {
     if (await migrateLegacyUsage(client)) {
       await refreshStatus(false, false);

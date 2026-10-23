@@ -252,7 +252,7 @@ def test_uncached_views_reuse_account_wide_allowance_result(tmp_path, monkeypatc
         assert not report.cache_hit
     assert calls == {"price": 1, "events": 1, "windows": 1}
     with open_ledger(ledger, read_only=True) as connection:
-        assert connection.execute("select count(*) from allowance_report_cache").fetchone()[0] == 2
+        assert connection.execute("select count(*) from allowance_report_cache").fetchone()[0] == 3
 
 
 def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_path):
@@ -274,7 +274,8 @@ def test_unknown_plan_continuity_cache_invalidation_and_real_reset_fallback(tmp_
     with open_ledger(ledger) as connection:
         assert {r[0] for r in connection.execute("select pricing_revision from allowance_report_cache")} == {
             f"p1:allowance-index-2:report-{allowance_index.ALLOWANCE_REPORT_REVISION}:cache-format-{allowance_index.REPORT_CACHE_FORMAT_REVISION}",
-            f"p1:allowance-index-2:report-{allowance_index.ALLOWANCE_REPORT_REVISION}:cache-format-{allowance_index.REPORT_CACHE_FORMAT_REVISION}:pace-state"}
+            f"p1:allowance-index-2:report-{allowance_index.ALLOWANCE_REPORT_REVISION}:cache-format-{allowance_index.REPORT_CACHE_FORMAT_REVISION}:pace-state",
+            f"p1:allowance-index-2:report-{allowance_index.ALLOWANCE_REPORT_REVISION}:cache-format-{allowance_index.REPORT_CACHE_FORMAT_REVISION}:history-overview-1"}
 
     # Use independent synthetic cumulative costs to exercise headline selection.
     from codex_usage.allowance_queries import _build_from_costs
@@ -315,7 +316,7 @@ def test_report_revision_refreshes_provenance_without_repricing_events(tmp_path,
     _compare(ledger)
     with open_ledger(ledger) as connection:
         costs = [tuple(row) for row in connection.execute("select * from allowance_event_costs")]
-        connection.execute("update allowance_report_cache set pricing_revision = 'p1:allowance-index-2', report_json = ? where pricing_revision not like '%:pace-state'",
+        connection.execute("update allowance_report_cache set pricing_revision = 'p1:allowance-index-2', report_json = ? where pricing_revision not like '%:pace-state' and pricing_revision not like '%:history-overview-1'",
                            ('{"stale": true}',))
         connection.commit()
 

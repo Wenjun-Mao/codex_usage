@@ -10,12 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DOCS = (ROOT / "README.md", ROOT / "extensions/vscode/README.md")
 ADR_0014 = ROOT / "docs/adr/0014-manual-task-transfer.md"
 ADR_INDEX = ROOT / "docs/adr/README.md"
-CURRENT_TASK_TRANSFER_FIXTURES = (
-    ROOT / "src/codex_usage/agent_transfer.py",
-    ROOT / "src/codex_usage/sync/planner.py",
-    ROOT / "extensions/vscode/src/taskTransferClient.ts",
-    ROOT / "tests/test_agent_transfer.py",
-)
 
 
 def markdown_section(path: Path, heading: str) -> str:
@@ -34,40 +28,37 @@ def normalized_prose(value: str) -> str:
 
 
 @pytest.mark.parametrize("path", CURRENT_DOCS, ids=("repository", "companion"))
-def test_current_docs_explain_native_task_transfer_workflow(path: Path) -> None:
+def test_current_docs_explain_task_transfer_retirement_and_native_handoff(path: Path) -> None:
     section = normalized_prose(markdown_section(path, "## Task Transfer"))
 
     for phrase in (
-        "one project",
-        "transfer folder",
-        "no tasks are selected by default",
-        "does not clone",
-        "local project",
-        "fully quit desktop",
-        "start codex desktop",
-        "reload vs code",
-        "review status",
-        "without copying",
+        "retired in **2.13.0**",
+        "no longer supported",
+        "native host handoff",
+        "connected hosts",
+        "matching saved git projects",
+        "interrupt active work",
+        "offline-recovery",
+        "non-git migration",
+        "not a backup",
     ):
         assert phrase in section, (path, phrase)
 
 
 @pytest.mark.parametrize("path", CURRENT_DOCS, ids=("repository", "companion"))
-def test_current_docs_define_transfer_safety_boundary(path: Path) -> None:
+def test_current_docs_define_retired_transfer_data_preservation(path: Path) -> None:
     section = normalized_prose(markdown_section(path, "## Task Transfer"))
 
     for phrase in (
-        "conflicts",
-        "changed",
-        "ambiguous desktop projects",
-        "assignment conflicts",
-        "targeted codex `app-server` reads",
-        "does not start a turn",
-        "consume tokens",
-        "atomically installs selected jsonls",
-        "never edits their content",
-        "codex sqlite databases",
-        "imported files remain in the transfer folder",
+        "existing chats",
+        "transfer folders",
+        "exported files",
+        "paired-transfer state",
+        "untouched",
+        "inert legacy settings",
+        "not accessed",
+        "no automatic migration, reimport or cleanup",
+        "not guaranteed compatible",
     ):
         assert phrase in section, (path, phrase)
 
@@ -162,18 +153,13 @@ def test_current_docs_do_not_claim_legacy_sync_or_backup_workflows() -> None:
             assert phrase.casefold() not in text, (path, phrase)
 
 
-def test_current_task_transfer_sources_use_task_language() -> None:
-    forbidden = (
-        "Packaged sync smoke",
-        "local conversation",
-        "Local conversation",
-        "_fail_conversation_copy",
-        "matching conversation bytes",
-    )
-    for path in CURRENT_TASK_TRANSFER_FIXTURES:
-        text = path.read_text(encoding="utf-8")
-        for phrase in forbidden:
-            assert phrase not in text, (path, phrase)
+def test_retired_transfer_sources_are_absent_but_shared_runtime_remains() -> None:
+    for name in ("agent_transfer.py", "sync_cli.py", "codex_registration.py", "desktop_binding.py"):
+        assert not (ROOT / "src/codex_usage" / name).exists()
+    assert not list((ROOT / "src/codex_usage/sync").glob("*.py"))
+    assert (ROOT / "src/codex_usage/codex_runtime.py").is_file()
+    assert (ROOT / "src/codex_usage/ledger_sync.py").is_file()
+    assert (ROOT / "src/codex_usage/ledger_transition_sync.py").is_file()
 
 
 def test_release_docs_require_platform_vsix_and_handoff_gate() -> None:
@@ -204,6 +190,7 @@ def test_current_product_docs_describe_extension_lifecycle_and_handoff() -> None
 
 
 def test_adr_0014_keeps_manual_transfer_guardrails() -> None:
+    assert "0076-retire-task-transfer.md" in ADR_0014.read_text(encoding="utf-8")
     guardrails = normalized_prose(markdown_section(ADR_0014, "## Guardrails"))
     for phrase in (
         "canonical, nonempty, unique task ids",

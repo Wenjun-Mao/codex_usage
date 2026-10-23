@@ -93,6 +93,8 @@ def allowance_status(connection, *, now=None):
 def build_allowance_report(connection, *, coverage_complete=True, status=None, preparation=None):
     from codex_usage.aggregation import value_records
     from codex_usage.ledger_queries import query_ledger_records
+    from codex_usage.allowance_preparation import AllowancePreparation
+    preparation = preparation or AllowancePreparation(connection, reuse_history=False)
 
     if connection.execute("select 1 from quota_observations limit 1").fetchone() is None:
         return _build_from_costs(connection, (), coverage_complete=coverage_complete,
@@ -129,7 +131,8 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
         times.append(timestamp)
         costs.append(costs[-1] + cost)
         unpriced.append(unpriced[-1] + unpriced_tokens)
-    windows = _cost_windows(points, provenance, times, costs, unpriced, coverage_complete, cache=window_cache)
+    windows = _cost_windows(points, provenance, times, costs, unpriced, coverage_complete,
+                            cache=window_cache, captures=preparation.captures)
     from codex_usage.allowance_cost_pace import CostPrefix, PaceReferences, calibrated_paces
     prefix = CostPrefix(times, costs, unpriced)
     references = {}
@@ -149,7 +152,9 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
                                         coverage_complete=coverage_complete)
     qualified, headline = allowance_highlights(windows)
     latest = windows[-1] if windows else None
-    history = display_history(points, provenance, windows, anchors, live_points=live_points)
+    history = display_history(points, provenance, windows, anchors, live_points=live_points,
+                              directory=preparation.captures,
+                              cache=preparation.history_cache if window_cache is not None else None)
     from codex_usage.allowance_reset_economics import reset_history
     return {
         "status": status, "credits": credits, "paces": paces, "windows": windows,
@@ -158,11 +163,12 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
         "history": allowance_history(windows),
         "display_history": history,
         "reset_history": reset_history(history, live_points, anchors, windows, prefix,
-                                       coverage_complete=coverage_complete),
+                                       coverage_complete=coverage_complete, points=preparation.captures.ordered),
     }
 
 
-def _cost_windows(points, provenance, times, costs, unpriced, coverage_complete, *, cache=None, scope="full", references_only=False):
+def _cost_windows(points, provenance, times, costs, unpriced, coverage_complete, *, cache=None,
+                  scope="full", references_only=False, captures=None):
     """Preserve the monetary estimator; optionally prepare a causal prefix."""
     windows = []
     for window in segment_windows(points):
@@ -175,7 +181,9 @@ def _cost_windows(points, provenance, times, costs, unpriced, coverage_complete,
         fitted = cache.result(window, scope, build) if cache else build()[0]
         summary = _window_summary(window, fitted, coverage_complete)
         if not references_only:
-            summary["points"] = [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in window.points]
+            summary["points"] = [captures.exported(p) if captures is not None else
+                                 dict(p.to_dict(), provenance=", ".join(sorted(provenance[p])))
+                                 for p in window.points]
         windows.append(summary)
     windows.sort(key=lambda w: w["end"])
     return windows
@@ -218,6 +226,7 @@ def load_quota_evidence(connection):
     provenance = {}
     live_points = set()
     origin_labels = {}
+    merged_labels = {}
     for row in rows:
         point = QuotaObservation(*row[:len(fields)])
         times = json.loads(zlib.decompress(row["timestamps_blob"])) if row["timestamps_blob"] else [point.timestamp]
@@ -236,5 +245,12 @@ def load_quota_evidence(connection):
             points.append(selected)
             if is_live:
                 live_points.add(selected)
-            provenance.setdefault(selected, set()).update(sources)
+            previous = provenance.get(selected)
+            if previous is None:
+                provenance[selected] = sources
+            elif previous != sources:
+                pair = (previous, sources)
+                if pair not in merged_labels:
+                    merged_labels[pair] = previous | sources
+                provenance[selected] = merged_labels[pair]
     return points, provenance, live_points

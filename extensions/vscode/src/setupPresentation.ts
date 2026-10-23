@@ -6,7 +6,7 @@ export interface CaptureIntervalChoice {
   description: string;
 }
 
-export type CollectorSetupAction = "home" | "interval" | "transitions" | "transferFolder" | "migration" | "capture" | "handoff";
+export type CollectorSetupAction = "home" | "interval" | "transitions" | "migration" | "capture" | "handoff";
 
 export interface CollectorSetupChoice {
   label: string;
@@ -40,12 +40,6 @@ export function collectorSetupChoices(codexHome: string): CollectorSetupChoice[]
       description: "Explicit handoff to VS Code capture.",
       detail: "Keeps the ledger and task files; capture outside VS Code will stop.",
       action: "handoff",
-    },
-    {
-      label: "$(folder) Choose Task Transfer folder",
-      description: "Set the shared folder for importing and exporting tasks.",
-      detail: "Use a folder synchronized by your preferred file-sync service.",
-      action: "transferFolder",
     },
     {
       label: "$(database) Migrate legacy usage cache",

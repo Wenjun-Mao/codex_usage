@@ -85,3 +85,8 @@ The independent image-generation accounting and bounded historical-recovery cont
 - [0069: Missing Source Replay Authority](0069-missing-source-replay-authority.md)
 - [0070: Candidate-Bound Latency Dispositions](0070-candidate-bound-latency-dispositions.md)
 - [0071: Hosted Tooltip Observation Policy](0071-hosted-tooltip-observation-policy.md)
+- [0072: In-Process SQLite Writer Admission](0072-in-process-sqlite-writer-admission.md)
+- [0073: Snapshot-Pinned Dashboard Preparation](0073-snapshot-pinned-dashboard-preparation.md)
+- [0074: Incremental History Preparation](0074-incremental-history-preparation.md)
+- [0075: Compact Allowance Captures And Batch Valuation](0075-compact-allowance-captures-and-batch-valuation.md)
+- [0076: Retire Task Transfer](0076-retire-task-transfer.md)

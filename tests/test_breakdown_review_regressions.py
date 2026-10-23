@@ -157,12 +157,15 @@ def test_utc_sampled_causal_hour_membership_includes_closing_boundary(zone_name,
 
 
 def test_receipt_policy_is_bounded_and_expired_or_fabricated_proofs_reject(tmp_path):
+    from codex_usage.dashboard_preparation_tracking import token
     path = breakdown_home(tmp_path)
     state = {"basis": "selected", "view": "time", "grain": "daily", "overlay": "weekly", "project": "", "metric": "cost", "group": "model", "day": "2026-10-09", "detail": ""}
     actions = [{"scope": f"{i:064x}", "state": state} for i in range(RECEIPT_MAX_SCOPES+2)]
     with open_ledger(path, read_only=True) as connection:
+        connection.execute("begin")
         revision = int(connection.execute("select value from ledger_meta where key='ledger_revision'").fetchone()[0])
-    store(path, revision, {RECEIPT_PREFIX+a["scope"]: receipt([a]) for a in actions})
+        dependency = token(connection)
+    store(path, revision, {RECEIPT_PREFIX+a["scope"]: receipt([a]) for a in actions}, dependency=dependency)
     with open_ledger(path) as connection:
         assert connection.execute("select count(*) from rendered_reports where cache_key like 'breakdown-issued:%'").fetchone()[0] == RECEIPT_MAX_SCOPES
         assert issued_action(connection, json.dumps(actions[-1]), load) == actions[-1]

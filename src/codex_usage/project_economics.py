@@ -13,6 +13,7 @@ from dataclasses import dataclass, fields
 from statistics import median
 
 from codex_usage.aggregation import UsageSummary, ValuedUsageRecord
+from codex_usage.summary_accumulator import SummaryAccumulator
 from codex_usage.model_presentation import model_display_sort_key
 from codex_usage.models import TokenUsage
 from codex_usage.pricing import CostBreakdown, CreditBreakdown
@@ -196,30 +197,36 @@ def _turn_metrics(
     valued_records: Sequence[ValuedUsageRecord], *, include_model: bool
 ) -> TurnMetrics:
     measured = tuple(valued for valued in valued_records if valued.record.turn_id)
-    turn_summaries: dict[tuple[str, ...], UsageSummary] = {}
+    turn_costs: dict[tuple[str, ...], list] = {}
     for valued in measured:
         record = valued.record
         turn_key = (record.project_key, record.session_id, record.turn_id)
         if include_model:
             turn_key += (record.model,)
-        turn_summaries[turn_key] = _add(turn_summaries.get(turn_key), valued.summary)
+        cost = valued.summary.cost
+        if turn_key not in turn_costs:
+            turn_costs[turn_key] = [cost.total_usd, cost.unpriced_tokens]
+        else:
+            # Start at the first response and preserve sequential additions within
+            # each turn. Token/credit components are already in the project totals.
+            total = turn_costs[turn_key]
+            total[0] += cost.total_usd
+            total[1] += cost.unpriced_tokens
 
     priced_turns = tuple(
-        summary
-        for summary in turn_summaries.values()
-        if summary.cost.unpriced_tokens == 0
+        cost for cost, unpriced in turn_costs.values() if unpriced == 0
     )
     priced_responses = tuple(
         valued.summary
         for valued in measured
         if valued.summary.cost.unpriced_tokens == 0
     )
-    priced_turn_cost_usd = sum(summary.cost.total_usd for summary in priced_turns)
+    priced_turn_cost_usd = sum(priced_turns)
     priced_response_cost_usd = sum(
         summary.cost.total_usd for summary in priced_responses
     )
     return TurnMetrics(
-        turn_count=len(turn_summaries),
+        turn_count=len(turn_costs),
         response_count=sum(v.summary.record_count for v in measured),
         token_count=sum(v.summary.usage.total_tokens for v in measured),
         priced_turn_count=len(priced_turns),
@@ -231,7 +238,7 @@ def _turn_metrics(
         ),
         average_cost_per_turn=_ratio(priced_turn_cost_usd, len(priced_turns)),
         median_cost_per_turn=(
-            median(summary.cost.total_usd for summary in priced_turns)
+            median(priced_turns)
             if priced_turns
             else None
         ),
@@ -239,10 +246,10 @@ def _turn_metrics(
 
 
 def _summarize(valued_records: Iterable[ValuedUsageRecord]) -> UsageSummary:
-    total = _empty_summary()
+    total = SummaryAccumulator()
     for valued in valued_records:
-        total = total.add(valued.summary)
-    return total
+        total.add(valued.summary)
+    return total.freeze()
 
 
 def _add(existing: UsageSummary | None, value: UsageSummary) -> UsageSummary:

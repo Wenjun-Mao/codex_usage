@@ -36,24 +36,6 @@ from codex_usage.storage_cli_reporting import (
 from codex_usage.storage_context import load_storage_context
 from codex_usage.storage_insights import build_task_storage_snapshot
 from codex_usage.storage_commands import add_storage_subcommands
-from codex_usage.sync.local_session_probe import load_local_transfer_probe
-from codex_usage.sync_cli import (
-    add_sync_common_options,
-    add_sync_execution_options,
-    add_sync_transfer_options,
-)
-from codex_usage.sync_cli import (
-    handle_sync_inventory as sync_inventory_command,
-)
-from codex_usage.sync_cli import (
-    handle_sync_pull as sync_pull_command,
-)
-from codex_usage.sync_cli import (
-    handle_sync_push as sync_push_command,
-)
-from codex_usage.sync_cli import (
-    handle_sync_status as sync_status_command,
-)
 from codex_usage.threads import list_threads_from_cached_data
 from codex_usage.usage_context import (
     auto_project_transitions_enabled,
@@ -135,38 +117,6 @@ def build_parser() -> argparse.ArgumentParser:
         add_common_options=_add_common_options,
         snapshot_handler=handle_storage_snapshot,
     )
-
-    sync_parser = subparsers.add_parser(
-        "sync", help="Synchronize selected Codex tasks."
-    )
-    sync_subparsers = sync_parser.add_subparsers(dest="sync_command")
-
-    inventory_parser = sync_subparsers.add_parser(
-        "inventory", help="List Codex tasks available for sync."
-    )
-    add_sync_common_options(inventory_parser)
-    inventory_parser.set_defaults(handler=handle_sync_inventory)
-
-    pull_parser = sync_subparsers.add_parser(
-        "pull", help="Pull selected Codex tasks from the sync folder."
-    )
-    add_sync_transfer_options(pull_parser)
-    pull_parser.set_defaults(handler=handle_sync_pull)
-
-    push_parser = sync_subparsers.add_parser(
-        "push", help="Push selected Codex tasks to the sync folder."
-    )
-    add_sync_transfer_options(push_parser)
-    push_parser.add_argument(
-        "--machine-id", default=None, help="Source machine id for sync metadata."
-    )
-    push_parser.set_defaults(handler=handle_sync_push)
-
-    status_parser = sync_subparsers.add_parser(
-        "status", help="Show sync status for selected Codex tasks."
-    )
-    add_sync_execution_options(status_parser)
-    status_parser.set_defaults(handler=handle_sync_status)
 
     return parser
 
@@ -336,20 +286,6 @@ def _report_storage_snapshot(data, project_keys: list[str] | None) -> object | N
     return build_task_storage_snapshot(data, project_keys=project_keys)
 
 
-def handle_sync_pull(args: argparse.Namespace) -> int:
-    return sync_pull_command(args, load_local_transfer_probe)
-
-
-def handle_sync_push(args: argparse.Namespace) -> int:
-    return sync_push_command(args, load_local_transfer_probe)
-
-
-def handle_sync_inventory(args: argparse.Namespace) -> int:
-    return sync_inventory_command(args, load_local_transfer_probe)
-
-
-def handle_sync_status(args: argparse.Namespace) -> int:
-    return sync_status_command(args, load_local_transfer_probe)
 
 
 def _add_common_options(

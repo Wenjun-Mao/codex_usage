@@ -149,14 +149,18 @@ def test_late_historical_reading_rebuilds_context_under_new_revision(tmp_path):
             for p in json.loads(row[0])["points"]) for row in rows)
 
 
-def test_lazy_display_write_rejects_capture_advancement(tmp_path):
+@pytest.mark.parametrize("bump_revision", [True, False])
+def test_lazy_display_write_rejects_capture_advancement(tmp_path, bump_revision):
     path = breakdown_home(tmp_path, extended=True)
     first = render(tmp_path)
     original = reports.display_day
     def advancing(*args):
         data = original(*args)
         with open_ledger(path) as writer:
-            increment_ledger_revision(writer)
+            if bump_revision:
+                increment_ledger_revision(writer)
+            else:
+                writer.execute("update quota_observations set used_percent=used_percent+0.01")
             writer.commit()
         return data
     with patch.object(reports, "display_day", advancing):
@@ -165,7 +169,7 @@ def test_lazy_display_write_rejects_capture_advancement(tmp_path):
     with open_ledger(path, read_only=True) as connection:
         assert not connection.execute("select 1 from rendered_reports where cache_key like '%:meter-display:2026-10-08'").fetchone()
     current = render(tmp_path, "yesterday")
-    assert current.ledger_revision > pinned.ledger_revision
+    assert (current.ledger_revision > pinned.ledger_revision) == bump_revision
 
 
 def test_display_cache_shared_across_projects_ranges_but_not_timezones(tmp_path):

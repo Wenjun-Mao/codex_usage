@@ -55,6 +55,10 @@ class Group:
 
     @classmethod
     def from_points(cls, time, points):
+        if len(points) == 1:
+            point = points[0]
+            return cls(time, point, frozenset(points), point.plan,
+                       point.resets_at, point.reset_credits, False)
         resets = [p.resets_at for p in points if p.resets_at is not None]
         plans = {p.plan for p in points if p.plan}
         credits = {p.reset_credits for p in points if p.reset_credits is not None}
@@ -135,14 +139,25 @@ class Series:
     cycle_stats: tuple
 
     @classmethod
-    def prepare(cls, points, plan_events):
+    def prepare(cls, points, plan_events, *, cache=None):
         ordered = sorted(dict.fromkeys(points), key=lambda p: (seconds(p), p.slot))
         groups = tuple(Group.from_points(time, list(group)) for time, group in groupby(ordered, seconds))
         first_known = next((i for i, g in enumerate(groups) if g.plan and not g.conflict), None)
         cursor = Cursor()
         checkpoints = []
         cycle_stats = []
-        for index, group in enumerate(groups):
+        states, stats = {}, {}
+        start, checkpoint = 0, None
+        if cache is not None and groups:
+            from codex_usage.allowance_pace_checkpoint import PaceCheckpoint
+            checkpoint = PaceCheckpoint(cache, groups, first_known)
+            restored = checkpoint.restore()
+            if restored is not None:
+                start, cursor, checkpoints, cycle_stats = restored
+                states = {state: state for state in checkpoints}
+                stats = {stat: stat for stat in cycle_stats}
+        for index in range(start, len(groups)):
+            group = groups[index]
             if index == first_known:
                 # The prefix's leading unknown run now has its first known
                 # endpoint. Replaying it once preserves prefix-local identity
@@ -151,8 +166,14 @@ class Series:
                 for earlier in range(index):
                     cursor.push(earlier, groups[earlier], plan_events)
             cursor.push(index, group, plan_events)
-            checkpoints.append((cursor.start, cursor.boundary, cursor.conflicts))
-            cycle_stats.append((cursor.maximum_gap, cursor.corrections, cursor.reported_full_at, cursor.reference_plan))
+            # Long stable runs share immutable state values, not one retained
+            # tuple per reading. Origin positions and all numeric facts remain.
+            state = (cursor.start, cursor.boundary, cursor.conflicts)
+            stat = (cursor.maximum_gap, cursor.corrections, cursor.reported_full_at, cursor.reference_plan)
+            checkpoints.append(states.setdefault(state, state))
+            cycle_stats.append(stats.setdefault(stat, stat))
+        if checkpoint is not None:
+            checkpoint.stage(cursor, checkpoints, cycle_stats)
         return cls(tuple(g.time for g in groups), groups, tuple(checkpoints), tuple(cycle_stats))
 
 
@@ -211,14 +232,5 @@ class PreparedPaceEvidence:
 
 def prepare_pace_evidence(points, live_points, *, series_keys=None):
     """Build shared series indexes once; preserve raw points and provenance."""
-    grouped, events = {}, {}
-    limits = {key[0] for key in series_keys} if series_keys is not None else None
-    for point in points:
-        key = (point.limit_id, point.duration_minutes)
-        if series_keys is None or key in series_keys:
-            grouped.setdefault(key, []).append(point)
-        if point.plan and (limits is None or point.limit_id in limits):
-            events.setdefault(point.limit_id, set()).add((seconds(point), point.plan))
-    events = {key: sorted(value) for key, value in events.items()}
-    return PreparedPaceEvidence({key: Series.prepare(value, events.get(key[0], ()))
-                                 for key, value in grouped.items()}, frozenset(live_points))
+    from codex_usage.allowance_pace_inputs import PaceInputs
+    return PaceInputs(points).prepare(live_points, series_keys)

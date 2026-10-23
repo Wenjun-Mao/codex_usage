@@ -19,10 +19,11 @@ test("collector setup exposes Manual only and preserves the current capture inte
   assert.match(validateCaptureInterval("1441"), /1 to 1,440/);
 });
 
-test("collector setup exposes project transitions and the shared Task Transfer folder", () => {
+test("collector setup exposes project transitions without retired transfer actions", () => {
   const actions = collectorSetupChoices("/tmp/codex-home");
   assert.ok(actions.some((choice) => choice.action === "transitions"));
-  assert.ok(actions.some((choice) => choice.action === "transferFolder"));
+  assert.ok(actions.every((choice) => choice.action !== "transferFolder"));
+  assert.doesNotMatch(JSON.stringify(actions), /Task Transfer/);
   assert.equal(projectTransitionChoices(true).find((choice) => choice.enabled)?.description, "Current");
   assert.equal(projectTransitionChoices(false).find((choice) => !choice.enabled)?.description, "Current");
 });

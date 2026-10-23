@@ -348,7 +348,7 @@ def test_cli_threads_lists_selected_project(tmp_path: Path) -> None:
     threads_payload = json.loads(threads_result.stdout)
     assert [thread["thread_id"] for thread in threads_payload["threads"]] == ["thread-1"]
     assert threads_payload["threads"][0]["title"] == "First thread"
-    assert "estimated_sync_bytes" in threads_payload["threads"][0]
+    assert "estimated_sync_bytes" not in threads_payload["threads"][0]
 
 
 def test_main_returns_two_for_unexpected_handler_failure(

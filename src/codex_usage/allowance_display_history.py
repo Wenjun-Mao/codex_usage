@@ -19,9 +19,15 @@ def _reset_boundary(reason, time, previous_reset, credits_seen, credit_drop):
 
 
 def _identities(timeline):
-    plans = [{p.plan for p in points if p.plan} for _, points in timeline]
-    labels = [next(iter(values)) if len(values) == 1 else "" for values in plans]
-    ambiguous = [len(values) > 1 for values in plans]
+    labels, ambiguous = [], []
+    for _, points in timeline:
+        if len(points) == 1:
+            labels.append(points[0].plan)
+            ambiguous.append(False)
+        else:
+            values = {p.plan for p in points if p.plan}
+            labels.append(next(iter(values)) if len(values) == 1 else "")
+            ambiguous.append(len(values) > 1)
     previous = ""
     index = 0
     while index < len(labels):
@@ -44,7 +50,7 @@ def _identities(timeline):
     return list(zip(labels, ambiguous, strict=True))
 
 
-def _segment(points, positions):
+def _segment(points, positions, *, cache=None, lane=None, ordered=None):
     """Segment one evidence-authority lane without dropping raw conflicts."""
     limits = {}
     for point in points:
@@ -53,11 +59,27 @@ def _segment(points, positions):
     owners = {}
     for limit, readings in limits.items():
         timeline = [(time, list(group)) for time, group in groupby(readings, seconds)]
+        identities = _identities(timeline)
+        checkpoint = None
+        restored = None
+        if cache is not None:
+            from codex_usage.allowance_segment_checkpoint import SegmentCheckpoint
+            checkpoint = SegmentCheckpoint(cache, lane, limit, timeline, identities, positions)
+            restored = checkpoint.restore()
+        start = 0
+        limit_fragments = []
         active = {}
         previous_identity = None
         known_plan = ""
         tainted = set()
-        for (time, simultaneous), identity in zip(timeline, _identities(timeline), strict=True):
+        if restored is not None:
+            start, limit_fragments, active, previous_identity, known_plan, tainted = restored
+            for fragment in limit_fragments:
+                for index in fragment["capture_indices"]:
+                    owners[ordered[index]] = fragment
+        for offset in range(start, len(timeline)):
+            time, simultaneous = timeline[offset]
+            identity = identities[offset]
             plan_change = bool(known_plan and identity[0] and known_plan != identity[0])
             if previous_identity is not None and identity != previous_identity:
                 for fragment, _ in active.values():
@@ -104,7 +126,7 @@ def _segment(points, positions):
                         "current": False, "next_reset": None,
                         "reset_opening": None if skipped else boundary, "reset_closure": None,
                     }
-                    fragments.append(fragment)
+                    limit_fragments.append(fragment)
                     active[duration] = (fragment, continuity)
                 else:
                     fragment = existing[0]
@@ -113,16 +135,22 @@ def _segment(points, positions):
                     owners[point] = fragment
                 fragment["next_reset"] = (continuity.reset if continuity.reset is not None
                                           and continuity.reset > time else None)
+        if checkpoint is not None:
+            checkpoint.stage(limit_fragments, active, previous_identity, known_plan, tainted)
+        fragments.extend(limit_fragments)
     return fragments, owners
 
 
-def display_history(points, provenance, windows, anchors, *, live_points=None):
+def display_history(points, provenance, windows, anchors, *, live_points=None, directory=None, cache=None):
     """Display authority never changes monetary segmentation or fit facts."""
     from codex_usage.allowance_display_authority import source_aware_fragments
-    ordered = sorted(dict.fromkeys(points), key=lambda p: (seconds(p), p.limit_id, p.slot))
-    positions = {point: index for index, point in enumerate(ordered)}
-    captures = [dict(p.to_dict(), provenance=", ".join(sorted(provenance[p]))) for p in ordered]
-    fragments, owners = source_aware_fragments(ordered, positions, provenance, live_points, _segment)
+    from codex_usage.allowance_captures import CaptureDirectory
+    directory = directory or CaptureDirectory(points, provenance)
+    ordered, positions, captures = directory.ordered, directory.positions, directory.captures
+    lanes = iter(("official", "historical", "disputed"))
+    def segment(points, positions):
+        return _segment(points, positions, cache=cache, lane=next(lanes), ordered=ordered)
+    fragments, owners = source_aware_fragments(ordered, positions, provenance, live_points, segment)
     # Captured current membership is independent of opening/reset certainty.
     current_resets = {}
     for anchor in anchors:
@@ -135,9 +163,15 @@ def display_history(points, provenance, windows, anchors, *, live_points=None):
     for identity, resets in current_resets.items():
         by_identity[identity]["next_reset"] = next(iter(resets)) if len(resets) == 1 else None
     cross_boundary = []
+    exported_owners = {id(capture): id(owners[point])
+                       for point, capture in zip(ordered, captures, strict=True)}
+    def owner_id(point):
+        if id(point) in exported_owners:
+            return exported_owners[id(point)]
+        return id(owners[QuotaObservation(**{key: point[key] for key in QuotaObservation.__dataclass_fields__})])
+
     for index, window in enumerate(windows):
-        fit_owners = {id(owners[QuotaObservation(**{key: point[key] for key in QuotaObservation.__dataclass_fields__})])
-                      for point in window["points"]}
+        fit_owners = {owner_id(point) for point in window["points"]}
         if len(fit_owners) == 1:
             by_identity[next(iter(fit_owners))]["fit_indices"].append(index)
         else:

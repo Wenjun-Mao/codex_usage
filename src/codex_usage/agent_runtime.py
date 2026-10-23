@@ -84,7 +84,6 @@ class CodexUsageAgent:
             self._lane,
             self._operations,
             settings=lambda: self.settings,
-            on_import=self.request_catch_up,
         )
         self._dirty_paths = DirtyPathSet()
         self._watcher: SessionWatcher | None = None
@@ -275,12 +274,6 @@ class CodexUsageAgent:
     def cancel_operation(self, operation_id: str) -> dict[str, object]:
         return self._features.cancel_operation(operation_id)
 
-    def transfer_inventory(self, payload: dict[str, object]) -> dict[str, object]:
-        return self._features.transfer_inventory(payload)
-
-    def execute_transfer(self, payload: dict[str, object]) -> dict[str, object]:
-        return self._features.execute_transfer(payload)
-
     def service_status(self) -> dict[str, object]:
         return self._features.service_status()
 
@@ -327,9 +320,6 @@ class CodexUsageAgent:
                     "auto_project_transitions",
                     self.settings.auto_project_transitions,
                 )
-            ),
-            transfer_folder=str(
-                changes.get("transfer_folder", self.settings.transfer_folder)
             ),
         ).validated()
         save_agent_settings(updated, self.settings_file)

@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         root = Path(directory)
         home = root / "codex-home"
         _write_synthetic_home(home)
+        _verify_retired_cli(executable, home)
         report = root / "report.html"
         completed = _run_report(executable, home, root / "cache", report)
         if completed.returncode != 0:
@@ -60,6 +61,18 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     return 0
+
+
+def _verify_retired_cli(executable: Path, home: Path) -> None:
+    environment = os.environ.copy()
+    environment.update(CODEX_HOME=str(home), PYTHONNOUSERSITE="1")
+    environment.pop("PYTHONPATH", None)
+    result = run_process_tree(
+        [str(executable), "sync", "status"], environment=environment,
+        cwd=home, timeout_seconds=_COMMAND_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 2 or "invalid choice: 'sync'" not in result.stderr:
+        raise RuntimeError("packaged collector still exposes the retired transfer CLI")
 
 
 def _run_report(

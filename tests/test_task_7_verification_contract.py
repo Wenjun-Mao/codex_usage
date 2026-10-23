@@ -59,7 +59,8 @@ def test_packaged_report_smoke_is_a_shared_native_build_gate() -> None:
         assert "packaged_report_smoke.py" in build
         assert build.index("packaged_parallel_cache_smoke.py") < build.index(
             "packaged_report_smoke.py"
-        ) < build.index("smoke-test-packaged-sync.py")
+        ) < build.index("packaged_storage_analysis_smoke.py")
+        assert "smoke-test-packaged-sync.py" not in build
 
 
 def test_packaged_report_smoke_rejects_empty_model_mix() -> None:

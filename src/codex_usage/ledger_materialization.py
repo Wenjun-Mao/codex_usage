@@ -7,6 +7,7 @@ from codex_usage.aggregation import (
     ReportRange, ValuedUsageRecord, filter_records_by_project_keys, value_records,
 )
 from codex_usage.agent_activity import AgentActivity, build_agent_activity
+from codex_usage.agent_daily_activity import DailyAgentActivity, build_daily_activity
 from codex_usage.image_reporting import ImageReport, ImageReportCoverage, build_image_report
 from codex_usage.ledger_queries import (
     LedgerStatus, query_ledger_image_operations, query_ledger_records,
@@ -19,7 +20,7 @@ from codex_usage.project_transitions import apply_project_transitions
 @dataclass(frozen=True, slots=True)
 class LedgerMaterialization:
     valued: list[ValuedUsageRecord]
-    activity: AgentActivity
+    activity: AgentActivity | DailyAgentActivity
     images: ImageReport
     transitions: list
     source_counts: dict[str, int]
@@ -33,6 +34,7 @@ def materialize_ledger(
     status: LedgerStatus,
     *,
     auto_transitions: bool,
+    daily_activity_only: bool = False,
 ) -> LedgerMaterialization:
     """Caller owns the read transaction and evaluation clock; no source I/O."""
     records = finalize_session_records([
@@ -61,7 +63,8 @@ def materialize_ledger(
     """).fetchone()
     return LedgerMaterialization(
         valued=valued,
-        activity=build_agent_activity(records, query_ledger_task_graph(connection), timezone),
+        activity=(build_daily_activity if daily_activity_only else build_agent_activity)(
+            records, query_ledger_task_graph(connection), timezone),
         images=images,
         transitions=transitions,
         source_counts={key: int(source_counts[key] or 0) for key in source_counts.keys()},

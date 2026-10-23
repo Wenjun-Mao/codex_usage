@@ -32,9 +32,8 @@ def test_list_threads_filters_by_project_key_and_returns_titles(tmp_path: Path) 
     assert threads[0].session_path == session_path
     expected_session_bytes = session_path.stat().st_size
     assert threads[0].session_bytes == expected_session_bytes
-    assert threads[0].estimated_sync_bytes == expected_session_bytes + 4096
     assert threads[0].to_dict()["session_bytes"] == expected_session_bytes
-    assert threads[0].to_dict()["estimated_sync_bytes"] == expected_session_bytes + 4096
+    assert "estimated_sync_bytes" not in threads[0].to_dict()
 
 
 def test_list_threads_filters_by_transition_target_project(tmp_path: Path) -> None:
@@ -144,18 +143,17 @@ def test_list_threads_can_use_cached_session_data(tmp_path: Path) -> None:
     assert threads[0].title == "Demo thread"
     assert threads[0].project_key == "https://github.com/example/demo"
     assert threads[0].session_path == session_path
-    assert threads[0].estimated_sync_bytes >= threads[0].session_bytes
+    assert threads[0].session_bytes == session_path.stat().st_size
 
 
-def test_thread_listing_estimates_sync_bytes_without_importing_sync(tmp_path: Path) -> None:
+def test_thread_listing_reports_source_bytes_without_transfer_estimates(tmp_path: Path) -> None:
     sessions = tmp_path / "codex" / "sessions"
     session_path = _write_session(sessions, "thread-1", "/repo/one", 100)
 
     threads = list_threads([sessions], auto_transitions=False)
 
     assert threads[0].session_bytes == session_path.stat().st_size
-    assert threads[0].estimated_sync_bytes == session_path.stat().st_size + 4096
-    assert threads[0].to_dict()["estimated_sync_bytes"] == session_path.stat().st_size + 4096
+    assert "estimated_sync_bytes" not in threads[0].to_dict()
 
 
 def test_thread_listing_excludes_retained_missing_files(tmp_path: Path) -> None:

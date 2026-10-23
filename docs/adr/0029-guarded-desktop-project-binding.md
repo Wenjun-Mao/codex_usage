@@ -1,6 +1,6 @@
 # ADR 0029: Guarded Desktop Project Binding
 
-Status: Accepted
+Status: Superseded by [ADR 0076](0076-retire-task-transfer.md) in 2.13.0.
 
 Date: 2026-08-15
 

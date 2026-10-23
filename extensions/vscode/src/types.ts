@@ -51,7 +51,6 @@ export interface AgentSettings {
   native_onboarding_complete: boolean;
   theme: ReportTheme;
   auto_project_transitions: boolean;
-  transfer_folder: string;
 }
 
 export interface ProjectSummary {
@@ -151,27 +150,6 @@ export interface AnalysisJob {
   progress: Record<string, unknown>;
   result: Record<string, unknown>;
   error: string;
-}
-
-export interface TransferTask {
-  thread_id: string;
-  title: string;
-  updated_at: string;
-  estimated_sync_bytes: number;
-  availability: "local" | "remote" | "both";
-}
-
-export interface TransferProject {
-  project_key: string;
-  project_label: string;
-  identity_kind: "git" | "path";
-  candidate_roots: string[];
-  tasks: TransferTask[];
-}
-
-export interface TransferInventory {
-  projects: TransferProject[];
-  issues: Array<{ code: string; message: string; thread_id: string }>;
 }
 
 export interface PlanAllowanceStatus {

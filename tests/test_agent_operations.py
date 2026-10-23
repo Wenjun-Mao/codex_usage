@@ -32,7 +32,7 @@ def test_queued_managed_operation_can_be_cancelled_without_running() -> None:
     started = threading.Event()
     lane.submit(
         "blocker",
-        JobPriority.TASK_TRANSFER,
+        JobPriority.CAPTURE_NOW,
         lambda: _blocking_operation(started, blocker),
     )
     assert started.wait(1)
@@ -158,7 +158,7 @@ def test_lane_can_promote_a_coalesced_capture_ahead_of_lower_priority_work() -> 
     completed: list[str] = []
     lane.submit(
         "blocker",
-        JobPriority.TASK_TRANSFER,
+        JobPriority.CAPTURE_NOW,
         lambda: _blocking_then_record(started, blocker, completed),
     )
     assert started.wait(1)

@@ -82,6 +82,14 @@ class AgentActivityExport:
 
 def render_ledger_report(codex_home: Path, **kwargs) -> RenderedLedgerReport:
     from codex_usage.breakdown_reports import render_breakdown_report
+    from codex_usage.dashboard_preparation_tracking import token
+    path = ledger_database_path(codex_home)
+    with open_ledger(path, read_only=True) as reader:
+        tracked = token(reader) is not None
+    if not tracked:
+        # Establish tracking before the report pins its evidence snapshot.
+        with open_ledger(path):
+            pass
     return render_breakdown_report(codex_home, **kwargs)
 
 
@@ -143,6 +151,10 @@ def _render_base_ledger_report(
         )
         cached = _load_cached_report(connection, cache_key)
         if cached is not None:
+            # The publisher's new codec row is outside this pinned read snapshot.
+            # Pass the prepared report onward even when the base HTML is reusable.
+            if _prepared_sink is not None and allowance_report is not None:
+                _prepared_sink['allowance'] = allowance_report
             return RenderedLedgerReport(
                 html=cached,
                 ledger_revision=status.revision,
@@ -170,6 +182,7 @@ def _render_base_ledger_report(
         materialized = materialize_ledger(
             connection, report_range, normalized_keys, timezone, status,
             auto_transitions=auto_transitions,
+            daily_activity_only=True,
         )
     valued = materialized.valued
     if _prepared_sink is not None:

@@ -3,10 +3,19 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
+from functools import lru_cache
+
+
+@lru_cache(maxsize=32)
+def _identity_fields(keys):
+    return tuple(sorted(k for k in keys if not k.startswith("_")))
 
 
 def identity(point):
-    return tuple(sorted((k, v) for k, v in point.items() if not k.startswith("_")))
+    # Share the schema instead of allocating one key/value tuple per field for
+    # every capture. All public fields still participate in exact identity.
+    fields = _identity_fields(tuple(point))
+    return fields, tuple(point[k] for k in fields)
 
 
 def value(point, kind):
@@ -40,6 +49,33 @@ def reduce_points(points, kind, start, end, *, buckets=180, detect_boundaries=Fa
         buckets=buckets, detect_boundaries=detect_boundaries)]
 
 
+def _boundary(previous, point, kind):
+    old, current = previous.metric, point.metric
+    a, b = previous.raw, point.raw
+    return (b.get("_boundary", False) or b["plan"] != a["plan"] or old is None or current is None or
+        (kind == "weekly" and (b["resets_at"] != a["resets_at"] or current < old)) or
+        (previous.at == point.at and
+            (b["plan"], current, b.get("resets_at"), b.get("reset_credits")) !=
+            (a["plan"], old, a.get("resets_at"), a.get("reset_credits"))) or
+        (kind == "balance" and b["change"] is None))
+
+
+def _boundaries(points, kind):
+    groups = defaultdict(list)
+    for point in points:
+        groups[point.series].append(point)
+    retained = set()
+    for group in groups.values():
+        previous = None
+        for point in sorted(group, key=lambda p: p.stamp):
+            if point.raw.get("_boundary"):
+                retained.add(point.signature)
+            if previous is not None and _boundary(previous, point, kind):
+                retained.update((previous.signature, point.signature))
+            previous = point
+    return retained
+
+
 def _reduce_points(points, kind, start, end, *, buckets, detect_boundaries=False):
     """Keep bucket endpoints/extrema plus both sides of every evidence boundary.
 
@@ -59,17 +95,8 @@ def _reduce_points(points, kind, start, end, *, buckets, detect_boundaries=False
             if start <= at < end:
                 index = min(buckets-1, int((at-start)/max(.000001, end-start)*buckets))
                 bins[index].append(p)
-            boundary = p.raw.get("_boundary", False)
             if previous and detect_boundaries:
-                old, current = previous.metric, p.metric
-                a, b = previous.raw, p.raw
-                same_time = previous.at == p.at
-                boundary |= (b["plan"] != a["plan"] or old is None or current is None or
-                    (kind == "weekly" and (b["resets_at"] != a["resets_at"] or current < old)) or
-                    (same_time and (b["plan"], current, b.get("resets_at"), b.get("reset_credits")) !=
-                        (a["plan"], old, a.get("resets_at"), a.get("reset_credits"))) or
-                    (kind == "balance" and b["change"] is None))
-                if boundary:
+                if _boundary(previous, p, kind):
                     for candidate in (previous, p):
                         candidate = replace(candidate, raw={**candidate.raw, "_boundary": True})
                         retained[candidate.signature] = candidate
@@ -93,21 +120,22 @@ def display_partitions(points, kind, timezone):
     if not points:
         return {}
     prepared = [_DisplayPoint.prepare(p, kind) for p in points]
-    first = min(p.stamp for p in prepared)
-    last = max(p.stamp for p in prepared)
-    reduced = _reduce_points(prepared, kind, first, last + .000001, buckets=1, detect_boundaries=True)
-    boundaries = {p.signature for p in reduced if p.raw.get("_boundary")}
-    signatures = defaultdict(set)
+    boundaries = _boundaries(prepared, kind)
+    signatures, conflicts = {}, set()
     if kind == "weekly":
         for item in prepared:
             p = item.raw
-            signatures[(item.stamp, p["limit_id"])].add(
-                (p["plan"], p["duration_minutes"], p["used_percent"], p["resets_at"], p.get("reset_credits")))
+            key = item.stamp, p["limit_id"]
+            signature = (p["plan"], p["duration_minutes"], p["used_percent"], p["resets_at"], p.get("reset_credits"))
+            if key not in signatures:
+                signatures[key] = signature
+            elif signatures[key] != signature:
+                conflicts.add(key)
     for item in prepared:
         p = item.raw
         day = item.at.astimezone(timezone).date().isoformat()
         annotated = {**p, "_boundary": True} if item.signature in boundaries else p
-        if kind == "weekly" and len(signatures[(item.stamp, p["limit_id"])]) > 1:
+        if kind == "weekly" and (item.stamp, p["limit_id"]) in conflicts:
             annotated = {**annotated, "_boundary": True, "_conflict": True}
         days[day].append(replace(item, raw=annotated) if annotated is not p else item)
     partitions = {}

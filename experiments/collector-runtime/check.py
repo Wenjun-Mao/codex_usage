@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 def require_disposable_host():
-    from codex_usage.codex_registration import discover_codex_executables
+    from codex_usage.codex_runtime import discover_codex_executables
     if os.environ.get("GITHUB_ACTIONS") != "true" or any(
             shutil.which(candidate) for candidate in discover_codex_executables()):
         raise RuntimeError("frozen experiment requires fresh CI without any account CLI")

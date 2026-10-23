@@ -428,8 +428,9 @@ uv run python scripts/verify-vsix-archive.py output/releases/codex-usage-compani
 The archive must contain the matching executable, `extension/package.json`, and
 `extension/out/extension.js`, with no second collector or Tauri files. Confirm a
 clean VSIX install can choose `CODEX_HOME`, capture, render Usage and Task
-Storage, export Agent Activity, and perform Task Transfer without former native
-app files.
+Storage and export Agent Activity without former native app files. Verify retired
+Task Transfer commands/routes are absent and existing chats, transfer files,
+paired state and the inert saved folder setting are preserved.
 
 ## Visual Gate
 
@@ -439,7 +440,7 @@ plus the Task Storage image. Check controls, disclosures, keyboard access,
 allowance semantics, tooltips, labels, and clipping. Regenerate and verify:
 
 Visually review Usage at 1440 x 900 and 760 x 900 in both themes. Verify the
-Task Storage surface, Task Transfer stages, contextual reload controls, range
+Task Storage surface, absence of Task Transfer controls, contextual reload controls, range
 and project filters, capture state, Model Details, Plan Allowance diagnostics,
 and export affordances stay readable and operable. Record any browser-specific
 meter or clipping difference before promotion.

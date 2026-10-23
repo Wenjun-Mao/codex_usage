@@ -4,7 +4,6 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 BASELINE = Path(__file__).with_name("python-case-baseline.json")
-ALLOWED_SKIP = ("tests.test_sync_store", "test_path_kind_classifies_available_native_windows_junction")
 
 
 def _xml_cases(raw):
@@ -45,10 +44,7 @@ def validate_python(files, scope):
             raise ValueError("Required test did not pass")
         skip = test.find("skipped")
         if skip is not None:
-            if (case != ALLOWED_SKIP or inventory["platform"] == "Windows" or skip.get("type") != "pytest.skip"
-                or skip.get("message") != "native junctions are Windows-only"):
-                raise ValueError("Unapproved skipped test case")
-            skipped.append(list(case))
+            raise ValueError("Unapproved skipped test case")
     return {"collected": [list(case) for case in sorted(collected)],
         "passed": [list(case) for case in sorted(actual) if list(case) not in skipped],
         "skipped": skipped, "platform": inventory["platform"]}

@@ -5,6 +5,7 @@ from codex_usage.allowance_history_navigation import (
     DEFAULT_STATE, RECEIPT_PREFIX, digest, issued_receipt, issued_state, navigation,
 )
 from codex_usage.allowance_index import _revisions, _decode_cached_report
+from codex_usage.allowance_history_overview import OVERVIEW_SUFFIX, decode_overview
 
 
 def context_identity(status, kwargs, report_range, path):
@@ -32,6 +33,21 @@ def render_history(connection, base_html, context, state, status, timezone, sink
         report = sink.get("allowance")
         if report is None:
             _, revision = _revisions(PRICING_REVISION)
+            if not state["kind"]:
+                overview = connection.execute("""select report_json from allowance_report_cache
+                    where ledger_revision=? and pricing_revision=? and coverage_complete=?""",
+                    (status.revision, revision + OVERVIEW_SUFFIX, int(status.coverage.complete))).fetchone()
+                if overview is not None:
+                    try:
+                        report = decode_overview(overview[0])
+                        nav = navigation(report, context, state)
+                        section = period_history(report, timezone, nav=nav)
+                        cached = dict(section=section, navigation=nav)
+                    except (ValueError, TypeError, KeyError, IndexError, OverflowError):
+                        # Optional projection corruption is a miss. Exact cached
+                        # history remains authoritative and is validated normally.
+                        report = None
+        if report is None:
             row = connection.execute("""select report_json from allowance_report_cache
                 where ledger_revision=? and pricing_revision=? and coverage_complete=?""",
                 (status.revision, revision, int(status.coverage.complete))).fetchone()
@@ -43,9 +59,10 @@ def render_history(connection, base_html, context, state, status, timezone, sink
                                                               cross_boundary_fit_indices=[]))
             else:
                 report = _decode_cached_report(row[0])
-        nav = navigation(report, context, state)
-        section = period_history(report, timezone, nav=nav)
-        cached = dict(section=section, navigation=nav)
+        if cached is None:
+            nav = navigation(report, context, state)
+            section = period_history(report, timezone, nav=nav)
+            cached = dict(section=section, navigation=nav)
         writes[key] = cached
     nav = cached["navigation"]
     writes[RECEIPT_PREFIX + scope] = issued_receipt(nav, context)

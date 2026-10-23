@@ -12,7 +12,7 @@ def _cost(prefix, start, end):
     return prefix.costs[right]-prefix.costs[left], prefix.unpriced[right]-prefix.unpriced[left]
 
 
-def reset_history(history, live_points, anchors, windows, prefix, *, coverage_complete):
+def reset_history(history, live_points, anchors, windows, prefix, *, coverage_complete, points=None):
     """Reuse raw captures, unchanged fits and the existing valued-event prefix.
 
     Period dollars are additive usage, never a fitted capacity or a sum of
@@ -24,7 +24,7 @@ def reset_history(history, live_points, anchors, windows, prefix, *, coverage_co
         return dict(captures=captures, periods=[], uncertain=[],
                     cross_boundary_fit_indices=list(range(len(windows))), kind="reset-period-economics-v1")
     through = prefix.times[-1] if prefix.times else None
-    periods, owners = reset_periods(captures, live_points, anchors, through=through)
+    periods, owners = reset_periods(captures, live_points, anchors, through=through, points=points)
     uncertain = []
     for fragment in history.get("periods", [])+history.get("uncertain", []):
         remaining = [i for i in fragment["capture_indices"] if i not in owners]
@@ -34,11 +34,20 @@ def reset_history(history, live_points, anchors, windows, prefix, *, coverage_co
             for index in remaining:
                 owners[index] = group
     keys = tuple(QuotaObservation.__dataclass_fields__)
-    positions = {tuple(p[key] for key in keys): i for i, p in enumerate(captures)}
+    positions = None
+    exported_owners = {id(p): owners[i] for i, p in enumerate(captures)}
+
+    def owner(point):
+        nonlocal positions
+        if id(point) in exported_owners:
+            return exported_owners[id(point)]
+        if positions is None:
+            positions = {tuple(p[key] for key in keys): i for i, p in enumerate(captures)}
+        return owners[positions[tuple(point[key] for key in keys)]]
+
     cross = []
     for index, window in enumerate(windows):
-        found = {id(owners[positions[tuple(p[key] for key in keys)]]):
-                 owners[positions[tuple(p[key] for key in keys)]] for p in window["points"]}
+        found = {id(group): group for point in window["points"] for group in (owner(point),)}
         if len(found) == 1:
             next(iter(found.values()))["fit_indices"].append(index)
         else:

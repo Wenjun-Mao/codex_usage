@@ -5,6 +5,7 @@ import sqlite3
 from codex_usage.allowance_queries import _build_from_costs, build_allowance_report
 from codex_usage.allowance_costs import allowance_cost_components
 from codex_usage.allowance_report_codec import REPORT_CACHE_FORMAT_REVISION, decode_report, encode_report
+from codex_usage.allowance_history_overview import OVERVIEW_SUFFIX, encode_overview
 from codex_usage.ledger_schema import ledger_revision, open_ledger
 from codex_usage.models import TokenUsage
 from codex_usage.parser import parse_timestamp
@@ -16,6 +17,20 @@ ALLOWANCE_REPORT_REVISION = 11
 
 def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revision,
                              coverage_complete, status=None, preparation=None):
+    owned = not snapshot.in_transaction
+    if owned:
+        snapshot.execute("begin")
+    try:
+        return _indexed_allowance_report(snapshot, ledger_path, revision=revision,
+            pricing_revision=pricing_revision, coverage_complete=coverage_complete,
+            status=status, preparation=preparation)
+    finally:
+        if owned:
+            snapshot.rollback()
+
+
+def _indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revision,
+                              coverage_complete, status=None, preparation=None):
     """Use a revision-pinned result or build it from priced trusted events.
 
     A simultaneous capture may advance the writer beyond the caller's read
@@ -40,41 +55,53 @@ def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisio
         report = _decode_cached_report(cached[0])
         report["status"] = status
         return report
-    with open_ledger(ledger_path) as writer:
-        writer.execute("begin immediate")
-        if ledger_revision(writer) != revision:
-            writer.rollback()
-            return build_allowance_report(snapshot, coverage_complete=coverage_complete,
-                                          status=status, preparation=preparation)
-        # Pricing revisions change the meaning of every cached dollar. The
-        # replacement occurs atomically with the new report materialization.
-        writer.execute("delete from allowance_event_costs where pricing_revision != ?",
-                       (pricing_revision,))
-        from codex_usage.allowance_window_cache import WindowCalculationCache
-        calculations = WindowCalculationCache(writer, pricing_revision, report_revision, coverage_complete)
-        _price_missing_events(writer, pricing_revision)
-        rows = writer.execute("""
-            select e.timestamp_us, c.total_usd, c.unpriced_tokens
-            from allowance_event_costs c
-            join ledger_usage_events e using(event_id)
+    from codex_usage.allowance_window_cache import WindowCalculationCache
+    from codex_usage.dashboard_preparation_tracking import token
+    from codex_usage.allowance_preparation import AllowancePreparation
+    preparation = preparation or AllowancePreparation(snapshot)
+    dependency = token(snapshot)
+    calculations = WindowCalculationCache(snapshot, pricing_revision, report_revision, coverage_complete)
+    established = snapshot.execute("""select 1 from sqlite_master where
+        name glob 'allowance_window_*' or name glob 'allowance_windows_*' limit 1""").fetchone()
+    trust_prices = calculations.trusted or not established
+    pending = _price_missing_events(snapshot, pricing_revision, trust_cache=trust_prices)
+    pending_by_id = {row[0]: row[2:] for row in pending}
+    rows = snapshot.execute("""
+            select e.timestamp_us, c.total_usd, c.unpriced_tokens, e.event_id
+            from ledger_usage_events e
             join ledger_generations g using(generation_id)
             join ledger_sources s using(source_id)
-            where g.status = 'trusted' and c.pricing_revision = ?
+            left join allowance_event_costs c on c.event_id=e.event_id and c.pricing_revision=?
+            where g.status = 'trusted'
             order by e.timestamp_us, s.source_key, e.source_record_index
         """, (pricing_revision,))
-        report = _build_from_costs(writer, (
-            (row[0] / 1_000_000, row[1], row[2]) for row in rows
+    report = _build_from_costs(snapshot, (
+            (row[0] / 1_000_000, *pending_by_id.get(row[3], (row[1], row[2]))) for row in rows
         ), coverage_complete=coverage_complete, status=status, preparation=preparation,
             window_cache=calculations)
-        calculations.finish()
+    payload = encode_report(report)
+    overview = encode_overview(report)
+    pace = json.dumps({"paces": report.get("paces", [])})
+    with open_ledger(ledger_path) as writer:
+        writer.execute("begin immediate")
+        if dependency is None or ledger_revision(writer) != revision or token(writer) != dependency:
+            writer.rollback()
+            return report
+        calculations.finish(writer)
+        if preparation is not None:
+            preparation.history_cache.finish(writer)
+        writer.execute("delete from allowance_event_costs where pricing_revision != ?", (pricing_revision,))
+        writer.executemany("insert or replace into allowance_event_costs values (?,?,?,?)", pending)
         writer.execute("""insert or replace into allowance_report_cache values (?,?,?,?)""",
-                       (*key, encode_report(report)))
+                       (*key, payload))
         writer.execute("""insert or replace into allowance_report_cache values (?,?,?,?)""",
                        (revision, report_revision + ":pace-state", int(coverage_complete),
-                        json.dumps({"paces": report.get("paces", [])})))
+                        pace))
+        writer.execute("insert or replace into allowance_report_cache values (?,?,?,?)",
+                       (revision, report_revision + OVERVIEW_SUFFIX, int(coverage_complete), overview))
         writer.execute("""delete from allowance_report_cache where ledger_revision != ?
-                       or pricing_revision not in (?, ?)""",
-                       (revision, report_revision, report_revision + ":pace-state"))
+                       or pricing_revision not in (?, ?, ?)""",
+                       (revision, report_revision, report_revision + ":pace-state", report_revision + OVERVIEW_SUFFIX))
         writer.commit()
     report["status"] = status
     return report
@@ -120,7 +147,7 @@ def _status(connection):
     return allowance_status(connection)
 
 
-def _price_missing_events(connection, pricing_revision):
+def _price_missing_events(connection, pricing_revision, *, trust_cache=True):
     rows = connection.execute("""
         select e.event_id, e.timestamp, e.input_tokens, e.cached_input_tokens,
                e.cache_write_input_tokens, e.output_tokens,
@@ -128,9 +155,9 @@ def _price_missing_events(connection, pricing_revision):
         from ledger_usage_events e
         join ledger_generations g using(generation_id)
         join ledger_models m using(model_id)
-        left join allowance_event_costs c using(event_id)
-        where g.status = 'trusted' and c.event_id is null
-    """)
+        left join allowance_event_costs c on c.event_id=e.event_id and c.pricing_revision=?
+        where g.status = 'trusted' and (c.event_id is null or ?)
+    """, (pricing_revision, not trust_cache))
     values = []
     for row in rows:
         usage = TokenUsage(
@@ -143,8 +170,4 @@ def _price_missing_events(connection, pricing_revision):
         values.append((row[0], pricing_revision, *allowance_cost_components(
             cost, model=row[8], at=at, total_tokens=usage.total_tokens,
         )))
-        if len(values) >= 4096:
-            connection.executemany("insert into allowance_event_costs values (?,?,?,?)", values)
-            values.clear()
-    if values:
-        connection.executemany("insert into allowance_event_costs values (?,?,?,?)", values)
+    return values

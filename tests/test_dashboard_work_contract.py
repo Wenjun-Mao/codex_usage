@@ -125,7 +125,7 @@ def test_post_capture_cold_report_expands_raw_quota_and_each_series_once(tmp_pat
          patch.object(evidence.Series, 'prepare', wraps=evidence.Series.prepare) as series:
         result = render(tmp_path)
     assert not result.cache_hit
-    assert raw.call_count == 1
+    assert raw.call_count == 0
     assert status.call_count == 1
     keys = [next(iter(call.args[0])) for call in series.call_args_list]
     identities = [(p.limit_id, p.duration_minutes) for p in keys]

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 from contextlib import closing
+import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import time
@@ -36,6 +38,8 @@ def main() -> int:
         session.write_text(_fixture_jsonl(task_id, root / "project"), encoding="utf-8")
         (root / "project").mkdir()
         speed_db, speed_baseline = legacy_speed_home(home)
+        transfer = root / "legacy-transfer"
+        preserved = _preservation_fixtures(home, transfer, session, task_id)
         settings = root / "settings.json"
         settings.write_text(
             json.dumps(
@@ -49,7 +53,7 @@ def main() -> int:
                     "timezone": "UTC",
                     "theme": "night",
                     "auto_project_transitions": True,
-                    "transfer_folder": "",
+                    "transfer_folder": str(transfer),
                 }
             ),
             encoding="utf-8",
@@ -66,6 +70,7 @@ def main() -> int:
             health = _request(descriptor, "GET", "/v1/health")
             if not health.get("ok"):
                 raise RuntimeError(f"unhealthy packaged agent: {health}")
+            _verify_retired_transfer_routes(descriptor)
             capture = _request(descriptor, "POST", "/v1/capture", {})
             if capture.get("outcome") != "success":
                 raise RuntimeError(f"packaged capture failed: {capture}")
@@ -84,6 +89,12 @@ def main() -> int:
             if "Codex Usage Report" not in str(report.get("html", "")):
                 raise RuntimeError("packaged ledger report was not rendered")
             _verify_packaged_speed(descriptor, speed_db, speed_baseline, report)
+            _request(descriptor, "GET", "/v1/storage/snapshot")
+            _request(descriptor, "GET", "/v1/agent-activity?range=all")
+            changed = _request(descriptor, "POST", "/v1/settings", {
+                "theme": "day", "transfer_folder": str(root / "replacement")})
+            assert changed["theme"] == "day" and changed["transfer_folder"] == str(transfer)
+            assert json.loads(settings.read_text())["transfer_folder"] == str(transfer)
         finally:
             if process.poll() is None:
                 try:
@@ -101,7 +112,54 @@ def main() -> int:
         if process.returncode not in {0, None}:
             stderr = process.stderr.read() if process.stderr else ""
             raise RuntimeError(f"packaged agent exited with {process.returncode}: {stderr}")
+        assert {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in preserved} == preserved
+        print(json.dumps({"retired_transfer_routes": "rejected", "preserved_files": len(preserved)}))
     return 0
+
+
+def _preservation_fixtures(home, transfer, session, task_id):
+    transfer.mkdir()
+    export = transfer / "export.jsonl"
+    export.write_bytes(session.read_bytes())
+    normalized = os.path.normcase(str(transfer.resolve(strict=False))).replace("\\", "/")
+    fingerprint = hashlib.sha256(normalized.encode()).hexdigest()[:16]
+    state = home / ".codex-sync-state" / fingerprint / "threads" / f"{task_id}.json"
+    state.parent.mkdir(parents=True)
+    digest = hashlib.sha256(session.read_bytes()).hexdigest()
+    state.write_text(json.dumps({"sync_version": 2, "thread_id": task_id,
+        "sync_dir_fingerprint": fingerprint, "base_sha256": digest,
+        "base_size_bytes": session.stat().st_size, "base_updated_at": "2026-09-02T12:00:02Z",
+        "last_remote_sha256": digest, "last_local_sha256": digest,
+        "source_relative_path": session.relative_to(home / "sessions").as_posix(),
+        "project_key": "synthetic", "project_label": "Synthetic",
+        "synced_at": "2026-09-02T12:00:02Z"}))
+    global_state = home / ".codex-global-state.json"
+    global_state.write_text('{"local-projects":{}}')
+    index = home / "session_index.jsonl"
+    index.write_text('{"id":"preserved","thread_name":"Synthetic task"}\n')
+    database = home / "state_5.sqlite"
+    with closing(sqlite3.connect(database)) as connection:
+        connection.execute("CREATE TABLE sentinel (value TEXT)")
+        connection.execute("INSERT INTO sentinel VALUES ('preserve')")
+        connection.commit()
+    return {path: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in (session, export, state, global_state, index, database)}
+
+
+def _verify_retired_transfer_routes(descriptor):
+    for path in ("/v1/transfer/inventory", "/v1/transfer/execute"):
+        for method in ("GET", "POST"):
+            request = Request(f"http://127.0.0.1:{descriptor['port']}{path}", method=method,
+                data=b"{}" if method == "POST" else None,
+                headers={"Authorization": f"Bearer {descriptor['token']}",
+                         "Content-Type": "application/json"})
+            try:
+                with urlopen(request, timeout=30):  # noqa: S310 - fixed loopback.
+                    pass
+            except HTTPError as error:
+                if error.code == 404 and json.loads(error.read()) == {"error": "not found"}:
+                    continue
+            raise RuntimeError("packaged collector did not reject a retired transfer route")
 
 
 def _verify_packaged_speed(descriptor, db, baseline, report):

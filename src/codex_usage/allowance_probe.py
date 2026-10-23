@@ -7,7 +7,7 @@ from time import monotonic
 from codex_usage.allowance_models import QuotaObservation, identifier, integer, quota_observations
 from codex_usage.allowance_credits import CreditBalance, credit_balance
 from codex_usage.app_server_rpc import AppServerRpc, RpcError
-from codex_usage.codex_registration import discover_codex_executables
+from codex_usage.codex_runtime import discover_codex_executables
 
 
 @dataclass(frozen=True, slots=True)

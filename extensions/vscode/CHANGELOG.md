@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 2.13.0 - 2026-10-22
+
+- Retired Task Transfer, including its commands, CLI/API operations and private
+  Codex registration layer. Existing chats, transfer files and saved folder
+  settings remain untouched; Codex native handoff owns ongoing chat mobility.
+- Reduced repeated dashboard aggregation, full allowance-history preparation,
+  capture serialization and event-time pricing/turn work. Reuse preserves exact
+  accounting, late corrections, history navigation and complete CSV exports.
+- Shortened report write ownership and coordinated in-process SQLite writers to
+  prevent the reproduced cold-report/manual-capture database-lock race.
+- Added retirement/data-preservation coverage and removed only transfer-specific
+  verification. The 3s Today / 5s first-30-day performance targets remain open;
+  measured gains do not establish those targets or end-to-end VS Code latency.
+
 ## 2.12.5 - 2026-10-17
 
 - Make output-speed tooltips easier to scan with readable local dates, labeled

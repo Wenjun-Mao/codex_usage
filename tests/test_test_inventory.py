@@ -29,7 +29,6 @@ def test_python_collection_and_case_results_are_complete_and_passing(fault):
         inventory["collected"].append(inventory["collected"][0])
     elif fault in ("unknown-skip", "windows-skip"):
         if fault == "windows-skip":
-            first = next(test for test in xml if (test.get("classname"), test.get("name")) == validator.ALLOWED_SKIP)
             inventory["platform"] = "Windows"
         ElementTree.SubElement(first, "skipped", type="pytest.skip", message="native junctions are Windows-only")
     elif fault in ("failure", "error"):
@@ -37,7 +36,6 @@ def test_python_collection_and_case_results_are_complete_and_passing(fault):
     elif fault == "exit":
         inventory["exitstatus"] = 1
     elif fault == "skip-type":
-        first = next(test for test in xml if (test.get("classname"), test.get("name")) == validator.ALLOWED_SKIP)
         ElementTree.SubElement(first, "skipped", type="pytest.xfail", message="native junctions are Windows-only")
     elif fault == "xml-totals":
         xml.set("tests", "1")
@@ -50,21 +48,52 @@ def test_python_collection_and_case_results_are_complete_and_passing(fault):
         validator.validate_python(files, "core")
 
 
-def test_only_named_native_windows_junction_skip_is_allowed_off_windows():
+def test_no_python_skips_are_allowed_after_transfer_retirement():
     files = FixtureAPI().gate_files("core")
     xml = ElementTree.fromstring(files["tests.xml"])
-    target = next(test for test in xml if (test.get("classname"), test.get("name")) == validator.ALLOWED_SKIP)
+    target = xml[0]
     ElementTree.SubElement(target, "skipped", type="pytest.skip", message="native junctions are Windows-only")
     files["tests.xml"] = ElementTree.tostring(xml)
-    result = validator.validate_python(files, "core")
-    assert result["skipped"] == [list(validator.ALLOWED_SKIP)]
-    assert len(result["passed"]) == 1884
+    with pytest.raises(ValueError, match="Unapproved skipped"):
+        validator.validate_python(files, "core")
+
+
+def test_named_surviving_python_case_cannot_be_removed_with_consistent_counts():
+    files = FixtureAPI().gate_files("core")
+    xml = ElementTree.fromstring(files["tests.xml"])
+    inventory = json.loads(files["inventory.json"])
+    name = "test_lane_can_promote_a_coalesced_capture_ahead_of_lower_priority_work"
+    target = next(case for case in xml if case.get("name") == name)
+    identity = [target.get("classname"), name]
+    xml.remove(target)
+    inventory["collected"].remove(identity)
+    files["tests.xml"] = ElementTree.tostring(xml)
+    files["inventory.json"] = policy.canonical(inventory)
+    with pytest.raises(ValueError, match="Required preserved test cases missing"):
+        validator.validate_python(files, "core")
+
+
+def test_named_surviving_extension_case_cannot_be_removed_with_consistent_counts():
+    files = FixtureAPI().gate_files("package-darwin-arm64")
+    name = "usage report receives companion controls and restrictive CSP"
+    xml = ElementTree.fromstring(files["extension-tests.xml"])
+    xml.remove(next(case for case in xml if case.get("name") == name))
+    inventory = json.loads(files["extension-inventory.json"])
+    inventory["collected"] = [case for case in inventory["collected"] if case[1] != name]
+    inventory["cases"] = [case for case in inventory["cases"] if case["identity"][1] != name]
+    for key in ("tests", "passed"):
+        inventory["summaries"][0]["counts"][key] -= 1
+    files["extension-tests.xml"] = ElementTree.tostring(xml)
+    files["extension-inventory.json"] = policy.canonical(inventory)
+    with pytest.raises(ValueError, match="Missing, duplicated, skipped or failed extension cases"):
+        validator.validate_extension(files)
 
 
 @pytest.mark.parametrize("fault", ["missing", "duplicate", "skipped", "failure", "error"])
 def test_extension_inventory_preserves_every_named_case(fault):
     files = FixtureAPI().gate_files("package-darwin-arm64")
-    assert len(validator.validate_extension(files)["passed"]) == 48
+    assert set(validator.validate_extension(files)["passed"]) == set(json.loads(
+        (policy.ROOT / "scripts/verification/extension-case-baseline.json").read_text())["required"])
     xml = ElementTree.fromstring(files["extension-tests.xml"])
     if fault == "missing":
         xml.remove(xml[0])

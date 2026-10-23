@@ -3,10 +3,11 @@ from __future__ import annotations
 import html
 
 from codex_usage.agent_activity import AgentActivity
+from codex_usage.agent_daily_activity import DailyAgentActivity
 from codex_usage.report_tables import format_int
 
 
-def render_agent_activity_section(activity: AgentActivity | None) -> str:
+def render_agent_activity_section(activity: AgentActivity | DailyAgentActivity | None) -> str:
     """Render daily accounting; per-agent detail remains in the CSV export."""
     if activity is None:
         return ""

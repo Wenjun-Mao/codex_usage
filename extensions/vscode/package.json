@@ -3,7 +3,7 @@
   "displayName": "Codex Usage Companion",
   "description": "Standalone VS Code usage dashboard with a bundled, parent-bound local collector.",
   "publisher": "wenjun-mao",
-  "version": "2.12.5",
+  "version": "2.13.0",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
@@ -19,7 +19,6 @@
     "tokens",
     "usage",
     "dashboard",
-    "task-transfer",
     "local-first"
   ],
   "engines": {
@@ -43,7 +42,6 @@
     "onCommand:codexUsage.openDashboard",
     "onCommand:codexUsage.copyDiagnostics",
     "onCommand:codexUsage.captureNow",
-    "onCommand:codexUsage.openTaskTransfer",
     "onCommand:codexUsage.analyzeTaskStorage",
     "onCommand:codexUsage.configure",
     "onCommand:codexUsage.handoffLegacyService",
@@ -95,26 +93,6 @@
       {
         "command": "codexUsage.showStorageView",
         "title": "Codex Usage: Show Task Storage"
-      },
-      {
-        "command": "codexUsage.openTaskTransfer",
-        "title": "Codex Usage: Task Transfer"
-      },
-      {
-        "command": "codexUsage.importTasks",
-        "title": "Codex Usage: Import Tasks"
-      },
-      {
-        "command": "codexUsage.exportTasks",
-        "title": "Codex Usage: Export Tasks"
-      },
-      {
-        "command": "codexUsage.reviewTransferStatus",
-        "title": "Codex Usage: Review Transfer Status"
-      },
-      {
-        "command": "codexUsage.chooseTransferFolder",
-        "title": "Codex Usage: Choose Transfer Folder"
       },
       {
         "command": "codexUsage.analyzeTaskStorage",

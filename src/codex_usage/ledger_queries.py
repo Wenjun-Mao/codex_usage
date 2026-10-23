@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from codex_usage.allowance_queries import allowance_status
@@ -20,7 +20,8 @@ from codex_usage.image_models import (
     ImageUsage,
 )
 from codex_usage.image_backfill import IMAGE_BACKFILL_STATE_KEY
-from codex_usage.models import TokenUsage, UsageRecord, parse_usage_role
+from codex_usage.models import UsageRecord
+from codex_usage.ledger_record_materialization import RecordMetadata, row_to_usage_record as _row_to_usage_record
 from codex_usage.parser import parse_timestamp
 from codex_usage.project_transitions import ProjectTransition
 from codex_usage.speed_recovery import speed_status
@@ -166,8 +167,8 @@ def query_ledger_records(
         order by ledger_sources.source_key, ledger_usage_events.source_record_index
     """
     selected = {key for key in project_keys or [] if key}
-    rows = connection.execute(query, parameters).fetchall()
-    records = [_row_to_usage_record(row) for row in rows]
+    metadata = RecordMetadata()
+    records = [_row_to_usage_record(row, metadata) for row in connection.execute(query, parameters)]
     if not selected:
         return records
     return [
@@ -463,33 +464,4 @@ def _coverage(connection: sqlite3.Connection) -> LedgerCoverage:
         pending_bytes=int(row["pending_bytes"] or 0),
         total_bytes=int(row["total_bytes"] or 0),
         captured_bytes=int(row["captured_bytes"] or 0),
-    )
-
-
-def _row_to_usage_record(row: sqlite3.Row) -> UsageRecord:
-    timestamp = parse_timestamp(row["timestamp"])
-    return UsageRecord(
-        timestamp=timestamp or datetime.fromtimestamp(0, tz=UTC),
-        usage=TokenUsage(
-            input_tokens=int(row["input_tokens"]),
-            cached_input_tokens=int(row["cached_input_tokens"]),
-            cache_write_input_tokens=int(row["cache_write_input_tokens"]),
-            output_tokens=int(row["output_tokens"]),
-            reasoning_output_tokens=int(row["reasoning_output_tokens"]),
-            total_tokens=int(row["total_tokens"]),
-        ),
-        session_id=str(row["task_id"]),
-        file_path=Path(row["file_path"]),
-        usage_role=parse_usage_role(row["usage_role"]),
-        model=str(row["model_key"]),
-        turn_id=str(row["turn_id"]),
-        effort=str(row["effort"]),
-        collaboration_mode=str(row["collaboration_mode"]),
-        project_key=str(row["project_key"]),
-        project_label=str(row["project_label"]),
-        project_aliases=tuple(json.loads(row["project_aliases_json"] or "[]")),
-        cwd=str(row["cwd"]),
-        git_repository_url=str(row["repository_url"]),
-        git_branch=str(row["git_branch"]),
-        parent_thread_id=str(row["parent_task_id"]),
     )

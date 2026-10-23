@@ -14,7 +14,6 @@ ResultT = TypeVar("ResultT")
 
 
 class JobPriority(IntEnum):
-    TASK_TRANSFER = 0
     CAPTURE_NOW = 0
     SCHEDULED_CAPTURE = 10
     STORAGE_ANALYSIS = 20

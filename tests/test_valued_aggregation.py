@@ -30,8 +30,10 @@ def test_report_consumers_reuse_one_valuation_per_record(monkeypatch) -> None:
     expected_breakdown = build_report_breakdown(records)
     cost_calls = 0
     credit_calls = 0
-    real_cost = aggregation.estimate_cost
-    real_credits = aggregation.estimate_codex_credits
+    unknown_calls = []
+    real_cost = aggregation.cost_for_entry
+    real_credits = aggregation.credits_for_rate
+    real_unpriced = aggregation._unpriced
 
     def count_cost(*args, **kwargs):
         nonlocal cost_calls
@@ -43,8 +45,13 @@ def test_report_consumers_reuse_one_valuation_per_record(monkeypatch) -> None:
         credit_calls += 1
         return real_credits(*args, **kwargs)
 
-    monkeypatch.setattr(aggregation, "estimate_cost", count_cost)
-    monkeypatch.setattr(aggregation, "estimate_codex_credits", count_credits)
+    def count_unknown(usage, breakdown):
+        unknown_calls.append(breakdown)
+        return real_unpriced(usage, breakdown)
+
+    monkeypatch.setattr(aggregation, "cost_for_entry", count_cost)
+    monkeypatch.setattr(aggregation, "credits_for_rate", count_credits)
+    monkeypatch.setattr(aggregation, "_unpriced", count_unknown)
 
     valued = value_records(records)
 
@@ -52,8 +59,8 @@ def test_report_consumers_reuse_one_valuation_per_record(monkeypatch) -> None:
     assert aggregate_valued_records(valued, "day", UTC) == expected_daily
     assert aggregate_valued_records(valued, "hour", UTC) == expected_hourly
     assert build_report_breakdown_from_valued(valued) == expected_breakdown
-    assert cost_calls == len(records)
-    assert credit_calls == len(records)
+    assert cost_calls + unknown_calls.count(aggregation.CostBreakdown) == len(records)
+    assert credit_calls + unknown_calls.count(aggregation.CreditBreakdown) == len(records)
 
 
 def _record(project: str, model: str, total: int, *, hour: int) -> UsageRecord:

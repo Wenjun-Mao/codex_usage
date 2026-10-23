@@ -55,6 +55,8 @@ def test_repeated_origin_combinations_decode_once_and_query_uses_existing_index(
             points, provenance, live = load_quota_evidence(connection)
         connection.set_trace_callback(None)
         assert len(points) == len(provenance) == 100 and not live
+        assert len({id(labels) for labels in provenance.values()}) == 1
+        assert all(isinstance(labels, frozenset) for labels in provenance.values())
         assert decode.call_count == 1
         plan = [row[3] for row in connection.execute("explain query plan " + statements[0])]
         assert any("SEARCH p USING COVERING INDEX" in step for step in plan)

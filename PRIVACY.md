@@ -6,13 +6,10 @@ model/API calls.
 ## Data Read Locally
 
 - Active and archived Codex task JSONLs under the selected `CODEX_HOME`.
-- Codex task/project metadata needed for project identity, transition evidence,
-  Task Transfer registration, and guarded Desktop assignment.
+- Codex task/project metadata needed for project identity and transition evidence.
 - Existing schema-8 Codex Usage caches selected during first-run migration.
-- A user-selected Task Transfer folder during explicit Import, Export, or Review
-  Status operations.
 - Companion settings such as active Codex home, capture interval, theme,
-  transition detection, and transfer folder. Legacy native settings may remain
+  transition detection. Legacy native settings and the inert transfer-folder path remain
   in the shared settings file for compatibility.
 
 Task content can include prompts, responses, paths, repository URLs, tool data,
@@ -29,15 +26,10 @@ files or diagnostic logs without reviewing them.
   staging, migration audit, and settings.
 - No new OS background service. A legacy Codex Usage LaunchAgent or Windows
   Scheduled Task is removed only after explicit handoff confirmation.
-- Selected task files and transfer metadata only in a user-chosen Task Transfer
-  folder during explicit operations.
-- A temporary sibling backup of Codex Desktop project state during guarded Task
-  Transfer assignment. The state is verified and restored if commit validation
-  fails.
-
-Task Transfer Import atomically installs selected task JSONLs but never edits
-their content or writes Codex SQLite databases. Outside an explicit Import or
-Export, Codex task JSONLs are read-only. Task Storage is read-only except for
+Codex task JSONLs, Codex SQLite databases and Desktop project state are read-only.
+Task Transfer was retired in 2.13.0; existing chats, transfer files and paired
+state remain untouched, and configured transfer folders are not accessed.
+Task Storage is read-only except for
 its disposable diagnostic cache. Codex Usage does not create, fork, archive,
 restore, or delete Codex tasks.
 
@@ -57,9 +49,9 @@ automatic update-check request of its own.
 
 Codex Usage does not upload task files, usage rows, project metadata, reports,
 or diagnostics. Pricing tables are checked into the application and are not
-fetched live. A cloud-storage provider may copy Task Transfer files only because
-the user chose a folder managed by that provider; Codex Usage does not connect
-to the provider itself.
+fetched live. Codex Usage does not access legacy transfer folders or connect to
+their storage providers. Independently configured cloud-storage software may
+continue synchronizing those folders.
 
 ## Retention And Removal
 

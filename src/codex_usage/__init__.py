@@ -1,3 +1,3 @@
 """Private capture and ledger core for the Codex Usage VS Code companion."""
 
-__version__ = "2.12.5"
+__version__ = "2.13.0"

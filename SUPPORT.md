@@ -12,13 +12,13 @@ Include:
 - Last capture, pending files/bytes, baseline coverage, and stale-source state.
 - Plan Allowance reading label and local observation time if the displayed
   percentage differs from the Codex app.
-- The affected workflow: Usage, Task Storage, Task Transfer, onboarding, or
+- The affected workflow: Usage, Task Storage, onboarding, or
   background capture.
 - Relevant redacted collector/extension output and reproducible steps.
 
-For Task Transfer, also include the operation, transfer-folder provider, both
-computers' operating systems, whether Codex Desktop was fully closed for Import,
-and whether the destination checkout already existed.
+Task Transfer was retired in 2.13.0. Existing chats and transfer files remain
+untouched. For ongoing chat mobility use Codex native handoff between connected
+hosts with matching saved Git projects; offline recovery is not covered.
 
 Never attach raw Codex JSONLs, the usage ledger, `agent.json`, Desktop state,
 Task Transfer content, or unredacted logs publicly. They may contain prompts,

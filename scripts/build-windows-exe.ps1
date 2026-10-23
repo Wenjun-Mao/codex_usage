@@ -18,7 +18,6 @@ $processTreeSmokeScript = Join-Path $repoRoot "scripts\packaged_windows_process_
 $parallelSmokeScript = Join-Path $repoRoot "scripts\packaged_parallel_cache_smoke.py"
 $reportSmokeScript = Join-Path $repoRoot "scripts\packaged_report_smoke.py"
 $storageAnalysisSmokeScript = Join-Path $repoRoot "scripts\packaged_storage_analysis_smoke.py"
-$smokeScript = Join-Path $repoRoot "scripts\smoke-test-packaged-sync.py"
 
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
@@ -70,10 +69,6 @@ try {
         throw "Packaged Task Storage analysis smoke test exited with code $LASTEXITCODE"
     }
 
-    uv run python $smokeScript --executable $exePath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Packaged Task Transfer smoke test exited with code $LASTEXITCODE"
-    }
 }
 finally {
     Pop-Location

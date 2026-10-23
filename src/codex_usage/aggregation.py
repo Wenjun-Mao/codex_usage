@@ -7,11 +7,14 @@ from datetime import UTC, date, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from codex_usage.models import TokenUsage, UsageRecord
+from codex_usage.summary_accumulator import SummaryAccumulator
 from codex_usage.pricing import (
     CostBreakdown,
     CreditBreakdown,
     estimate_codex_credits,
     estimate_cost,
+    cost_for_entry,
+    credits_for_rate,
 )
 
 RANGE_CHOICES = ("today", "yesterday", "7d", "30d", "month", "all")
@@ -329,12 +332,13 @@ def aggregate_valued_records(
     if group_by not in GROUP_CHOICES:
         raise ValueError(f"Unknown grouping: {group_by}")
 
-    buckets: dict[str, tuple[str, UsageSummary]] = {}
+    buckets: dict[str, tuple[str, SummaryAccumulator]] = {}
     for valued in valued_records:
         record = valued.record
         key, label = _bucket_key(record, group_by, timezone)
-        existing_label, existing_summary = buckets.get(key, (label, _empty_summary()))
-        buckets[key] = (existing_label, existing_summary.add(valued.summary))
+        if key not in buckets:
+            buckets[key] = (label, SummaryAccumulator())
+        buckets[key][1].add(valued.summary)
 
     rows = [
         AggregateRow(
@@ -345,7 +349,8 @@ def aggregate_valued_records(
             credits=summary.credits,
             record_count=summary.record_count,
         )
-        for key, (label, summary) in buckets.items()
+        for key, (label, accumulator) in buckets.items()
+        for summary in (accumulator.freeze(),)
     ]
     if group_by in {"day", "hour"}:
         return sorted(rows, key=lambda row: row.key)
@@ -359,17 +364,29 @@ def summarize_records(records: list[UsageRecord]) -> UsageSummary:
 def summarize_valued_records(
     valued_records: Sequence[ValuedUsageRecord],
 ) -> UsageSummary:
-    summary = _empty_summary()
+    summary = SummaryAccumulator()
     for valued in valued_records:
-        summary = summary.add(valued.summary)
-    return summary
+        summary.add(valued.summary)
+    return summary.freeze()
 
 
 def value_records(records: Sequence[UsageRecord]) -> tuple[ValuedUsageRecord, ...]:
-    return tuple(
-        ValuedUsageRecord(record=record, summary=summarize_record(record))
-        for record in records
-    )
+    from codex_usage import pricing
+    from codex_usage.pricing_schedule import ScheduleResolver
+    api = ScheduleResolver(pricing.API_PRICING_USD_SCHEDULE)
+    credits = ScheduleResolver(pricing.CODEX_CREDIT_RATE_SCHEDULE)
+
+    def value(record):
+        api_entry = api.entry(record.model, record.timestamp)
+        credit_entry = credits.entry(record.model, record.timestamp)
+        cost = (cost_for_entry(record.usage, api_entry) if api_entry is not None
+                else _unpriced(record.usage, CostBreakdown))
+        credit = (credits_for_rate(record.usage, credit_entry.rate) if credit_entry is not None
+                  else _unpriced(record.usage, CreditBreakdown))
+        return ValuedUsageRecord(record=record, summary=UsageSummary(
+            usage=record.usage, cost=cost, credits=credit, record_count=1))
+
+    return tuple(value(record) for record in records)
 
 
 def summarize_record(record: UsageRecord) -> UsageSummary:
@@ -411,8 +428,11 @@ def _record_cost(record: UsageRecord) -> CostBreakdown:
     cost = estimate_cost(record.usage, record.model, at=record.timestamp)
     if cost is not None:
         return cost
-    usage = record.usage
-    return CostBreakdown(
+    return _unpriced(record.usage, CostBreakdown)
+
+
+def _unpriced(usage, breakdown):
+    return breakdown(
         unpriced_tokens=usage.total_tokens,
         unpriced_ordinary_input_tokens=usage.ordinary_input_tokens,
         unpriced_cached_input_tokens=usage.cached_input_tokens,
@@ -425,11 +445,4 @@ def _record_credits(record: UsageRecord) -> CreditBreakdown:
     credits = estimate_codex_credits(record.usage, record.model, at=record.timestamp)
     if credits is not None:
         return credits
-    usage = record.usage
-    return CreditBreakdown(
-        unpriced_tokens=usage.total_tokens,
-        unpriced_ordinary_input_tokens=usage.ordinary_input_tokens,
-        unpriced_cached_input_tokens=usage.cached_input_tokens,
-        unpriced_cache_write_input_tokens=usage.cache_write_input_tokens,
-        unpriced_output_tokens=usage.output_tokens,
-    )
+    return _unpriced(record.usage, CreditBreakdown)

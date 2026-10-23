@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 import codex_usage.allowance_probe as allowance_probe
-import codex_usage.codex_registration as codex_registration
+import codex_usage.codex_runtime as codex_runtime
 from codex_usage.app_server_rpc import AppServerRpc
 
 
@@ -21,16 +21,16 @@ def test_macos_discovery_keeps_override_current_legacy_and_path_candidates(
 ):
     system_app = Path("/Applications/ChatGPT.app")
     user_app = tmp_path / "Applications" / "ChatGPT.app"
-    monkeypatch.setattr(codex_registration.sys, "platform", "darwin")
+    monkeypatch.setattr(codex_runtime.sys, "platform", "darwin")
     monkeypatch.setattr(
-        codex_registration,
+        codex_runtime,
         "_macos_chatgpt_applications",
         lambda: (system_app, user_app),
     )
-    monkeypatch.setattr(codex_registration.shutil, "which", lambda _: "/path/codex")
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda _: "/path/codex")
     monkeypatch.setenv("CODEX_CLI_PATH", "/explicit/codex")
 
-    candidates = codex_registration.discover_codex_executables()
+    candidates = codex_runtime.discover_codex_executables()
 
     assert candidates == (
         "/explicit/codex",
@@ -49,14 +49,14 @@ def test_windows_discovery_keeps_localappdata_and_path_fallbacks(tmp_path, monke
     versioned.mkdir(parents=True)
     environment = {"LOCALAPPDATA": str(local_app_data)}
     monkeypatch.setattr(
-        codex_registration,
+        codex_runtime,
         "os",
         SimpleNamespace(name="nt", environ=environment),
     )
-    monkeypatch.setattr(codex_registration.sys, "platform", "win32")
-    monkeypatch.setattr(codex_registration.shutil, "which", lambda _: "C:/path/codex.exe")
+    monkeypatch.setattr(codex_runtime.sys, "platform", "win32")
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda _: "C:/path/codex.exe")
 
-    candidates = codex_registration.discover_codex_executables()
+    candidates = codex_runtime.discover_codex_executables()
 
     assert str(local_app_data / "OpenAI/Codex/bin/codex.exe") in candidates
     assert str(versioned / "codex.exe") in candidates
@@ -106,13 +106,13 @@ for line in sys.stdin:
             launched.append(selected)
             super().__init__(selected, *args, **kwargs)
 
-    monkeypatch.setattr(codex_registration.sys, "platform", "darwin")
+    monkeypatch.setattr(codex_runtime.sys, "platform", "darwin")
     monkeypatch.setattr(
-        codex_registration,
+        codex_runtime,
         "_macos_chatgpt_applications",
         lambda: (system_app, user_app),
     )
-    monkeypatch.setattr(codex_registration.shutil, "which", lambda _: None)
+    monkeypatch.setattr(codex_runtime.shutil, "which", lambda _: None)
     monkeypatch.setattr(allowance_probe, "AppServerRpc", RecordingRpc)
     monkeypatch.delenv("CODEX_CLI_PATH", raising=False)
     monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))

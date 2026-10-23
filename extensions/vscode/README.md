@@ -1,7 +1,7 @@
 # Codex Usage Companion
 
 Codex Usage Companion is a standalone VS Code dashboard for a durable local
-usage ledger, Task Storage, and Task Transfer. Each platform-specific VSIX
+usage ledger and Task Storage. Each platform-specific VSIX
 includes the matching collector for macOS Apple Silicon or Windows x64; Python,
 uv, this repository, and the native app are not runtime requirements.
 
@@ -27,7 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.12.2.
+Linux are not supported in 2.13.0.
 
 ## What You Can Do
 
@@ -44,13 +44,12 @@ Linux are not supported in 2.12.2.
   legacy usage caches entirely inside VS Code.
 - Filter Usage by preset or inclusive custom local-calendar range and project,
   switch theme, review verified project transitions, keep the Agent Activity
-  Daily Summary visible, expand its collapsed agent table when needed, and
+  Daily Summary visible, and
   export complete CSV rows through the VS Code save dialog.
 - Review global, model, and expandable project Image Generation activity without
   mixing it into language token or cost totals; incomplete history reports
   complete, pending, unavailable, and artifact counts.
 - Inspect current Task Storage and explicitly analyze one selected task tree.
-- Import, export, or review selected active tasks through Task Transfer.
 - See last capture, pending work, stale-source warnings, and ledger revision in
   the status bar.
 
@@ -96,11 +95,6 @@ model. Earlier unknown prices and ordinary model-based code reviews are unchange
 | `Codex Usage: Review Project Transitions` | Inspect verified repository switch points. |
 | `Codex Usage: Show Usage` | Switch the dashboard to Usage. |
 | `Codex Usage: Show Task Storage` | Switch the dashboard to Task Storage. |
-| `Codex Usage: Task Transfer` | Open Import, Export, and status actions. |
-| `Codex Usage: Choose Transfer Folder` | Choose the user-managed transfer folder. |
-| `Codex Usage: Import Tasks` | Import selected tasks from one project. |
-| `Codex Usage: Export Tasks` | Export selected active tasks from one project. |
-| `Codex Usage: Review Transfer Status` | Compare selected local and transferred tasks. |
 | `Codex Usage: Analyze Task Storage` | Analyze one selected task tree. |
 | `Codex Usage: Set Up Collector` | Choose CODEX_HOME, interval or Manual only, and migrate legacy usage data. |
 | `Codex Usage: Retire Legacy Background Service` | Explicitly hand off a previously registered Codex Usage service to the bundled collector while preserving the ledger. |
@@ -212,39 +206,19 @@ Codex Usage does not create, fork, archive, restore, or delete tasks.
 
 ## Task Transfer
 
-Task Transfer deliberately moves selected active task JSONLs through a folder
-managed by OneDrive, Dropbox, iCloud Drive, Syncthing, a network drive, or a
-similar filesystem provider. It never runs automatically.
+Task Transfer was retired in **2.13.0**. Import, Export, Review Status and the
+transfer CLI are no longer supported.
 
-### Export
+Existing chats, transfer folders, exported files and paired-transfer state remain
+untouched. The saved transfer-folder path is preserved as inert legacy settings
+data and is not accessed. There is no automatic migration, reimport or cleanup.
 
-1. Choose a transfer folder.
-2. Choose one project.
-3. Choose exact active tasks; no tasks are selected by default and search stays
-   within the chosen project.
-4. Export and wait for your filesystem provider to finish copying.
-
-### Import
-
-1. Ensure the matching project checkout already exists. Task Transfer does not
-   clone repositories.
-2. For Codex Desktop, add that checkout as a project and fully quit Desktop.
-3. Choose the transfer folder, one project, exact tasks, and the local project
-   folder.
-4. Import, then start Codex Desktop or reload VS Code so Codex refreshes its
-   task list.
-
-Each Import or Export handles one project. Use the project Back action and
-repeat for another project. Review Status compares state without copying.
-
-The complete selected batch is validated first. Conflicts, changed files,
-unsafe mappings, opposite-direction changes, running Desktop, ambiguous Desktop
-projects, and assignment conflicts block the operation. Registration uses
-targeted Codex `app-server` reads. It does not start a turn or consume tokens,
-and no prompt is sent. Import atomically installs selected JSONLs but never
-edits their content or writes Codex SQLite databases. Imported files remain in
-the transfer folder, and only that folder path is retained as durable transfer
-configuration.
+Use [Codex native host handoff](https://learn.chatgpt.com/docs/remote-connections#hand-off-a-chat-between-hosts)
+for ongoing work. It requires connected hosts and matching saved Git projects,
+transfers the chat and Git state, and can interrupt active work. It is not an
+offline-recovery or non-Git migration tool, and it is not a backup. Old exports
+remain user-owned; older companion versions are not guaranteed compatible with
+future Codex releases.
 
 ## Settings
 

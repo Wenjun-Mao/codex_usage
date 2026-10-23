@@ -24,9 +24,6 @@ from codex_usage.session_files import (
 )
 
 
-_ESTIMATED_SYNC_METADATA_BYTES = 4096
-
-
 @dataclass(frozen=True)
 class ThreadInfo:
     thread_id: str
@@ -38,7 +35,6 @@ class ThreadInfo:
     project_aliases: tuple[str, ...]
     total_tokens: int
     session_bytes: int
-    estimated_sync_bytes: int
     memory_mode: str = ""
     has_base_instructions: bool = False
     cwd: str = ""
@@ -54,7 +50,6 @@ class ThreadInfo:
             "project_aliases": list(self.project_aliases),
             "total_tokens": self.total_tokens,
             "session_bytes": self.session_bytes,
-            "estimated_sync_bytes": self.estimated_sync_bytes,
             "memory_mode": self.memory_mode,
             "has_base_instructions": self.has_base_instructions,
         }
@@ -103,7 +98,6 @@ def list_threads(
             project_aliases=identity.aliases,
             total_tokens=summarize_records(records).usage.total_tokens if records else 0,
             session_bytes=session_bytes,
-            estimated_sync_bytes=session_bytes + _ESTIMATED_SYNC_METADATA_BYTES,
             memory_mode=metadata.memory_mode,
             has_base_instructions=metadata.has_base_instructions,
             cwd=metadata.cwd,
@@ -157,7 +151,6 @@ def _thread_from_summary(
         project_aliases=identity.aliases,
         total_tokens=token_total,
         session_bytes=summary.session_bytes,
-        estimated_sync_bytes=summary.estimated_sync_bytes,
         memory_mode=summary.memory_mode,
         has_base_instructions=summary.has_base_instructions,
         cwd=summary.cwd,

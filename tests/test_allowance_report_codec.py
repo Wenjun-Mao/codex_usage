@@ -95,7 +95,7 @@ def test_large_history_serializes_captures_once_and_restores_shared_point_owners
     assert len(encoded["captures"]) == 12000
     assert "captures" not in encoded["report"]["display_history"]
     assert all("points" not in window for window in encoded["report"]["windows"])
-    assert payload.count('"timestamp"') == 12000
+    assert payload.count('"timestamp"') == 1
     assert len(payload) < 1.12 * len(_legacy_payload({k: v for k, v in original.items() if k != "display_history"}))
     restored = decode_report(payload)
     assert restored == original
@@ -123,7 +123,7 @@ def test_ambiguous_capture_ownership_is_rejected(damage):
         return
     encoded = json.loads(encode_report(original))
     if damage == "pool-duplicate":
-        encoded["captures"].append(dict(encoded["captures"][0]))
+        encoded["captures"].append(list(encoded["captures"][0]))
     elif damage == "point-duplicate":
         encoded["report"]["windows"][0]["point_indices"] = [0, 0]
     elif damage == "inline-points":

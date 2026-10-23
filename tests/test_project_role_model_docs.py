@@ -68,7 +68,7 @@ def test_release_checklist_locks_extension_visual_gate() -> None:
         encoding="utf-8"
     )
 
-    for phrase in ("1440 x 900", "760", "visually review", "Task Transfer"):
+    for phrase in ("1440 x 900", "760", "visually review", "absence of Task Transfer controls"):
         assert phrase.casefold() in checklist.casefold(), phrase
     for command in (
         "uv run playwright install chromium",

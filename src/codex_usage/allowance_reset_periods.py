@@ -42,7 +42,7 @@ def _refine(edge, group, candidates):
     return edge
 
 
-def reset_periods(captures, live_points, anchors, *, through=None):
+def reset_periods(captures, live_points, anchors, *, through=None, points=None):
     """Only authoritative readings establish a reset; matching tasks refine time.
 
     A changed deadline plus a restarted meter is an early reset even when the
@@ -50,7 +50,8 @@ def reset_periods(captures, live_points, anchors, *, through=None):
     create periods, revert the clock, or choose the meter's final percentage.
     """
     fields = QuotaObservation.__dataclass_fields__
-    points = [QuotaObservation(**{key: p[key] for key in fields}) for p in captures]
+    if points is None:
+        points = [QuotaObservation(**{key: p[key] for key in fields}) for p in captures]
     primary = {(a.limit_id, a.duration_minutes) for a in anchors if a.duration_minutes == 10080}
     primary = primary or {(a.limit_id, a.duration_minutes) for a in anchors if a.duration_minutes}
     if not primary:
@@ -59,8 +60,10 @@ def reset_periods(captures, live_points, anchors, *, through=None):
     raw, official = defaultdict(list), defaultdict(list)
     for index, point in enumerate(points):
         key = point.limit_id, point.duration_minutes
-        raw[key].append((seconds(point), point))
-        if key in primary and point in live_points:
+        if key not in primary:
+            continue
+        raw[key].append((index, seconds(point), point))
+        if point in live_points:
             official[key].append((index, point))
     result = []
     disputed = set()
@@ -68,7 +71,7 @@ def reset_periods(captures, live_points, anchors, *, through=None):
     for key, indexed in official.items():
         readings = [p for _, p in indexed]
         groups = [Group.from_points(time, list(members)) for time, members in groupby(readings, seconds)]
-        candidates = ([t for t, _ in raw[key]], [p for _, p in raw[key]])
+        candidates = ([t for _, t, _ in raw[key]], [p for _, _, p in raw[key]])
         active = previous = None
         reset_seen = reset_meter = credits_seen = credits_meter = None
         for index, group in enumerate(groups):
@@ -143,10 +146,7 @@ def reset_periods(captures, live_points, anchors, *, through=None):
     owners = {}
     for key, periods in series.items():
         starts = [p["start"] for p in periods]
-        for index, point in enumerate(points):
-            if (point.limit_id, point.duration_minutes) != key:
-                continue
-            at = seconds(point)
+        for index, at, point in raw[key]:
             if point in disputed:
                 continue
             position = bisect_right(starts, at)-1

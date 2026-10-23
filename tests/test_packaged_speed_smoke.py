@@ -1,6 +1,10 @@
 import importlib.util
+from contextlib import nullcontext
+from io import BytesIO
+import json
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.error import HTTPError
 
 import pytest
 from codex_usage.ledger_writer_contract import LEDGER_SCHEMA_VERSION
@@ -13,6 +17,35 @@ def load_smoke(monkeypatch):
     smoke = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(smoke)
     return smoke
+
+
+@pytest.mark.parametrize("status,payload,accepted", [
+    (404, {"error": "not found"}, True),
+    (404, {"error": "different failure"}, False),
+    (200, {"error": "not found"}, False),
+    (403, {"error": "not found"}, False),
+    (500, {"error": "not found"}, False),
+])
+def test_packaged_retirement_requires_unknown_routes(monkeypatch, status, payload, accepted):
+    smoke = load_smoke(monkeypatch)
+    calls = []
+
+    def request(value, *, timeout):
+        assert timeout == 30
+        assert value.get_header("Authorization") == "Bearer synthetic"
+        calls.append((value.get_method(), value.full_url))
+        if status == 200:
+            return nullcontext(BytesIO(json.dumps(payload).encode()))
+        raise HTTPError(value.full_url, status, "synthetic", None, BytesIO(json.dumps(payload).encode()))
+
+    monkeypatch.setattr(smoke, "urlopen", request)
+    if accepted:
+        smoke._verify_retired_transfer_routes({"port": 1234, "token": "synthetic"})
+        assert calls == [(method, f"http://127.0.0.1:1234/v1/transfer/{operation}")
+                         for operation in ("inventory", "execute") for method in ("GET", "POST")]
+    else:
+        with pytest.raises(RuntimeError, match="did not reject"):
+            smoke._verify_retired_transfer_routes({"port": 1234, "token": "synthetic"})
 
 
 @pytest.mark.parametrize("matching", [True, False])

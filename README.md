@@ -25,9 +25,8 @@ OpenAI API.
 - **Observed Output Speed:** compare model-level output-phase tok/s with daily
   trends and seven-day hourly windows. Medians, middle 50% ranges and sample
   counts distinguish observed variation from insufficient timing evidence.
-- **Agent Activity:** inspect daily token and response deltas plus the top 50
-  agents in a collapsed detail table, then export every selected agent-day row
-  to CSV; the Daily Summary stays visible.
+- **Agent Activity:** inspect daily token and response deltas, then export every
+  selected agent-day row to CSV; the Daily Summary stays visible.
 - **Image Generation:** inspect global, model, and project image operations
   separately from language tokens and costs; historical coverage reports
   complete, pending, unavailable, and artifact counts, while incomplete or
@@ -37,8 +36,6 @@ OpenAI API.
   their parent root task when Codex stores no durable discriminator.
 - **Task Storage:** inspect current disk use and explicitly analyze one selected
   task tree for history amplification and inline media.
-- **Task Transfer:** deliberately export or import selected active tasks from one
-  project at a time through a user-managed folder.
 
 ## Install
 
@@ -47,7 +44,7 @@ from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
 packages each include the matching local collector; the native app, Python,
 `uv`, and this repository are not required.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.12.2 release.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.13.0 release.
 
 ## First Run And Legacy Service Handoff
 
@@ -223,48 +220,19 @@ Codex Usage does not create, fork, archive, restore, or delete tasks.
 
 ## Task Transfer
 
-Task Transfer moves selected active task JSONLs between computers through a
-folder managed by OneDrive, Dropbox, iCloud Drive, Syncthing, a network drive,
-or another filesystem provider. It is explicit and never runs in the
-background. Each Import or Export handles exactly one project.
+Task Transfer was retired in **2.13.0**. Import, Export, Review Status and the
+transfer CLI are no longer supported. Codex owns chat mobility; the companion
+does not maintain a second registration or migration layer.
 
-### Export
+Existing chats, transfer folders, exported files and paired-transfer state remain
+untouched. The saved transfer-folder path is preserved as inert legacy settings
+data and is not accessed. There is no automatic migration, reimport or cleanup.
 
-1. Open **Task Transfer**, choose **Export**, and select a transfer folder.
-2. Choose one project.
-3. Choose the exact active tasks to export. No tasks are selected by default,
-   and search is limited to that project.
-4. Select **Export Selected** and wait for your filesystem provider to finish
-   copying the transfer folder.
-
-### Import
-
-1. Clone or otherwise create the matching project checkout on the destination
-   computer. Task Transfer does not clone repositories.
-2. If using Codex Desktop, add the checkout as a local project and fully quit
-   Desktop before Import. VS Code-only use does not require Desktop.
-3. Open **Task Transfer**, choose **Import**, and select the same transfer
-   folder.
-4. Choose one transferred project, choose its tasks, and select the matching
-   local checkout.
-5. Review any unverified non-Git mapping, then choose **Import Selected**.
-6. Start Codex Desktop after success, or reload VS Code in an IDE-only workflow,
-   so Codex refreshes its visible task list.
-
-Use **Review Status** to compare selected local and transferred tasks without
-copying files. Use **Projects** to go back and choose a different project. Repeat
-the operation for another project; one transfer folder can retain many projects.
-
-The complete selected batch is checked before copying. Conflicts, malformed
-layouts, changed sources, unsafe project mappings, opposite-direction work, a
-running or indeterminate Desktop process, ambiguous Desktop projects, and
-assignment conflicts fail closed. Import registers only certified files
-through targeted Codex `app-server` reads. Registration does not start a turn or
-consume tokens. Import atomically installs selected JSONLs but never edits their content
-or writes Codex SQLite databases. Desktop project assignment is atomic, backed
-up, and verified while Desktop is closed. Imported files remain in the transfer
-folder, and only the transfer-folder path is retained as durable Task Transfer
-configuration.
+For ongoing work, use [Codex native host handoff](https://learn.chatgpt.com/docs/remote-connections#hand-off-a-chat-between-hosts).
+It requires connected hosts and matching saved Git projects, transfers the chat
+and Git state, and can interrupt active work. It is not an offline-recovery or
+non-Git migration tool, and it is not a backup. Old exports remain user-owned;
+older companion versions are not guaranteed compatible with future Codex releases.
 
 ## Legacy Migration
 

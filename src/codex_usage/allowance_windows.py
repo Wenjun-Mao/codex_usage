@@ -20,7 +20,7 @@ class AllowanceWindow:
 
 
 def seconds(point):
-    return datetime.fromisoformat(point.timestamp).timestamp()
+    return point.timestamp_seconds
 
 
 def boundary(previous, current):
