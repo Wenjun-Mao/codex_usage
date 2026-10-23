@@ -1,7 +1,7 @@
 # Qualified VSIX Promotion
 
-Status: 2.12.5 is published with both public target hashes verified. The
-[latest receipt](2026-10-17-2.12.5-published.md) binds its qualified source,
+Status: 2.13.0 is published with both public target hashes verified. The
+[latest receipt](2026-10-23-2.13.0-published.md) binds its qualified source,
 normal/dry-run proof, explicit promotion and retained before-upload intents.
 The [2.12.4 receipt](2026-10-16-2.12.4-published.md) preserves its earlier proof.
 The [2.12.3 receipt](2026-10-15-2.12.3-published.md) retains its earlier

@@ -1,6 +1,8 @@
 # VSIX Releases
 
-Codex Usage 2.12.5 ships only the macOS Apple Silicon and Windows x64 VS Code
+Current verified release: [2.13.0 receipt](release/2026-10-23-2.13.0-published.md).
+
+Codex Usage 2.13.0 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.

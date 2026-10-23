@@ -1,15 +1,17 @@
 # Task Transfer Retirement And Performance Release
 
 Date: 2026-10-22, America/Toronto.
-Status: implementation and 2.13.0 release approved by the owner on 2026-10-22
-via Relay direct. Local implementation in progress; not yet qualified/published.
+Status: completed. Version 2.13.0 was published and independently verified for
+both targets on 2026-10-23. See the
+[published receipt](../release/2026-10-23-2.13.0-published.md).
 
-Execution checkpoint: candidate `f5800d1a` passed complete product checks and
-both hosted package/visual matrices, but its normal qualification failed at
-core receipt generation on a randomized required pytest identity. The fixed
-fixture and strict local-inventory command pass 2,903 local cases and exact
-inventory validation. The failed run is retained; a fresh hosted run requires
-the separately requested owner approval. No tag or publication has occurred.
+Execution checkpoint: the failed `f5800d1a` qualification is retained. Its
+randomized pytest identity was corrected without weakening required coverage.
+The owner authorized additional qualification runs as needed on 2026-10-23.
+Corrected source `150c02fe` passed normal qualification `39900612009/1`,
+credential-free dry-run `39901542869/1` and promotion `39901694352/1`.
+Both official downloads match qualified bytes and catalog hashes. The tag stays
+at the qualified source; closeout documentation does not rebuild its packages.
 
 ## Outcome
 
@@ -150,7 +152,7 @@ mentions that should remain.
 - [x] Run focused removal/settings/API/helper and release-inventory checks;
   then full Python, extension tests/build, Ruff, lock/version validation, exact
   monetary parity and bounded-work checks for the final candidate.
-- [ ] Regenerate/review synthetic Usage/Storage screenshots and run affected
+- [x] Regenerate/review synthetic Usage/Storage screenshots and run affected
   browser suites across supported engines/themes/viewports. Preserve remaining
   hover, filtering, history, range navigation and CSV assertions.
 - [x] Audit a disposable packaged macOS candidate, including upgrade from
@@ -190,21 +192,21 @@ No parallel writers or separate tasks are needed for this plan.
 - [x] Confirm 2.13.0 is unused; update Python/extension versions, lockfiles,
   both changelogs and the independent release-history expectations. State the
   feature removal and honest measured performance limits.
-- [ ] Complete the final local checks/preflight after all source, screenshot,
+- [x] Complete the final local checks/preflight after all source, screenshot,
   metadata and test-inventory changes. Commit only the reviewed scoped changes
   and push the exact retained `main` candidate when execution is authorized.
-- [ ] Use the existing coordinator from base `v2.12.5` for one fresh normal
+- [x] Use the existing coordinator from base `v2.12.5` for one fresh normal
   nonpublishing qualification. Require all surviving core/accounting, visual,
   macOS/Windows package/smoke/archive/handoff and exact-package native macOS
   proof. Retired test cases are not permission to skip unrelated gates.
-- [ ] Perform one credential-free dry-run promotion for the selected successful
+- [x] Perform one credential-free dry-run promotion for the selected successful
   run/attempt. Source or qualification-contract changes invalidate prior proof.
   No extra failure/retry or latency pilots are routine requirements here.
-- [ ] After qualification/dry-run pass, use the existing explicit promotion
+- [x] After qualification/dry-run pass, use the existing explicit promotion
   path: immutable `v2.13.0` at the qualified SHA, exact qualified VSIX bytes,
   retained publication intents and both Marketplace targets. Never rebuild
   packages during promotion or treat a tag as publication authority by itself.
-- [ ] Independently verify official versioned downloads/catalog hashes for
+- [x] Independently verify official versioned downloads/catalog hashes for
   both targets. Preserve pending/partial states without duplicate uploads.
   Review and commit the generated release receipt/status documents, and report
   actual phase timings from the coordinator. Installation remains user-owned.
@@ -219,12 +221,14 @@ following implementation/release envelope on 2026-10-22:
   verification/builds and disposable synthetic browser/package/native checks.
 - The already granted private read-only snapshot permission carries forward;
   no raw-log copies, live-ledger writes, account calls or private uploads.
-- One normal hosted qualification, one nonpublishing dry-run and one explicit
-  production promotion of that exact candidate, with bounded read-only status
-  and public-propagation observation using the existing release procedure.
-- No automatic workflow reruns, extra diagnostic pilots or replacement
-  qualification dispatches. A failure requiring another hosted execution needs
-  a new explicit request, consistent with the owner's CI preference.
+- The initial envelope allowed one normal hosted qualification, one
+  nonpublishing dry-run and one explicit production promotion, with bounded
+  read-only status and public-propagation observation. On 2026-10-23 the owner
+  explicitly extended this to as many qualification runs as needed to carry
+  2.13.0 through release. One corrected-source qualification was needed.
+- Diagnose failures before another qualification; do not blindly rerun, weaken
+  gates or reuse proof across source changes. The extension of qualification
+  authority does not authorize duplicate uploads or unrelated diagnostic pilots.
 - No secrets/settings/permission changes, journal rebootstrap/history reset,
   normal extension installation, live service changes, Codex chat operations or
   additional cleanup. Escalate if a gate requires any of these.
