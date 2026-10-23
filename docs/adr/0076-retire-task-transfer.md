@@ -55,5 +55,8 @@ and reject access to saved legacy paths. Retired commands/routes cannot enqueue
 work or register chats. Shared runtime probes and Usage/Storage/CSV remain tested.
 Review every retired required test identity; pin new retirement/verifier cases
 and preserve all unrelated requirements. No broad skips or weakened proof gates.
+Required identities must be deterministic across independent collections; use
+fixed representative parameter data and semantic IDs. Validate the complete local
+JUnit/collection evidence with the hosted validator before requesting CI.
 Both target packages require fresh source-bound qualification and exact-artifact
 promotion; no live data, automatic installation or chat operations for release.

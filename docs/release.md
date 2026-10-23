@@ -404,9 +404,18 @@ From the repository root:
 
 ```bash
 uv sync --all-groups
-uv run pytest -q
+uv run python -m pytest -q -p scripts.verification.pytest_inventory \
+  --qualification-inventory output/qualification/local-core/inventory.json \
+  --junitxml output/qualification/local-core/tests.xml
+uv run python scripts/verification/test_inventory.py output/qualification/local-core
 uv run ruff check .
 ```
+
+The local inventory command applies the same preserved-case, complete-collection
+and no-skip validator used by hosted proof generation; a passing test count alone
+is insufficient. It creates no release proof. Required parameter identities must
+be deterministic across fresh collections: use fixed representative inputs and
+semantic pytest IDs, not random values or current timestamps in case names.
 
 From `extensions/vscode`:
 

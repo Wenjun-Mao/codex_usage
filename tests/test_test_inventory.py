@@ -10,6 +10,31 @@ from release_tooling_support import load_tool
 validator = load_tool("verification.test_inventory")
 
 
+@pytest.mark.parametrize("complete", [pytest.param(True, id="complete"),
+                                     pytest.param(False, id="missing-required")])
+def test_local_inventory_command_requires_the_same_complete_cases(tmp_path, capsys, complete):
+    files = FixtureAPI().gate_files("core")
+    if not complete:
+        xml = ElementTree.fromstring(files["tests.xml"])
+        first = xml[0]
+        xml.remove(first)
+        inventory = json.loads(files["inventory.json"])
+        inventory["collected"].remove([first.get("classname"), first.get("name")])
+        files["tests.xml"] = ElementTree.tostring(xml)
+        files["inventory.json"] = policy.canonical(inventory)
+    for name in ("tests.xml", "inventory.json"):
+        (tmp_path / name).write_bytes(files[name])
+    if complete:
+        assert validator.main([str(tmp_path)]) == 0
+        result = json.loads(capsys.readouterr().out)
+        assert result == {"status": "local-test-inventory-only", "skipped": 0,
+                          "passed": len(json.loads(files["inventory.json"])["collected"])}
+    else:
+        with pytest.raises(ValueError, match="Required preserved test cases missing"):
+            validator.main([str(tmp_path)])
+        assert not capsys.readouterr().out
+
+
 @pytest.mark.parametrize("fault", ["duplicate", "missing", "uncollected", "collection-duplicate", "unknown-skip",
     "windows-skip", "failure", "error", "exit", "collection-missing", "skip-type", "xml-totals"])
 def test_python_collection_and_case_results_are_complete_and_passing(fault):

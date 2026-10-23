@@ -41,7 +41,9 @@ class API:
         return self.rows
 
 
-@pytest.mark.parametrize("value", ["bad", "", str(uuid4()).upper(), "0" * 32, None, True])
+@pytest.mark.parametrize("value", ["bad", "",
+    pytest.param("01234567-89AB-4CDE-8FAB-0123456789AB", id="uppercase-uuid"),
+    "0" * 32, None, True])
 def test_correlation_rejects_noncanonical_values(value):
     with pytest.raises((ValueError, AttributeError, TypeError)):
         runs.request_id(value)

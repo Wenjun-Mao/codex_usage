@@ -1,4 +1,5 @@
 """Independent preserved cases, complete collection and explicit platform skip policy."""
+import argparse
 import json
 from pathlib import Path
 from xml.etree import ElementTree
@@ -76,3 +77,18 @@ def validate_extension(files):
         or any(case.get("outcome") != "passed" or case.get("skipped") is not False or case.get("todo") is not False for case in cases)):
         raise ValueError("Extension case events differ from complete passing inventory")
     return {"passed": sorted(names), "identities": [list(case) for case in sorted(identities)]}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Validate local Python evidence; never create release proof.")
+    parser.add_argument("directory", type=Path, help="Directory containing tests.xml and inventory.json")
+    args = parser.parse_args(argv)
+    files = {name: (args.directory / name).read_bytes() for name in ("tests.xml", "inventory.json")}
+    result = validate_python(files, "core")
+    print(json.dumps({"status": "local-test-inventory-only", "passed": len(result["passed"]),
+                      "skipped": len(result["skipped"])}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

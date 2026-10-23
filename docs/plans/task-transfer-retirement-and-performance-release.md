@@ -4,6 +4,13 @@ Date: 2026-10-22, America/Toronto.
 Status: implementation and 2.13.0 release approved by the owner on 2026-10-22
 via Relay direct. Local implementation in progress; not yet qualified/published.
 
+Execution checkpoint: candidate `f5800d1a` passed complete product checks and
+both hosted package/visual matrices, but its normal qualification failed at
+core receipt generation on a randomized required pytest identity. The fixed
+fixture and strict local-inventory command pass 2,903 local cases and exact
+inventory validation. The failed run is retained; a fresh hosted run requires
+the separately requested owner approval. No tag or publication has occurred.
+
 ## Outcome
 
 Retire Task Transfer completely as a supported product feature and release the
