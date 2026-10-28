@@ -6,6 +6,8 @@
 
 - Reuse immutable context and path metadata within project-filtered speed reads,
   avoiding repeated decoding without changing records, accounting or reports.
+- Decode only speed records that could match selected projects, preserving
+  aliases and all possible incoming project transitions before exact filtering.
 - Preserve capture overlap, snapshot consistency and complete CSV exports.
   This narrow change does not address slow initial allowance preparation.
 

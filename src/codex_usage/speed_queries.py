@@ -41,6 +41,24 @@ def cache_key(connection, report_range, project_keys, timezone, auto_transitions
     return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
 
 
+def _project_candidate_rows(rows, project_keys, metadata, transitions):
+    selected = {key.strip() for key in project_keys if key.strip()}
+    if not selected:
+        return rows
+    # Ignore time/thread guards here: retain every possible transition arrival.
+    primary = selected | {item.source_key for item in transitions if item.target_key in selected}
+    contexts, candidates = {}, []
+    for row in rows:
+        key = row["context_id"]
+        if key not in contexts:
+            context = metadata.context(row)
+            contexts[key] = context["project_key"] in primary or any(
+                alias in selected for alias in context["project_aliases"])
+        if contexts[key]:
+            candidates.append(row)
+    return candidates
+
+
 def speed_aggregates(connection, report_range, project_keys, timezone, *, auto_transitions=True) -> tuple[dict, bool]:
     key = cache_key(connection, report_range, project_keys, timezone, auto_transitions)
     cached = connection.execute("select report_json from speed_report_cache where cache_key=?", (key,)).fetchone()
@@ -68,19 +86,25 @@ def speed_aggregates(connection, report_range, project_keys, timezone, *, auto_t
     selected = set(project_keys)
     # Ownership matters only when selecting projects. Account-wide speed uses
     # normalized model, task and timestamp facts, not full priced usage records.
+    transitions = query_ledger_transitions(connection) if selected and auto_transitions else []
     metadata = RecordMetadata() if selected else None
+    if selected:
+        rows = _project_candidate_rows(rows, project_keys, metadata, transitions)
     records = [_row_to_usage_record(row, metadata) for row in rows] if selected else [None] * len(rows)
     # Normalized events already follow the parser's verified ownership rebuild;
     # temporal transitions must still be applied before any project filter.
     if selected and auto_transitions:
-        records = apply_project_transitions(records, query_ledger_transitions(connection))
-    # Filter once after transitions; object identities retain alignment with rows.
-    included = {id(record) for record in filter_records_by_project_keys(records, project_keys)} if selected else None
+        records = apply_project_transitions(records, transitions)
+    # Filtering keeps order and references, so one cursor retains row alignment.
+    included = iter(filter_records_by_project_keys(records, project_keys)) if selected else iter(())
+    match = next(included, None)
     groups, daily, hourly = defaultdict(list), defaultdict(list), defaultdict(list)
     reasons = Counter()
     for row, record in zip(rows, records):
-        if included is not None and id(record) not in included:
+        if selected and record is not match:
             continue
+        if selected:
+            match = next(included, None)
         fact = json.loads(row["evidence_json"])
         reason = "conflicting_response_identity" if row["conflict"] else row["reason"]
         if not reason and (row["generation_id"] != row["winner_generation"] or row["source_record_index"] != row["winner_index"]):

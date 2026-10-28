@@ -43,6 +43,7 @@ def compare(connection, selected, projects, *, auto_transitions=True):
 
     def new(row, metadata=None):
         record = original_new(row, metadata)
+        assert record == original_old(row), "Retained fields must match the independent released decoder"
         records["candidate"].append(record)
         return record
 
@@ -61,7 +62,9 @@ def compare(connection, selected, projects, *, auto_transitions=True):
     finally:
         connection.set_trace_callback(None)
     assert actual == expected
-    assert records["candidate"] == records["released"]
+    remaining = iter(records["released"])
+    for record in records["candidate"]:
+        assert any(record == expected for expected in remaining), "Retained records must preserve released order"
     return actual, records["candidate"]
 
 
@@ -82,12 +85,15 @@ def test_every_record_and_aggregate_matches_released_oracle(ledger, projects, au
             (key, (AT+timedelta(seconds=150)).isoformat()))
         touch(connection)
         _, records = compare(connection, selected, projects, auto_transitions=auto_transitions)
-        assert len(records) == (24 if projects else 0)
+        key = projects[0].strip() if projects else ""
+        expected = 24 if projects and key in {"", "shared-alias"} else 12 if key == "moved" and auto_transitions else 0
+        assert len(records) == expected
 
 
 def test_conversions_scale_with_selected_contexts_and_paths(ledger, monkeypatch):
     selected = resolve_report_range("30d", UTC, now=AT+timedelta(hours=1))
     with open_ledger(ledger, read_only=True) as connection:
+        projects = [row[0] for row in connection.execute("select project_key from ledger_projects")]
         counts = connection.execute("""select count(distinct e.context_id),count(distinct s.path)
             from ledger_usage_events e join ledger_generations g using(generation_id)
             join ledger_sources s using(source_id) where g.status='trusted'
@@ -95,7 +101,7 @@ def test_conversions_scale_with_selected_contexts_and_paths(ledger, monkeypatch)
             (selected.bounds.start_us, selected.bounds.end_us)).fetchone()
         with patch.object(materialization, "context_values", wraps=materialization.context_values) as contexts:
             with patch.object(materialization, "Path", wraps=materialization.Path) as paths:
-                _, records = compare(connection, selected, ["absent"])
+                _, records = compare(connection, selected, projects)
         assert len(records) == 24
         assert contexts.call_count == counts[0] < len(records)
         assert paths.call_count == counts[1] < len(records)
@@ -109,7 +115,7 @@ def test_metadata_is_not_reused_across_queries_or_rollback(ledger):
         connection.execute("update ledger_contexts set project_aliases_json='[\"changed-alias\"]'")
         touch(connection)
         _, after = compare(connection, selected, ["changed-alias"])
-        assert before and after and before != after
+        assert not before and after
         assert all("changed-alias" in record.project_aliases for record in after)
         connection.execute("rollback to metadata_change")
         _, restored = compare(connection, selected, ["changed-alias"])
@@ -155,5 +161,5 @@ def test_project_filter_runs_once_on_post_transition_objects(ledger, monkeypatch
     assert filtering.call_count == bool(projects)
     if projects:
         supplied = filtering.call_args.args[0]
-        assert len(supplied) == len(transitioned) == 24
+        assert len(supplied) == len(transitioned) == 12
         assert all(left is right for left, right in zip(supplied, transitioned, strict=True))

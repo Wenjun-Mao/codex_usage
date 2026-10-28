@@ -1,7 +1,7 @@
 # Independently Shippable Report Performance Slices
 
 Updated: 2026-10-28, America/Toronto.
-Status: S0 completed; conditional S1 selected, implementation/qualification pending.
+Status: S0 completed; S1 implemented locally, final performance/release proof pending.
 
 ## Outcome And Scope
 
@@ -466,3 +466,63 @@ account-wide calls. Its test-first assertion failed 24 versus one before the
 repair. Oracle/concurrency tests now pass all 20 cases. The reviewer performed
 no tests/builds/private queries; reports are collected and the worker closed
 and Relay-unregistered. Effective settings remain host-unconfirmed.
+
+### S1 Decode-Work Checkpoint
+
+The identity-set candidate's complete ten-pair campaign
+(`s1-batched-final-10pairs/evidence.json`) also missed the unchanged target:
+5.5616532705 to 5.0673070630 seconds, 0.49434621 seconds / 8.8885% saved.
+Exact outputs and timing guards passed; peak RSS was 1,929,461,760 /
+1,938,440,192 bytes. No samples were excluded. Background OrbStack and unrelated
+browser work were observed, not stopped or used to excuse/exclude results.
+A streaming cursor removes the identity-set allocation while preserving the
+helper's ordered reference subsequence. Its short screen still missed:
+5.7472686670 to 5.2578950420 seconds. This is not an adoption pass. The same
+independent reviewer checked cursor alignment/advancement/exhaustion, found no
+material issues and was collected/closed/unregistered. All 130 affected tests
+passed; the earlier full local suite passed 3,031 cases, preserving every one
+of the shipped 3,011 identities, plus all 87 extension tests and five visuals.
+
+Relay Review: do not keep repeating unchanged decoding or relax the target.
+A read-only aggregate check of the frozen control finds 200,238 in-range trusted
+speed rows across 430 contexts, but only 68,574 rows / seven contexts can match
+the benchmark's preselected project; no transition source can move into that
+selected key on this input. The report's existing synthetic append adds one
+speed row. This supports a larger, bounded decode-work reduction in S1.
+
+Before implementing or timing it, select a conservative context-level decode
+prefilter: retain a context when its original key/aliases match, or any transition
+from its original key could target a selected key. Ignore transition time/thread
+restrictions in this early predicate, retaining false positives deliberately.
+Actual transitions and the existing project filter still decide final membership.
+`apply_project_transitions` rewrites each record independently and introduces
+only its target plus retained original aliases, so this is a provable superset,
+not a raw project-key SQL predicate. Empty/whitespace-only normalized selection
+must bypass it. Keep SQL, source rows, public record/accounting paths, lineage,
+snapshots, final filter and all original performance/resource gates unchanged.
+Compare every retained decoded field/order with the frozen decoder and full
+aggregates/HTML/CSV against released control; prove unrelated contexts no longer
+cause full decoding. This adds no persistent representation or lifecycle work.
+
+Implementation adds a small query-local candidate helper in the same 187-line
+speed-query owner. Six test-first decode-work assertions failed against the
+unpruned implementation; all 130 affected cases now pass. Every retained record
+matches the independent released decoder and is an ordered subsequence; full
+aggregate/SQL parity still compares against all released rows. Source/alias
+changes and rollback invalidate decisions naturally with the query lifetime.
+The same Sol/Medium reviewer independently checked the actual superset proof,
+field/order tests and memory ownership, found no material issues and confirmed
+that normal accounting rows are untouched. Its report was collected and the
+worker closed/unregistered. A short screen precedes another final comparison.
+
+`s1-decode-screen-01/evidence.json` completed preparation plus one measured pair
+with exact outputs/work for all 13 operations. Project preparation was 5.9554
+to 4.5991 seconds; measured was 6.4786 to 4.7517 seconds (1.7269 seconds saved).
+These are source-backed screening results under observed background activity,
+not ten-pair adoption evidence or a blanket first-report performance claim.
+This candidate now has a credible larger end-to-end margin; proceed with the
+unchanged final comparison and full release gates. No target was relaxed.
+The final prefilter/cursor source subsequently passed all 3,031 local Python
+cases with zero skips (`local-decode-tests.xml`), retaining the same shipped
+3,011-case subset and 20 new cases. This supersedes the earlier candidate's
+local full-suite evidence; hosted qualification remains required.
