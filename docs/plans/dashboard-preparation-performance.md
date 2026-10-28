@@ -1,9 +1,9 @@
 # SQLite And Cleanup Release, Without The Indexer
 
 Updated: 2026-10-28, America/Toronto.
-Status: owner authorized E2E execution with Relay Direct on October 28.
-Normal-agent integration and scoped source/runtime checks pass; hosted native
-package qualification and publication remain outstanding.
+Status: published and publicly verified on October 28. The owner-authorized
+SQLite/cleanup outcome is complete; the indexer remains parked.
+[Published receipt](../release/2026-10-28-2.13.2-published.md).
 
 ## Outcome And Owner Decisions
 
@@ -19,17 +19,16 @@ requirement. Terra already shipped in 2.13.1; it is retained, not reimplemented.
 The earlier acceptance of slower index construction remains a decision for
 the parked indexer, not a reason to bring it into this release.
 
-Technical proposal: a maintenance release, provisionally **2.13.2**. Check that
-the version is unused at freeze; the director may choose the next appropriate
-unused maintenance version without changing scope. No tag is reserved now.
+Released maintenance version: **2.13.2**, verified unused at freeze. Its tag is
+fixed at `570fe3f73090aeb7117cda8d69a91b5b3a657d1f`; receipt-only documentation
+does not change qualified source or packages.
 
 ## Current Facts And Preservation
 
 - Remote main was verified at `2a9b0707e68ecf686f64a552744ce02eaa9aefa4`.
   `v2.13.1` remains at `7623df49ca789b72b67579194f23648bbe33fab9`.
-- The clean checkout `/Users/wjmao/projects/codex_usage-terra-release` contains
-  that main and is the proposed execution checkout. Reuse it after checking for
-  concurrent changes; no new clone or managed worktree is needed by default.
+- Execution reused `/Users/wjmao/projects/codex_usage-terra-release`, initially
+  clean at that main. No additional clone or managed worktree was needed.
 - Combined code stays at `e740baf1`, followed by preservation docs `077a6098`,
   in `/Users/wjmao/projects/codex_usage-release-2.14.0`. The original v3 commit
   `70f546d82c054c422e6667bc1b306d53f2edc341`, preservation branch/bundles,
@@ -270,11 +269,9 @@ audit, tests, builds, services, private-data access or workflows ran. Requested
 settings remain host-unverified. Both review reports were collected; reviewers
 are retired and reporting routes removed before planning handoff.
 
-Execution handoff: use this scope and steps 1-4 when the owner resumes work.
-Carry forward the existing permissions above, recheck current base/runtime facts,
-and continue covered review fixes through both public downloads and receipt.
-Do not revive the parked indexer, start a new native Goal implicitly, or ask
-for the same already granted release permissions again.
+Historical execution handoff: the owner resumed this scope and steps 1-4 with
+the permissions above. The final assessment below closes that assignment; it
+does not authorize automatically resuming the parked indexer.
 
 ## Execution Checkpoint
 
@@ -366,3 +363,35 @@ for the same already granted release permissions again.
   paths (including doubled/forward separators and quotes), retain the actual
   file checks, and add native spelling regressions plus bounded failure details.
   This is a toolchain preflight repair, not a relaxation of engine/package proof.
+
+## Final Relay Assessment
+
+The amended outcome is achieved. Qualification `40727098713`, dry-run
+`40732044509` and promotion `40732177595` all passed at attempt 1. Both official
+Marketplace downloads matched qualified bytes and catalog hashes at
+`2026-10-28T17:15:17.250Z`; the generated receipt above records immutable source,
+contract, manifest and package identities. Promotion did not rebuild packages.
+
+Raw hosted Core/JUnit validation passed 3,011 tests with zero skips. Comparison
+with the shipped 2.13.1 producer inventory preserves all 2,909 identities and
+adds 102 cases. Both platforms passed all 87 extension cases plus frozen-collector
+and archive/handoff gates. All five visual suites and exact-package native Mac
+proof also passed.
+The retained package payloads independently show official SQLite 3.54.1, with
+Windows loading its private DLL. On both targets, a nonempty reader-blocked WAL
+survived restart, then reclaimed from 1,186,592 bytes to zero after release,
+preserving records, source bytes and integrity. No absent-WAL result was accepted.
+
+The final isolated synthetic normal-report comparison retains exact outputs and
+bounded work with no material timing regression. Median per-process high-water
+RSS was 81,231,872 / 77,520,896 bytes (control/candidate); this is not whole-app
+or production-p95 evidence. Existing native Windows editor-UI coverage and
+`hosted-webkit-observed` timing limitations remain explicit, not newly repaired.
+
+The two unsuccessful candidates and their evidence remain preserved. Owning
+runtime/toolchain repairs were sufficient; no indexer, quota/schema rewrite or
+broader benchmark campaign was resumed. Read-only reviewers were collected,
+closed and unregistered; owned disposable verification processes were retired.
+The preserved combined code/private evidence and live installation/ledger remain
+untouched. No 512 MiB cap or source-history TTL was introduced. Further indexer
+work needs a separate owner decision, not continuation of this completed release.
