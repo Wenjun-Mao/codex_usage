@@ -30,6 +30,16 @@ foreach ($version in @("17.0", "18.0", "19.0")) {
 foreach ($version in @("", "16.0", "invalid")) {
     if (Test-WindowsToolchainVersion -Version $version) { throw "Accepted invalid MSVC version" }
 }
+$canonical = ConvertTo-WindowsToolchainPath -Path 'C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um'
+foreach ($path in @(
+    ' "C:\Program Files (x86)\Windows Kits\10\\Include\10.0.26100.0\\um\" ',
+    'C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/um/',
+    'C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\..\um'
+)) {
+    if ((ConvertTo-WindowsToolchainPath -Path $path) -ne $canonical) {
+        throw "Equivalent Windows SDK path was rejected: $path"
+    }
+}
 $newName = "CODEX_TEST_" + [Guid]::NewGuid().ToString("N")
 $snapshot = [Environment]::GetEnvironmentVariables("Process")
 try {

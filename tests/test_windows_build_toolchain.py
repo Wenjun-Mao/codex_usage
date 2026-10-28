@@ -43,6 +43,10 @@ def test_sdk_tools_and_search_paths_are_validated_not_just_path_presence():
     assert "GetFullPath($actual.Source) -ne [IO.Path]::GetFullPath($expected)" in HELPER
     assert "$env:INCLUDE" in HELPER and "$env:LIB" in HELPER
     assert "$search -notcontains" in HELPER
+    assert "[IO.Path]::GetFullPath($Path.Trim().Trim" in HELPER
+    assert "ConvertTo-WindowsToolchainPath -Path $_" in HELPER
+    assert "ConvertTo-WindowsToolchainPath -Path (Split-Path -Parent $file)" in HELPER
+    assert "exists=$exists; expected=$expected; search=" in HELPER
 
 
 def test_devcmd_is_child_only_no_profile_or_autorun_or_command_text_path_injection():

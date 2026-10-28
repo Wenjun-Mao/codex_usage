@@ -22,6 +22,11 @@ function Test-WindowsToolchainVersion {
     return ([version]::TryParse($Version, [ref]$parsed) -and $parsed.Major -ge 17)
 }
 
+function ConvertTo-WindowsToolchainPath {
+    param([string] $Path)
+    return [IO.Path]::GetFullPath($Path.Trim().Trim('"')).TrimEnd([char[]]'\/')
+}
+
 function Assert-WindowsX64Toolchain {
     if ($env:VSCMD_ARG_TGT_ARCH -ne "x64" -or
         -not (Test-WindowsToolchainVersion -Version $env:VisualStudioVersion)) {
@@ -59,11 +64,13 @@ function Assert-WindowsX64Toolchain {
         @{ Files = $headers; SearchPath = $env:INCLUDE; Name = "INCLUDE" },
         @{ Files = $libraries; SearchPath = $env:LIB; Name = "LIB" }
     )) {
-        $search = @($group.SearchPath -split ";" | ForEach-Object { $_.Trim('"').TrimEnd('\') })
+        $search = @($group.SearchPath -split ";" | Where-Object { $_.Trim() } |
+            ForEach-Object { ConvertTo-WindowsToolchainPath -Path $_ })
         foreach ($file in $group.Files) {
-            if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or
-                $search -notcontains (Split-Path -Parent $file).TrimEnd('\')) {
-                throw "Incomplete Visual Studio C++/Windows SDK $($group.Name): $file"
+            $exists = Test-Path -LiteralPath $file -PathType Leaf
+            $expected = ConvertTo-WindowsToolchainPath -Path (Split-Path -Parent $file)
+            if (-not $exists -or $search -notcontains $expected) {
+                throw "Incomplete Visual Studio C++/Windows SDK $($group.Name): $file; exists=$exists; expected=$expected; search=$($search -join ';')"
             }
         }
     }

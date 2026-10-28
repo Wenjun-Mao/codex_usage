@@ -359,3 +359,10 @@ for the same already granted release permissions again.
   are CPython 3.13.16; frozen 2.13.1 source control uses SQLite 3.53.1 and candidate
   uses 3.54.1. This remains a synthetic source comparison, not published-binary
   or production-p95 evidence. No private input or live account was accessed.
+- Candidate `d8c2c61`, run `40725339531`, passed Windows compiler discovery but
+  its SDK INCLUDE check rejected the expected 26100 header directory. The runner
+  image declares that SDK installed; the combined error did not distinguish a
+  missing file from equivalent path spelling. Compare canonical full directory
+  paths (including doubled/forward separators and quotes), retain the actual
+  file checks, and add native spelling regressions plus bounded failure details.
+  This is a toolchain preflight repair, not a relaxation of engine/package proof.
