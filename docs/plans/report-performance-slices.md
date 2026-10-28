@@ -437,3 +437,32 @@ parity for every operation. The measured 9.1% / 0.503-second saving **does not
 pass** the unchanged conjunction of 10% and 0.5 seconds. The final ten-pair
 comparison decides acceptance, not preparation or the best sample. Version
 2.13.3 is unused and selected for this frozen candidate; it is not yet released.
+
+### S1 First Comparison And Bounded Correction
+
+The first ten-pair campaign (`s1-final-10pairs/evidence.json`) completed with
+exact output/work parity, no timing-guard regressions and peak RSS of
+1,927,053,312 / 1,928,527,872 bytes (baseline/candidate). Its primary medians were
+5.5079804585 / 4.9692037285 seconds: 0.53877673 seconds, **9.7817%** saved.
+This misses the predeclared 10% conjunction and is not an adoption pass. All
+samples, including preparation, remain retained. Product/benchmark source stayed
+fixed; a later commit only registered the new changelog date in its test registry.
+
+Relay Review checkpoint: correct one further repeated operation in the same
+speed-query owner, not expand into SQL/index/quota work. The released profile
+shows 200,239 project-filter helper calls (0.1636 cumulative profiled seconds).
+Apply that unchanged helper once to the complete post-transition record list,
+then retain row alignment with an object-identity membership set. Every row is
+still decoded and transitioned; no early project predicate is introduced.
+The same helper owns normalization and alias semantics. Keep the original
+10% / 0.5-second and timing/RSS guards; added membership-set allocation must be
+measured, not dismissed. There is no new index, schema or cache contract.
+
+Independent read-only concept/actual-diff review requested Sol/Medium, worker
+`01a183d8-14c1-7341-891d-b4d678534724`, found no material issues. Expanded frozen
+oracle cases cover padded aliases/whitespace, and the structural test verifies
+one selected-query call on the actual post-transition references, versus zero
+account-wide calls. Its test-first assertion failed 24 versus one before the
+repair. Oracle/concurrency tests now pass all 20 cases. The reviewer performed
+no tests/builds/private queries; reports are collected and the worker closed
+and Relay-unregistered. Effective settings remain host-unconfirmed.

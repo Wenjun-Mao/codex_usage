@@ -65,7 +65,7 @@ def compare(connection, selected, projects, *, auto_transitions=True):
     return actual, records["candidate"]
 
 
-@pytest.mark.parametrize("projects", [[], ["shared-alias"], ["moved"], ["absent"]])
+@pytest.mark.parametrize("projects", [[], ["shared-alias"], ["  shared-alias  "], ["   "], ["moved"], ["absent"]])
 @pytest.mark.parametrize("auto_transitions", [False, True])
 def test_every_record_and_aggregate_matches_released_oracle(ledger, projects, auto_transitions):
     selected = resolve_report_range("30d", UTC, now=AT+timedelta(hours=1))
@@ -125,3 +125,35 @@ def test_account_wide_query_constructs_no_usage_metadata(ledger, monkeypatch):
     with open_ledger(ledger, read_only=True) as connection:
         result, cached = queries.speed_aggregates(connection, selected, [], UTC)
         assert not cached and result["summaries"]
+
+
+@pytest.mark.parametrize("projects", [[], ["moved"]])
+def test_project_filter_runs_once_on_post_transition_objects(ledger, monkeypatch, projects):
+    selected = resolve_report_range("30d", UTC, now=AT+timedelta(hours=1))
+    transitioned = []
+    original = queries.apply_project_transitions
+
+    def apply(records, transitions):
+        result = original(records, transitions)
+        transitioned.extend(result)
+        return result
+
+    monkeypatch.setattr(queries, "apply_project_transitions", apply)
+    with open_ledger(ledger) as connection:
+        key = connection.execute("""select p.project_key from ledger_projects p
+            join ledger_contexts c using(project_id) join ledger_usage_events e using(context_id)
+            where e.task_id='child' limit 1""").fetchone()[0]
+        connection.execute("""insert into ledger_transitions(owner_task_id,source_key,source_label,
+            target_key,target_label,effective_from,confidence,evidence_json,task_ids_json)
+            values ('child',?,'Before','moved','After',?,100,'[]','["child"]')""",
+            (key, AT.isoformat()))
+        touch(connection)
+        with patch.object(queries, "filter_records_by_project_keys",
+                          wraps=queries.filter_records_by_project_keys) as filtering:
+            result, _ = compare(connection, selected, projects)
+            assert result[0]["summaries"]
+    assert filtering.call_count == bool(projects)
+    if projects:
+        supplied = filtering.call_args.args[0]
+        assert len(supplied) == len(transitioned) == 24
+        assert all(left is right for left, right in zip(supplied, transitioned, strict=True))

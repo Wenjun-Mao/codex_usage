@@ -74,10 +74,12 @@ def speed_aggregates(connection, report_range, project_keys, timezone, *, auto_t
     # temporal transitions must still be applied before any project filter.
     if selected and auto_transitions:
         records = apply_project_transitions(records, query_ledger_transitions(connection))
+    # Filter once after transitions; object identities retain alignment with rows.
+    included = {id(record) for record in filter_records_by_project_keys(records, project_keys)} if selected else None
     groups, daily, hourly = defaultdict(list), defaultdict(list), defaultdict(list)
     reasons = Counter()
     for row, record in zip(rows, records):
-        if selected and not filter_records_by_project_keys([record], project_keys):
+        if included is not None and id(record) not in included:
             continue
         fact = json.loads(row["evidence_json"])
         reason = "conflicting_response_identity" if row["conflict"] else row["reason"]
