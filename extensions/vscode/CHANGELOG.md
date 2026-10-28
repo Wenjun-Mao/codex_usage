@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.13.3 - 2026-10-28
+
+- Reuse immutable context and path metadata within project-filtered speed reads,
+  avoiding repeated decoding without changing records, accounting or reports.
+- Preserve capture overlap, snapshot consistency and complete CSV exports.
+  This narrow change does not address slow initial allowance preparation.
+
 ## 2.13.2 - 2026-10-28
 
 - Bundle official unmodified SQLite 3.54.1 in both companion collectors.

@@ -7,6 +7,7 @@ import json
 from statistics import median, quantiles
 
 from codex_usage.aggregation import filter_records_by_project_keys
+from codex_usage.ledger_record_materialization import RecordMetadata
 from codex_usage.ledger_queries import _row_to_usage_record, query_ledger_transitions
 from codex_usage.project_transitions import apply_project_transitions
 from codex_usage.speed_models import METRIC_VERSION, MIN_OUTPUT_TOKENS
@@ -67,7 +68,8 @@ def speed_aggregates(connection, report_range, project_keys, timezone, *, auto_t
     selected = set(project_keys)
     # Ownership matters only when selecting projects. Account-wide speed uses
     # normalized model, task and timestamp facts, not full priced usage records.
-    records = [_row_to_usage_record(row) for row in rows] if selected else [None] * len(rows)
+    metadata = RecordMetadata() if selected else None
+    records = [_row_to_usage_record(row, metadata) for row in rows] if selected else [None] * len(rows)
     # Normalized events already follow the parser's verified ownership rebuild;
     # temporal transitions must still be applied before any project filter.
     if selected and auto_transitions:
