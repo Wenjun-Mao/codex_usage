@@ -1,7 +1,7 @@
 # Independently Shippable Report Performance Slices
 
 Updated: 2026-10-28, America/Toronto.
-Status: S0 completed; S1 implemented locally, final performance/release proof pending.
+Status: S0 and S1 completed; 2.13.3 published and both official packages verified.
 
 ## Outcome And Scope
 
@@ -526,3 +526,57 @@ The final prefilter/cursor source subsequently passed all 3,031 local Python
 cases with zero skips (`local-decode-tests.xml`), retaining the same shipped
 3,011-case subset and 20 new cases. This supersedes the earlier candidate's
 local full-suite evidence; hosted qualification remains required.
+
+### Final Assessment And Release
+
+The agreed S0/conditional-S1 outcome is achieved independently of S2-S4.
+`df74863a7b50d17a1cf94976629c3f7c6c1df4da` is the qualified, tagged 2.13.3
+source. The final frozen-source campaign
+`output/performance/report-slices-20261028/s1-decode-final-10pairs/evidence.json`
+completed one excluded preparation pair and ten alternating measured pairs.
+Evidence SHA-256:
+`6b8c11caeb44c949e5248973eef87e390448c3e5c76cbe9883d21b306758d59c`.
+
+- Project-30d medians: **5.6138133960 to 4.4703350420 seconds**, saving
+  **1.1434783540 seconds / 20.3690%**. The predeclared 10% AND 0.5-second
+  conjunction passes without a retrospective relaxation.
+- Every operation's complete HTML (including rendered action payloads), CSV,
+  work and cache expectations match released control. No timing-guard failures
+  occur. All runtime/dependency
+  identities match between arms. The unchanged harness hash is
+  `e6154b6aed96760a8af100176a6774b413de4a1c5cd81785a2eea2de8b8dd9fe`.
+- Peak RSS is 1,929,150,464 / 1,934,311,424 bytes (baseline/candidate), passing
+  the original comparative guard. Append-writer admission median/max is
+  3.354/3.695 ms versus 3.221/3.601 ms. Real-agent overlap tests independently
+  cover usage, quota and generation replacement with pinned/fresh snapshots,
+  successful writes, integrity and clean shutdown.
+- These are source-backed report-operation timings on the disclosed frozen
+  normal ledger, not a claim about native VS Code interaction latency. First
+  Today/30d remain roughly 13.9/8.1 seconds here; allowance preparation remains
+  the principal Today issue. No broad first-load target is declared solved.
+
+Normal qualification `40760420250`, credential-free dry-run `40763657217` and
+explicit promotion `40763798041` all passed on attempt one. Full hosted Core
+has 3,031 passes and zero skips. Its original payload was independently validated
+and retained locally under `output/releases/2.13.3-process/core-proof-archive/`;
+all 3,011 shipped identities are preserved, plus 20 new cases. Both platform
+payloads independently pass all 87 extension cases, official SQLite 3.54.1 and
+the required maintenance proof. All five visual suites and exact-package native
+Mac proof pass. Existing native Windows UI and hosted-WebKit timing limitations
+remain explicit; no new waiver or gate reduction was introduced.
+
+Both official downloads and declared catalog hashes match qualified bytes at
+2026-10-28T20:37:46.332Z. The generated
+[published receipt](../release/2026-10-28-2.13.3-published.md) binds exact hashes,
+sizes, source, tag and producer/publisher evidence. Promotion did not rebuild the
+VSIX packages. The receipt hash was checked before documentation closeout.
+The live ledger/settings and installation were untouched; no private ledger,
+session contents or benchmark artifacts were uploaded. Original/staged control
+hashes still match the sealed input.
+
+Final Relay Review: accept this bounded release. It improves a complete project
+workflow with exact behavior and no material resource/timing regressions, adds
+no index/build lifecycle and needs no later slice to be useful. Reviewers are
+closed/unregistered; owned tests, benchmarks and release observers are terminal.
+S2-S4 and the preserved indexing work remain deferred, requiring their own brief.
+The documentation-only closeout leaves the release tag and product bytes fixed.
