@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.13.1 - 2026-10-28
+
+- Recognize exact GPT-6.1 Terra usage with effective-dated Standard API and
+  Codex credit estimates, cache-write and full-request long-context arithmetic.
+- Refresh retained valuations through the existing pricing identity. Earlier
+  usage remains visibly unpriced; prior models, capture and storage are unchanged.
+
 ## 2.13.0 - 2026-10-22
 
 - Retired Task Transfer, including its commands, CLI/API operations and private

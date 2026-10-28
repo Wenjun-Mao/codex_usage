@@ -27,7 +27,7 @@ No source checkout, native app, or local copy of this repository is needed.
 
 The extension ships separate platform VSIX packages for macOS 13 or later on
 Apple Silicon and Windows 10 or later on x64. Intel macOS, Windows ARM64, and
-Linux are not supported in 2.13.0.
+Linux are not supported in 2.13.1.
 
 ## What You Can Do
 
@@ -137,12 +137,16 @@ sources are prioritized while older sources and image owners make fair progress.
 Missing or unmeasurable timing is explicit; captured language and image evidence
 remain unchanged. Deleted or untimed logs cannot supply missing timing evidence.
 
-Pricing is bundled and effective-dated. GPT-6 Astra, Sol, and Luna are recognized
-by exact model IDs, with cache-write and long-context API pricing. Sol and Luna
-API rates begin September 22, 2026; earlier activity remains unpriced in USD.
-Their Codex credit rates are not published, so credit coverage stays visibly
-unpriced. See the [API pricing table](https://developers.openai.com/api/docs/pricing)
-and [Codex rate card](https://help.openai.com/en/articles/11481834-chatgpt-rate-card-business-enterpriseedu-credit-based-pricing).
+Pricing is bundled and effective-dated. Exact GPT-6.1 Terra usage is recognized
+from October 26, 2026, alongside GPT-6.1 Sol, GPT-6 Astra, Sol and Luna.
+Terra's Standard API input/cached/output estimates are $1/$0.05/$5 per million
+tokens, with $1.25 for 30-minute cache writes and the full-request long-context
+adjustment above 272K input tokens. Standard input/cached/output credit estimates
+are 25/1.25/125 per million tokens, with no separate cache-write surcharge.
+Earlier activity remains visibly unpriced. See the
+[Terra model page](https://developers.openai.com/api/docs/models/gpt-6.1-terra),
+[API pricing table](https://developers.openai.com/api/docs/pricing) and
+[Codex credit rates](https://learn.chatgpt.com/docs/pricing).
 Other credit estimates use published standard token rates and intentionally omit plan-specific or
 Fast-mode multipliers because task records do not identify them reliably.
 

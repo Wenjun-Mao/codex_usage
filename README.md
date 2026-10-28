@@ -44,7 +44,7 @@ from the VS Code Marketplace. Separate macOS Apple Silicon and Windows x64
 packages each include the matching local collector; the native app, Python,
 `uv`, and this repository are not required.
 
-Intel macOS, Windows ARM64, and Linux are not supported in the 2.13.0 release.
+Intel macOS, Windows ARM64, and Linux are not supported in the 2.13.1 release.
 
 ## First Run And Legacy Service Handoff
 
@@ -162,6 +162,12 @@ Standard credit rate is likewise 2.5 rather than 5 credits per million cached
 tokens. See the [GPT-6.1 Sol model page](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
 [API pricing](https://developers.openai.com/api/docs/pricing), and
 [Codex credit rates](https://learn.chatgpt.com/docs/pricing).
+Exact GPT-6.1 Terra usage is recognized from October 26, 2026, using the same
+UTC launch-date convention. Standard API input/cached/output estimates are
+$1/$0.05/$5 per million tokens, with $1.25 for 30-minute cache writes and the
+same full-request long-context adjustment. Standard input/cached/output credit
+estimates are 25/1.25/125 per million tokens, with no separate cache-write
+surcharge. See the [Terra model page](https://developers.openai.com/api/docs/models/gpt-6.1-terra).
 Credit estimates use published Standard token rates; Codex Usage does not infer
 plan-specific or Fast-mode multipliers because task records do not identify
 them reliably. Estimates are not an OpenAI invoice and do not know the price of
