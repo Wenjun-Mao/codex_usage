@@ -38,6 +38,7 @@ from codex_usage.agent_rebuild import (
 )
 from codex_usage.agent_rebuild_queue import RebuildQueue
 from codex_usage.agent_schedule import CaptureSchedule
+from codex_usage.agent_storage_maintenance import StorageMaintenance
 from codex_usage.agent_status import runtime_status_payload
 from codex_usage.agent_settings import (
     AgentSettings,
@@ -90,7 +91,8 @@ class CodexUsageAgent:
         self._scheduler_thread: threading.Thread | None = None
         self._server = None
         self._descriptor: AgentDescriptor | None = None
-        self._lock = FileLock(str(agent_lock_path(self.codex_home)))
+        self._lock = FileLock(str(agent_lock_path(self.codex_home)), thread_local=False)
+        self._storage_maintenance: StorageMaintenance | None = None
         self._capture_lock = threading.Lock()
         self._capture_future: Future[CaptureResult] | None = None
         self._rebuilds = RebuildQueue(
@@ -121,6 +123,11 @@ class CodexUsageAgent:
             with open_ledger(ledger_path, maintenance_agent_lock=self._lock):
                 pass
             recover_interrupted_capture_runs(ledger_path)
+            self._storage_maintenance = StorageMaintenance(
+                ledger_path, owner=self._lock, lane=self._lane,
+                capture_running=self._capture_is_running, wakeup=self._schedule_wakeup.set,
+                clock=self._clock,
+            )
             roots = session_dirs_for_home(self.codex_home)
             self._watcher = SessionWatcher(
                 roots,
@@ -175,6 +182,8 @@ class CodexUsageAgent:
             self._scheduler_thread.join(timeout=5)
         self._operations.cancel_all()
         self._lane.close(wait=True)
+        if self._storage_maintenance is not None:
+            self._storage_maintenance.close()
         descriptor_path = agent_descriptor_path(self.codex_home)
         try:
             if self._descriptor is not None and descriptor_path.is_file():
@@ -237,13 +246,16 @@ class CodexUsageAgent:
         ).to_dict()
 
     def status_payload(self) -> dict[str, object]:
-        return runtime_status_payload(
+        payload = runtime_status_payload(
             self.codex_home,
             self.descriptor,
             capture_running=self._capture_is_running(),
             next_capture_seconds=self._schedule.seconds_until_due(self._clock()),
             dirty_paths=len(self._dirty_paths.snapshot()),
         )
+        if self._storage_maintenance is not None:
+            payload["storage_maintenance"] = self._storage_maintenance.status()
+        return payload
 
     def projects(self) -> list[dict[str, object]]:
         return self._features.projects()
@@ -359,6 +371,8 @@ class CodexUsageAgent:
                 )
         if self._schedule.is_due(now) and not self._capture_is_running():
             self._submit_capture("scheduled", JobPriority.SCHEDULED_CAPTURE)
+        if self._storage_maintenance is not None:
+            self._storage_maintenance.tick()
         return wall_now
 
     def _submit_capture(

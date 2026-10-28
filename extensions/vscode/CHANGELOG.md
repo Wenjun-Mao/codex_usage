@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.13.2 - 2026-10-28
+
+- Bundle official unmodified SQLite 3.54.1 in both companion collectors.
+- Add coalesced idle WAL progress and safely fenced physical reclamation,
+  including retry after reader release and recovery across agent restart.
+- Preserve source history, exact accounting, Terra pricing and the released
+  report path. No 512 MiB derived-data limit or indexed backend is introduced.
+- Keep SQLite locks intact while enforcing private file permissions.
+
 ## 2.13.1 - 2026-10-28
 
 - Recognize exact GPT-6.1 Terra usage with effective-dated Standard API and

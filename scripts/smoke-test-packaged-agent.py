@@ -21,6 +21,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--parallel-evidence", type=Path)
+    parser.add_argument("--wal-evidence", type=Path)
     args = parser.parse_args()
     from packaged_agent_parallel_smoke import run_acceptance
     parallel = run_acceptance(args.executable)
@@ -28,6 +29,12 @@ def main() -> int:
         from codex_usage.parallel_audit import atomic_write
         atomic_write(args.parallel_evidence, json.dumps(parallel, indent=2)+"\n")
     print(json.dumps(parallel), flush=True)
+    from packaged_wal_smoke import run_acceptance as wal_acceptance
+    wal = wal_acceptance(args.executable)
+    if args.wal_evidence is not None:
+        from codex_usage.parallel_audit import atomic_write
+        atomic_write(args.wal_evidence, json.dumps(wal, indent=2)+"\n")
+    print(json.dumps(wal), flush=True)
     with tempfile.TemporaryDirectory(prefix="codex-usage-agent-smoke-") as raw:
         root = Path(raw)
         home = root / ".codex"

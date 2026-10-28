@@ -11,6 +11,7 @@ from codex_usage.ledger_writer_contract import (
 )
 from codex_usage.cache_refresh_lock import validate_owned_cache_refresh_lock
 from codex_usage.sqlite_writer_admission import admit_sqlite_writer
+from codex_usage.sqlite_activity import operation
 
 import codex_usage.session_cache_schema as parser_schema
 from codex_usage.agent_private_files import (
@@ -46,7 +47,7 @@ def open_ledger(
     maintenance_cache_refresh_lock=None,
 ) -> Iterator[sqlite3.Connection]:
     admission = nullcontext() if read_only else admit_sqlite_writer(path)
-    with admission:
+    with admission, operation(path, read_only=read_only):
         with _open_ledger_connection(path, read_only=read_only,
                 maintenance_agent_lock=maintenance_agent_lock,
                 maintenance_cache_refresh_lock=maintenance_cache_refresh_lock) as connection:

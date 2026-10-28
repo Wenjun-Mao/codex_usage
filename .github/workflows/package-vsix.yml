@@ -64,6 +64,22 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/qualification-tools
+      - name: Prepare pinned official SQLite test runtime
+        shell: bash
+        run: |
+          runtime="$GITHUB_WORKSPACE/build/sqlite-runtime-core"
+          environment="$GITHUB_WORKSPACE/build/core-test-venv"
+          uv run --isolated --no-project --no-python-downloads --python 3.13 python \
+            scripts/build_sqlite_runtime.py --output "$runtime"
+          UV_PROJECT_ENVIRONMENT="$environment" uv sync --locked \
+            --python "$runtime/install/bin/python3.13" --all-groups
+          UV_PROJECT_ENVIRONMENT="$environment" uv run --no-sync python -I -B -c \
+            'import pathlib, sys; assert sys.version_info[:3] == (3, 13, 12); assert pathlib.Path(sys.base_prefix).resolve() == pathlib.Path(sys.argv[1]).resolve()' \
+            "$runtime/install"
+          mkdir -p output/qualification/core
+          UV_PROJECT_ENVIRONMENT="$environment" uv run --no-sync python \
+            scripts/check_sqlite_runtime.py > output/qualification/core/sqlite-runtime.json
+          printf 'UV_PROJECT_ENVIRONMENT=%s\n' "$environment" >> "$GITHUB_ENV"
       - name: Complete Python suite
         env:
           PYTHONPATH: scripts

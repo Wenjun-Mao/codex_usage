@@ -18,6 +18,7 @@ class JobPriority(IntEnum):
     SCHEDULED_CAPTURE = 10
     STORAGE_ANALYSIS = 20
     BASELINE_REBUILD = 30
+    MAINTENANCE = 40
 
 
 @dataclass(order=True)

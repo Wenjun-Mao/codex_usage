@@ -17,6 +17,7 @@ import statistics
 import subprocess
 import sys
 import sysconfig
+import tempfile
 from time import perf_counter, process_time
 from unittest.mock import patch
 from urllib.parse import quote, unquote
@@ -50,7 +51,16 @@ def allowance_scope_html(html, navigation):
 def measure(args):
     home = args.home.resolve()
     os.environ.update(HOME=str(home.parent), CODEX_HOME=str(home), CODEX_USAGE_DATA_DIR=str(home))
+    temporary = home.parent / 'temp'
+    temporary.mkdir(mode=0o700, exist_ok=True)
+    os.environ['TMPDIR'] = os.environ['TEMP'] = os.environ['TMP'] = str(temporary)
+    tempfile.tempdir = str(temporary)
+    sys.dont_write_bytecode = True
     sys.addaudithook(audit_guard(home.parent, report=args.mode == "report"))
+    if args.mode == 'wal-cleanup':
+        from wal_maintenance_benchmark import measure as measure_wal
+        measure_wal(args)
+        return
     from codex_usage.agent_capture import capture_once
     from codex_usage.agent_paths import ledger_database_path
     from codex_usage.agent_reports import render_ledger_report
@@ -271,7 +281,8 @@ def measure(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("capture", "report"), required=True)
+    parser.add_argument("--mode", choices=("capture", "report", "wal-cleanup"), required=True)
+    parser.add_argument('--wal-cleanup-enabled', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument("--baseline-source", type=Path)
     parser.add_argument("--candidate-source", type=Path)
     parser.add_argument("--baseline-python", type=Path, default=Path(sys.executable))
@@ -294,6 +305,12 @@ def main():
     args = parser.parse_args()
     if args.measure:
         measure(args)
+        return
+    if args.mode == 'wal-cleanup':
+        if not args.output or args.ledger_snapshot or args.profile or not 1 <= args.repeats <= 20:
+            parser.error('WAL cleanup requires fresh --output and 1-20 --repeats, without private input/profile')
+        from wal_maintenance_benchmark import run as run_wal
+        run_wal(args)
         return
     if not args.output or not args.baseline_source or not args.candidate_source or not 1 <= args.repeats <= 20:
         parser.error("fresh --output, both --*-source paths and 1-20 --repeats required")

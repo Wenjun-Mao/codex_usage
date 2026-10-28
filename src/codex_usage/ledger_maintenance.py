@@ -5,6 +5,7 @@ from filelock import FileLock, Timeout
 
 from codex_usage.agent_paths import AGENT_DATA_DIR_NAME, LEDGER_DATABASE_NAME, agent_lock_path
 from codex_usage.cache_refresh_lock import acquire_cache_refresh_lock
+from codex_usage.sqlite_maintenance_lock import exclude_physical_maintenance
 
 
 class LedgerMaintenanceBusyError(RuntimeError):
@@ -34,7 +35,7 @@ def acquire_ledger_maintenance(
             lock = FileLock(expected_agent)
             lock.acquire(timeout=0)
             acquired.append(lock)
-        with acquire_cache_refresh_lock(
+        with exclude_physical_maintenance(path), acquire_cache_refresh_lock(
             path,
             owned_cache_refresh_lock=owned_cache_refresh_lock,
             timeout=0,

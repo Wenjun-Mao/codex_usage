@@ -276,6 +276,8 @@ def _install_completed_rebuild(
             raise
         finally:
             connection.execute("detach database rebuild")
+    from codex_usage.sqlite_activity import notify
+    notify(ledger_path, "reclaim")
 
 
 def _replace_workset_rows(

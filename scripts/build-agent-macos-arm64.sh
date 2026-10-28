@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_root/scripts/macos-package-runtime.sh"
 target_triple="aarch64-apple-darwin"
 binary_name="codex-usage-agent-$target_triple"
 dist_dir="$repo_root/build/packaged-agent/$target_triple"
@@ -14,11 +15,11 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
   exit 2
 fi
 
+cd "$repo_root"
+prepare_macos_package_runtime "$repo_root"
 mkdir -p "$dist_dir" "$work_dir"
 rm -f "$binary_path"
-
-cd "$repo_root"
-uv run --group package pyinstaller \
+macos_package_uv run --no-sync pyinstaller \
   --noconfirm \
   --clean \
   --onefile \
@@ -30,7 +31,11 @@ uv run --group package pyinstaller \
   --specpath "$work_dir" \
   "$entry_point"
 
+
 chmod +x "$binary_path"
 "$binary_path" --help >/dev/null
-uv run python scripts/smoke-test-packaged-agent.py --executable "$binary_path" \
-  --parallel-evidence output/qualification/package-darwin-arm64/collector-parallel.json
+macos_package_uv run --no-sync python scripts/verify_packaged_sqlite.py --executable "$binary_path" \
+  --output output/qualification/package-darwin-arm64/sqlite-runtime.json
+macos_package_uv run --no-sync python scripts/smoke-test-packaged-agent.py --executable "$binary_path" \
+  --parallel-evidence output/qualification/package-darwin-arm64/collector-parallel.json \
+  --wal-evidence output/qualification/package-darwin-arm64/sqlite-maintenance.json

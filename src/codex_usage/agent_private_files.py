@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import errno
+import stat
 import subprocess
 import threading
 from pathlib import Path
@@ -50,6 +51,18 @@ def ensure_private_sqlite_files(path: Path) -> None:
 
 
 def _chmod_nonsymlink(path, mode, *, directory=False):
+    if not directory:
+        # Closing a separate DB/SHM descriptor drops this process's record locks.
+        try:
+            os.chmod(path, mode, follow_symlinks=False)
+        except (OSError, NotImplementedError) as error:
+            if isinstance(error, OSError) and error.errno in (errno.ELOOP, errno.ENOENT):
+                return
+            unsupported = isinstance(error, NotImplementedError) or error.errno in (
+                errno.ENOTSUP, errno.EOPNOTSUPP)
+            if not unsupported or (not path.is_symlink() and not _chmod_path_descriptor(path, mode)):
+                raise
+        return
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     if directory:
         flags |= getattr(os, "O_DIRECTORY", 0)
@@ -61,6 +74,24 @@ def _chmod_nonsymlink(path, mode, *, directory=False):
         raise
     try:
         os.fchmod(descriptor, mode)
+    finally:
+        os.close(descriptor)
+
+
+def _chmod_path_descriptor(path, mode):
+    """Older Linux libc lacks no-follow chmod; O_PATH closes preserve locks."""
+    if not hasattr(os, 'O_PATH') or not Path('/proc/self/fd').is_dir():
+        return False
+    try:
+        descriptor = os.open(path, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.ENOENT):
+            return True
+        raise
+    try:
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.chmod(f'/proc/self/fd/{descriptor}', mode)
+        return True
     finally:
         os.close(descriptor)
 

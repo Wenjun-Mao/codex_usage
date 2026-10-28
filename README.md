@@ -104,6 +104,11 @@ It uses forward, backup-protected migrations and is written only by the single
 collector process. Task Storage content diagnostics use a separate disposable
 database.
 
+The bundled collectors use official SQLite 3.54.1. Idle maintenance advances
+the WAL and reclaims eligible space only after readers and writers permit it.
+It does not expire source history, impose a 512 MiB derived-data cap, sweep
+database sidecars, or enable the deferred indexing backend.
+
 ## Usage
 
 Open **Usage** to review:

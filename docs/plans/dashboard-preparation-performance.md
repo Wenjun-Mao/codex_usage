@@ -1,396 +1,327 @@
-# Dashboard Preparation And Long-Range Performance
-
-Date: 2026-10-22, America/Toronto.
-Status: implementation approved 2026-10-22 via Relay direct. Bounded local
-implementation and disposable verification complete; performance targets remain
-unmet. Hosted execution, publication and normal VS Code activation remain outside
-this approval.
-
-The proposed combined release handoff is now in
-[Task Transfer Retirement And Performance Release](task-transfer-retirement-and-performance-release.md).
-It packages the verified work here without declaring the remaining 3s/5s targets
-complete. Release execution requires approval of that plan's operational scope.
-
-## Second Pass (Approved October 22)
-
-### Serialization And Valuation Follow-Up (Approved October 22)
-
-- [x] Freeze the current candidate and one coherent private read-only snapshot.
-- [x] Implement compact validated capture layouts, per-batch schedule bindings,
-  and ordered scalar turn costs under ADR 0075.
-- [x] Check numeric identity, legacy/corrupt cache handling, pricing boundaries,
-  schedule replacement and exact turn addition order.
-- [x] Complete independent diff review and broad regression verification.
-- [x] Compare complete HTML/CSV and timings on the frozen input; retain all pairs.
-- [x] Record remaining 3s/5s gaps and remove owned private database copies.
-
-This follows the owner's request to optimize full allowance serialization and
-30-day pricing/turn calculations. Existing local-only boundaries remain active.
-
-Ten matched pairs measured first 30 days 8.96 -> 8.06s, post-append Today
-8.27 -> 8.12s, and post-append 30 days 7.33 -> 6.72s. CSV is effectively
-unchanged. The allowance payload fell 40.7%; whole-encoder CPU did not improve.
-Targets remain unmet. Coarse phase measurements show that eliminating encoding,
-pricing and turn calculation alone would still leave more than 7s Today / 6s
-30-day CPU; the remaining full-history and range work needs attention. See
-[serialization/valuation evidence](../research/2026-10-22-serialization-and-valuation.md).
-
-### Incremental Follow-Up (Approved October 22)
-
-- [x] Freeze a new coherent private snapshot and retain the previous candidate
-  as the matched baseline.
-- [x] Reject the full-scalar-prefix-hashing prototype after it failed to show
-  a reliable gain despite exact output parity.
-- [x] Implement bounded independent quota change certificates, display/pace
-  checkpoints and exact-content chart-day reuse; retain fresh reset/economics.
-- [x] Add focused correction, unknown-plan, authority, journal and DST guards.
-- [x] Finish independent review, broad tests, browser parity and matched timings.
-- [x] Report remaining 3s/5s gaps and remove owned private database copies.
-
-The adopted contract is recorded in
-[ADR 0074](../adr/0074-incremental-history-preparation.md). Work remains local;
-no CI, push, release, installation or native VS Code activation is implied.
-
-Ten new matched pairs measured post-append Today 8.79 -> 8.48s, post-append
-30 days 8.87 -> 7.52s, first 30 days 9.99 -> 10.18s and CSV 2.49 -> 2.20s.
-Incremental reuse helps repeated capture workloads but not the first 30-day
-load. Both targets remain unmet; full report encoding and selected-event
-pricing/turn materialization are the next measured costs. See
-[incremental evidence](../research/2026-10-22-incremental-history-preparation.md).
-
-The owner requested continued full-history/30-day optimization toward 3s/5s
-and correction of the measured CSV regression. Work remains local and bounded
-by the same privacy/storage/activation limits.
-
-- [x] Freeze a new coherent private snapshot; compare with the completed first
-  pass, not with differently timed live input.
-- [x] Run a retained-quota eviction ablation to distinguish CSV allocation cost
-  from CSV accounting work.
-- [x] Reduce duplicate provenance/identity allocation and request-local scans;
-  stream ledger rows with query-local normalized metadata reuse.
-- [x] Measure the combined candidate and address the retained-object CSV cost.
-- [x] Verify exact HTML/CSV/monetary parity, invalidation, browser behavior and
-  report the 3s/5s gaps using unprofiled paired measurements.
-- [ ] Close the remaining target gaps beyond verified history reuse; full
-  report encoding, reset/economics assembly and selected-event work remain.
-
-No generation or continuity boundary is weakened. Persistent history reuse is
-still gated on a causal/invalidation proof; cross-request retention must earn
-its cost in both dashboard and export workloads.
-
-Five new matched pairs measured Today after append 12.77 -> 8.86s, first 30 days
-13.72 -> 10.35s, and CSV 3.79 -> 2.37s. Peak RSS fell 26%. The complete 1,925-row
-CSV and all HTML bytes matched. See the
-[second-pass evidence](../research/2026-10-22-dashboard-preparation-followup.md).
-Targets remain unmet; no release/native acceptance is implied.
-
-## Implementation Checkpoint
-
-- [x] Freeze the matched baseline/input and attribute request-level work.
-- [x] Implement ordered accumulators, dashboard-only daily activity, canonical
-  captures, scalar memos and a lazy history overview.
-- [x] Add independent source/quota tracking and bounded unchanged raw/pace reuse.
-- [x] Move pure allowance preparation outside writer ownership; reject stale
-  publication without consuming newer dirty evidence.
-- [x] Qualify exact accounting, correction/rollback/concurrency behavior and the
-  affected script-disabled browser surfaces locally.
-- [x] Finish ten alternating paired measurements, extended navigation/export
-  parity and remaining-hotspot profile; assess the targets explicitly.
-- [ ] Owner-requested isolated native/package verification, if advancing this
-  candidate toward release. No native activation or hosted execution implied.
-
-The initial checkpoint did not adopt incremental quota-boundary rebuilding or
-persisted selected-event partitions. The approved incremental follow-up above
-now reuses proven display/pace prefixes; monetary/reset segmentation remains
-fresh. Persisted selected-event partitions have not been shown preferable to
-simpler ordered aggregation. Initial implementation and evidence are recorded in
-[ADR 0073](../adr/0073-snapshot-pinned-dashboard-preparation.md) and the
-[local qualification report](../research/2026-10-22-dashboard-preparation.md).
-
-## Outcome And Scope
-
-Make the complete VS Code dashboard load materially faster after capture and
-when switching from Today to Last 30 days. Keep the existing visible report,
-accounting, filters, history, CSV export and script-disabled interaction contract.
-The initial delivery keeps one consistent report snapshot; progressive sections,
-stale values and background prewarming are not part of this proposal.
-
-This is the active plan for the report-preparation follow-up identified in
-[collector/runtime evaluation](collector-performance-runtime-evaluation.md).
-That plan's released bootstrap/identity fixes and completed runtime experiments
-remain closed. Release scheduling, finer local test reuse and test parallelism
-are the next workstream after this scope; they are not implementation steps here.
-
-Work serially in the retained checkout. Preserve the pending writer-admission
-fix, its tests and ADR, unrelated `apps/` work, and submitted research reports.
-No new worktree, task, Goal, automation, runtime migration or Rust component is
-required. An independent, bounded review of invalidation and transaction changes
-is useful after implementation; use Relay direct and announce selected model
-and reasoning effort before any authorized delegation.
-
-## Evidence And Starting Authority
-
-- Recorded representative medians: first Today after revision 8.934 seconds,
-  Yesterday 1.615 seconds, cached Today 0.064 seconds. These are backend timings
-  from the October 16 comparison, not current end-to-end VS Code measurements.
-- The owner observed 22.97 seconds for Today -> Last 30 days on 2.12.5. Its exact
-  workload has not yet been profiled. Do not attribute all of it to allowance work.
-- The retained diagnostic profile spends 15.557 seconds cumulatively in
-  `indexed_allowance_report` across 21.921 seconds of report operations. It also
-  records 896,762 JSON serializations. Instrumentation inflates elapsed time and
-  nested costs overlap; these locate work, not forecast savings.
-- Current range materialization loads selected event objects, values them, and
-  performs multiple aggregations. It still builds per-agent/export structures
-  although the dashboard consumes only daily activity rows.
-- Historical fitted-window reuse already exists. Raw evidence expansion,
-  segmentation, pace/history preparation, prefix accumulation and report codecs
-  still perform substantial work after invalidation.
-- Expensive allowance preparation currently runs within `BEGIN IMMEDIATE`.
-  The locally implemented writer-admission fix prevents the reproduced
-  same-process writer race but does not shorten preparation or capture waiting.
-
-Sources: [collector measurements](../research/2026-10-16-collector-implementation.md),
-[ADR 0055](../adr/0055-range-independent-breakdown-preparation.md),
-[ADR 0058](../adr/0058-post-capture-preparation-work.md),
-[ADR 0060](../adr/0060-historical-allowance-calculation-reuse.md), and
-[ADR 0072](../adr/0072-in-process-sqlite-writer-admission.md).
-
-Before benchmarking, freeze a source manifest containing HEAD, relevant tracked
-and untracked implementation bytes, dependencies and the writer-admission patch.
-Use that same correctness fix on both comparison sides. Its benefit must not be
-counted as a dashboard optimization. The installed 2.12.5 package is a separate
-reference, not an interchangeable source baseline.
-
-## Design Choice
-
-| Approach | Benefit | Limitation | Decision |
-| --- | --- | --- | --- |
-| Remove repeated work within the existing request | Smallest change; helps first fill and tests | Still scales with selected events/history | First pass |
-| Reuse prepared summaries and affected partitions across requests/captures | Addresses recurring post-capture and large-range work | Requires complete invalidation, exact arithmetic and bounded storage | Main follow-up, gated by measurements and parity |
-| Prewarm or load sections progressively | Can improve apparent first display | Moves work into capture/background and changes UI/freshness behavior | Excluded from this pass |
-
-Preserve the current full estimator/materialization as an independent oracle.
-Prefer extending existing preparation/cache ownership over adding another report
-stack. Do not assume daily monetary totals can be summed to reproduce the
-original event-order accumulation, or that an old/reset period is immutable.
-
-## Acceptance
-
-Proposed performance goals on the same representative snapshot and machine:
-
-- At least 50% lower median backend time, saving at least one second, for both
-  an ordinary post-capture report and the first Today -> 30-day switch at an
-  unchanged revision. Establish the matched baselines before judging the gains.
-- Engineering targets: post-capture Today within 3 seconds, first 30-day view
-  within 5 seconds, and repeated Today/Yesterday/30-day views within 500 ms.
-  These are targets for review, not promises established by the old profile.
-- Report first installation/empty-cache cost separately. Shifting computation
-  into capture, startup or first setup does not count as eliminating it.
-- No capture, Yesterday, warm navigation or explicit-history operation may
-  regress by both more than 10% and 100 ms in paired measurements. Measure write
-  admission wait, transaction duration, peak memory and derived-cache growth too.
-- Preserve exact token/cost/credit values, model/turn populations, history and
-  correction behavior. No relaxed tolerances, missing cases, reduced fidelity,
-  or changed prices/rounding are permitted to meet a speed target.
-
-Use one preparation pair and ten alternating unprofiled baseline/candidate
-pairs for final primary measurements. Profile separately. Retain failures and
-all samples; report medians and ranges, not p95 from ten samples. A single extra
-block may resolve material noise; do not repeat until a favorable result appears.
-If targets remain unmet, identify the remaining component and report the gap
-before expanding architecture or scope.
-
-## Ordered Deliverables
-
-### 1. Reproduce And Attribute Both Slow Paths
-
-Extend existing benchmark/profile entrypoints rather than creating a parallel
-harness. `profile_dashboard.py` currently primes the allowance index; retain
-that as an explicit warm-account scenario, not the post-capture baseline.
-`benchmark_collector.py` currently measures only Today/Yesterday/cached Today;
-add long-range sequences and real disposable-input mutations.
-
-Use one coherent private read-only SQLite backup and one disposable working
-copy at a time. Reports must be denied access to original sessions, account
-services and external databases. Raw session copies are unnecessary for this
-report-only investigation. Capture-overlap tests use synthetic fixtures.
-
-Measure separately:
-
-1. First fill with empty derived caches, without priming allowance work.
-2. Revision-only change, ordinary current usage/quota append, and subsequent
-   Today report. A revision bump alone does not simulate real capture changes.
-3. Today -> Yesterday -> 7 days -> 30 days -> Today at a fixed revision, plus
-   a fresh 30-day report immediately after append.
-4. Repeated ranges, a representative project filter, theme change, and explicit
-   history/CSV requests. Keep account-wide and selected-project scope distinct.
-5. Late usage/quota corrections, pricing changes, and concurrent synthetic
-   report/capture requests; measure correctness, delay and duplicated work.
-
-Record phase wall/CPU time, decoded/priced event counts, expanded quota counts,
-segmentation/codec calls, SQL work/query plans where material, HTML bytes, cache
-bytes, memory, writer wait and transaction time. Separate agent acquisition,
-HTTP, backend computation and WebView update/visible readiness in isolated UI
-verification. The current Usage "Loaded in" label reports backend elapsed time;
-it is not a measurement of transfer or paint.
-
-Deliver a before table and a short root-cause note for each proposed change:
-what repeats, why, the owning layer, and the parity/work assertion guarding it.
-Use measured 30-day event and quota cardinalities for a reproducible synthetic
-scale case. Do not publish private profiles or data.
-
-### 2. Remove Unnecessary Work Within A Request
-
-Start with the measured low-risk work:
-
-- Give dashboard activity a daily-summary path. Build per-agent, per-agent-day
-  and export-only structures on explicit CSV export. Preserve task ancestry,
-  daily distinct root/subagent counts and complete export rows.
-- Share selected valuation and reusable time/identity conversions across
-  summary, economics, chart and activity consumers. Retain any deliberately
-  different ordering used by those consumers.
-- Replace repeated JSON-based point identity construction where a complete
-  typed identity or a once-built canonical index preserves all fields,
-  provenance, ordering and duplicate validation. Avoid identity shortcuts.
-- Read compact history directories/summaries for the default view. Load exact
-  captures for the requested detail/page without eagerly decoding all history
-  merely to display its first page. All existing detail remains available.
-
-Measure each retained change. Do not implement unrelated micro-optimizations
-because they happen to be nearby. This pass also establishes reusable building
-blocks for the following cache work.
-
-### 3. Reuse Allowance Preparation And Shorten Writer Ownership
-
-Probe and document the dependency boundary before caching segmentation or pace.
-Current fit tracking intentionally assumes fresh segmentation and ordered cost
-prefixes; its dirty spans alone are not proof that prepared history is reusable.
-Plan changes and later recovered evidence can affect earlier unknown identities.
-
-Implement only the portions shown material by step 1:
-
-- Separate compact current allowance/pace and reset-period summaries from
-  exact capture payloads. Reuse unchanged prepared components across captures
-  under a versioned dependency identity; do not duplicate entire histories.
-- For append/revision-only changes, reuse a proven unaffected portion and
-  recompute its dependent boundary/current portion. For unbounded identity,
-  provenance, compressed-timestamp or pricing effects, conservatively rebuild
-  the affected series or full component. Preserve causal-origin boundaries.
-- Compute expensive pure preparation against a pinned read snapshot. Publish
-  derived results in a short admitted write transaction only if source revision,
-  pricing/coverage and tracking generation still match. Recheck the source after
-  acquiring admission; never clear newer dirtiness or store stale results.
-- On a race, serve only results consistent with the pinned snapshot and omit
-  stale cache publication. Preserve existing issued-scope expiry/recovery and
-  avoid unbounded recomputation/retry loops or capture starvation.
-- Dirty evidence must have explicit ownership across all cache consumers.
-  One cache finishing must not consume invalidation still needed by another.
-  Validate this before splitting the existing transaction. Missing/damaged
-  tracking invalidates dependent caches; existing writer fencing remains.
-- Add request coalescing only if measurements show duplicate simultaneous
-  preparation. Keep it bounded by ledger/revision/semantic key, with correct
-  failure cleanup; do not introduce a background service.
-
-Preserve exact prefix arithmetic, late-correction behavior, reader concurrency
-and ADR 0072 admission. Measure long read snapshots/WAL growth as well as write
-lock duration. Update the owning ADRs with the adopted transaction/cache contract;
-do not label the previous fit cache unsafe or silently change its assumptions.
-
-### 4. Accelerate 30-Day Materialization
-
-After step 2, use the 30-day profile to choose the smallest effective structure:
-reused priced records, exact ordered partial results, or derived day/project/
-model/turn partitions. Persist aggregates only where they beat simpler reuse
-including first-fill, write and decode costs. This is an implementation decision
-after measurement, not authorization for an unconditional second event store.
-
-The chosen representation must:
-
-- Retain event-time pricing, trusted-generation selection, project transitions,
-  record ordering and all accounting components. Query only needed intervals.
-- Preserve exact cost accumulation. Ordinary SQL SUM or sums of daily floating
-  totals are not substitutes for the current oracle unless exact parity holds.
-  A representation that cannot preserve it must be revised or rejected.
-- Preserve `(project, task, turn)` and model-turn identities, blank-turn
-  coverage, cross-midnight turns, mixed-model turns, partial-range turns,
-  distinct counts, weighted averages and medians. Never average daily averages
-  or add daily distinct-turn counts to produce range totals.
-- Include calendar/timezone/DST semantics in any relevant partition identity;
-  preserve `[start,end)` calendar versus `(origin,capture]` causal intervals.
-- Invalidate source corrections/deletions, trust/model/pricing changes,
-  transition/label/task-ancestry changes and relevant coverage changes.
-  Demonstrate that identical revision-only changes do not revalue unchanged data.
-- Have bounded retention and deterministic pruning across dates, projects,
-  themes, revisions and algorithm versions. Raw history remains authoritative.
-
-Do not change speed-statistic sample populations or image accounting to accelerate
-unrelated language totals. First-fill versus reusable-range gains stay separate.
-
-### 5. Verify, Review And Prepare The Handoff
-
-Keep the baseline estimator in a separately frozen source tree for differential
-checks. Compare selected totals, model/project/turn metrics, allowance values,
-reset periods, pace, raw detail, CSV and visible report content. Internal cache
-or issued-command identities may change only under an explicit, narrow comparison
-rule; timestamps or hashes must not mask a semantic/display regression.
-
-Extend the existing tests rather than adding another acceptance system:
-
-- `test_dashboard_work_contract.py`, `test_capture_preparation_work.py` and
-  `test_allowance_window_cache.py`: bounded work and full invalidation matrix.
-- `test_allowance_report_codec.py`, history/reset-period tests: exact references,
-  lazy detail, no lost captures, malformed cache and reconstruction.
-- `test_breakdown_navigation_work.py`, `test_ledger_usage_ranges.py` and
-  economics/activity tests: ranges, filters, DST, turn metrics and export parity.
-- `test_ledger_writer_contention.py`: both writer entrypoints, concurrent capture,
-  exception auditing, lost-publication races, rollback and no deadlocks.
-
-Run focused checks first, then the full Python/extension suites, Ruff, monetary
-parity and bounded-work checks for the final candidate. Use existing affected
-browser tests and isolated native verification for the touched surfaces, retaining
-their input/timing policy. Do not broaden or repeat completed checks without a
-change, failure or unresolved concern. Review invalidation, compatibility and
-transaction ownership independently before the handoff.
-
-Deliver before/after timing tables, source/input identities, correctness results,
-first-fill/capture/storage trade-offs, remaining target gaps and one reviewable
-candidate. Local qualification is not release, installation or native acceptance
-that has not actually been executed.
-
-## Storage, Compatibility And Permissions
-
-The earlier private read-only snapshot permission is retained: no live writes,
-source-log edits, account calls or private uploads. For this work use at most
-one frozen ledger and one active benchmark copy, with a 6 GiB total budget for
-new benchmark files. Check logical sizes and free space before copying; APFS
-clone sharing is not permission to exceed the budget. Stop allocating if the
-budget cannot fit the representative input and report the constraint.
-
-Use private directories/files and existing benchmark guards. Preserve compact
-timings, input hashes and anonymized counts; remove owned working ledgers and
-temporary environments after verification. Retain no extra large snapshot
-without a named need and budget. The verified rollback archive and live ledger
-are outside cleanup scope.
-
-New caches must be disposable, bounded and independently versioned. Prefer
-additive derived structures compatible with existing writers; old readers must
-not decode a new payload under an old key. Test old-writer updates, missing tables,
-partial installation, crash/rollback and tracking repair on disposable data.
-Do not bump canonical ledger/parser formats for a report optimization. If that
-becomes necessary, bring back the concrete compatibility/rollback proposal.
-
-| Action | Authority / boundary |
-| --- | --- |
-| Source inspection and this plan | Current planning request |
-| Read-only private snapshot method | Previously approved; bounded above |
-| Product/test/docs edits and local disposable benchmarks after plan approval | Proposed implementation scope; not started by planning |
-| Local synthetic browser/build checks and isolated collector tests | Included in proposed implementation scope; no installed extension change |
-| Open a new native preview window or activate/restart normal VS Code | Separate owner request; prepare candidate first |
-| Commit/push, GitHub CI/Actions dispatch or retry | Not started here; obtain a fresh explicit request before any hosted run or CI-triggering push |
-| Tag, publish, install, live repair, settings/secrets/service changes | Not authorized by this plan |
-
-Rollback removes only new derived caches or selects the prior source/package;
-the canonical ledger and raw logs remain unchanged. Test rollback on copies.
-After implementation approval, continue the covered local steps through
-verification without requesting repeated milestone permissions. Present the
-concrete candidate before seeking any remaining native/hosted/release action.
+# SQLite And Cleanup Release, Without The Indexer
+
+Updated: 2026-10-28, America/Toronto.
+Status: owner authorized E2E execution with Relay Direct on October 28.
+Normal-agent integration and scoped source/runtime checks pass; hosted native
+package qualification and publication remain outstanding.
+
+## Outcome And Owner Decisions
+
+Publish the latest verified official, unmodified SQLite engine and safe idle
+storage cleanup on the shipped **2.13.1 normal report path**, for macOS ARM64
+and Windows x64. Preserve exact accounting, reports/actions/full CSV, Terra
+support, capture responsiveness and retained source history. Do not restore a
+512 MiB derived-data limit. Both official downloads must match qualified bytes.
+
+The owner explicitly selected **SQLite + cleanup first; defer indexing and
+performance** on October 28. This supersedes the original combined-release
+requirement. Terra already shipped in 2.13.1; it is retained, not reimplemented.
+The earlier acceptance of slower index construction remains a decision for
+the parked indexer, not a reason to bring it into this release.
+
+Technical proposal: a maintenance release, provisionally **2.13.2**. Check that
+the version is unused at freeze; the director may choose the next appropriate
+unused maintenance version without changing scope. No tag is reserved now.
+
+## Current Facts And Preservation
+
+- Remote main was verified at `2a9b0707e68ecf686f64a552744ce02eaa9aefa4`.
+  `v2.13.1` remains at `7623df49ca789b72b67579194f23648bbe33fab9`.
+- The clean checkout `/Users/wjmao/projects/codex_usage-terra-release` contains
+  that main and is the proposed execution checkout. Reuse it after checking for
+  concurrent changes; no new clone or managed worktree is needed by default.
+- Combined code stays at `e740baf1`, followed by preservation docs `077a6098`,
+  in `/Users/wjmao/projects/codex_usage-release-2.14.0`. The original v3 commit
+  `70f546d82c054c422e6667bc1b306d53f2edc341`, preservation branch/bundles,
+  `.local/` controllers, private evidence and unrelated owner files stay intact.
+  The previous detailed combined plan is recoverable at `077a6098` under this
+  same path; its measured results remain in the linked research record.
+- SQLite 3.54.1 is currently the latest upstream release, independently checked
+  October 28 against the [official download page](https://www.sqlite.org/download.html)
+  and [release history](https://www.sqlite.org/chronology.html). Recheck once at
+  freeze. Pin the chosen version, source ID and archive checksum consistently;
+  never chase a moving latest version after qualification starts.
+- Previous SQLite/cleanup local tests and synthetic WAL/capture results are
+  reusable design evidence, not proof of the new extracted candidate. See
+  [local qualification](../research/2026-10-25-sqlite-and-storage-cleanup.md),
+  [ADR 0079](../adr/0079-sqlite-runtime-and-idle-reclamation.md) and the
+  [delivery retrospective](../research/2026-10-27-combined-release-continuation.md#relay-review-delivery-retrospective)
+  in the preserved checkout. Port/update only the relevant historical guidance
+  when documenting the eventual candidate, not the whole research collection.
+
+## Scope And Alternatives
+
+Selected: port the standalone runtime/maintenance changes onto released main.
+The two credible alternatives were continuing the entire unproved indexer or
+shipping a runtime-only release. The owner chose the smaller SQLite/cleanup
+outcome; neither alternative is silently substituted if extraction is harder
+than expected.
+
+In scope: official engine provisioning and package proof; operation-lifetime
+notifications; coalesced idle PASSIVE progress; carefully fenced, event-driven
+TRUNCATE; maintenance status; connection-owned TEMP cleanup; unchanged retained
+data, normal report/cache behavior and ordinary update semantics.
+
+Out of scope: `read_model/`, semantic/Facts products, resumable quota/reset
+interpretation, prepared-index adoption, index reader renewal/WAL anchors,
+new schedulers or transfer formats, dashboard speed optimization and the old
+A1/C1 construction campaign. The unshipped 64/32 MiB indexed HTML/range cache
+policies stay with that backend; do not add those formats merely to prune them.
+Existing released caches keep their current behavior. No history TTL, aggregate
+size cap, routine VACUUM, reduced durability or sidecar/temp-directory sweeper.
+
+## 1. Extract A Small Complete Candidate
+
+Refresh remote facts and check preservation refs without rewriting them. Copy
+this reviewed plan into the clean execution checkout. Keep one writer there;
+native reviewers are read-only. Do not merge or cherry-pick the mixed combined
+commit (882 files), nor copy its agent/build files wholesale.
+
+Use these preserved owners as a port map, checking their actual dependency
+closure against 2.13.1 before copying:
+
+- `sqlite_runtime.py`, `scripts/runtime_sources.py`, `runtime_windows_sources.py`,
+  `build_sqlite_runtime.py`, `build_sqlite_runtime_windows.py`,
+  `check_sqlite_runtime.py`, `macos-package-runtime.sh` and Windows toolchain
+  helpers. Reuse hash/manifest-verified private builds where inputs match.
+- `sqlite_activity.py`, `sqlite_maintenance_lock.py`, `sqlite_wal.py` and the
+  non-indexer portion of `agent_storage_maintenance.py`.
+- Small hooks in `ledger_schema.open_ledger`, `ledger_maintenance`,
+  `sqlite_writer_admission`, `agent_rebuild`, `agent_runtime` startup/tick/status/
+  shutdown and `agent_main`'s memory-only `--sqlite-runtime` diagnostic.
+- The four existing native collector build entrypoints, package environment
+  preparation, hosted Core runtime selection, and `scripts/release/policy.py`'s
+  build-contract closure. Do not import index-specific report/build identities
+  or `--report-runtime` merely because the saved build scripts contain them.
+
+`ledger_writer_contract.py` already matches the released baseline; keep its
+schema/accounting semantics. No source schema or report algorithm change is
+planned. Remove index-specific methods from the port, not from preserved code.
+Keep additive maintenance status separate from report content. If an apparent
+dependency needs a new indexer/representation or a change in promised safety,
+record that concrete coupling and reassess scope before doing the larger work.
+Ordinary extraction fixes do not need human approval.
+
+Keep actual per-platform Python/OpenSSL identities explicit. Reuse established
+pinned builders without unrelated dependency upgrades, system Python changes or
+TLS bypasses. Source/build hash checks must detect modified cached inputs.
+The actual Python-linked/frozen engine, not the system sqlite3 CLI, is decisive.
+
+## 2. Prove Normal-Path Integration Early
+
+Before broad hardening, use a disposable home through the real agent scheduler
+and HTTP/report/capture entrypoints. Prove that the installed candidate code,
+not a directly constructed maintenance helper alone, requests and completes
+idle progress; preserves a write arriving during maintenance; retries after
+reader release without another write; and joins its maintenance worker on
+shutdown. Exercise startup, an ordinary capture, reports, one existing source
+rebuild/reclaim event and restart. No index bootstrap may occur or be required.
+Include deferred eligible reclaim -> restart -> blocker release, with no new
+write/rebuild: physical reclamation must eventually complete and logical data
+must stay unchanged. Recover eligibility through existing durable information
+or one safely fenced startup reclaim event; the director chooses the smallest
+sound mechanism. This does not require a new persistent work-journal system.
+
+Use real nonempty synthetic WAL and SQLite connections. PASSIVE may run without
+holding the capture lane/general writer lease through disk I/O. TRUNCATE requires
+an eligible reclaim/pressure event, caught-up progress, owned quiescence,
+no-wait local/parser and cross-process maintenance fences, and SQLite's own
+exclusive connection fence followed by NOOP frame recheck. Busy external readers
+or writers defer reclamation; they are not terminated. Normal append/eviction
+does not request physical truncation on every operation. A raced append cannot
+turn the short exclusive phase into copying a large backlog.
+
+Keep checkpoint growth reservation before I/O, close-time checkpoint suppression,
+private paths/permissions and reader/writer ownership. The 512 MiB free-space
+pressure signal is not a retained-data ceiling. TEMP belongs to its connection
+through work/validation/commit and closes on success, failure and cancellation.
+No database sidecar is deleted to make the test pass.
+
+Decision point: if this integrated normal-path slice works, continue. If it
+reveals a necessary architectural change, apply Relay Review to the concrete
+gap rather than restarting the old repair queue. Merely exceeding a duration
+forecast is not a stop condition or a reason to ask permission again.
+
+## 3. Freeze Focused Safety And Regression Evidence
+
+Port the applicable existing runtime, WAL, privacy, TEMP, writer-admission,
+agent-maintenance and builder tests. Keep 2.13.1 tests/case identities; exclude
+only genuinely unshipped indexer-specific cases by not importing that feature.
+Check runtime mismatch, partial/busy checkpoints, reader-release retry, reclaim
+coalescing/lost events, low space before writes, raced append, external process
+fencing, startup/error cleanup, repeated close and shutdown. Review the scoped
+production diff independently; repair findings and rerun affected checks.
+
+Reuse `scripts/wal_maintenance_benchmark.py` through the existing collector
+benchmark entrypoint. Port only its WAL adapter/dispatch arguments into the
+released entrypoint, not the saved file's unrelated indexer CLI additions. Adapt
+its experiment-budget dependency if needed; do not import a new backend or
+create a new benchmark framework. Retain one
+excluded preparation pair plus ten alternating cleanup-off/on measured pairs
+with the existing 256 MiB random-data WAL and actual capture bookkeeping. Both
+arms retain normal capture auto-checkpoint behavior. Assert actual capture/
+checkpoint overlap, equal logical records and integrity, physical reclaim when
+eligible, and the existing BOTH >10% AND >100ms material-regression guard. Record
+queue delay, capture wall/CPU and checkpoint duration separately; a long PASSIVE
+call is not itself a capture hold. Keep all measured/failing samples.
+
+Also compare frozen released 2.13.1 and candidate normal-path Today, unopened
+30-day, warm, post-append and full CSV results on identical disposable inputs,
+paths and clocks, including Terra and quota/reset boundary cases. Require exact
+accounting, output ordering, action semantics and CSV. Normalize only expected
+version/generated-time and nondeterministic elapsed/cache presentation fields,
+never prices, coverage, rows or totals. Use matched repeated measurements and
+the same material-regression guard; no new speedup target or accepted-A1 race.
+Retain baseline runtime and candidate runtime identities, work counters and
+observed memory. No unexplained whole-history rebuild or maintenance queue
+growth may be introduced into ordinary capture/report work.
+
+Run affected local checks, Ruff, extension tests/build and the existing selected
+release preflight. The full hosted Python inventory remains required; do not
+duplicate it locally just to dispatch. Reuse valid exact-input preflight receipts
+without relabeling older proofs. File modularity follows the owner's 400/500-line
+guidance; no unrelated size-only refactors. No arbitrary experiment cap, one-home
+restriction or repeated cold build from the old campaign is inherited. Preserve
+existing private evidence; use actual free-space/headroom and owned scratch.
+
+## 4. Qualify Both Platforms And Publish Exact Bytes
+
+Freeze scoped metadata/changelogs, candidate commit, upstream engine inputs and
+qualification contract. Build/runtime helpers and the in-package engine probe
+belong in the contract. Use the existing main-based manual qualification,
+credential-free dry-run and exact-artifact promotion workflow. First hosted
+qualification must exercise the native Windows runtime/build too; portable
+tests or the Mac builder do not establish Windows success. Repair native build
+failures in their owning helpers, not by weakening linked-engine requirements.
+
+Require complete hosted Core/JUnit with zero skips and preserved case inventory,
+both VSIX package/collector/archive/handoff gates, existing five visual suites
+and exact-package native macOS proof. Each frozen collector must report the
+chosen official version/source ID and appropriate build options; Windows must
+also prove its private loaded DLL path. Extend existing packaged smoke on each
+target with a small nonempty-WAL fixture, real agent scheduler-driven frame
+progress and eligible physical reclamation, preserving logical data. An
+`absent`/`not_wal` outcome, status object alone or source-interpreter engine
+probe is not cleanup proof. Reuse disposable fixtures, not another full timing
+campaign for each package. Existing Windows editor-UI coverage remains
+explicit; do not invent a new UI runner as a dependency of this release.
+
+Observe existing runs by their actual run/attempt. A transport/observer timeout
+is not permission to dispatch or upload again. The Terra release demonstrated
+that the convenience coordinator rejects attempt 2: use the documented manual
+inspection/public-verification and checked receipt APIs for genuine retries.
+If a tiny observer fix is needed, do it before candidate freeze with focused
+tests; do not require that optional repair or a coordinator rewrite to publish.
+Never falsify an attempt, move an already qualified tag or discard intents.
+
+After authorized promotion, wait for both official versioned Marketplace entries
+and download each target. Compare SHA-256/size with qualified artifacts and
+catalog hashes. Then generate, commit and push the receipt/status docs without
+changing tag/packages. Close workers/reporting routes, reap owned processes,
+retire only expendable owned scratch, and leave wanted work recoverable. Do not
+remove the preserved bundle or its private evidence as release cleanup.
+
+Completion means both public byte checks and durable receipt, not green source
+tests, an uploaded package or one visible platform. No live installation is part
+of completion. The indexer remains deferred after this release.
+
+## Permissions, Forecast And Review
+
+The owner has now explicitly authorized E2E implementation and created an active
+Goal. Carry forward standing Relay task/model/effort authority, local dependency/build and
+disposable verification permission, this bundle's required qualification/
+promotion/publication authorization, and ordinary repairs/recovery. Do not ask
+again for already covered actions; unrelated CI remains prohibited. A native
+account confirmation, if actually required, cannot be bypassed. Record only
+decisions that materially affect risk, scope, evidence or delivery.
+
+No live agent installation/restart, live ledger/settings cleanup, original
+session/account RPC access or private evidence upload is authorized. Existing
+local retained evidence may inform diagnosis but need not be restaged for this
+smaller release. Any new scope/safety concession goes to the owner; routine
+internal reviews and safe retries do not create approval gates.
+
+Forecast: **4-8 hours of engineering/local verification/review/closeout**, plus
+roughly **1-3 hours of hosted build/qualification/publication waiting**, assuming
+the saved builders remain viable. Expect the first integrated slice in roughly
+1-2 hours. These are forecasts, not deadlines or artificial stopping quotas.
+Native Windows build failure or unexpected coupling changes the forecast; state
+that promptly with evidence instead of silently starting another architecture.
+
+Direction reviews occur after the integrated slice and proportionately before
+publication/closeout. They judge this narrow outcome, not the deferred indexer.
+Planning review 1, requested GPT-6.1 Sol / Xhigh, worker
+`01a18302-0ae4-7bd3-976e-15ac90c04c65`, found two proof gaps: lost deferred
+reclaim eligibility across restart, and vacuous packaged smoke on an absent
+WAL. Both were corrected above with integrated tests, not a broader backend.
+Its read-only source review otherwise found sufficient implementation direction;
+builder viability and the forecast remain to be established during execution.
+Requested settings are not independent host confirmation. No tests, builds,
+services, private-data access or workflows ran for this planning review.
+
+Planning review 2, requested GPT-6.1 Sol / Medium, worker
+`01a18309-2b36-7ef1-aaab-22e1fa409631`, found no decision-changing restrictions
+or required corrections. It confirmed that routine extraction/recovery choices
+stay with the director, forecasts are not stop quotas, historical experiment
+constraints are not inherited and observer repair is optional. It proposed no
+change to success/evidence/assistance assumptions, so no review-1 recheck was
+needed. It inspected only this plan and repository instructions; no source
+audit, tests, builds, services, private-data access or workflows ran. Requested
+settings remain host-unverified. Both review reports were collected; reviewers
+are retired and reporting routes removed before planning handoff.
+
+Execution handoff: use this scope and steps 1-4 when the owner resumes work.
+Carry forward the existing permissions above, recheck current base/runtime facts,
+and continue covered review fixes through both public downloads and receipt.
+Do not revive the parked indexer, start a new native Goal implicitly, or ask
+for the same already granted release permissions again.
+
+## Execution Checkpoint
+
+- Execution uses the existing clean Terra release checkout, main based on
+  `2a9b0707e68ecf686f64a552744ce02eaa9aefa4`. Public catalog and remote tags
+  show no existing 2.13.2, so that maintenance version is selected.
+- Standalone maintenance is ported without `read_model/` or report algorithms.
+  One safely fenced startup reclaim event recovers lost eligibility; no new
+  durable job system is added. Actual HTTP/agent restart, external reader
+  release, retained usage, report and CSV checks passed (four integration/TEMP
+  cases); the same package-smoke contract passed against a source subprocess.
+- The first focused run exposed the missing maintenance priority; after adding
+  its existing-lane enum value, 35 affected checks passed. Saved POSIX privacy
+  fixes are retained because closing independent DB/SHM descriptors drops live
+  SQLite record locks. No shared source schema or pricing schedule changed.
+- Read-only runtime support requested Sol/Medium, worker
+  `01a18315-1dc7-72d2-ac5a-da9082036dbf`, mapped the independent builder closure
+  and identified provenance/frozen-DLL proof gaps. Worker closed/unregistered.
+  Native input/archive reuse checks and frozen package DLL custody are included
+  in this small runtime change; index-specific build identities are excluded.
+- Existing official development runtime artifacts were rehashed (2,829 matches).
+  A fresh package runtime completed with native-input provenance. The
+  selected scoped portable runtime/build cohort passed 60 cases; Ruff passes.
+  These checks do not yet qualify either native package or public release.
+- Broad affected checks passed 579 cases with thread/unraisable warnings as
+  errors. Independent read-only Sol/High review, worker
+  `01a18326-99e4-72c0-bce0-e2480f50a4f4`, identified a coalesced-future race that
+  could strand maintenance as queued. Its deterministic regression failed
+  before repair; queued state now remains owned until the lane future completes.
+  Focused final recheck found no actionable issue; 28 affected real-agent/WAL
+  tests passed after repair. Worker closed and reporting route removed.
+- `wal-capture-before-queue-fix.json` is pre-repair evidence, not current proof.
+  `wal-capture-final.json` reran the repaired code. The final
+  `wal-capture-allocated.json` additionally observes MAIN+WAL immediately after
+  checkpoint I/O (which need not trigger a VM progress sample), retaining all
+  earlier measurements. All use ten alternating pairs plus one excluded pair,
+  a real 256 MiB WAL and one actual capture parser worker; no private inputs.
+  Every final measured capture overlapped checkpoint I/O, record hashes/integrity
+  matched and eligible WAL ended at zero. This is a scoped synthetic result,
+  not a universal latency or production-p95 claim.
+- `normal-reports/evidence.json` contains ten paired source cycles, 13 operations
+  each, exact HTML/action/CSV/work parity and no BOTH >10% AND >100ms regression.
+  The fixture has 3,180 usage records including 300 Terra records, quota/reset
+  boundaries and complete CSV; no original sessions or private ledger were used.
+  Control is frozen 2.13.1 source with local CPython 3.13.12/SQLite 3.50.4;
+  candidate uses its fresh CPython 3.13.12/SQLite 3.54.1 runtime. This is not an
+  old published-binary timing comparison. Median per-process peak RSS was
+  77,070,336 / 76,259,328 bytes (control/candidate), not a multiplatform app peak.
+- All 87 extension tests and build passed. No indexer, source schema, pricing or
+  frontend runtime changes are included. Native platform gates still must pass.

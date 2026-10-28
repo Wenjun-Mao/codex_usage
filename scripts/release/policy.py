@@ -80,6 +80,13 @@ def contract_files(root=ROOT):
         "packaged_parallel_cache_smoke.py", "observed_speed_fixture.py", "collector_smoke_owner.py",
         "packaged_windows_process_tree_smoke.py", "parallel_cache_fixture.py")]
     files += ["src/codex_usage/parallel_audit.py"]
+    files += ["scripts/" + name for name in (
+        "build_sqlite_runtime.py", "build_sqlite_runtime_windows.py",
+        "runtime_sources.py", "runtime_windows_sources.py", "check_sqlite_runtime.py",
+        "macos-package-runtime.sh", "windows-build-toolchain.ps1",
+        "test-windows-build-toolchain.ps1", "build-macos-arm64-exe.sh", "build-windows-exe.ps1",
+        "verify_packaged_sqlite.py", "packaged_wal_smoke.py")]
+    files += ["src/codex_usage/sqlite_runtime.py"]
     return sorted(set(files))
 
 

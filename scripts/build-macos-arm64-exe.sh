@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_root/scripts/macos-package-runtime.sh"
 dist_dir="$repo_root/extensions/vscode/bin/darwin-arm64"
 work_dir="$repo_root/build/pyinstaller-darwin-arm64"
 entry_point="$repo_root/src/codex_usage/__main__.py"
@@ -12,11 +13,11 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
   exit 2
 fi
 
+cd "$repo_root"
+prepare_macos_package_runtime "$repo_root"
 mkdir -p "$dist_dir" "$work_dir"
 rm -f "$exe_path"
-
-cd "$repo_root"
-uv run --group package pyinstaller \
+macos_package_uv run --no-sync pyinstaller \
   --noconfirm \
   --clean \
   --onefile \
@@ -35,8 +36,8 @@ fi
 
 chmod +x "$exe_path"
 "$exe_path" --help >/dev/null
-uv run python "$repo_root/scripts/packaged_parallel_cache_smoke.py" \
+macos_package_uv run --no-sync python "$repo_root/scripts/packaged_parallel_cache_smoke.py" \
   --executable "$exe_path" \
   --expected-target darwin-arm64
-uv run python "$repo_root/scripts/packaged_report_smoke.py" --executable "$exe_path"
-uv run python "$repo_root/scripts/packaged_storage_analysis_smoke.py" --executable "$exe_path"
+macos_package_uv run --no-sync python "$repo_root/scripts/packaged_report_smoke.py" --executable "$exe_path"
+macos_package_uv run --no-sync python "$repo_root/scripts/packaged_storage_analysis_smoke.py" --executable "$exe_path"

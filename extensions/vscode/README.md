@@ -101,6 +101,11 @@ model. Earlier unknown prices and ordinary model-based code reviews are unchange
 
 ## Usage And Capture
 
+Both collectors bundle official SQLite 3.54.1. Idle WAL maintenance preserves
+source history and defers physical reclamation while readers or writers are
+busy. There is no 512 MiB derived-data cap or automatic sidecar sweep; the
+existing report path remains in use.
+
 Usage reports, Agent Activity, and its CSV export come entirely from
 `CODEX_HOME/.codex-usage/usage-ledger.sqlite3`. Changing range, project filter,
 theme, Agent Activity, or export does not reopen Codex task files. Custom ranges
