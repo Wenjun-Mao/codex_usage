@@ -11,6 +11,16 @@ builder = load_tool('build_sqlite_runtime')
 sources = load_tool('runtime_sources')
 
 
+@pytest.mark.parametrize('platform', ['linux', 'darwin'])
+def test_native_probe_does_not_load_setup_python_host_library(tmp_path, monkeypatch, platform):
+    monkeypatch.setattr(builder.sys, 'platform', platform)
+    monkeypatch.setenv('LD_LIBRARY_PATH', '/host/python/lib')
+    environment = builder.runtime_environment(tmp_path / 'install')
+    expected = str(tmp_path / 'install/lib') if platform == 'linux' else '/host/python/lib'
+    assert environment['LD_LIBRARY_PATH'] == expected
+    assert environment['PYTHONPATH'] == str(builder.ROOT / 'src')
+
+
 @pytest.mark.parametrize('mutation', [None, 'archive', 'native', 'artifact', 'legacy'])
 def test_reuse_requires_original_archives_inputs_and_installed_bytes(tmp_path, monkeypatch, mutation):
     pins = []

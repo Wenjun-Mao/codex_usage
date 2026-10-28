@@ -24,6 +24,12 @@ foreach ($file in $files) {
 # script scope and must not replace the calling package script's real helper.
 $helper = $files[0]
 . $helper
+foreach ($version in @("17.0", "18.0", "19.0")) {
+    if (-not (Test-WindowsToolchainVersion -Version $version)) { throw "Rejected supported MSVC version" }
+}
+foreach ($version in @("", "16.0", "invalid")) {
+    if (Test-WindowsToolchainVersion -Version $version) { throw "Accepted invalid MSVC version" }
+}
 $newName = "CODEX_TEST_" + [Guid]::NewGuid().ToString("N")
 $snapshot = [Environment]::GetEnvironmentVariables("Process")
 try {

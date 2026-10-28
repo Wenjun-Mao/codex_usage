@@ -54,7 +54,7 @@ def test_clean_or_cached_runtime_is_prepared_before_private_sync(tmp_path, verif
     calls = result.stdout.split("END\n")
     assert len(calls) == 5
     runtime = repository / "build" / (
-        "sqlite-runtime-verified" if verified else "sqlite-runtime-macos-arm64")
+        "sqlite-runtime-verified" if verified else "sqlite-runtime-macos-arm64-py31316")
     assert "ARG:--isolated\nARG:--no-project\nARG:--no-python-downloads\nARG:--python\nARG:3.13" in calls[0]
     assert f"ARG:{repository}/scripts/build_sqlite_runtime.py\nARG:--output\nARG:{runtime}" in calls[0]
     assert "CALL:caller-original" in calls[0]

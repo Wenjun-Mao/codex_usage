@@ -16,9 +16,16 @@ function Restore-WindowsBuildEnvironment {
     }
 }
 
+function Test-WindowsToolchainVersion {
+    param([string] $Version)
+    $parsed = [version]"0.0"
+    return ([version]::TryParse($Version, [ref]$parsed) -and $parsed.Major -ge 17)
+}
+
 function Assert-WindowsX64Toolchain {
-    if ($env:VSCMD_ARG_TGT_ARCH -ne "x64" -or $env:VisualStudioVersion -notlike "17.*") {
-        throw "A VS 2022 x64 target developer environment is required."
+    if ($env:VSCMD_ARG_TGT_ARCH -ne "x64" -or
+        -not (Test-WindowsToolchainVersion -Version $env:VisualStudioVersion)) {
+        throw "A Visual Studio 2022 or newer x64 target developer environment is required."
     }
     if (-not $env:VCToolsInstallDir -or -not $env:WindowsSdkDir -or -not $env:WindowsSDKVersion) {
         throw "The MSVC environment is missing VC tools or Windows SDK locations."
@@ -33,7 +40,7 @@ function Assert-WindowsX64Toolchain {
         $actual = Get-Command $name -CommandType Application -ErrorAction Stop | Select-Object -First 1
         if (-not (Test-Path -LiteralPath $expected -PathType Leaf) -or
             [IO.Path]::GetFullPath($actual.Source) -ne [IO.Path]::GetFullPath($expected)) {
-            throw "PATH must select the installed VS 2022 x64 tool: $expected"
+            throw "PATH must select the installed Visual Studio x64 tool: $expected"
         }
     }
     $sdkVersion = $env:WindowsSDKVersion.TrimEnd([char[]]'\/')
@@ -56,7 +63,7 @@ function Assert-WindowsX64Toolchain {
         foreach ($file in $group.Files) {
             if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or
                 $search -notcontains (Split-Path -Parent $file).TrimEnd('\')) {
-                throw "Incomplete VS 2022 C++/Windows SDK $($group.Name): $file"
+                throw "Incomplete Visual Studio C++/Windows SDK $($group.Name): $file"
             }
         }
     }
@@ -71,17 +78,17 @@ function Import-WindowsX64Toolchain {
     }
     $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
-        throw "VS 2022 C++ x64 tools/Windows SDK required: installed vswhere.exe not found."
+        throw "Visual Studio C++ x64 tools/Windows SDK required: installed vswhere.exe not found."
     }
-    $installation = & $vswhere -latest -products '*' -version '[17.0,18.0)' `
+    $installation = & $vswhere -latest -products '*' -version '[17.0,)' `
         -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if ($LASTEXITCODE -ne 0 -or -not $installation) {
-        throw "No supported installed VS 2022 C++ x64 toolchain was found."
+        throw "No supported installed Visual Studio C++ x64 toolchain was found."
     }
     $installPath = ([string]$installation).Trim()
     $devcmd = Join-Path $installPath "Common7\Tools\VsDevCmd.bat"
     if (-not (Test-Path -LiteralPath $devcmd -PathType Leaf) -or $devcmd -match '["\r\n]') {
-        throw "Invalid installed VS 2022 VsDevCmd.bat path."
+        throw "Invalid installed Visual Studio VsDevCmd.bat path."
     }
     # Pass the discovered path as a child-only environment value, not executable
     # command text. /d disables cmd AutoRun; /u gives set output a known encoding.
@@ -103,7 +110,7 @@ function Import-WindowsX64Toolchain {
         $stderr = $process.StandardError.ReadToEndAsync()
         $process.WaitForExit()
         if ($process.ExitCode -ne 0) {
-            throw "VS 2022 VsDevCmd failed ($($process.ExitCode)): $($stderr.Result)"
+            throw "Visual Studio VsDevCmd failed ($($process.ExitCode)): $($stderr.Result)"
         }
         foreach ($line in $stdout.Result -split '\r?\n') {
             $separator = $line.IndexOf('=')

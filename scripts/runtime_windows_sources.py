@@ -17,8 +17,8 @@ from runtime_sources import Source
 
 
 WINDOWS_PYTHON = Source(
-    "https://api.nuget.org/v3-flatcontainer/python/3.13.12/python.3.13.12.nupkg",
-    "sha256", "389c0228afbb3530f6cd079f5cec44139b1441dd51c85ec704f7a63f1c9f3802", "tools",
+    "https://api.nuget.org/v3-flatcontainer/python/3.13.16/python.3.13.16.nupkg",
+    "sha256", "95fad176338f1d6a799e45946488063f4aa61764e6cff2f132ddeffbf7a04c34", "tools",
 )
 
 

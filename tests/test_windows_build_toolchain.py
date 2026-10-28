@@ -29,10 +29,11 @@ def test_vs2022_cpp_discovery_and_explicit_target_preservation():
     discover = HELPER.index("$installation = & $vswhere")
     assert preserve < discover
     assert "Assert-WindowsX64Toolchain\n        return" in HELPER[preserve:discover]
-    assert "-version '[17.0,18.0)'" in HELPER
+    assert "-version '[17.0,)'" in HELPER
     assert "Microsoft.VisualStudio.Component.VC.Tools.x86.x64" in HELPER
     assert '-arch=x64 -host_arch=x64' in HELPER
-    assert '$env:VisualStudioVersion -notlike "17.*"' in HELPER
+    assert 'Test-WindowsToolchainVersion -Version $env:VisualStudioVersion' in HELPER
+    assert '$parsed.Major -ge 17' in HELPER
 
 
 def test_sdk_tools_and_search_paths_are_validated_not_just_path_presence():

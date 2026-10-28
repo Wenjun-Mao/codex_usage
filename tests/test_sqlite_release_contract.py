@@ -22,6 +22,14 @@ def test_runtime_build_closure_is_part_of_the_qualification_contract():
     assert all((ROOT / name).is_file() for name in actual)
 
 
+def test_hosted_core_uses_private_python_library_for_sync_and_subsequent_steps():
+    workflow = (ROOT / '.github/workflows/package-vsix.yml').read_text()
+    core = workflow.split('  core:\n', 1)[1].split('  package:\n', 1)[0]
+    selection = 'export LD_LIBRARY_PATH="$runtime/install/lib"'
+    assert core.index(selection) < core.index('uv sync --locked')
+    assert "printf 'LD_LIBRARY_PATH=%s\\n'" in core
+
+
 def test_each_runtime_helper_changes_the_contract_identity(tmp_path, monkeypatch):
     monkeypatch.setattr(policy, "contract_files", lambda root: list(RUNTIME_FILES))
     for name in RUNTIME_FILES:

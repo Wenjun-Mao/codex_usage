@@ -24,12 +24,12 @@ SQLITE = Source(
     "sqlite-amalgamation-3540100",
 )
 PYTHON = Source(
-    "https://www.python.org/ftp/python/3.13.12/Python-3.13.12.tgz", "sha256",
-    "12e7cb170ad2d1a69aee96a1cc7fc8de5b1e97a2bdac51683a3db016ec9a2996", "Python-3.13.12",
+    "https://www.python.org/ftp/python/3.13.16/Python-3.13.16.tgz", "sha256",
+    "cfac63bddf956deafb1172ca131ae5dcaafd6f95056086e233fca205593ed427", "Python-3.13.16",
 )
 OPENSSL = Source(
-    "https://github.com/openssl/openssl/releases/download/openssl-3.5.5/openssl-3.5.5.tar.gz", "sha256",
-    "b28c91532a8b65a1f983b4c28b7488174e4a01008e29ce8e69bd789f28bc2a89", "openssl-3.5.5",
+    "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz", "sha256",
+    "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a", "openssl-3.5.9",
 )
 
 

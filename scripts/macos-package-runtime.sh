@@ -10,7 +10,7 @@ macos_package_uv() {
 
 prepare_macos_package_runtime() {
   local repository="$1"
-  local runtime_root="$repository/build/sqlite-runtime-macos-arm64"
+  local runtime_root="$repository/build/sqlite-runtime-macos-arm64-py31316"
   local tool
   for tool in uv cc make ar perl; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -35,7 +35,7 @@ prepare_macos_package_runtime() {
     --group package || return
   # Fail if uv reused an environment based on a different same-version Python.
   macos_package_uv run --no-sync python -I -B -c \
-    'import pathlib, platform, sys; assert sys.platform == "darwin" and platform.machine() == "arm64"; assert sys.version_info[:3] == (3, 13, 12), sys.version; assert pathlib.Path(sys.base_prefix).resolve() == pathlib.Path(sys.argv[1]).resolve(), sys.base_prefix' \
+    'import pathlib, platform, sys; assert sys.platform == "darwin" and platform.machine() == "arm64"; assert sys.version_info[:3] == (3, 13, 16), sys.version; assert pathlib.Path(sys.base_prefix).resolve() == pathlib.Path(sys.argv[1]).resolve(), sys.base_prefix' \
     "$runtime_root/install" || return
   macos_package_uv run --no-sync python "$repository/scripts/check_sqlite_runtime.py"
 }

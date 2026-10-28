@@ -1,12 +1,12 @@
-"""Prepare a private official CPython 3.13.12 + SQLite 3.54.1 Windows x64 runtime.
+"""Prepare a private official CPython 3.13.16 + SQLite 3.54.1 Windows x64 runtime.
 
-Package PS1 entrypoints discover installed VS 2022 C++ tools/SDK automatically.
+Package PS1 entrypoints discover installed Visual Studio C++ tools/SDK automatically.
 For standalone use, run from an x64 MSVC Native Tools prompt:
   uv run python scripts/build_sqlite_runtime_windows.py
 No installer, registry edits, global Python changes or CPython source patches.
 Only sqlite3.dll in the private PSF NuGet copy is replaced. Upstream references:
-https://github.com/python/cpython/blob/v3.13.12/PCbuild/_sqlite3.vcxproj
-https://github.com/python/cpython/blob/v3.13.12/PCbuild/sqlite3.vcxproj
+https://github.com/python/cpython/blob/v3.13.16/PCbuild/_sqlite3.vcxproj
+https://github.com/python/cpython/blob/v3.13.16/PCbuild/sqlite3.vcxproj
 https://www.sqlite.org/howtocompile.html#building_a_windows_dll
 
 The manifest binds archives, actual compiler inputs, commands, tool binaries and
@@ -38,7 +38,7 @@ DEFINES = (
 # -I prevents ambient PYTHONPATH/site packages from substituting the binding.
 PROBE = r'''
 import ctypes, json, pathlib, sqlite3, sys, _sqlite3
-assert sys.version_info[:3] == (3, 13, 12), sys.version
+assert sys.version_info[:3] == (3, 13, 16), sys.version
 assert sys.platform == "win32" and ctypes.sizeof(ctypes.c_void_p) == 8
 prefix = pathlib.Path(sys.base_prefix).resolve()
 assert prefix == pathlib.Path(sys.argv[2]).resolve(), prefix
@@ -150,7 +150,7 @@ def build(output):
         raise ValueError("Incomplete runtime output; use a fresh --output directory")
     compiler, dumpbin = shutil.which("cl.exe"), shutil.which("dumpbin.exe")
     if not compiler or not dumpbin:
-        raise ValueError("Use the VS 2022 x64 Native Tools prompt with the Windows SDK")
+        raise ValueError("Use the Visual Studio x64 Native Tools prompt with the Windows SDK")
     if os.environ.get("VSCMD_ARG_TGT_ARCH", "").lower() != "x64":
         raise ValueError("MSVC target must be x64 (VSCMD_ARG_TGT_ARCH=x64)")
     sqlite_source = prepare(SQLITE, root)

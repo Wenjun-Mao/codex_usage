@@ -325,3 +325,37 @@ for the same already granted release permissions again.
   77,070,336 / 76,259,328 bytes (control/candidate), not a multiplatform app peak.
 - All 87 extension tests and build passed. No indexer, source schema, pricing or
   frontend runtime changes are included. Native platform gates still must pass.
+- Initial candidate `9a8fef4` qualification run `40721001979` is retained as
+  failed evidence, not promotion authority. All five visuals and the Mac package
+  passed; Windows discovery excluded its VS 2026 runner, and Core stopped before
+  tests on the Python assertion. Discovery now accepts installed VS 2022 or newer
+  while retaining the actual x64 compiler, SDK, headers and libraries checks.
+- Shipped 2.13.1 package logs on both targets establish CPython 3.13.16. Preserve
+  that patch version rather than downgrade to the saved 3.13.12 builder; align
+  POSIX OpenSSL to 3.5.9, matching the selected PSF Windows runtime. Official
+  source/NuGet archives are independently hash-pinned. This is not a claim to
+  ship the latest Python. The fresh local 3.13.16/3.5.9/SQLite 3.54.1 build passed
+  engine and TLS probes. Old 3.13.12 measurements remain labeled historical;
+  refresh matched normal-report and capture evidence for the final runtime.
+- Core's initial Linux log also revealed `setup-python`'s `LD_LIBRARY_PATH`
+  shadowing the private CPython library. Native probes and Core sync/test steps
+  now select the private library explicitly, with focused regression checks.
+  Qualification must be a new source-bound run after these owning repairs.
+- Final-runtime affected checks passed 100 cases; Ruff passed. Read-only repair
+  review requested Sol/Medium, worker `01a1834b-e50f-7b61-bac6-e126f9e04a5f`,
+  found no actionable issue in runtime isolation or toolchain selection. Static
+  review did not independently execute native builds or verify archive hashes.
+  Its report was collected, worker closed and route removed; effective settings
+  remain host-unverified.
+- Final timing evidence uses separately run
+  `wal-capture-py31316-isolated.json` and
+  `normal-reports-py31316-isolated/evidence.json` in the existing qualification
+  directory. Earlier refreshes overlapped experiments and remain retained but
+  are not the isolated timing proof. WAL capture off/on medians were
+  0.258952 / 0.021144 seconds, all ten measured captures overlapped checkpoint
+  I/O, every eligible WAL reclaimed to zero, and observed owned-file high-water
+  was 540,797,534 bytes. Normal reports retain exact output/work parity across
+  all 13 operations in ten pairs with no material regression. Both interpreters
+  are CPython 3.13.16; frozen 2.13.1 source control uses SQLite 3.53.1 and candidate
+  uses 3.54.1. This remains a synthetic source comparison, not published-binary
+  or production-p95 evidence. No private input or live account was accessed.

@@ -38,6 +38,14 @@ def run(arguments, *, cwd, env, log):
                        stdout=output, stderr=subprocess.STDOUT, check=True)
 
 
+def runtime_environment(prefix):
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+    if sys.platform.startswith("linux"):
+        # setup-python exports a host library path that precedes ELF RUNPATH.
+        env["LD_LIBRARY_PATH"] = str(prefix / "lib")
+    return env
+
+
 def validate_saved(saved, root):
     if (saved.get('sources') != [asdict(source) for source in (SQLITE, PYTHON, OPENSSL)]
             or saved.get('artifacts') != artifacts(root / 'install')):
@@ -70,7 +78,7 @@ def build(root, jobs):
         saved = json.loads(manifest.read_text())
         validate_saved(saved, root)
         subprocess.run([str(python), str(ROOT / "scripts/check_sqlite_runtime.py")],
-                       env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, check=True)
+                       env=runtime_environment(prefix), check=True)
         return python
     if prefix.exists():
         raise ValueError('Incomplete runtime output; choose a fresh --output directory')
@@ -108,11 +116,12 @@ def build(root, jobs):
     run(["make", f"-j{jobs}"], cwd=python_build, env=env, log=log)
     run(["make", "install"], cwd=python_build, env=env, log=log)
     result = subprocess.run([str(python), str(ROOT / "scripts/check_sqlite_runtime.py")],
-                            env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, check=True,
+                            env=runtime_environment(prefix), check=True,
                             text=True, capture_output=True)
     subprocess.run([str(python), '-c',
         "from urllib.request import urlopen; "
-        "response=urlopen('https://www.sqlite.org/download.html',timeout=30); response.close()"], check=True)
+        "response=urlopen('https://www.sqlite.org/download.html',timeout=30); response.close()"],
+        env=runtime_environment(prefix), check=True)
     for relative, expected in native_inputs.items():
         if hashlib.sha256((root / relative).read_bytes()).hexdigest() != expected:
             raise ValueError('Native build input changed during construction')
