@@ -71,7 +71,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await refreshVisibleDashboard({ showLoading: false });
     }),
     vscode.commands.registerCommand("codexUsage.navigateAllowanceHistory", async (args: unknown) => {
-      if (dashboardNavigation.allowance(args)) await refreshVisibleDashboard({ showLoading: false });
+      if (dashboardNavigation.allowance(args)) await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "Loading allowance history" },
+        () => refreshVisibleDashboard({ showLoading: false, showErrors: true }));
     }),
     vscode.commands.registerCommand("codexUsage.selectTheme", selectTheme),
     vscode.commands.registerCommand("codexUsage.showUsageView", () => selectView("usage")),
@@ -98,6 +100,7 @@ export async function deactivate(): Promise<void> {
 
 async function openDashboard(): Promise<void> {
   if (!panel) {
+    dashboardNavigation.reset(true);
     panel = vscode.window.createWebviewPanel("codexUsageDashboard", "Codex Usage", vscode.ViewColumn.One, {
       enableScripts: false,
       enableCommandUris: [...WEBVIEW_COMMANDS],
@@ -133,9 +136,9 @@ async function refreshVisibleDashboard(
     if (activeView === "usage") {
       const status = latestStatus ?? await client.get<AgentStatus>("/v1/status");
       latestStatus = status;
-      if (!(status.capabilities || []).includes("image-generation-accounting") || !(status.capabilities || []).includes("observed-output-speed-v1") || !(status.capabilities || []).includes("usage-allowance-breakdown-v1") || status.speed?.metric_version !== 1) {
+      if (!(status.capabilities || []).includes("image-generation-accounting") || !(status.capabilities || []).includes("observed-output-speed-v1") || !(status.capabilities || []).includes("usage-allowance-breakdown-v1") || !(status.capabilities || []).includes("on-demand-allowance-history-v1") || status.speed?.metric_version !== 1) {
         target.webview.html = renderError(
-          "Update the Codex Usage collector before loading this report. Matching image accounting, observed output speed and usage breakdown support are required; reinstall the matching VSIX package.",
+          "Update the Codex Usage collector before loading this report. Matching image accounting, output speed, usage breakdown and on-demand allowance history support are required; reinstall the matching VSIX package.",
           target.webview.cspSource,
           reportTheme(),
         );
@@ -171,7 +174,7 @@ async function refreshVisibleDashboard(
     }
   } catch (error) {
     if (showErrors && panel === target && requestId === refreshSerial) {
-      target.webview.html = renderError(errorMessage(error), target.webview.cspSource, reportTheme());
+      target.webview.html = renderError(errorMessage(error), target.webview.cspSource, reportTheme(), true);
     } else {
       output.appendLine(`[dashboard] Automatic refresh failed: ${errorMessage(error)}`);
     }

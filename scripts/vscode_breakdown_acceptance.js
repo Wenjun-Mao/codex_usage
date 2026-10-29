@@ -29,11 +29,19 @@ exports.run = async function () {
     const { AgentClient } = require(path.join(root, "extension", "out", "agentClient.js"));
     const client = await AgentClient.discover();
     const get = AgentClient.prototype.get;
+    const reports = [];
     AgentClient.prototype.get = async function (url) {
       const result = await get.call(this, url);
-      if (url.startsWith('/v1/report?')) fs.writeFileSync(path.join(root, 'last-report.json'), JSON.stringify({
-        speed: result.speed_navigation, breakdown: result.breakdown_navigation, allowance: result.allowance_navigation,
-      }));
+      if (url.startsWith('/v1/report?')) {
+        fs.writeFileSync(path.join(root, 'last-report.json'), JSON.stringify({
+          speed: result.speed_navigation, breakdown: result.breakdown_navigation, allowance: result.allowance_navigation,
+        }));
+        const query = new URLSearchParams(url.split('?')[1]);
+        reports.push({ history_mode: query.get('allowance_history'),
+          allowance_action: query.has('allowance_action') ? JSON.parse(query.get('allowance_action')) : null,
+          deferred: result.allowance_navigation?.deferred === true });
+        fs.writeFileSync(path.join(root, 'report-requests.json'), JSON.stringify(reports));
+      }
       return result;
     };
     restoreClient = () => { AgentClient.prototype.get = get; };
@@ -62,20 +70,21 @@ exports.run = async function () {
     evidence.strict_host_validation = true;
     fs.writeFileSync(path.join(root, "ready.json"), JSON.stringify(evidence));
     const deadline = Date.now() + 180000;
-    let themeSerial = 0;
+    const themeSerials = new Map();
     while (!fs.existsSync(path.join(root, "clicked.json"))) {
       assert(Date.now() < deadline, "rendered breakdown/theme input timed out");
       const requestFile = path.join(root, 'theme-request.json');
       if (fs.existsSync(requestFile)) {
         const request = JSON.parse(fs.readFileSync(requestFile, 'utf8'));
-        if (request.serial > themeSerial) {
-          themeSerial = request.serial;
+        const phase = request.phase || 'loaded';
+        if (request.serial > (themeSerials.get(phase) || 0)) {
+          themeSerials.set(phase, request.serial);
           const started = Date.now();
           if (request.editorTheme) await vscode.workspace.getConfiguration('workbench').update('colorTheme', request.editorTheme, vscode.ConfigurationTarget.Global);
           if (request.theme) await vscode.workspace.getConfiguration('codexUsage').update('theme', request.theme, vscode.ConfigurationTarget.Global);
           const theme = vscode.workspace.getConfiguration('codexUsage').get('theme');
           while (!panel.webview.html.includes(`data-codex-theme="${theme}"`) || !panel.webview.html.includes('Usage &amp; Allowance Breakdown')) await new Promise(resolve => setTimeout(resolve, 10));
-          fs.writeFileSync(path.join(root, 'theme-assigned.json'), JSON.stringify({ serial: themeSerial, theme, started, assigned: Date.now() }));
+          fs.writeFileSync(path.join(root, 'theme-assigned.json'), JSON.stringify({ phase, serial: request.serial, theme, started, assigned: Date.now() }));
         }
       }
       await new Promise(resolve => setTimeout(resolve, 100));

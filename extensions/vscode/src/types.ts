@@ -93,6 +93,7 @@ export interface AllowanceHistoryNavigation {
   scope: string;
   state: AllowanceHistoryState;
   actions: AllowanceHistoryAction[];
+  deferred?: boolean;
 }
 
 export interface RenderedReport {

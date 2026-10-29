@@ -96,6 +96,23 @@ def validate_native(evidence, hosted, manifest, package):
 
 def validate_theme_journey(theme):
     """Validate native theme states, colors and origin/response scopes."""
+    deferred = theme.get('deferred_history', {})
+    require(type(deferred.get('unrequested_reports')) is int and deferred['unrequested_reports'] >= 24
+        and [u.get('theme') for u in deferred.get('updates', [])] == ['night', 'day']
+        and all(u.get('deferred') is True and u.get('scope') == deferred.get('unrequested_scope')
+                and bool(u.get('screenshot')) for u in deferred['updates'])
+        and deferred.get('issued_origin_verified') is True
+        and deferred.get('requested', {}).get('scope') == deferred.get('unrequested_scope')
+        and len(deferred.get('unrequested_scope', '')) == 64
+        and deferred.get('requested', {}).get('state') == deferred.get('rendered_state')
+        and deferred.get('response_scope') == deferred.get('rendered_scope')
+        and len(deferred.get('rendered_scope', '')) == 64
+        and deferred['rendered_scope'] != deferred['unrequested_scope']
+        and deferred.get('current_before') == deferred.get('current_after')
+        and len(deferred.get('current_before', '')) == 64
+        and deferred.get('history_visible') is True and bool(deferred.get('screenshot'))
+        and type(deferred.get('seconds')) in (int, float) and isfinite(deferred['seconds'])
+        and 0 <= deferred['seconds'] < 30, 'Missing native deferred history load/origin/content proof')
     updates = theme.get("updates", [])
     require(theme.get("script_disabled") is True and len(updates) == 5
         and [u.get("theme") for u in updates] == ["night", "day", "auto", "auto", "night"]

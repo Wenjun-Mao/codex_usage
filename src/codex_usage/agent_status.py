@@ -33,6 +33,7 @@ def runtime_status_payload(
                 "image-generation-accounting",
                 "observed-output-speed-v1",
                 "usage-allowance-breakdown-v1",
+                "on-demand-allowance-history-v1",
                 "plan-allowance",
                 "private-companion-v1",
             ],

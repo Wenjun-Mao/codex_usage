@@ -53,8 +53,9 @@ export function renderLoading(message: string, cspSource: string, theme: ReportT
   return `<!doctype html><html data-codex-theme="${escapeHtml(theme)}"><head>${companionCsp(cspSource)}${baseStyle()}</head><body><main class="loading"><span></span>${escapeHtml(message)}</main></body></html>`;
 }
 
-export function renderError(message: string, cspSource: string, theme: ReportTheme = "auto"): string {
-  return `<!doctype html><html data-codex-theme="${escapeHtml(theme)}"><head>${companionCsp(cspSource)}${baseStyle()}</head><body><main class="report-shell"><h1>Codex Usage</h1><div class="notice error">${escapeHtml(message)}</div></main></body></html>`;
+export function renderError(message: string, cspSource: string, theme: ReportTheme = "auto", retry = false): string {
+  const action = retry ? '<p><a href="command:codexUsage.refreshDashboard">Retry loading view</a></p>' : '';
+  return `<!doctype html><html data-codex-theme="${escapeHtml(theme)}"><head>${companionCsp(cspSource)}${baseStyle()}</head><body><main class="report-shell"><h1>Codex Usage</h1><div class="notice error">${escapeHtml(message)}</div>${action}</main></body></html>`;
 }
 
 function companionControls(state: ControlState): string {

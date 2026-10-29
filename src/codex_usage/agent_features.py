@@ -64,6 +64,7 @@ class AgentFeatures:
         speed_window_scope: str | None = None,
         breakdown_action: str | None = None,
         allowance_action: str | None = None,
+        allowance_history: str = 'eager',
     ) -> RenderedLedgerReport:
         settings = self._settings()
         return render_ledger_report(
@@ -80,6 +81,7 @@ class AgentFeatures:
             speed_window_scope=speed_window_scope,
             breakdown_action=breakdown_action,
             allowance_action=allowance_action,
+            allowance_history=allowance_history,
         )
 
     def export_agent_activity(

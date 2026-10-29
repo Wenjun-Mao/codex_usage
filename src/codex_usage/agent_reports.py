@@ -106,6 +106,7 @@ def _render_base_ledger_report(
     now: datetime | None = None,
     _snapshot: sqlite3.Connection | None = None,
     _prepared_sink: dict | None = None,
+    allowance_history: str = 'eager',
 ) -> RenderedLedgerReport:
     started = monotonic()
     now = now or datetime.now(UTC)
@@ -133,6 +134,7 @@ def _render_base_ledger_report(
                 connection, ledger_path, revision=status.revision,
                 pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
                 status=status.plan_allowance, preparation=(_prepared_sink or {}).get("quota"),
+                include_history=allowance_history != 'deferred',
             )
             pace_report = allowance_report
         from codex_usage.allowance_pace import presentation_identity
@@ -149,7 +151,15 @@ def _render_base_ledger_report(
             now.astimezone(timezone).date().isoformat() if pace_report.get("paces") else None,
             credit_freshness=(pace_report["status"].get("credits") or {}).get("freshness", "unavailable"),
         )
+        eager_cache_key = cache_key
+        if allowance_history == 'deferred':
+            cache_key += ':deferred-history-1'
         cached = _load_cached_report(connection, cache_key)
+        if cached is None and allowance_history == 'deferred':
+            # An already valid eager HTML fragment contains the exact current
+            # figures. The companion replaces its history slot with an issued
+            # invitation, avoiding a new cold preparation just to omit details.
+            cached = _load_cached_report(connection, eager_cache_key)
         if cached is not None:
             # The publisher's new codec row is outside this pinned read snapshot.
             # Pass the prepared report onward even when the base HTML is reusable.
@@ -168,14 +178,20 @@ def _render_base_ledger_report(
             pace_report["status"]["probe_status"], presentation_identity(pace_report, now.timestamp()),
             now.astimezone(timezone).date().isoformat() if pace_report.get("paces") else None,
             credit_freshness=(pace_report["status"].get("credits") or {}).get("freshness", "unavailable"))
+        eager_allowance_key = allowance_key
+        if allowance_history == 'deferred':
+            allowance_key += ':deferred-history-1'
         allowance_html = _load_cached_report(connection, allowance_key)
+        if allowance_html is None and allowance_history == 'deferred':
+            allowance_html = _load_cached_report(connection, eager_allowance_key)
         allowance_created = allowance_html is None
         if allowance_html is None:
             if allowance_report is None:
                 allowance_report = indexed_allowance_report(
                     connection, ledger_path, revision=status.revision,
                     pricing_revision=PRICING_REVISION, coverage_complete=status.coverage.complete,
-                    status=status.plan_allowance, preparation=(_prepared_sink or {}).get("quota"))
+                    status=status.plan_allowance, preparation=(_prepared_sink or {}).get("quota"),
+                    include_history=allowance_history != 'deferred')
             allowance_report["status"] = pace_report["status"]
             from codex_usage.report_allowance import render_allowance_section
             allowance_html = render_allowance_section(allowance_report, timezone=timezone, now=now)

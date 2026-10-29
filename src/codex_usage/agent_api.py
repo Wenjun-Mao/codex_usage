@@ -90,6 +90,7 @@ def _handler_type(agent: Any, token: str) -> type[BaseHTTPRequestHandler]:
                         speed_window_scope=_optional(query, "speed_window_scope"),
                         breakdown_action=_optional(query, "breakdown_action"),
                         allowance_action=_optional(query, "allowance_action"),
+                        **({'allowance_history': _first(query, 'allowance_history')} if 'allowance_history' in query else {}),
                     )
                     self._json(HTTPStatus.OK, report.to_dict())
                 elif path == "/v1/agent-activity":

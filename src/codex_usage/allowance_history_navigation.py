@@ -48,7 +48,7 @@ def validate_action(value):
     return dict(scope=value["scope"], state=validate_state(value["state"]))
 
 
-def issued_state(connection, payload, context, load):
+def issued_state(connection, payload, context, load, *, selection_context=None):
     try:
         action = validate_action(json.loads(payload))
     except (TypeError, ValueError) as error:
@@ -59,7 +59,8 @@ def issued_state(connection, payload, context, load):
     if (not row or not issued or action_hash(action) not in issued["action_hashes"]
             or datetime.fromisoformat(row[0]) < datetime.now(UTC)-timedelta(hours=RECEIPT_TTL_HOURS)):
         raise ValueError("Unissued allowance history command")
-    if issued["context"] != context:
+    if issued["context"] != context and (selection_context is None
+            or issued.get('selection_context') != selection_context):
         raise AllowanceScopeExpired("Issued allowance history scope expired; reload without history commands")
     return action["state"]
 

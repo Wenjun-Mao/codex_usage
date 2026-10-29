@@ -24,10 +24,15 @@ from collector_smoke_owner import run_driver
 from codex_usage.session_cache import refresh_cached_session_data
 from observed_speed_fixture import AT, TOKENS, append_rows, response, write_source
 from packaged_parallel_cache_smoke import _require_actual_parallel_audit
+from collector_smoke_environment import isolated_environment, smoke_environment, verify_synthetic_probe
 
 
 def run_acceptance(executable):
-    environment = dict(os.environ)
+    with tempfile.TemporaryDirectory(prefix='collector-smoke-driver-') as raw:
+        return _run_acceptance(executable, isolated_environment(Path(raw)))
+
+
+def _run_acceptance(executable, environment):
     scripts = Path(__file__).resolve().parent
     environment["PYTHONPATH"] = os.pathsep.join((str(scripts.parent / "src"), str(scripts)))
     result = run_driver([sys.executable, str(Path(__file__).resolve()),
@@ -97,8 +102,7 @@ def driver(executable, *, stall_after_cold=False, scratch=None, state_path=None)
             "timezone": "UTC", "theme": "night", "auto_project_transitions": False,
             "transfer_folder": ""}))
         audit_path = root / "worker-audit.json"
-        environment = dict(os.environ, HOME=str(root), USERPROFILE=str(root),
-            CODEX_HOME=str(home), CODEX_USAGE_DATA_DIR=str(root))
+        environment = smoke_environment(root, home)
         descriptor = None
         with (root / "stdout.log").open("w") as stdout, (root / "stderr.log").open("w") as stderr:
             process = subprocess.Popen(
@@ -207,7 +211,7 @@ def driver(executable, *, stall_after_cold=False, scratch=None, state_path=None)
                 except ProcessLookupError:
                     continue
                 raise RuntimeError("parser worker remained after shutdown")
-        return {"contract": "collector-parallel-http-v1", "oracle_equal": True,
+        return {"contract": "collector-parallel-http-v1", "oracle_equal": True, **verify_synthetic_probe(root),
                 "cold": cold, "unchanged_source_bytes": 0, "append_events": 12}
 
 

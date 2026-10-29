@@ -216,6 +216,7 @@ class CodexUsageAgent:
         speed_window_scope: str | None = None,
         breakdown_action: str | None = None,
         allowance_action: str | None = None,
+        allowance_history: str = 'eager',
     ) -> RenderedLedgerReport:
         return self._features.report(
             range_name=range_name,
@@ -228,6 +229,7 @@ class CodexUsageAgent:
             speed_window_scope=speed_window_scope,
             breakdown_action=breakdown_action,
             allowance_action=allowance_action,
+            allowance_history=allowance_history,
         )
 
     def export_agent_activity(

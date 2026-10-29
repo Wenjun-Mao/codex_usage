@@ -20,6 +20,11 @@ def native_evidence(hosted, manifest, package):
         "has_observations": True, "inspection_sha256": "f"*64}
     changed_allowance = dict(initial_allowance, scope="b"*64, accepted_scope="b"*64, state={"kind": "periods", "index": 1}, inspection_sha256="e"*64)
     theme = {"initial_speed": initial_speed, "initial_allowance": initial_allowance, "script_disabled": True, "initial_state": theme_state, "updates": [],
+        'deferred_history': dict(unrequested_reports=24, unrequested_scope='d'*64,
+            updates=[dict(theme=t, scope='d'*64, deferred=True, screenshot='unrequested.png') for t in ('night','day')],
+            requested=dict(scope='d'*64, state={'kind':''}), rendered_state={'kind':''},
+            response_scope='e'*64, rendered_scope='e'*64, current_before='f'*64, current_after='f'*64,
+            history_visible=True, issued_origin_verified=True, seconds=.1, screenshot='loaded.png'),
         "breakdown": {"before": {"state": {"metric": "cost"}}, "requested": theme_state, "rendered": theme_state},
         "allowance": {"requested": {"scope": "a"*64, "state": changed_allowance["state"]}, "rendered": changed_allowance},
         "speed": {"requested": {"granularity": "daily"}, "rendered": {"granularity": "daily"}},

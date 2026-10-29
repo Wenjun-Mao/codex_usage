@@ -32,8 +32,9 @@ def test_macos_discovery_keeps_override_current_legacy_and_path_candidates(
 
     candidates = codex_runtime.discover_codex_executables()
 
-    assert candidates == (
-        "/explicit/codex",
+    assert candidates == ('/explicit/codex',)
+    monkeypatch.delenv('CODEX_CLI_PATH')
+    assert codex_runtime.discover_codex_executables() == (
         str(system_app / CURRENT_MACOS_CLI),
         str(user_app / CURRENT_MACOS_CLI),
         str(system_app / LEGACY_MACOS_CLI),

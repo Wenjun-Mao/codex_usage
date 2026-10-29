@@ -16,32 +16,34 @@ ALLOWANCE_REPORT_REVISION = 11
 
 
 def indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revision,
-                             coverage_complete, status=None, preparation=None):
+                             coverage_complete, status=None, preparation=None, include_history=True):
     owned = not snapshot.in_transaction
     if owned:
         snapshot.execute("begin")
     try:
         return _indexed_allowance_report(snapshot, ledger_path, revision=revision,
             pricing_revision=pricing_revision, coverage_complete=coverage_complete,
-            status=status, preparation=preparation)
+            status=status, preparation=preparation, include_history=include_history)
     finally:
         if owned:
             snapshot.rollback()
 
 
 def _indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revision,
-                              coverage_complete, status=None, preparation=None):
+                              coverage_complete, status=None, preparation=None, include_history=True):
     """Use a revision-pinned result or build it from priced trusted events.
 
     A simultaneous capture may advance the writer beyond the caller's read
     snapshot. In that case the snapshot's full estimator is the safe fallback.
     """
     pricing_revision, report_revision = _revisions(pricing_revision)
+    from codex_usage.allowance_on_demand import DEFERRED_SUFFIX, decode_deferred, encode_deferred
+    cache_revision = report_revision if include_history else report_revision + DEFERRED_SUFFIX
     status = _status(snapshot) if status is None else status
     if snapshot.execute("select 1 from quota_observations limit 1").fetchone() is None:
         return _build_from_costs(snapshot, (), coverage_complete=coverage_complete,
-                                 status=status, preparation=preparation)
-    key = (revision, report_revision, int(coverage_complete))
+                                 status=status, preparation=preparation, include_history=include_history)
+    key = (revision, cache_revision, int(coverage_complete))
     try:
         cached = snapshot.execute("""select report_json from allowance_report_cache
             where ledger_revision = ? and pricing_revision = ? and coverage_complete = ?""", key).fetchone()
@@ -50,11 +52,15 @@ def _indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisi
             raise
         # A read-only report can precede the next capture's schema migration.
         return build_allowance_report(snapshot, coverage_complete=coverage_complete,
-                                      status=status, preparation=preparation)
+                                      status=status, preparation=preparation, include_history=include_history)
     if cached:
-        report = _decode_cached_report(cached[0])
-        report["status"] = status
-        return report
+        try:
+            report = _decode_cached_report(cached[0]) if include_history else decode_deferred(cached[0])
+        except (ValueError, TypeError, KeyError, IndexError, OverflowError):
+            pass  # Disposable corruption is a miss; rebuild under the same snapshot fence.
+        else:
+            report["status"] = status
+            return report
     from codex_usage.allowance_window_cache import WindowCalculationCache
     from codex_usage.dashboard_preparation_tracking import token
     from codex_usage.allowance_preparation import AllowancePreparation
@@ -78,9 +84,9 @@ def _indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisi
     report = _build_from_costs(snapshot, (
             (row[0] / 1_000_000, *pending_by_id.get(row[3], (row[1], row[2]))) for row in rows
         ), coverage_complete=coverage_complete, status=status, preparation=preparation,
-            window_cache=calculations)
-    payload = encode_report(report)
-    overview = encode_overview(report)
+            window_cache=calculations, include_history=include_history)
+    payload = encode_report(report) if include_history else encode_deferred(report)
+    overview = encode_overview(report) if include_history else None
     pace = json.dumps({"paces": report.get("paces", [])})
     with open_ledger(ledger_path) as writer:
         writer.execute("begin immediate")
@@ -97,11 +103,13 @@ def _indexed_allowance_report(snapshot, ledger_path, *, revision, pricing_revisi
         writer.execute("""insert or replace into allowance_report_cache values (?,?,?,?)""",
                        (revision, report_revision + ":pace-state", int(coverage_complete),
                         pace))
-        writer.execute("insert or replace into allowance_report_cache values (?,?,?,?)",
-                       (revision, report_revision + OVERVIEW_SUFFIX, int(coverage_complete), overview))
+        if overview is not None:
+            writer.execute("insert or replace into allowance_report_cache values (?,?,?,?)",
+                           (revision, report_revision + OVERVIEW_SUFFIX, int(coverage_complete), overview))
         writer.execute("""delete from allowance_report_cache where ledger_revision != ?
-                       or pricing_revision not in (?, ?, ?)""",
-                       (revision, report_revision, report_revision + ":pace-state", report_revision + OVERVIEW_SUFFIX))
+                       or pricing_revision not in (?, ?, ?, ?)""",
+                       (revision, report_revision, report_revision + ":pace-state", report_revision + OVERVIEW_SUFFIX,
+                        report_revision + DEFERRED_SUFFIX))
         writer.commit()
     report["status"] = status
     return report
@@ -134,7 +142,10 @@ def cached_allowance_pace(snapshot, *, revision, pricing_revision, coverage_comp
 
 def _decode_cached_report(payload):
     """Keep derived-cache decoding inspectable separately from evidence loading."""
-    return decode_report(payload)
+    report = decode_report(payload)
+    if 'history_deferred' in report:
+        raise ValueError('Deferred allowance result cannot satisfy an eager consumer')
+    return report
 
 
 def _decode_cached_pace(payload):

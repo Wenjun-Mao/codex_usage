@@ -126,11 +126,14 @@ def live_evidence_state(live):
         p.resets_at is not None and p.resets_at <= live["now"] for p in weekly_anchors(live))}
 
 
-def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_action=None, **kwargs):
+def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_action=None,
+                            allowance_history='eager', **kwargs):
     from codex_usage.agent_reports import PRICING_REVISION, REPORT_RENDER_REVISION, RenderedLedgerReport
     from codex_usage.report_usage_breakdown import render_breakdown
     from codex_usage.speed_reports import render_speed_report
     started = monotonic()
+    if allowance_history not in ('eager', 'deferred', 'requested'):
+        raise ValueError('Unsupported allowance history mode')
     kwargs["now"] = kwargs.get("now") or datetime.now(UTC)
     timezone = resolve_timezone(kwargs["timezone_name"])
     report_range = resolve_report_range(kwargs["range_name"], timezone,
@@ -144,8 +147,14 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_acti
         dependency = token(connection)
         status = query_ledger_status(connection, now=kwargs["now"])
         from codex_usage.allowance_history_reports import context_identity, prepare_state, render_history
+        from codex_usage.allowance_on_demand import selection_context, invitation
+        selection_identity = selection_context(status, kwargs, path)
         history_context = context_identity(status, kwargs, report_range, path)
-        history_state = prepare_state(connection, allowance_action, history_context)
+        history_state = prepare_state(connection, allowance_action, history_context,
+            selection_context=selection_identity if allowance_history == 'requested' else None)
+        # A verified explicit action can load the initially deferred report.
+        deferred = allowance_history == 'deferred' and allowance_action is None
+        kwargs['allowance_history'] = 'deferred' if deferred else 'eager'
         sink["status"] = status
         from codex_usage.allowance_preparation import AllowancePreparation
         sink["quota"] = AllowancePreparation(connection)
@@ -182,7 +191,7 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_acti
                 report = sink.get("allowance") or indexed_allowance_report(connection, path,
                     revision=status.revision, pricing_revision=PRICING_REVISION,
                     coverage_complete=status.coverage.complete, status=status.plan_allowance,
-                    preparation=sink["quota"])
+                    preparation=sink["quota"], include_history=not deferred)
                 report["status"] = live
                 account, partitions = prepare_account(prepare_evidence(connection, report, kwargs["now"],
                     preparation=sink["quota"]), timezone)
@@ -255,8 +264,13 @@ def render_breakdown_report(codex_home, *, breakdown_action=None, allowance_acti
         # The speed section replaces its placeholder; place breakdown after the
         # heatmap's enclosing section without changing monetary report markup.
         rendered = rendered.replace('<section class="section observed-speed"', section + '<section class="section observed-speed"', 1)
-        rendered, history_nav, history_hit = render_history(connection, rendered, history_context, history_state,
-                                                           status, timezone, sink, writes)
+        if deferred:
+            rendered, history_nav, history_hit = invitation(rendered, history_context, writes,
+                                                            selection_identity=selection_identity)
+        else:
+            rendered, history_nav, history_hit = render_history(connection, rendered, history_context, history_state,
+                status, timezone, sink, writes, selection_context=selection_identity,
+                requested=allowance_history != 'eager')
     writes.update(encoded_writes)
     store(path, status.revision, writes, history_cache=sink["quota"].__dict__.get("history_cache"), dependency=dependency)
     return RenderedLedgerReport(rendered, base.ledger_revision, base.cache_hit and not cold_seconds and history_hit,

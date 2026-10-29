@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.13.5 - 2026-10-29
+
+- Load detailed allowance history on request so ordinary Usage refreshes keep
+  current accounting, allowance estimates, pace and charts available sooner.
+- Preserve requested history selections through theme, range and project
+  changes, with explicit progress, errors and retry. Full history and CSV
+  exports remain available; direct report API/CLI requests stay eager by default.
+- Preserve canonical Auto transport, script-disabled command validation and
+  separate validated cache formats for current-only and complete reports.
+- Treat an explicit `CODEX_CLI_PATH` as authoritative, including when it fails,
+  so an override cannot silently fall back to another installed account runtime.
+
 ## 2.13.4 - 2026-10-29
 
 - Keep Usage accounting and issued navigation scopes reusable when selecting a

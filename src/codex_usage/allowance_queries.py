@@ -90,7 +90,7 @@ def allowance_status(connection, *, now=None):
     }
 
 
-def build_allowance_report(connection, *, coverage_complete=True, status=None, preparation=None):
+def build_allowance_report(connection, *, coverage_complete=True, status=None, preparation=None, include_history=True):
     from codex_usage.aggregation import value_records
     from codex_usage.ledger_queries import query_ledger_records
     from codex_usage.allowance_preparation import AllowancePreparation
@@ -98,18 +98,18 @@ def build_allowance_report(connection, *, coverage_complete=True, status=None, p
 
     if connection.execute("select 1 from quota_observations limit 1").fetchone() is None:
         return _build_from_costs(connection, (), coverage_complete=coverage_complete,
-                                 status=status, preparation=preparation)
+                                 status=status, preparation=preparation, include_history=include_history)
     valued = sorted(value_records(query_ledger_records(connection)), key=lambda v: v.record.timestamp)
     return _build_from_costs(connection, (
         (item.record.timestamp.timestamp(), *allowance_cost_components(
             item.summary.cost, model=item.record.model, at=item.record.timestamp,
             total_tokens=item.record.usage.total_tokens,
         )) for item in valued
-    ), coverage_complete=coverage_complete, status=status, preparation=preparation)
+    ), coverage_complete=coverage_complete, status=status, preparation=preparation, include_history=include_history)
 
 
 def _build_from_costs(connection, priced_events, *, coverage_complete=True, status=None, preparation=None,
-                      window_cache=None):
+                      window_cache=None, include_history=True):
     """Keep the full estimator and indexed estimator on the same window path."""
     from codex_usage.allowance_preparation import AllowancePreparation
     status = allowance_status(connection) if status is None else status
@@ -123,6 +123,10 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
     paces = [fit_paces(prepared, anchor) for anchor in anchors]
     from codex_usage.allowance_display_history import display_history
     if not points:
+        if not include_history:
+            from codex_usage.allowance_on_demand import current_projection
+            return current_projection(dict(status=status, credits=credits, paces=paces, windows=[],
+                                           qualified=[], headline=None, headline_previous=False, history=[]))
         return {"status": status, "credits": credits, "paces": paces, "windows": [], "qualified": [], "headline": None,
                 "headline_previous": False, "history": [],
                 "display_history": display_history(points, provenance, [], anchors, live_points=live_points)}
@@ -152,6 +156,11 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
                                         coverage_complete=coverage_complete)
     qualified, headline = allowance_highlights(windows)
     latest = windows[-1] if windows else None
+    if not include_history:
+        from codex_usage.allowance_on_demand import current_projection
+        return current_projection(dict(status=status, credits=credits, paces=paces, windows=windows,
+            qualified=qualified, headline=headline, headline_previous=headline is not None and headline is not latest,
+            history=allowance_history(windows)))
     history = display_history(points, provenance, windows, anchors, live_points=live_points,
                               directory=preparation.captures,
                               cache=preparation.history_cache if window_cache is not None else None)

@@ -142,3 +142,24 @@ def test_native_theme_journey_is_required_and_fail_closed(fault):
         theme["breakdown"]["before"] = theme["breakdown"]["requested"]
     with pytest.raises(ValueError, match="[Nn]ative|theme"):
         native.validate_native(evidence, hosted, manifest, package)
+
+
+@pytest.mark.parametrize('fault', ['missing', 'autoload', 'origin', 'rendered-scope', 'stale-content', 'hidden'])
+def test_native_deferred_load_is_required_and_binds_origin_rendered_scope_and_current_content(fault):
+    hosted, manifest, package, evidence = bound_native()
+    native.validate_native(evidence, hosted, manifest, package)
+    deferred = evidence['theme_journey']['deferred_history']
+    if fault == 'missing':
+        del evidence['theme_journey']['deferred_history']
+    elif fault == 'autoload':
+        deferred['updates'][0]['deferred'] = False
+    elif fault == 'origin':
+        deferred['requested']['scope'] = 'f'*64
+    elif fault == 'rendered-scope':
+        deferred['rendered_scope'] = 'f'*64
+    elif fault == 'stale-content':
+        deferred['current_after'] = 'a'*64
+    else:
+        deferred['history_visible'] = False
+    with pytest.raises(ValueError, match='deferred history'):
+        native.validate_native(evidence, hosted, manifest, package)

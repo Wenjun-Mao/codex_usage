@@ -113,6 +113,8 @@ async def theme_snapshot(target, root, theme, expected_palette, allowance_state)
 
 async def theme_journey(target, root, output):
     from check_usage_breakdown_webview import decode
+    from allowance_native_journey import deferred_history_journey
+    deferred = await deferred_history_journey(target, root, output)
     await speed_action(target, 'Hourly')
     await speed_action(target, 'Previous')
     seeded = await allowance_action(target, root, 'periods')
@@ -131,7 +133,7 @@ async def theme_journey(target, root, output):
             assigned_path = root / 'theme-assigned.json'
             if assigned_path.exists():
                 assigned = json.loads(assigned_path.read_text())
-                if assigned['serial'] == serial:
+                if assigned.get('phase', 'loaded') == 'loaded' and assigned['serial'] == serial:
                     break
             await asyncio.sleep(.01)
         else:
@@ -162,6 +164,6 @@ async def theme_journey(target, root, output):
     assert allowance['rendered']['inspection_sha256'] != initial_allowance['inspection_sha256']
     assert allowance['rendered']['state'] != initial_allowance['state']
     await target.page.screenshot(path=str(output / 'native-theme-actions.png'))
-    return {'initial_state': initial, 'initial_speed': initial_speed, 'initial_allowance': initial_allowance,
+    return {'deferred_history': deferred, 'initial_state': initial, 'initial_speed': initial_speed, 'initial_allowance': initial_allowance,
         'updates': records, 'script_disabled': True, 'breakdown': breakdown, 'speed': speed,
         'allowance': allowance, 'action_screenshot': 'native-theme-actions.png'}

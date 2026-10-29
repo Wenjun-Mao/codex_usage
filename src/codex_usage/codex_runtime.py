@@ -13,7 +13,9 @@ def discover_codex_executables() -> tuple[str, ...]:
     candidates: list[str] = []
     override = os.environ.get("CODEX_CLI_PATH", "").strip()
     if override:
-        candidates.append(override)
+        # An explicit executable is authoritative. A broken override must not
+        # silently start a different installed runtime/account context.
+        return (override,)
     if sys.platform == "darwin":
         candidates.extend(_macos_codex_executables())
     elif os.name == "nt":

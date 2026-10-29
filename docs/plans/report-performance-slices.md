@@ -3,8 +3,10 @@
 Updated: 2026-10-29, America/Toronto.
 Status: S0/S1 remain closed at 2.13.3; theme-only presentation is released as
 2.13.4 with both official packages verified.
-Next: No subsequent performance slice is authorized. The allowance proposal
-below remains parked. See the [theme-only closeout](theme-only-presentation.md#published-closeout).
+Next: [On-demand allowance history](on-demand-allowance-history.md) passed its
+product adoption review on 2026-10-29; the 2.13.5 candidate is ready for full
+qualification. The older allowance proposal below remains parked. See the
+[theme-only closeout](theme-only-presentation.md#published-closeout).
 
 ## Outcome And Scope
 
@@ -20,8 +22,9 @@ starting with bottleneck confirmation on 2.13.2 and a usage-reading improvement.
 Brainstorm-and-Plan request scoped **S2 allowance preparation** in the final
 section. The owner subsequently rejected a one-second gain as insufficient and
 selected the lower-risk theme-only opportunity for a focused plan. The linked
-theme plan is now a published closeout; allowance/history/invalidation work
-remains backlog, not authorization to execute those candidates.
+theme plan is now a published closeout. The older allowance proposal and broader
+invalidation backlog remain parked; the linked on-demand plan owns the current
+bounded execution authority.
 The director
 may choose ordinary engineering details within an approved slice, including
 diagnostic tools, task/model assignments and a simpler repair than anticipated.

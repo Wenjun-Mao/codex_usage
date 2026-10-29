@@ -15,6 +15,7 @@ import sqlite3
 
 from observed_speed_fixture import legacy_speed_home
 from codex_usage.ledger_writer_contract import LEDGER_SCHEMA_VERSION
+from collector_smoke_environment import smoke_environment, verify_synthetic_probe
 
 
 def main() -> int:
@@ -67,6 +68,7 @@ def main() -> int:
         )
         process = subprocess.Popen(
             [str(args.executable), "--background", "--settings-file", str(settings)],
+            env=smoke_environment(root, home), cwd=root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -119,8 +121,11 @@ def main() -> int:
         if process.returncode not in {0, None}:
             stderr = process.stderr.read() if process.stderr else ""
             raise RuntimeError(f"packaged agent exited with {process.returncode}: {stderr}")
-        assert {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in preserved} == preserved
-        print(json.dumps({"retired_transfer_routes": "rejected", "preserved_files": len(preserved)}))
+        changed_files = [path.name for path, digest in preserved.items()
+                         if hashlib.sha256(path.read_bytes()).hexdigest() != digest]
+        assert not changed_files, changed_files
+        print(json.dumps({"retired_transfer_routes": "rejected", "preserved_files": len(preserved),
+                          **verify_synthetic_probe(root)}))
     return 0
 
 

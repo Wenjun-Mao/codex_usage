@@ -73,10 +73,12 @@ def contract_files(root=ROOT):
     files += ["scripts/" + file for file in ("check_usage_breakdown_ui.py", "check_speed_ui.py",
         "check_allowance_ui.py", "check_breakdown_overlay_ui.py", "check_breakdown_hover_ui.py",
         "generate_marketplace_screenshot.py", "breakdown_native_hover.py", "vscode_breakdown_acceptance.js")]
-    files += ["scripts/check_project_economics_ui.py", "scripts/theme_native_journey.py"]
+    files += ["scripts/check_project_economics_ui.py", "scripts/theme_native_journey.py",
+              "scripts/allowance_native_journey.py"]
     files += ["scripts/" + name for name in (
         "build-agent-macos-arm64.sh", "build-agent-windows-x64.ps1",
         "smoke-test-packaged-agent.py", "packaged_agent_parallel_smoke.py",
+        "collector_smoke_environment.py",
         "packaged_parallel_cache_smoke.py", "observed_speed_fixture.py", "collector_smoke_owner.py",
         "packaged_windows_process_tree_smoke.py", "parallel_cache_fixture.py")]
     files += ["src/codex_usage/parallel_audit.py"]

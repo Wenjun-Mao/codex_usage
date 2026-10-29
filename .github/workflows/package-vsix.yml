@@ -85,6 +85,7 @@ jobs:
       - name: Complete Python suite
         env:
           PYTHONPATH: scripts
+          CODEX_CLI_PATH: ${{ runner.temp }}/codex-usage-no-live-probe
         run: >-
           uv run pytest -q -p verification.pytest_inventory --qualification-scope core
           --qualification-inventory output/qualification/core/inventory.json --junitxml=output/qualification/core/tests.xml

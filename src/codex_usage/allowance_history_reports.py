@@ -17,12 +17,13 @@ def context_identity(status, kwargs, report_range, path):
                    kwargs.get("auto_transitions", True)])
 
 
-def prepare_state(connection, payload, context):
+def prepare_state(connection, payload, context, *, selection_context=None):
     from codex_usage.breakdown_reports import load
-    return issued_state(connection, payload, context, load) if payload is not None else dict(DEFAULT_STATE)
+    return issued_state(connection, payload, context, load, selection_context=selection_context) if payload is not None else dict(DEFAULT_STATE)
 
 
-def render_history(connection, base_html, context, state, status, timezone, sink, writes):
+def render_history(connection, base_html, context, state, status, timezone, sink, writes, *,
+                   selection_context=None, requested=False):
     from codex_usage.agent_reports import PRICING_REVISION
     from codex_usage.breakdown_reports import load
     from codex_usage.report_allowance_history import period_history
@@ -66,11 +67,13 @@ def render_history(connection, base_html, context, state, status, timezone, sink
         writes[key] = cached
     nav = cached["navigation"]
     writes[RECEIPT_PREFIX + scope] = issued_receipt(nav, context)
+    if selection_context is not None:
+        writes[RECEIPT_PREFIX + scope]['selection_context'] = selection_context
     # Only the history slot changes; headline, pace, prices and chart state stay owned by their renderers.
     rendered = re.sub(r"<!-- allowance-history:start -->.*?<!-- allowance-history:end -->",
                       lambda _: "<!-- allowance-history:start -->" + cached["section"] + "<!-- allowance-history:end -->",
                       base_html, count=1, flags=re.DOTALL)
-    if state != DEFAULT_STATE:
+    if state != DEFAULT_STATE or requested:
         rendered = rendered.replace('<details class="allowance-history-panel"><summary>Allowance history</summary>',
                                     '<details class="allowance-history-panel" open><summary>Allowance history</summary>', 1)
     return rendered, nav, key not in writes

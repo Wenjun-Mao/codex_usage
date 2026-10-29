@@ -12,7 +12,8 @@ test("authenticated transport recovers pruned R1 scope under cached R1 status; m
   const token = "e".repeat(40);
   const state = { basis: "selected", view: "time", grain: "daily", overlay: "weekly", project: "", metric: "tokens", group: "model", day: "2026-10-09", detail: "" };
   const action = { scope: "a".repeat(64), state };
-  const r2 = { ledger_revision: 2, breakdown_navigation: { scope: "b".repeat(64), state, actions: [] } };
+  const r2 = { ledger_revision: 2, breakdown_navigation: { scope: "b".repeat(64), state, actions: [] },
+    allowance_navigation: { deferred: true, scope: "c".repeat(64), state: {}, actions: [] } };
   const calls = [];
   const server = http.createServer((request, response) => {
     assert.equal(request.headers.authorization, `Bearer ${token}`);
@@ -43,7 +44,7 @@ test("authenticated transport recovers pruned R1 scope under cached R1 status; m
     assert.equal(query.get("breakdown_action"), JSON.stringify(action));
     assert.deepEqual(await navigation.report(client, query), r2);
     assert.equal(calls.length, 2);
-    assert.equal(calls[1], "/v1/report?range=today");
+    assert.equal(calls[1], "/v1/report?range=today&allowance_history=deferred");
     const bad = new URLSearchParams({ range: "today", breakdown_action: JSON.stringify({ ...action, extra: true }) });
     await assert.rejects(navigation.report(client, bad), error => error instanceof AgentRequestError && error.status === 400);
     assert.equal(calls.length, 3);

@@ -15,6 +15,7 @@ from codex_usage.ledger_schema import open_ledger
 from codex_usage.process_tree import _cleanup_failed_process, _launch_owned_process
 from observed_speed_fixture import write_source
 from packaged_agent_parallel_smoke import _client
+from collector_smoke_environment import smoke_environment, verify_synthetic_probe
 
 
 def _wait(client, descriptor, predicate):
@@ -66,10 +67,7 @@ def run_acceptance(executable):
             'capture_interval_minutes': None, 'background_capture': False,
             'daily_update_checks': False, 'onboarding_complete': True,
             'timezone': 'UTC', 'theme': 'night', 'auto_project_transitions': False}))
-        scripts = Path(__file__).resolve().parent
-        environment = dict(os.environ, HOME=str(root), USERPROFILE=str(root),
-            CODEX_HOME=str(home), CODEX_USAGE_DATA_DIR=str(root),
-            PYTHONPATH=os.pathsep.join((str(scripts.parent / 'src'), str(scripts))))
+        environment = smoke_environment(root, home)
         runtime = json.loads(subprocess.check_output([*command, '--sqlite-runtime'],
             env=environment, cwd=root, text=True, timeout=30))
         with _running(command, settings, home, root, environment):
@@ -111,7 +109,7 @@ def run_acceptance(executable):
                     assert db.execute('select length(value) from synthetic_wal_smoke').fetchone()[0] == 1048576
                     assert db.execute('pragma integrity_check').fetchone()[0] == 'ok'
             assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
-            return {'contract': 'collector-wal-http-v1', 'runtime': runtime,
+            return {'contract': 'collector-wal-http-v1', 'runtime': runtime, **verify_synthetic_probe(root),
                 'blocked': _last(first), 'restarted': _last(restarted),
                 'completed': _last(completed), 'records_equal': True,
                 'source_unchanged': True, 'integrity': 'ok'}

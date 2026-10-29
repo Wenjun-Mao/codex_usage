@@ -253,8 +253,10 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None, histor
             f'{observation_markup}{pace_markup}</div>'
         )
     qualified = report["qualified"]
+    deferred = report.get('history_deferred') is True
+    has_history_slot = 'display_history' in report or deferred
     details = []
-    for window in reversed(report["windows"] if "display_history" not in report else []):
+    for window in reversed(report["windows"] if not has_history_slot else []):
         estimate = window["estimate"]
         provisional = " allowance-provisional" if not window["completed"] else ""
         shown_points = window["points"][-100:]
@@ -300,17 +302,19 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None, histor
                          f'{len(older_qualified)}; all reset windows below):</p><ul>{qualified_items}</ul>'
                          if older_qualified else '<p>No earlier qualified completed estimate.</p>')
     history_markup = _history_html(history)
-    if "display_history" in report:
+    if has_history_slot:
         from codex_usage.report_allowance_history import period_history
-        history_markup = '<!-- allowance-history:start -->' + period_history(report, timezone, nav=history_navigation) + '<!-- allowance-history:end -->'
+        history_markup = ('<!-- allowance-history:start -->' +
+                          ('' if deferred else period_history(report, timezone, nav=history_navigation)) +
+                          '<!-- allowance-history:end -->')
         qualified_context = ""
     capture_details = ("".join(details) or "<p>No observations captured yet.</p>"
-                       if "display_history" not in report else "")
+                       if not has_history_slot else "")
     balance_details = credit_details(credits, report.get("credits", {}),
                                     lambda stamp: _observation_time(stamp, timezone))
     extra_details = (f'<details><summary>Reset windows and capture details</summary>{balance_details}'
-                     f'{qualified_context}{capture_details}</details>' if "display_history" not in report else "")
-    if "display_history" in report:
+                     f'{qualified_context}{capture_details}</details>' if not has_history_slot else "")
+    if has_history_slot:
         history_markup += balance_details
     return (
         '<section class="card plan-allowance" id="plan-allowance" aria-labelledby="plan-allowance-title">'
@@ -321,7 +325,7 @@ def render_allowance_section(report, *, timezone: tzinfo = UTC, now=None, histor
         '<h3>Observed API-equivalent value per 100% allowance</h3>'
         f'<div class="allowance-economics">{economic_summary(headline, latest=latest, show_series=show_headline_series, is_previous=headline_previous)}</div>'
         f'{estimate_warning}'
-        '<details class="allowance-history-panel"><summary>Allowance history</summary>'
+        f'<details class="allowance-history-panel"{" open" if deferred else ""}><summary>Allowance history</summary>'
         f'{history_markup}</details>'
         f'{extra_details}</section>'
     )
