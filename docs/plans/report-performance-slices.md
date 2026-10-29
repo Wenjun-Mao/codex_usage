@@ -2,10 +2,12 @@
 
 Updated: 2026-10-29, America/Toronto.
 Status: S0/S1 remain closed at 2.13.3; theme-only presentation is released as
-2.13.4 with both official packages verified.
-Next: [On-demand allowance history](on-demand-allowance-history.md) passed its
-product adoption review on 2026-10-29; the 2.13.5 candidate is ready for full
-qualification. The older allowance proposal below remains parked. See the
+2.13.4 and on-demand allowance history as 2.13.5, with both official packages
+verified for each release.
+[On-demand allowance history](on-demand-allowance-history.md#published-closeout)
+closed on 2026-10-29: representative native capture-to-visible median
+15.403 to 11.760 s (3.643 s saved), with exact current/history/CSV and full gates.
+The older allowance proposal below remains parked. See the
 [theme-only closeout](theme-only-presentation.md#published-closeout).
 
 ## Outcome And Scope

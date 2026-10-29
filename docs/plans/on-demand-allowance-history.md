@@ -1,8 +1,8 @@
 # On-Demand Allowance History
 
 Updated: 2026-10-29, America/Toronto.
-Status: Product adoption review passed on 2026-10-29; 2.13.5 qualification pending.
-Publication remains conditional on the existing complete release gates.
+Status: 2.13.5 published and both official packages verified on 2026-10-29.
+Product adoption, qualification, promotion and public verification are complete.
 
 ## Intended Result
 
@@ -428,3 +428,64 @@ execution authority for this candidate.
   Final preservation confirms the original sealed SHA unchanged. The copied
   matrix source has a zero-byte WAL; MAIN-only and normal WAL-view event/quota
   counts match, so no pending frames were omitted by cloning.
+
+## Published Closeout
+
+Released **2.13.5** at tag `v2.13.5`, source
+`497c5a846a60f8153eecb24c90f18c04e9ae7685`. Both official downloads match the
+qualified packages and Marketplace catalog hashes. Public verification completed
+at **2026-10-29 16:30:45 UTC / 12:30:45 EDT**. The generated
+[published receipt](../release/2026-10-29-2.13.5-published.md) is retained unaltered;
+it binds source, contract, complete manifest, original producers and publication
+intents. Release evidence remains in `output/releases/2.13.5-process/`.
+
+- [Qualification](https://github.com/Wenjun-Mao/codex_usage/actions/runs/40904854781),
+  selected attempt **2**, passed. Core/accounting, metadata, macOS package and
+  all five visual gates retain their checked original attempt-1 producers;
+  Windows uses its successful attempt-2 producer. Hosted freeze and native proof
+  originate in attempt 2. All **3,091 Python cases pass with zero skips**, retaining
+  every original 3,055 identity. Both package platforms pass **95 extension
+  cases**, retaining every original 91. The pinned **VS Code 1.141.0** exact-package
+  native journey retains 21 original inputs/five theme/editor updates, plus two
+  unclicked theme changes and the actual issued history load with distinct
+  origin/response scopes and unchanged current figures.
+- The first Windows package attempt passed synthetic parallel/oracle/cleanup
+  checks, then its existing WAL smoke timed out waiting for reclamation after
+  the held reader was released. Last telemetry was caught-up PASSIVE, busy 0,
+  288/288 frames and `reclaim_deferred`; the runtime had no error. The unchanged
+  test polls tracked status reads every 20 ms, while the sampled PASSIVE took
+  61.7 ms, making polling interference plausible. **Root cause remains unproven**.
+  One failed-job-only retry on the same source passed, including WAL zero-size,
+  restart, retained rows/source, integrity and synthetic-probe checks. No source,
+  30-second timeout, WAL-zero assertion or timing guard was changed. The failed
+  log, retry intent and original-producer receipts remain; retry success is not
+  proof of a diagnosed cause. No second qualification run was dispatched.
+- [Credential-free dry-run](https://github.com/Wenjun-Mao/codex_usage/actions/runs/40909717189),
+  attempt 1, independently matched local/hosted qualification and skipped its
+  publisher. [Promotion](https://github.com/Wenjun-Mao/codex_usage/actions/runs/40910009130),
+  attempt 1, published only the exact qualified bytes. Each before-upload intent
+  was retained. Marketplace validation/propagation was awaited without another
+  upload; official archives and catalog hashes then matched both targets.
+
+| Target | Official/qualified SHA-256 | Bytes |
+| --- | --- | ---: |
+| macOS Apple Silicon | `364a7131e741790b4452ed52a3d5ab1c84abd05121881c29afa99adf6d368e2c` | 13,780,192 |
+| Windows x64 | `f8146d3309b16d67554782fdd140250a792ddc36219b17572d6e51e1fa0271c5` | 12,960,293 |
+
+The adopted benefit remains the representative Mac ordinary-capture workflow:
+**15.403 to 11.760 s** median, saving **3.643 s / 23.65%**, with unchanged capture
+time and exact current/history/CSV behavior. The accepted first-history wait is
+8.606 s median; combined main-plus-history is 20.333 s, not a faster-combined
+claim. All sixteen broader matrix operations pass material timing/RSS guards.
+Offline raw-source availability/coverage conditions above bound generalization.
+The initial 30d/project operations are nearly unchanged. No broader performance
+slice, retained-data cap, live extension install or live ledger mutation was
+part of this delivery.
+
+**Native Windows UI remains unqualified.** Hosted WebKit timing remains
+`hosted-webkit-observed` under the existing policy; this release does not claim
+strict hosted WebKit input-latency acceptance. The historical original-account
+access uncertainty from early local smoke/unit runs remains recorded above.
+Subsequent contained probes and preservation checks passed; the original sealed
+control's hash is unchanged. Known owned benchmark helpers finished. Retain the
+checkout, parked work and Relay reporting route; no follow-on candidate is opened.
