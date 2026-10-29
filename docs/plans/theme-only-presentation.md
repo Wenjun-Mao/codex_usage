@@ -1,7 +1,7 @@
 # Theme-Only Presentation
 
 Updated: 2026-10-29, America/Toronto.
-Status: E2E execution approved; implementation starting under Relay Direct.
+Status: 2.13.4 publicly verified and released; closeout complete. The one-second engineering target was missed and explicitly accepted as a bounded material improvement.
 
 ## Outcome
 
@@ -355,3 +355,61 @@ Independent scoped read-only review found no new flaw in the corrected scope
 contract or mandatory helper wiring. Fresh full local Python validation passed
 3,055 cases with zero skips. The fresh source-bound hosted pipeline remains
 required before publication.
+
+
+## Published Closeout
+
+Version **2.13.4** was publicly verified at **2026-10-29 02:39:45 EDT**.
+The immutable [generated receipt](../release/2026-10-29-2.13.4-published.md)
+binds source `2f20dd4b68e37c4d33ff9fc35cd6bc3f4e93db3c`, both official download and
+catalog hashes, qualification `40826720874` attempt **2**, dry-run `40829313453`
+attempt **1**, and promotion `40829553567` attempt **1**. Promotion reused the
+qualified packages and did not rebuild them. The generated receipt bytes were
+not manually edited.
+
+Final local and hosted checks preserved every shipped case: **3,055 Python
+cases, zero skips**, **91 extension cases per platform, zero skips**, all five
+visual suites, both collector/archive/handoff package gates, and exact-package
+native Mac replay. Native proof preserves all 21 original rendered inputs plus
+five theme/editor-palette updates, nondefault speed/window/history state, and
+changed issued breakdown/speed/allowance actions. Published Mac JavaScript
+matches the measured output byte for byte; Windows matches after checkout
+line-ending normalization. Full 30-day CSV parity retained all 2,073 rows.
+The sealed private control's hash and read-only mode remain unchanged.
+
+The representative warmed first-unseen Day update remains **6.698710 s →
+1.229386 s median**, saving **5.469324 s**. The **1.0 s target was missed** and
+accepted explicitly; neither publication nor successful qualification changes
+that result. All candidate warm accounting/preparation/capture counters remain
+zero. Initial load/range/capture improvements, Storage inventory optimization,
+native Windows UI, and strict hosted-WebKit latency remain outside the proven
+outcome. No live install/restart, live settings/ledger change, original account
+RPC or private artifact upload occurred.
+
+Recovery records are retained rather than replaced:
+
+- `40821557736` failed Windows tests and was canceled. The new test double's
+  POSIX-only matcher was an avoidable portability mistake.
+- `40822670490` passed every hosted job but was rejected by independent native
+  inspection. Equating action origin and changed-state response scopes was an
+  avoidable contract assumption. Those two nonqualifying rounds consumed about
+  **28 minutes of hosted observation**, plus repeated local checks. Comparing
+  the new assertion with existing backend semantics and actual evidence earlier
+  would have prevented the second round.
+- `40826720874` attempt 1 failed the unchanged Firefox speed-tooltip guard at
+  **277.4566 ms**, despite the expected hidden state. The original local suite
+  then passed all 162 cases. After all healthy jobs settled, one explicitly
+  checked failed-job retry passed without changing source, the 250 ms limit or
+  the timing policy. A transient observation/scheduling delay is an inference;
+  its cause was not isolated or claimed fixed.
+
+Independent inspection verified all eight healthy original producer IDs from
+attempt 1, with speed, hosted freezing and native replay from attempt 2. The
+manual selected-attempt recovery preserved the coordinator's attempt-1 observer
+restriction; no coordinator rewrite or duplicate qualification/publication
+mutation was introduced. Retained intent, failure, diagnostic and public evidence
+is under ignored `output/releases/2.13.4-*` and `output/performance/theme-*`.
+
+The approved bounded implementation and release are complete. Subsequent
+allowance/indexing work remains parked and needs its own authorization. The
+manager owns worker retirement and the reporting route remains intact.

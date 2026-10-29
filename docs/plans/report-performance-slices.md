@@ -1,10 +1,10 @@
 # Independently Shippable Report Performance Slices
 
-Updated: 2026-10-28, America/Toronto.
-Status: S0 and S1 completed; 2.13.3 published and both official packages verified.
-Next: [Theme-only presentation](theme-only-presentation.md) is independently
-reviewed and approved for E2E execution on 2026-10-29. The allowance proposal below is parked,
-not approved to execute.
+Updated: 2026-10-29, America/Toronto.
+Status: S0/S1 remain closed at 2.13.3; theme-only presentation is released as
+2.13.4 with both official packages verified.
+Next: No subsequent performance slice is authorized. The allowance proposal
+below remains parked. See the [theme-only closeout](theme-only-presentation.md#published-closeout).
 
 ## Outcome And Scope
 
@@ -20,7 +20,7 @@ starting with bottleneck confirmation on 2.13.2 and a usage-reading improvement.
 Brainstorm-and-Plan request scoped **S2 allowance preparation** in the final
 section. The owner subsequently rejected a one-second gain as insufficient and
 selected the lower-risk theme-only opportunity for a focused plan. The linked
-theme plan is the current next-slice brief; allowance/history/invalidation work
+theme plan is now a published closeout; allowance/history/invalidation work
 remains backlog, not authorization to execute those candidates.
 The director
 may choose ordinary engineering details within an approved slice, including

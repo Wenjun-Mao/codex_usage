@@ -1,11 +1,22 @@
 # VSIX Releases
 
-Current verified release: [2.13.3 receipt](release/2026-10-28-2.13.3-published.md).
+Current verified release: [2.13.4 receipt](release/2026-10-29-2.13.4-published.md).
 
-Codex Usage 2.13.3 ships only the macOS Apple Silicon and Windows x64 VS Code
+Codex Usage 2.13.4 ships only the macOS Apple Silicon and Windows x64 VS Code
 Companion packages. Each VSIX contains exactly one matching, bundled Python
 collector. The extension does not require the former Tauri app, Python, `uv`,
 or a source checkout on the user's machine.
+
+## 2.13.4 Theme Presentation
+
+On the representative warmed Night 30-day report, the first Day switch improved
+from 6.699 s to 1.229 s median across ten independent pairs. The one-second
+engineering target was missed and explicitly accepted with the 5.469 s saving.
+Warm theme changes do no new accounting work. Exact reports/CSV, navigation,
+freshness and script-disabled security remain preserved. This does not claim
+faster initial loads, ranges, capture or Storage scans. The
+[closeout](plans/theme-only-presentation.md#published-closeout) records the target
+miss, checked Firefox retry, proof repairs and remaining coverage limits.
 
 ## 2.12.5 Published Receipt
 
