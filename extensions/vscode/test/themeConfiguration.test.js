@@ -3,7 +3,7 @@ const test = require('node:test');
 const Module = require('node:module');
 
 // Exercise the shipped activation, commands, configuration listener and decorator.
-async function host(t) {
+async function host(t, windowsPaths = false) {
   const commands = new Map(), requests = [], renders = [], settings = { theme: 'night', range: '30d' };
   const state = new Map();
   let changed, disposed, pick, fail, pending;
@@ -27,7 +27,11 @@ async function host(t) {
   const load = Module._load;
   Module._load = function(name, parent, ...rest) {
     if (name === 'vscode') return api;
-    if (name === './agentSupervisor' && parent.filename.endsWith('/out/extension.js')) return { AgentSupervisor: class { acquire() { return client; } async stopManagedAgent() {} } };
+    if (name === './agentSupervisor') {
+      const filename = windowsPaths ? parent.filename.replaceAll('/', '\\') : parent.filename;
+      assert.match(filename, /[/\\]out[/\\]extension\.js$/);
+      return { AgentSupervisor: class { acquire() { return client; } async stopManagedAgent() {} } };
+    }
     return load.call(this, name, parent, ...rest);
   };
   const target = require.resolve('../out/extension');
@@ -40,7 +44,7 @@ async function host(t) {
 }
 
 test('initial Night and real configuration changes use one collector theme with local Day/Auto presentation', async t => {
-  const h = await host(t);
+  const h = await host(t, true);
   await h.commands.get('codexUsage.openDashboard')();
   assert.match(h.panel.webview.html, /data-codex-theme="night"/);
   for (const theme of ['day', 'auto', 'night']) {

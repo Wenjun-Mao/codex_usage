@@ -303,3 +303,21 @@ HTML used the pinned host's Electron Node runtime and the frozen production
 This is helper-phase attribution, not native visible latency, and is never
 subtracted from the 1.229386 s primary result. Its private input and samples are
 retained locally under `output/performance/theme-decoration/`.
+
+
+## Qualification Recovery
+
+The first 2.13.4 qualification at source `2cdbac3` failed its Windows extension
+unit-test step before collector packaging. The new activation test double used
+a POSIX-only parent-module path suffix, which fails for Windows module paths.
+The job's reporter did not print individual test failures and its failed XML was
+not uploaded; retain that diagnostic limit rather than inventing a test receipt.
+The matcher was made separator-independent, and the actual activation/config
+case now exercises a Windows-shaped parent filename locally. This is a test-only
+repair; production output still matches the measured frozen candidate.
+
+The nonqualifying old-source run was canceled to avoid further wasted jobs. Its
+run, request intent and diagnostic evidence remain retained. The corrected
+source uses a fresh coordinator directory and normal qualification, not a
+failed-job rerun pretending to contain changed source. No tag, dry-run,
+promotion or publication happened for the rejected source.
