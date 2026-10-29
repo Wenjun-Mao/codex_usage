@@ -83,7 +83,19 @@ def validate_native(evidence, hosted, manifest, package):
         "Missing or reordered native rendered input inventory")
     require(all(item["requested"]["state"] == item["rendered"]["state"] for item in inputs),
         "Native command/rendered state mismatch")
-    theme = evidence.get("theme_journey", {})
+    validate_theme_journey(evidence.get("theme_journey", {}))
+    hover = evidence.get("hover_and_tab", {})
+    require(hover.get("hover_within_250ms") is True and hover.get("script_disabled") is True
+        and hover.get("numeric_format_readable") is True and hover.get("native_title_inheritance_suppressed") is True
+        and len(hover.get("hover_seconds", [])) == 2 and all(
+            type(value) in (int, float) and 0 <= value < .25 and isfinite(value) for value in hover["hover_seconds"])
+        and hover.get("tab_traversal") == "CDP focus origin; real Tab reaches next usage bar",
+        "Missing native hover/focus evidence")
+    require("--use-inmemory-secretstorage" in evidence.get("credential_isolation", ""), "Native credentials not isolated")
+
+
+def validate_theme_journey(theme):
+    """Validate native theme states, colors and origin/response scopes."""
     updates = theme.get("updates", [])
     require(theme.get("script_disabled") is True and len(updates) == 5
         and [u.get("theme") for u in updates] == ["night", "day", "auto", "auto", "night"]
@@ -113,7 +125,8 @@ def validate_native(evidence, hosted, manifest, package):
         and theme["initial_allowance"].get("inspection_visible") is True
         and theme["initial_allowance"].get("has_observations") is True
         and bool(theme["initial_allowance"].get("inspection_sha256"))
-        and len(theme["initial_allowance"].get("scope", "")) == 64,
+        and len(theme["initial_allowance"].get("scope", "")) == 64
+        and theme["initial_allowance"]["scope"] == theme["initial_allowance"].get("accepted_scope"),
         "Missing seeded nondefault native speed/history state")
     for owner in ("breakdown", "allowance"):
         action = theme.get(owner, {})
@@ -124,7 +137,10 @@ def validate_native(evidence, hosted, manifest, package):
         and theme["allowance"]["rendered"].get("inspection_visible") is True
         and theme["allowance"]["rendered"].get("has_observations") is True
         and bool(theme["allowance"]["rendered"].get("inspection_sha256"))
-        and theme["allowance"]["requested"].get("scope") == theme["allowance"]["rendered"].get("scope")
+        and theme["allowance"]["requested"].get("scope") == theme["initial_allowance"]["scope"]
+        and theme["allowance"]["rendered"].get("scope") == theme["allowance"]["rendered"].get("accepted_scope")
+        and len(theme["allowance"]["rendered"].get("scope", "")) == 64
+        and theme["allowance"]["rendered"]["scope"] != theme["initial_allowance"]["scope"]
         and theme["allowance"]["rendered"]["state"] != theme["initial_allowance"]["state"]
         and theme["allowance"]["rendered"]["inspection_sha256"] != theme["initial_allowance"]["inspection_sha256"],
         "Native theme actions did not visibly change state")
@@ -132,14 +148,6 @@ def validate_native(evidence, hosted, manifest, package):
     require(speed.get("requested", {}).get("granularity") == speed.get("rendered", {}).get("granularity") == "daily"
         and speed["requested"].get("windowStart") == speed["rendered"].get("window_start")
         and bool(theme.get("action_screenshot")), "Missing native issued theme speed action")
-    hover = evidence.get("hover_and_tab", {})
-    require(hover.get("hover_within_250ms") is True and hover.get("script_disabled") is True
-        and hover.get("numeric_format_readable") is True and hover.get("native_title_inheritance_suppressed") is True
-        and len(hover.get("hover_seconds", [])) == 2 and all(
-            type(value) in (int, float) and 0 <= value < .25 and isfinite(value) for value in hover["hover_seconds"])
-        and hover.get("tab_traversal") == "CDP focus origin; real Tab reaches next usage bar",
-        "Missing native hover/focus evidence")
-    require("--use-inmemory-secretstorage" in evidence.get("credential_isolation", ""), "Native credentials not isolated")
 
 
 def write_native_input(directory, hosted, manifest, package, vsix):

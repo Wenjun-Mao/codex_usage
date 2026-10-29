@@ -71,7 +71,8 @@ async def allowance_dom(target, root, expected):
                 inspection = next(n for n in nodes(document) if 'allowance-history-inspection' in attributes(n).get('class', '').split())
                 box = (await target.send('DOM.getBoxModel', {'nodeId': inspection['nodeId']}))['model']
                 assert box['width'] > 0 and box['height'] > 0
-                return {'state': accepted['state'], 'scope': accepted['scope'], 'inspection_visible': True, 'has_observations': True,
+                return {'state': accepted['state'], 'scope': next(iter(scopes)),
+                    'accepted_scope': accepted['scope'], 'inspection_visible': True, 'has_observations': True,
                     'inspection_sha256': sha256(node_text(inspection).encode()).hexdigest()}
         await asyncio.sleep(.02)
     raise TimeoutError('Issued allowance inspection never rendered')

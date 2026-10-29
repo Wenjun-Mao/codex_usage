@@ -99,7 +99,7 @@ def test_contract_identity_normalizes_checkout_endings_not_semantic_changes(tmp_
     assert policy.contract_identity(root) != before
 
 
-@pytest.mark.parametrize("fault", ["missing", "update", "order", "color", "auto", "content", "state", "persistence", "timing", "action", "speed", "speed-reset", "history-reset", "hidden-inspection", "noop", "allowance-scope", "inspection-stale"])
+@pytest.mark.parametrize("fault", ["missing", "update", "order", "color", "auto", "content", "state", "persistence", "timing", "action", "speed", "speed-reset", "history-reset", "hidden-inspection", "noop", "allowance-scope", "allowance-origin", "inspection-stale"])
 def test_native_theme_journey_is_required_and_fail_closed(fault):
     hosted, manifest, package, evidence = bound_native()
     native.validate_native(evidence, hosted, manifest, package)
@@ -134,6 +134,8 @@ def test_native_theme_journey_is_required_and_fail_closed(fault):
         theme["allowance"]["rendered"]["inspection_visible"] = False
     elif fault == "allowance-scope":
         theme["allowance"]["rendered"]["scope"] = "c"*64
+    elif fault == "allowance-origin":
+        theme["allowance"]["requested"]["scope"] = "c"*64
     elif fault == "inspection-stale":
         theme["allowance"]["rendered"]["inspection_sha256"] = theme["initial_allowance"]["inspection_sha256"]
     else:

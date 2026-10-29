@@ -321,3 +321,37 @@ run, request intent and diagnostic evidence remain retained. The corrected
 source uses a fresh coordinator directory and normal qualification, not a
 failed-job rerun pretending to contain changed source. No tag, dry-run,
 promotion or publication happened for the rejected source.
+
+
+The repaired source `42fbbf7` completed every hosted job, including exact-package
+native replay, but independent inspection rejected its new native scope check.
+That check incorrectly equated an issued allowance action's origin scope with
+the response scope after changing history state. Existing backend scope identity
+is `digest([context, state])`, so a changed state legitimately receives a new
+scope. The actual native journey visibly changed the selected period and its
+inspection; the failed assumption belonged to the new validator, not product
+behavior. Preserve the all-green-but-unqualified run and inspection failure.
+
+The validator now requires the request's scope to match the issued origin and
+the observed native DOM scope to match the new accepted response, while keeping
+changed-state/content checks. A negative origin-scope case complements the DOM
+scope corruption case. This contract repair needs fresh source-bound
+qualification; it does not waive the rejected proof or alter any generated
+receipt. Production output and the accepted timing result remain unchanged.
+
+
+Before freezing the scope repair, a local diagnostic replay consumed the retained
+real hosted manifest and exact Mac VSIX from the successful-but-rejected run.
+The corrected current harness produced fresh observations, including separately
+recorded accepted-response and observed-DOM scopes. The full corrected native
+validator passed against those actual package/hosted inputs; corrupting the
+request origin, rendered scope or inspection hash was rejected. The original
+native JSON stayed unchanged and independently confirmed the legitimate
+origin-to-new-response transition. This replay is diagnostic only, not a
+qualification receipt for the new source. Its retained result is
+`output/releases/2.13.4-scope-diagnostic/validation.json`.
+
+Independent scoped read-only review found no new flaw in the corrected scope
+contract or mandatory helper wiring. Fresh full local Python validation passed
+3,055 cases with zero skips. The fresh source-bound hosted pipeline remains
+required before publication.

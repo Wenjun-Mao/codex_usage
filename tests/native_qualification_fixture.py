@@ -16,12 +16,12 @@ def native_evidence(hosted, manifest, package):
     inputs[-1]["keyboard"] = True
     theme_state = {"scope": "a"*64, "state": {"metric": "tokens"}}
     initial_speed = {"granularity": "hourly", "window_start": "2026-10-01"}
-    initial_allowance = {"scope": "a"*64, "state": {"kind": "periods", "index": 0}, "inspection_visible": True,
+    initial_allowance = {"scope": "a"*64, "accepted_scope": "a"*64, "state": {"kind": "periods", "index": 0}, "inspection_visible": True,
         "has_observations": True, "inspection_sha256": "f"*64}
-    changed_allowance = dict(initial_allowance, scope="b"*64, state={"kind": "periods", "index": 1}, inspection_sha256="e"*64)
+    changed_allowance = dict(initial_allowance, scope="b"*64, accepted_scope="b"*64, state={"kind": "periods", "index": 1}, inspection_sha256="e"*64)
     theme = {"initial_speed": initial_speed, "initial_allowance": initial_allowance, "script_disabled": True, "initial_state": theme_state, "updates": [],
         "breakdown": {"before": {"state": {"metric": "cost"}}, "requested": theme_state, "rendered": theme_state},
-        "allowance": {"requested": {"scope": "b"*64, "state": changed_allowance["state"]}, "rendered": changed_allowance},
+        "allowance": {"requested": {"scope": "a"*64, "state": changed_allowance["state"]}, "rendered": changed_allowance},
         "speed": {"requested": {"granularity": "daily"}, "rendered": {"granularity": "daily"}},
         "action_screenshot": "theme-actions.png"}
     for serial, (name, editor, color) in enumerate([
