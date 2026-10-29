@@ -10,6 +10,14 @@ closed on 2026-10-29: representative native capture-to-visible median
 The older allowance proposal below remains parked. See the
 [theme-only closeout](theme-only-presentation.md#published-closeout).
 
+[Post-capture dashboard on 2.13.5](post-capture-dashboard.md#feasibility-closeout-drop)
+closed with a supported feasibility **drop** on 2026-10-29. The actual official
+package baseline completed ordinary capture-to-visible in 7.816 s. Attribution
+and a scratch SQL whole-report probe did not establish a narrow path with a
+credible two-second saving while preserving exact current math and immediate
+charts. No production change, version bump, CI or release followed. The target
+was retained, and the parked allowance draft/indexer remains closed to execution.
+
 ## Outcome And Scope
 
 Improve a complete user workflow on the released normal report path without
@@ -25,8 +33,9 @@ Brainstorm-and-Plan request scoped **S2 allowance preparation** in the final
 section. The owner subsequently rejected a one-second gain as insufficient and
 selected the lower-risk theme-only opportunity for a focused plan. The linked
 theme plan is now a published closeout. The older allowance proposal and broader
-invalidation backlog remain parked; the linked on-demand plan owns the current
-bounded execution authority.
+invalidation backlog remain parked; the linked on-demand plan is a closed
+published record. The post-capture investigation is now a closed negative result;
+its conditional implementation/release path was not entered.
 The director
 may choose ordinary engineering details within an approved slice, including
 diagnostic tools, task/model assignments and a simpler repair than anticipated.
