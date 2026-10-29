@@ -81,7 +81,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("codexUsage.configure", configureCollector),
     vscode.commands.registerCommand("codexUsage.handoffLegacyService", handoffLegacyService),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("codexUsage") && panel) void refreshVisibleDashboard();
+      if (event.affectsConfiguration("codexUsage") && panel) {
+        void refreshVisibleDashboard({ showLoading: !event.affectsConfiguration("codexUsage.theme"), showErrors: true });
+      }
     }),
   );
   await refreshStatus(false);
@@ -113,16 +115,17 @@ async function openDashboard(): Promise<void> {
 }
 
 async function refreshVisibleDashboard(
-  options: { showLoading?: boolean } = {},
+  options: { showLoading?: boolean; showErrors?: boolean } = {},
 ): Promise<void> {
   if (!panel) return;
   const showLoading = options.showLoading ?? true;
+  const showErrors = options.showErrors ?? showLoading;
   const target = panel;
   const requestId = ++refreshSerial;
   if (showLoading) {
     target.webview.html = renderLoading(activeView === "usage" ? "Loading usage from the local ledger" : "Checking Task Storage metadata", target.webview.cspSource, reportTheme());
   }
-  const client = await acquireAgentClient(showLoading);
+  const client = await acquireAgentClient(showErrors);
   if (!client || !panel || panel !== target || requestId !== refreshSerial) return;
   const started = performance.now();
   try {
@@ -138,7 +141,8 @@ async function refreshVisibleDashboard(
         );
         return;
       }
-      const query = reportQuery(controls.theme);
+      // Keep initial, navigation and recovery scopes independent of display theme.
+      const query = reportQuery("auto");
       const identity = reportQuery().toString();
       dashboardNavigation.query(query, identity, status);
       const report = await dashboardNavigation.report(client, query);
@@ -166,7 +170,7 @@ async function refreshVisibleDashboard(
       }
     }
   } catch (error) {
-    if (showLoading && panel === target && requestId === refreshSerial) {
+    if (showErrors && panel === target && requestId === refreshSerial) {
       target.webview.html = renderError(errorMessage(error), target.webview.cspSource, reportTheme());
     } else {
       output.appendLine(`[dashboard] Automatic refresh failed: ${errorMessage(error)}`);

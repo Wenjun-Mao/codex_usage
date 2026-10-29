@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.13.4 - 2026-10-29
+
+- Keep Usage accounting and issued navigation scopes reusable when selecting a
+  display theme, including the first switch after loading Night.
+- Keep the current report visible while the selected theme is prepared, with
+  configuration and transport failures still shown explicitly.
+- Preserve exact accounting, filter and chart/history selections, freshness
+  invalidation, and the script-disabled dashboard security boundary.
+
 ## 2.13.3 - 2026-10-28
 
 - Reuse immutable context and path metadata within project-filtered speed reads,

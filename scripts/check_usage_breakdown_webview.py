@@ -20,6 +20,7 @@ from check_speed_webview import disposable_command, stop_owned_host, wait_cdp_en
 from speed_native_target import NativeSpeedTarget, attach_speed_target, attributes, node_text, nodes, wait_native_state
 from usage_breakdown_fixture import breakdown_home
 from breakdown_native_hover import check_native_hover
+from theme_native_journey import theme_journey
 from release.native import bind_evidence, prepare_extension
 
 
@@ -144,7 +145,7 @@ async def main():
             process = subprocess.Popen(disposable_command(args.code, root, extension, port),
                 env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
-                deadline = time.monotonic() + 120
+                deadline = time.monotonic() + 180
                 while not (root / "ready.json").exists():
                     if (root / "failure.txt").exists():
                         raise RuntimeError((root / "failure.txt").read_text())
@@ -187,6 +188,7 @@ async def main():
                     await click("Projects")
                     await click(await target.label_for(lambda s: s["view"] == "time" and bool(s["project"])))
                     clicks.append(await target.keyboard("Daily"))
+                    theme = await theme_journey(target, root, args.output)
                     (root / "clicked.json").write_text(json.dumps(clicks))
                     await target.close()
                     await browser.close()
@@ -199,6 +201,7 @@ async def main():
                 evidence = json.loads((root / "host-evidence.json").read_text())
                 evidence["credential_isolation"] = "--use-inmemory-secretstorage; disposable HOME/CODEX_HOME/profile"
                 evidence["hover_and_tab"] = hover
+                evidence["theme_journey"] = theme
                 evidence["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
                 evidence["native_target_contract"] = "Explicit OOPIF CDP DOM, hit-tested real input; no injected scripts"
                 bind_evidence(evidence, repo, args.code, package, qualification)

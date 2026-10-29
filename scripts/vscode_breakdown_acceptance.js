@@ -9,7 +9,7 @@ exports.run = async function () {
   const root = process.env.CODEX_SPEED_ACCEPTANCE_ROOT;
   assert(root && process.env.CODEX_HOME.startsWith(root));
   const originalLoad = Module._load;
-  let panel, options;
+  let panel, options, restoreClient;
   const windowDescriptors = Object.getOwnPropertyDescriptors(vscode.window);
   windowDescriptors.createWebviewPanel = { value: (...args) => {
     options = args[3]; panel = vscode.window.createWebviewPanel(...args); return panel;
@@ -28,6 +28,15 @@ exports.run = async function () {
     await extension.activate();
     const { AgentClient } = require(path.join(root, "extension", "out", "agentClient.js"));
     const client = await AgentClient.discover();
+    const get = AgentClient.prototype.get;
+    AgentClient.prototype.get = async function (url) {
+      const result = await get.call(this, url);
+      if (url.startsWith('/v1/report?')) fs.writeFileSync(path.join(root, 'last-report.json'), JSON.stringify({
+        speed: result.speed_navigation, breakdown: result.breakdown_navigation, allowance: result.allowance_navigation,
+      }));
+      return result;
+    };
+    restoreClient = () => { AgentClient.prototype.get = get; };
     const settledBy = Date.now() + 30000;
     while ((await client.get("/v1/status")).capture_running) {
       assert(Date.now() < settledBy, "synthetic startup capture did not settle");
@@ -52,9 +61,23 @@ exports.run = async function () {
     evidence.script_disabled = true;
     evidence.strict_host_validation = true;
     fs.writeFileSync(path.join(root, "ready.json"), JSON.stringify(evidence));
-    const deadline = Date.now() + 120000;
+    const deadline = Date.now() + 180000;
+    let themeSerial = 0;
     while (!fs.existsSync(path.join(root, "clicked.json"))) {
-      assert(Date.now() < deadline, "rendered breakdown input timed out");
+      assert(Date.now() < deadline, "rendered breakdown/theme input timed out");
+      const requestFile = path.join(root, 'theme-request.json');
+      if (fs.existsSync(requestFile)) {
+        const request = JSON.parse(fs.readFileSync(requestFile, 'utf8'));
+        if (request.serial > themeSerial) {
+          themeSerial = request.serial;
+          const started = Date.now();
+          if (request.editorTheme) await vscode.workspace.getConfiguration('workbench').update('colorTheme', request.editorTheme, vscode.ConfigurationTarget.Global);
+          if (request.theme) await vscode.workspace.getConfiguration('codexUsage').update('theme', request.theme, vscode.ConfigurationTarget.Global);
+          const theme = vscode.workspace.getConfiguration('codexUsage').get('theme');
+          while (!panel.webview.html.includes(`data-codex-theme="${theme}"`) || !panel.webview.html.includes('Usage &amp; Allowance Breakdown')) await new Promise(resolve => setTimeout(resolve, 10));
+          fs.writeFileSync(path.join(root, 'theme-assigned.json'), JSON.stringify({ serial: themeSerial, theme, started, assigned: Date.now() }));
+        }
+      }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     evidence.rendered_input = JSON.parse(fs.readFileSync(path.join(root, "clicked.json"), "utf8"));
@@ -66,6 +89,7 @@ exports.run = async function () {
     fs.writeFileSync(path.join(root, "failure.txt"), error.stack || String(error));
     throw error;
   } finally {
+    restoreClient?.();
     Module._load = originalLoad;
     panel?.dispose();
     await require(path.join(root, "extension", "out", "extension.js")).deactivate();

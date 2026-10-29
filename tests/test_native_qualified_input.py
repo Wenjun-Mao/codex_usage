@@ -97,3 +97,46 @@ def test_contract_identity_normalizes_checkout_endings_not_semantic_changes(tmp_
     assert policy.contract_identity(root) == before
     file.write_bytes(b"changed\r\nsource\r\n")
     assert policy.contract_identity(root) != before
+
+
+@pytest.mark.parametrize("fault", ["missing", "update", "order", "color", "auto", "content", "state", "persistence", "timing", "action", "speed", "speed-reset", "history-reset", "hidden-inspection", "noop", "allowance-scope", "inspection-stale"])
+def test_native_theme_journey_is_required_and_fail_closed(fault):
+    hosted, manifest, package, evidence = bound_native()
+    native.validate_native(evidence, hosted, manifest, package)
+    theme = evidence["theme_journey"]
+    if fault == "missing":
+        del evidence["theme_journey"]
+    elif fault == "update":
+        theme["updates"].pop()
+    elif fault == "order":
+        theme["updates"][0]["theme"] = "day"
+    elif fault == "color":
+        theme["updates"][1]["background"] = "rgb(16, 19, 22)"
+    elif fault == "auto":
+        theme["updates"][2]["background"] = theme["updates"][3]["background"]
+    elif fault == "content":
+        theme["updates"][0]["complete_content"] = False
+    elif fault == "state":
+        theme["updates"][0]["breakdown"] = {"state": {"lost": True}}
+    elif fault == "persistence":
+        theme["updates"][0]["configuration_persisted"] = False
+    elif fault == "timing":
+        theme["updates"][0]["seconds"] = float("nan")
+    elif fault == "action":
+        theme["allowance"]["rendered"] = {"state": {"lost": True}}
+    elif fault == "speed":
+        theme["speed"]["rendered"]["granularity"] = "hourly"
+    elif fault == "speed-reset":
+        theme["updates"][0]["speed"] = {"granularity": "daily"}
+    elif fault == "history-reset":
+        theme["updates"][0]["allowance"] = {"state": {"kind": ""}}
+    elif fault == "hidden-inspection":
+        theme["allowance"]["rendered"]["inspection_visible"] = False
+    elif fault == "allowance-scope":
+        theme["allowance"]["rendered"]["scope"] = "c"*64
+    elif fault == "inspection-stale":
+        theme["allowance"]["rendered"]["inspection_sha256"] = theme["initial_allowance"]["inspection_sha256"]
+    else:
+        theme["breakdown"]["before"] = theme["breakdown"]["requested"]
+    with pytest.raises(ValueError, match="[Nn]ative|theme"):
+        native.validate_native(evidence, hosted, manifest, package)

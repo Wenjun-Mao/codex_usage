@@ -2,19 +2,27 @@
 
 Updated: 2026-10-28, America/Toronto.
 Status: S0 and S1 completed; 2.13.3 published and both official packages verified.
+Next: [Theme-only presentation](theme-only-presentation.md) is independently
+reviewed and approved for E2E execution on 2026-10-29. The allowance proposal below is parked,
+not approved to execute.
 
 ## Outcome And Scope
 
-Improve a complete user workflow on the released 2.13.2 report path without
+Improve a complete user workflow on the released normal report path without
 waiting for the parked indexer to be finished. Each adopted slice must deliver
 its own measured benefit, exact accounting/output and safe ordinary operation.
 Do not replace one combined release with several unfinished infrastructure
 projects whose benefits depend on all the others landing.
 
-The owner requested Relay Plan for independently shippable slices, starting
-with bottleneck confirmation on 2.13.2 and a usage-reading improvement. This
-plan details **S0 diagnosis and conditional S1 usage reading**. Later slices are
-bounded backlog candidates, not authorization to execute them all. The director
+The owner initially requested Relay Plan for independently shippable slices,
+starting with bottleneck confirmation on 2.13.2 and a usage-reading improvement.
+**S0 and S1 below are closed records.** The subsequent quick review and
+Brainstorm-and-Plan request scoped **S2 allowance preparation** in the final
+section. The owner subsequently rejected a one-second gain as insufficient and
+selected the lower-risk theme-only opportunity for a focused plan. The linked
+theme plan is the current next-slice brief; allowance/history/invalidation work
+remains backlog, not authorization to execute those candidates.
+The director
 may choose ordinary engineering details within an approved slice, including
 diagnostic tools, task/model assignments and a simpler repair than anticipated.
 
@@ -25,7 +33,7 @@ original checkouts. Its experiments can inform a hypothesis, not qualify this
 baseline or require resuming its semantic/Facts/publication machinery. No 512 MiB
 retained-data limit, source TTL, live installation or automatic activation.
 
-## Verified Starting Point
+## Original Starting Point
 
 - Execution checkout: `/Users/wjmao/projects/codex_usage-terra-release`, main at
   `fbf5b01b5b4dd6aa669da2798d26c69576837e41`. Tag `v2.13.2` is fixed at
@@ -580,3 +588,283 @@ no index/build lifecycle and needs no later slice to be useful. Reviewers are
 closed/unregistered; owned tests, benchmarks and release observers are terminal.
 S2-S4 and the preserved indexing work remain deferred, requiring their own brief.
 The documentation-only closeout leaves the release tag and product bytes fixed.
+
+## Quick Review After 2.13.3
+
+Verdict: the agreed S0/S1 result was achieved. The final ten-pair operation gain,
+exact outputs/capture checks and verified public packages support bounded
+success; the unchanged slow Today path does not invalidate that scoped result.
+Planning started on clean main at `7e5d2bd7a9f6f77ea49ab7e841318a963d61dd5c`; product inputs still
+match the fixed `v2.13.3` source `df74863a7b50d17a1cf94976629c3f7c6c1df4da`.
+
+Keep three lessons for the next slice. Work from the remaining measured owner,
+keep changes independently useful, and screen causal work reduction before a
+full campaign. The first two complete campaigns missed the chosen target;
+metadata reuse and batched filtering alone were not sufficient. The eventual
+conservative decode reduction produced a clear margin with only a small source
+change. Do not spend repeated full campaigns trying to cross a marginal number
+without a new causal hypothesis. One absolute primary target below avoids a
+second, nearly coincident percentage threshold. This is a method improvement,
+not an excuse to relax an observed miss or a new retry/time limit.
+
+## S2: Today Allowance Preparation (Parked Draft)
+
+Owner correction: a one-second saving is not material enough to justify this
+effort. This reviewed draft is preserved for context, not approved or the current
+execution handoff. Reassess a larger everyday benefit before reviving it.
+
+### Result And Design Choice
+
+Make a complete **Today report after ordinary usage-and-quota capture**
+meaningfully faster on the shipped 2.13.3 path, with the same accounting,
+allowance/reset/credit evidence, history, issued actions and complete CSV.
+It must ship without S3/S4 or the parked indexer. This is source-backed report
+latency, not a promise of native editor interaction latency or the old 3s Today
+target. No new SQLite/Python/model upgrade, retained-data cap, TTL or live install.
+
+The director recommends reducing cold/request-local allowance preparation first.
+An alternative is extending granular historical reuse using existing tracking;
+this could also help append captures if their real invalidation path permits it,
+but needs more invalidation proof. Unchanged-quota memo hits alone are insufficient.
+The diagnostic checkpoint may choose either small closure, not a new caching
+platform. Existing persistent/window caches remain useful, not a system to replace.
+These are director proposals for this planning request,
+not additional owner decisions or authorization to execute.
+
+### Current Evidence And Owners
+
+Use `v2.13.3` as control. In S1's final unprofiled candidate samples, first Today
+was 13.933s, post-usage-plus-quota Today 8.374s, first 30d 8.137s and warm Today
+0.073s. These are measured 2.13.3 source operations on the frozen control, not
+fresh S2 adoption results. The 8.374s case is the existing direct-append proxy;
+the ordinary-capture baseline must be established or its equivalence proved
+before using it for the primary gate. The normal-ledger control and its sealed SHA/clock
+are already recorded above; it contains about 383k stored quota observations.
+Count timestamp-expanded points separately rather than equating them to rows.
+
+Retained 2.13.2 profiles are diagnostic clues: allowance code is unchanged in
+2.13.3. Post-append `indexed_allowance_report` took 10.423 profiled cumulative
+seconds; `_build_from_costs` 8.365, raw evidence loading 1.916, display history
+1.909, pace preparation 1.873, report encoding 1.647, reset history 1.126 and
+account partitioning 1.032. These nested values are not additive wall savings.
+First-fill pricing is also expensive, but it is not the post-append bottleneck
+to optimize by repricing semantics changes. Refresh the selected phase attribution
+on 2.13.3 before choosing the repair.
+
+Entrypoints: `agent_reports.render_ledger_report` / `breakdown_reports` share a
+pinned read snapshot and one `AllowancePreparation`; `allowance_index` calls
+`allowance_queries._build_from_costs`, then publishes only if revision/dependency
+still match. Inspect `allowance_preparation`, `allowance_captures`,
+`allowance_pace_inputs`, `allowance_display_history`, `allowance_report_codec`,
+`allowance_capture_codec`, `breakdown_evidence` and `breakdown_preparation` as
+the measured owner requires. Do not change them all merely because listed.
+
+Already present: one request-local raw load, canonical exported capture
+dictionaries, timestamp/hash memos, grouped pace inputs, compact/reference-based
+report encoding, historical calculation caches and independent quota tracking.
+The optional process memo rejects more than 50,000 expanded points to limit
+retained graphs/GC; this is not a source-history limit. Do not relabel any of
+these mechanisms as missing or blindly raise that memo bound. A justified compact
+reuse/resource-policy change is ordinary director discretion when measured and
+declared before adoption, not a mandatory separate approval.
+
+### Work And Decision Points
+
+1. Recheck retained main/tag, dirty state and runtime. Preserve S1 and all parked
+   work. Freeze 2.13.3 control source, input and clock; reuse sealed normal-ledger
+   input/evidence rather than reconstructing the old experiment. Private-copy
+   access for the new execution must be covered by its grant below. Otherwise
+   use disclosed public synthetic work without claiming representative proof.
+2. Refresh the primary operation unprofiled, then attribute the specific slow
+   phases separately. Distinguish first fill, usage-only, quota-only, combined
+   append and clock changes. Count raw rows/expanded points, passes, conversions,
+   allocations/retained graphs, SQL and serialization; nested profiles alone do
+   not prove an achievable whole-operation saving. A short A/A/setup check is
+   enough when needed; another ten-pair baseline-only campaign is not mandatory.
+   Record pricing/derived-cache state: distinguish cold first-fill repricing
+   from an ordinary capture after monetary caches are established. Both arms
+   must have the same permitted warming and invalidation, including cache upgrades.
+   Trace the ordinary growing-rollout capture's parsed/recovered quota upserts,
+   live read and credit updates. `recover_allowance` revisits changed sources;
+   recovered timestamp-blob upserts can conservatively invalidate all historical
+   prefix certificates even when endpoint readings repeat. Do not assume a
+   direct usage-plus-live-read insertion has equivalent preparation/cache work.
+3. Select one small dependency closure with a credible whole-operation margin:
+   avoid repeated normalization, projection, sorting or encoding where exact
+   immutable facts can serve current consumers. Request-local transformations
+   and existing cache APIs come first. Preserve the order and authority each
+   consumer needs; different causal/plan/reset views are not interchangeable.
+   Record the causal hypothesis, source/work counters and target before any
+   candidate production patch or timing.
+4. Add an independent 2.13.3 differential oracle at the changed boundary and a
+   failing structural work assertion. Implement with existing owners, then run
+   focused tests/Ruff and a short complete-workflow screen. Use enough screening
+   evidence to see a credible margin before the full campaign. Profile/diagnostic
+   samples and preparation stay separate from adoption samples; retain misses.
+5. Review direction if the dominant phase is elsewhere, gains remain marginal,
+   repeated fixes lack new causal evidence, or a cache change grows into schema,
+   bootstrap, reset-ownership or publication machinery. Choose a smaller useful
+   repair or retain a supported negative diagnosis. Do not silently widen to
+   the parked indexer or another slice. A diagnostic no-go is useful evidence,
+   not a shipped S2 or a completed improvement/release.
+6. Freeze the credible candidate, run final proof below, then independently
+   review the scoped diff. When authorized, carry the exact candidate through
+   existing qualification/dry-run/promotion, both public downloads, receipt
+   commit/push and safe worker/process closeout. No additional slice must land.
+
+All likely owners are small; inspect actual sizes before substantial edits.
+Respect the 400/500-line cohesion guidance and do not split unchanged modules
+or build new abstractions merely to satisfy a count. A narrow derived-cache
+codec revision is permissible if needed: bound its dependency closure, retain
+legacy decoding or exact rebuild fallback, validate corruption and publish under
+existing snapshot/dependency fencing. No authoritative schema/source rewrite,
+generic scheduler, semantic/Facts store or new index lifecycle is included.
+A narrowly justified quota-writer no-op suppression may be considered if it
+preserves all durable values/provenance and invalidation for every real change,
+with normal-capture differential proof. Do not weaken the conservative treatment
+of compacted/mixed-offset evidence or disable recovery/triggers to manufacture
+append reuse. A new invalidation/ownership protocol is a direction-review trigger.
+
+### Acceptance And Completion Evidence
+
+- Proposed primary target: **at least 1.0 second median whole-operation saving**
+  for Today following a capture-shaped usage/quota update, versus frozen 2.13.3 on the representative
+  control. This is an engineering proposal, not an earlier owner requirement.
+  At the diagnostic checkpoint, the director may select a justified alternative
+  before production patch/candidate timing, recording user-visible rationale.
+  Do not weaken the chosen target retrospectively to pass or replace it with
+  component CPU savings. Other operations use the established material timing
+  regression guard: BOTH >10% AND >100 ms. Keep S1's project-report gain.
+- Default to exact full report/value/coverage/evidence, complete HTML and issued
+  action-state payloads, all CSV rows/order and normal mutation effects versus
+  frozen 2.13.3. Compare scalar types and ordered serialized public values, not
+  only Python equality: preserve capture field order, float/negative-zero and
+  bool/int distinctions, duplicate identity and canonical reference ownership.
+  Preserve sequential float/Decimal arithmetic, token/model fields,
+  unknown/unpriced/partial/excluded usage, parent attribution and account-wide
+  allowance semantics under project/date filters. A routine codec identity can
+  alter opaque scope hashes only through a declared, validated issued-action
+  mapping using existing harness support; never normalize away states or prices.
+- Cover compacted/duplicate/conflicting/missing-provenance observations, live vs
+  parsed/recovered sources, plan changes across durations, tied/microsecond/DST
+  timestamps, rollback/future evidence, full-meter and credit cutoffs, scheduled,
+  bracketed/early/ambiguous resets, missing anchors and partial/stale coverage.
+  Test exact history navigation, cache corruption/legacy fallback, tracking
+  repair, same-revision rollback and clock-only changes. Keep numeric/accounting
+  algorithms unchanged; optimization must preserve all retained evidence.
+- Relevant existing suites: `test_allowance_evidence_loading`,
+  `test_dashboard_preparation`, `test_allowance_window_cache`,
+  `test_allowance_report_codec`, `test_allowance_pace_evidence`, display authority/
+  history, reset economics/boundaries, history quota journal, history navigation
+  and breakdown navigation/work. Scale new tests to the actual changed boundary;
+  do not duplicate every suite into a new oracle or use the modified helper as
+  its own reference. Full frozen-source report/CSV comparison remains decisive.
+- Bind the primary timed request to ordinary capture's actual mutation shape,
+  including parsed/recovered replay/upsert, live quota and credit updates where
+  applicable. Use normal capture on owned synthetic rollout files with the
+  allowance probe mocked offline. A replay into the large disposable control
+  is permissible only after demonstrating equivalent mutations, dependency/
+  journal invalidation and preparation work against that normal capture.
+  Never resolve retained original source paths or omit recovery to make it fast.
+  Time the resulting Today request; record capture and combined capture-to-report
+  wall/CPU cost too. The material regression guard applies to ordinary capture;
+  moving expensive preparation there cannot hide an unchanged/worse workflow.
+- Reuse the existing collector's dashboard-extended workload as the regression
+  matrix. Its direct usage-plus-live-read append may serve as the primary proxy
+  only when the equivalence check above establishes the relevant invalidation
+  and work behavior; otherwise use one focused capture-shaped paired adapter.
+  No new controller/framework is required. For the final primary and matrix,
+  use one explicitly
+  excluded preparation pair and ten alternating unprofiled measured pairs on
+  the final frozen candidate. Preserve every sample/failure, input/runtime/source/
+  harness identities and cache state. Include separate usage-only/quota-only and
+  clock-forward/rollback checks where the harness's combined append does not.
+  Report actual SQL/decoded work as history grows, not false constant-time claims.
+- Observe RSS, retained graph/GC cost affecting full CSV, temporary/disk footprint,
+  writer admission and real HTTP report/capture overlap. Keep the existing RSS
+  guard: no increase exceeding BOTH 10% AND 32 MiB, unless a justified trade-off
+  was explicitly chosen before candidate timing within authorized risk scope.
+  Show successful usage/quota writes and generation replacement, old-snapshot
+  isolation, next-request freshness, bounded writer admission and clean shutdown.
+  Gate overlap at the changed allowance-preparation/publication boundaries,
+  not only S1's speed decoder, and retain the existing ten-second synthetic
+  capture-completion guard while the report holds its snapshot. Record actual
+  admission/held durations against control on the representative workload.
+  Never retain a connection across requests or a write lease through preparation.
+- Run focused/full Python tests, Ruff, all extension cases/build and selected
+  preflight. Full hosted Core must retain all **3,031 shipped 2.13.3 identities**,
+  plus new cases, with zero skips; retain raw Core/JUnit proof locally. Both
+  native packages, five visual suites, exact-package native Mac and official
+  download/hash checks remain required. Keep the existing native Windows UI and
+  hosted-WebKit timing gaps explicit. Choose the next unused maintenance version
+  only at candidate freeze; do not reserve or change versions during planning.
+
+An accepted S2 requires the primary workflow gain, exactness and operational/
+resource proof, and authorized publication/receipt closeout. Faster helpers,
+warm-only wins, tiny-input results or publication without the benefit do not
+complete it. A failed adoption gate leaves an unshipped candidate and an explicit
+next decision; useful code/evidence must be preserved.
+
+### Ownership, Authority And Forecast
+
+This user request covers quick review, source/retained-diagnostic inspection,
+planning edits and the two read-only planning reviews. It does not start a new
+Goal, production implementation, fresh private-ledger access, CI or publication.
+The closed S0/S1 execution/workflow grant does not silently carry to S2.
+
+Standing task creation and explicit Relay model/reasoning selection remain
+approved; do not ask again. Default to manager-owned serial writes on retained
+main, with attended read-only reviews or genuinely disjoint work when useful.
+No new automation/controller, compulsory worktree or recurring human sign-off.
+
+For an E2E execution handoff, obtain **one grouped grant** covering S2 local
+implementation/testing, offline disposable copies of the already sealed private
+normal-ledger control, scoped commits/pushes and this slice's required GitHub
+qualification, credential-free dry-run, exact-artifact promotion/publication and
+ordinary release recovery. Ask once when approving execution, not at each review
+or retry. Actual native confirmations still apply. No live ledger/settings or
+service install/restart, original session/account RPC access, private data or
+benchmark-artifact upload, unrelated CI, retained-history deletion or later-slice
+execution is included. Public synthetic work remains available if private access
+is not granted. Source-bound exact proof must not be claimed from an inadequate
+substitute. If only local work is approved, publication stays explicitly pending.
+
+Use existing release coordination and receipt recovery; an observer timeout or
+uncertain upload never permits duplicate dispatch/upload. Preserve process and
+publication intents, real run/attempt identities and useful work. Review fixes
+and verification within the granted result continue without another approval.
+When interrupted, settle owned processes and leave recoverable source/evidence;
+never reset owner changes or overwrite the fixed 2.13.3 tag.
+
+Forecast, not a cap: roughly **2-5 hours engineering/local verification**, including
+a short 2.13.3 diagnostic refresh, review fixes and final matched measurements,
+plus **0.5-1.5 hours hosted/build/publication waiting**. This assumes a small
+request-local preparation repair and existing release tooling. Revise the estimate
+when evidence changes; a larger representation/lifecycle requirement triggers
+direction review, not an automatic rewrite or an invented deadline.
+
+### S2 Planning Reviews
+
+Outcome/completeness review requested Sol/Xhigh, independent fresh-context
+native worker `01a184e7-290f-7983-a5bb-43b3e13ae26d`. It found one material
+pass-but-fail case: the existing live-read-only benchmark append can bypass
+ordinary capture's parsed/recovered timestamp-blob updates, so an append-prefix
+reuse gain could vanish during normal growing-rollout capture while all other
+checks pass. The primary capture-shaped measurement/equivalence requirement
+above resolves it. Capture/combined latency checks also prevent shifting cost
+out of the report timer. A focused recheck of the repaired workload, bounded
+reuse alternative and strict writer no-op conditions found no remaining material
+gap. No extra finding in the bounded S1 review; no production execution occurred.
+
+Separate avoidable-restrictions review requested Sol/Medium, fresh-context
+native worker `01a184ee-f326-7c61-a5fa-b7d666484df0`. It found no material
+avoidable restrictions: implementation choices stay with the director, one
+future grouped grant covers foreseeable side effects, forecasts are not caps,
+and proof protects the outcome without prescribing another mechanism. It made
+no changes to success/proof assumptions, so no further review-1 recheck was
+needed. Both reviewers performed source/document inspection only, with no
+tests/builds/benchmarks, private-data access, CI, publication or delegation.
+Requested model/effort selectors were explicit; effective settings remain
+host-unconfirmed. Both reports are collected, workers closed and Relay routes
+removed. The owner subsequently parked this proposal as described above; these
+reviews do not approve implementation or override that later direction.

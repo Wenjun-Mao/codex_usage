@@ -83,6 +83,55 @@ def validate_native(evidence, hosted, manifest, package):
         "Missing or reordered native rendered input inventory")
     require(all(item["requested"]["state"] == item["rendered"]["state"] for item in inputs),
         "Native command/rendered state mismatch")
+    theme = evidence.get("theme_journey", {})
+    updates = theme.get("updates", [])
+    require(theme.get("script_disabled") is True and len(updates) == 5
+        and [u.get("theme") for u in updates] == ["night", "day", "auto", "auto", "night"]
+        and [u.get("serial") for u in updates] == list(range(1, 6))
+        and updates[2].get("editor_theme") == "Default Dark Modern"
+        and updates[3].get("editor_theme") == "Default Light Modern",
+        "Missing complete native theme/configuration journey")
+    require(all(u.get("complete_content") is True and u.get("configuration_persisted") is True
+        and u.get("breakdown") == theme.get("initial_state")
+        and u.get("speed") == theme.get("initial_speed")
+        and u.get("allowance") == theme.get("initial_allowance") and bool(u.get("screenshot"))
+        and type(u.get("seconds")) in (int, float) and 0 <= u["seconds"] < 30 and isfinite(u["seconds"])
+        for u in updates), "Incomplete native themed content/state/persistence evidence")
+    require(updates[0].get("background") == updates[-1].get("background") == "rgb(16, 19, 22)"
+        and updates[0].get("color") == updates[-1].get("color") == "rgb(237, 242, 245)"
+        and updates[1].get("background") == "rgb(245, 247, 249)"
+        and updates[1].get("color") == "rgb(23, 32, 39)"
+        and updates[2].get("background") == "rgb(31, 31, 31)"
+        and updates[2].get("color") == "rgb(204, 204, 204)"
+        and updates[3].get("background") == "rgb(245, 247, 249)"
+        and updates[3].get("color") == "rgb(23, 32, 39)"
+        and all(u.get("color") and u.get("color") != u.get("background") for u in updates),
+        "Native theme colors or editor Auto behavior differ")
+    require(theme.get("initial_speed", {}).get("granularity") == "hourly"
+        and type(theme["initial_speed"].get("window_start")) is str
+        and theme.get("initial_allowance", {}).get("state", {}).get("kind") == "periods"
+        and theme["initial_allowance"].get("inspection_visible") is True
+        and theme["initial_allowance"].get("has_observations") is True
+        and bool(theme["initial_allowance"].get("inspection_sha256"))
+        and len(theme["initial_allowance"].get("scope", "")) == 64,
+        "Missing seeded nondefault native speed/history state")
+    for owner in ("breakdown", "allowance"):
+        action = theme.get(owner, {})
+        require(action.get("requested", {}).get("state") is not None
+            and action["requested"]["state"] == action.get("rendered", {}).get("state"),
+            "Missing native issued theme action: " + owner)
+    require(theme["breakdown"].get("before", {}).get("state") != theme["breakdown"]["requested"]["state"]
+        and theme["allowance"]["rendered"].get("inspection_visible") is True
+        and theme["allowance"]["rendered"].get("has_observations") is True
+        and bool(theme["allowance"]["rendered"].get("inspection_sha256"))
+        and theme["allowance"]["requested"].get("scope") == theme["allowance"]["rendered"].get("scope")
+        and theme["allowance"]["rendered"]["state"] != theme["initial_allowance"]["state"]
+        and theme["allowance"]["rendered"]["inspection_sha256"] != theme["initial_allowance"]["inspection_sha256"],
+        "Native theme actions did not visibly change state")
+    speed = theme.get("speed", {})
+    require(speed.get("requested", {}).get("granularity") == speed.get("rendered", {}).get("granularity") == "daily"
+        and speed["requested"].get("windowStart") == speed["rendered"].get("window_start")
+        and bool(theme.get("action_screenshot")), "Missing native issued theme speed action")
     hover = evidence.get("hover_and_tab", {})
     require(hover.get("hover_within_250ms") is True and hover.get("script_disabled") is True
         and hover.get("numeric_format_readable") is True and hover.get("native_title_inheritance_suppressed") is True
