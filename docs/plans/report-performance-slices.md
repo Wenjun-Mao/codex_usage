@@ -1,9 +1,14 @@
 # Independently Shippable Report Performance Slices
 
 Updated: 2026-10-29, America/Toronto.
-Status: S0/S1 remain closed at 2.13.3; theme-only presentation is released as
-2.13.4 and on-demand allowance history as 2.13.5, with both official packages
-verified for each release.
+Status: **Closed. No active performance implementation.** S0/S1 closed with the
+2.13.3 usage-reading release; theme-only presentation shipped as 2.13.4 and
+on-demand allowance history as 2.13.5, with both official packages verified for
+each release. The post-capture
+and cold long-range investigations both ended in **DROP**. The subsequent
+[2.13.6 release](../release/2026-10-29-2.13.6-published.md) fixes chart identities;
+it does not claim another performance improvement.
+
 [On-demand allowance history](on-demand-allowance-history.md#published-closeout)
 closed on 2026-10-29: representative native capture-to-visible median
 15.403 to 11.760 s (3.643 s saved), with exact current/history/CSV and full gates.
@@ -18,7 +23,118 @@ credible two-second saving while preserving exact current math and immediate
 charts. No production change, version bump, CI or release followed. The target
 was retained, and the parked allowance draft/indexer remains closed to execution.
 
-## Outcome And Scope
+Keep this roadmap as a historical decision record, not an active task list.
+The briefs, delivery map and older allowance proposal below do not authorize
+resuming work. Any future performance effort should start from a current user
+priority and a measured opportunity, rather than automatically continuing a
+dropped investigation or the parked rewrite. Diagnostic evidence remains local;
+this documentation closeout changes no product behavior or release packages.
+
+## Cold Long-Range Reports: Closed (DROP)
+
+### Archived Investigation Brief
+
+The owner requested the short ship-or-drop investigation on 2026-10-29 after
+closing the post-capture slice. It used retained main at `da104ae`, with unchanged
+shipped 2.13.5 product source `497c5a8`. The following brief records the historical
+diagnostic scope, not a current implementation, CI or release grant.
+
+Primary workflow: first opening of the **30-day/all-projects** view after the
+default Today dashboard has settled, at the same evidence revision. Account
+preparation may be naturally warm; the selected-range report must be unopened.
+Project selection is secondary, using the existing representative selection.
+Do not relabel first-process startup, warm navigation or post-capture work as
+this operation. Carry forward a proposed **>=2-second complete-workflow saving**
+as the materiality bar before any scratch candidate measurement.
+
+Reuse existing ignored evidence and safely owned offline copies, with unchanged
+source/session/account isolation. Establish unprofiled wall/CPU/RSS first, then
+attribute usage reading/materialization, repeated aggregation, speed/breakdown
+composition, HTML/serialization/publication and native rendering as needed.
+Previous source-only matrix timing (~10.2 seconds for first 30d) is a clue, not a
+fresh native packaged baseline. Actual bundled collectors, not a replacement
+source/API server, must support any package-latency claim. Keep source/API and
+profiled observations labeled; inclusive phase times are not additive savings.
+
+Use small scratch diagnostics only when a specific hypothesis could change the
+decision. Preserve raw samples and output differences; no production patch,
+new cache/index lifecycle, extra UI deferral, pricing/lineage shortcut or full
+qualification campaign is justified just to investigate. No live changes,
+original session/account access, private uploads or CI. Keep timing observers
+outside large artifact flushes and guard discovery before launch; disposable
+HOME alone is not isolation.
+
+Return a supported drop or one narrow, causally grounded implementation
+recommendation with estimated benefit/effort and remaining proof needs. A
+positive screen is not implementation approval or a shipped improvement.
+Forecast roughly 1-2 hours, not a deadline or retry quota. Record consequential
+findings here and preserve ignored diagnostic evidence; do not create another
+long implementation plan or resume a closed slice during this investigation.
+
+### Diagnostic Closeout: DROP (2026-10-29)
+
+The isolated source screen found **no narrow, credible >=2-second complete-workflow
+saving**. Stop this slice without implementation, native campaign or a new plan.
+This is a bounded negative feasibility result, not a claim that the report cannot
+be improved through a broader design.
+
+Fresh unprofiled source/API timings were **8.209 s wall / 8.092 s CPU** for the
+first 30-day/all-projects report, **0.223 s** warm repeat (cache hit, identical
+HTML), and **4.568 s** for the existing highest-count project selection. Today
+settled first; all operations retained the same evidence token and deferred,
+not-yet-requested allowance history. A separate coarse-wrapper run was 8.029 s;
+its disjoint wrapped cost was 7.909 s, with 0.120 s unwrapped remainder. Usage
+read/decode cost 1.286 s; lineage finalization/transitions 0.030 s; valuation
+1.095 s; daily activity 0.335 s; daily/hourly aggregation together 0.595 s;
+other summary/breakdown aggregation 0.387 s; project economics 0.641 s; speed
+aggregation 1.470 s; selected breakdown aggregation 0.261 s; complete breakdown
+rendering 1.564 s, including 1.044 s for 29 day displays; final breakdown cache
+serialization/publication 0.198 s. Parent/child values here must not be added
+twice. Other base HTML/cache work was small. No individual narrow owner has two
+seconds of removable cost; the 2.758 s materialization parent combines required
+reading, pricing and activity work. No scratch candidate with a credible margin
+was identified, so none was run. cProfile is retained separately (12.326 s,
+38.0 million calls) and is not an adoption timing.
+
+Input coverage: 209,744 selected / 489,403 total trusted events; 1,887/3,752
+trusted sources; 436/783 contexts; 42/77 projects; 200,239 selected speed facts;
+383,036 quota rows. Offline availability is partial: 4,092 of 4,093 registered
+source paths are missing, with one owned synthetic source. Normalized retained
+evidence remains available. Stage used a read-only WAL-consistent SQLite backup
+of the already owned prepared input; original prepared MAIN/WAL hashes were
+preserved. Clock was fixed at `2026-10-26T22:33:26.414000+00:00`, Toronto timezone;
+source/runtime/cache/token/input/harness identities and exact boundaries are in
+ignored `output/performance/cold-long-range-20261029/identities.json` and the
+individual sample JSON files. Peak process RSS was about 1.067 GiB at cold 30d
+and 1.312 GiB after project selection; these are lifetime high-water marks,
+not incremental operation memory.
+
+These source-only observations are not gains against historical 10.177 s, nor
+packaged/native latency evidence. No native launch was needed for the negative
+screen. Different owned homes change action/cache identities and HTML hashes;
+there is no cross-home candidate exactness claim. Current runs used isolated
+environments, authoritative missing CLI sentinels, discovery-alias guards and
+original-JSONL-open guards; no capture or account RPC ran. Historical earlier
+account access remains unknown and was not investigated. One post-measurement
+summary command used system Python lacking `hashlib.file_digest`; the failure
+was preserved and the identity check completed with the measured virtualenv.
+
+Inspect ignored evidence at `output/performance/cold-long-range-20261029/`:
+`baseline-01.json`, `profile-01.json`/`.prof`, `phases-01.json`,
+`work-counts.json`, `identities.json`, `findings.json`, exact harness revisions,
+logs, HTML and isolated input copies. At diagnostic closeout, product source
+matched shipped `497c5a8`, retained main was `da104ae`, and prepared-input hashes
+were unchanged. Only this existing roadmap was edited in tracked files; the
+diagnostic run changed no source/tests, dependencies, settings, CI, commits,
+publication or live state. This record was committed separately after 2.13.6.
+No implementation benefit or engineering estimate is supported. A future positive
+claim would need a new narrow causal hypothesis, output proof and matched actual
+bundled-collector/native evidence; it is not authorized by this closeout.
+
+## Historical Outcome And Scope
+
+The remaining sections retain the original plans and execution history. Current
+disposition is the closed status above, not the prospective instructions below.
 
 Improve a complete user workflow on the released normal report path without
 waiting for the parked indexer to be finished. Each adopted slice must deliver
