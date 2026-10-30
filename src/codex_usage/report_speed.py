@@ -43,8 +43,7 @@ def command(nav, granularity, window_start=None, label=""):
 
 def render_speed(aggregates, nav, status, timezone):
     models = sorted(aggregates["summaries"], key=model_display_sort_key)
-    slots = assign_model_color_slots(tuple(models[:7]))
-    slots.update({m: i % 7 for i, m in enumerate(models[7:])})
+    slots = assign_model_color_slots(tuple(models))
     buckets = calendar_buckets(nav, timezone)
     chart, rows = render_plot(aggregates[nav["granularity"]], buckets, models, slots, detail)
     legend = "".join(f'<span>{legend_marker(slots[m])}{html.escape(m)}</span>' for m in models)

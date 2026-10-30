@@ -14,7 +14,7 @@ from codex_usage.report_speed import render_speed, summary_html
 from codex_usage.speed_queries import chart_navigation, speed_aggregates, store_aggregates
 from codex_usage.speed_store import revision
 
-SPEED_RENDER_REVISION = 2
+SPEED_RENDER_REVISION = 3
 
 
 def render_speed_report(codex_home, *, speed_granularity=None, speed_window_start=None, speed_window_scope=None, _snapshot=None, **kwargs):

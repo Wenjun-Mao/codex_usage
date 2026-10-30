@@ -101,7 +101,7 @@ def test_report_view_model_reserves_other_model_color_slot_seven() -> None:
 
     view_model = _view_model(records)
 
-    assert [item.color_slot for item in view_model.model_legend[:-1]] == list(range(7))
+    assert [item.color_slot for item in view_model.model_legend[:-1]] == [6, 3, 2, 2, 4, 5, 3]
     assert view_model.model_legend[-1].key == OTHER_MODEL_KEY
     assert view_model.model_legend[-1].color_slot == 7
     assert view_model.model_points[-1].key == OTHER_MODEL_KEY

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.13.6 - 2026-10-29
+
+- Keep each model's colors and point-marker shapes consistent across usage,
+  cost and output-speed charts, legends, tooltips and compact overviews.
+- Preserve model identities across filters, ordering and future releases, with
+  fixed day/night colors and compatibility tests guarding the design contract.
+- Keep project colors, neutral Other groups and separate account, small-sample
+  and unknown/API-excluded cost indicators distinct. Refresh cached chart HTML
+  without changing accounting, pricing, capture or retained history.
+
 ## 2.13.5 - 2026-10-29
 
 - Load detailed allowance history on request so ordinary Usage refreshes keep

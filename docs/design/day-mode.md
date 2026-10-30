@@ -117,6 +117,41 @@ Chart axis behavior:
 - y-axis labels may use compact financial notation
 - vertical grid lines should not create visual noise
 
+## Stable model identities
+
+All model charts use `model_presentation.model_color_slot()` (or `model_color()`
+for CSS values). Slots are persistent design identities, independent of visible
+models, ordering, range, project filters, or release. The baseline is the 2.13.5
+speed and project/model comparison design; usage time bars and project stacks
+adopt it. Bar legends retain bar swatches. Point series, compact overviews, and
+point legends use the slot's geometry from `report_speed_marks.MARKERS`.
+
+| Model | Slot | Day | Night | Point shape |
+| --- | --- | --- | --- | --- |
+| GPT-6 Astra | 0 | `#087f8c` | `#45c5d6` | Square |
+| GPT-5.6 Sol | 1 | `#c47f00` | `#f2b84b` | Circle |
+| GPT-5.6 Terra | 2 | `#2e8b57` | `#5fc98a` | Diamond |
+| GPT-5.6 Luna | 3 | `#7656c7` | `#b59af1` | Down triangle |
+| GPT-6 Sol | 4 | `#3568c8` | `#6f9cf4` | Pentagon |
+| GPT-6 Luna | 5 | `#bb477d` | `#ee7aaa` | Up triangle |
+| GPT-6.1 Sol | 6 | `#c74f37` | `#ef806b` | Circle |
+| GPT-6.1 Terra | 8 | `#727327` | `#c6c76a` | Hexagon |
+
+New known identities append slots without renumbering or restyling existing
+ones. Promoting an already-used fallback name into the explicit model registry
+must retain its prior slot and point shape unless an intentional reviewed design
+migration changes that identity; appending a new slot does not authorize such a
+change. Unknown names use case-folded SHA-256 and a **frozen** fallback slot tuple;
+never grow that tuple with the palette or resolve collisions from visible peers.
+Finite color/shape collisions are allowed, so labels remain essential. Slot 7
+is neutral Other, excluded from model assignment. Project colors and account
+readings use separate domains; hollow small-sample points and outlined
+unknown/API-excluded cost diamonds retain their status meanings. Forced colors
+use system text colors and preserve point geometry. Exact tokens/geometry are
+pinned in `tests/test_model_design_compatibility.py`; cross-renderer output and
+presentation-cache invalidation are covered in `tests/test_model_chart_identity.py`.
+Changing existing identities is an intentional reviewed design change.
+
 ## Review Checklist
 
 Before shipping a day-mode UI change, check:

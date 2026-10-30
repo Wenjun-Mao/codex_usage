@@ -1,5 +1,6 @@
 """Fixed-size, visibly bounded charts; semantic exact values live beside them."""
 import html
+from codex_usage.model_presentation import model_color
 from codex_usage.report_breakdown_axis import time_axis
 from codex_usage.report_breakdown_numbers import metric_label, numeric_axis, tick_ceiling
 from codex_usage.report_breakdown_hover import bucket_hover, css as hover_css
@@ -7,15 +8,18 @@ from codex_usage.report_breakdown_overlay import CapturedLayer, captured_layer
 from codex_usage.report_breakdown_layout import axis_linked_chart
 
 
+# Separate project/account palette; retained for callers of the overlay API.
 COLORS = ("#087ea4", "#bf4565", "#24896e", "#a57515", "#7855b6", "#df6c32", "#56859c")
 
 
-def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=None, intervals=None, display_names=None, bucket_labels=None, bucket_details=None, timezone=None, daily=False, account_points=(), account_overlay="none"):
+def plot(bars, *, metric, labels, links=None, title="", height=180, incomplete=None, intervals=None, display_names=None, bucket_labels=None, bucket_details=None, timezone=None, daily=False, account_points=(), account_overlay="none", color_domain="model"):
     observed_maximum = max((sum(v.values()) for v in bars), default=0)
     maximum = tick_ceiling(observed_maximum)
     width = 720
     step = width / max(1, len(bars))
-    slots = {label: COLORS[i % len(COLORS)] for i, label in enumerate(labels)}
+    slots = {label: (model_color(label) if color_domain == "model" else
+        "var(--model-7)" if label == "__other_projects__" else COLORS[i % len(COLORS)])
+        for i, label in enumerate(labels)}
     marks = []
     hover_targets = []
     for index, values in enumerate(bars):

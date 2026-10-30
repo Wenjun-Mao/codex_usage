@@ -84,7 +84,7 @@ def time_view(info, state, nav, timezone, partition, ranking, command, uri, deta
         for day in days:
             for p in partition(("meter-display:" if state["overlay"] == "weekly" else "balance-display:") + day, {"points": []})["points"]:
                 points[json_identity(p)] = p
-    content += plot(bars, metric=state["metric"], labels=labels, links=links, incomplete=unknown, intervals=[(b["start"], b["end"]) for b in buckets], display_names=names if state["group"] == "project" else None, bucket_labels=[b["day"] if daily else timestamp_label(b["start"], timezone) for b in buckets], bucket_details=descriptions, timezone=timezone, daily=daily, title="Daily selected range" if daily else "Chronological local hours", account_points=list(points.values()), account_overlay=state["overlay"])
+    content += plot(bars, metric=state["metric"], labels=labels, links=links, incomplete=unknown, intervals=[(b["start"], b["end"]) for b in buckets], display_names=names if state["group"] == "project" else None, bucket_labels=[b["day"] if daily else timestamp_label(b["start"], timezone) for b in buckets], bucket_details=descriptions, timezone=timezone, daily=daily, title="Daily selected range" if daily else "Chronological local hours", account_points=list(points.values()), account_overlay=state["overlay"], color_domain=state["group"])
     if state["overlay"] != "none":
         content += '<details><summary>Exact account readings by local day</summary><div class="ub-hour-labels">' + ''.join(command(nav, state, day, detail="readings:" + day) for day in days) + '</div></details>'
         if state["detail"].startswith("readings:"):

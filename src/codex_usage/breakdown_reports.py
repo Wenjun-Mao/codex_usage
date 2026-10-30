@@ -23,7 +23,7 @@ from codex_usage.parser import finalize_session_records
 from codex_usage.project_transitions import apply_project_transitions
 
 BREAKDOWN_REVISION = 8
-BREAKDOWN_RENDER_REVISION = 1
+BREAKDOWN_RENDER_REVISION = 2
 
 
 def digest(value):

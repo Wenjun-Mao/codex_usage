@@ -175,10 +175,9 @@ def test_build_report_breakdown_keeps_top_seven_visual_models_and_groups_the_res
     assert breakdown.visual_model_rows[-1].usage.total_tokens == 70
     assert [row.label for row in breakdown.model_rows] == [*expected_top_seven, *expected_other_models]
     assert breakdown.visual_models == reversed_breakdown.visual_models
-    assert [item.color_slot for item in build_breakdown_view(breakdown).model_legend] == [
-        *range(7),
-        7,
-    ]
+    legend = build_breakdown_view(breakdown).model_legend
+    assert [item.color_slot for item in legend] == [0, 6, 6, 2, 6, 1, 5, 7]
+    assert legend[-1].key == OTHER_MODEL_KEY
 
 
 def test_build_report_breakdown_rejects_more_than_seven_exact_visual_models() -> None:

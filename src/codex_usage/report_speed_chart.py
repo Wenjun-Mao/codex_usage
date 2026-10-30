@@ -120,8 +120,10 @@ def render_plot(points, buckets, models, slots, detail, *, overview=False, highl
             key = f'{"overview" if overview else "point"}-{len(tooltips)}'
             tooltips.append(tooltip(key, description, x))
             if overview:
-                marks.append(f'<circle data-speed-tip="{key}" cx="{x:.4f}%" cy="{y:.2f}" r="2.5" fill="{color}" '
-                             f'role="img" aria-label="{label}"/>')
+                small = ' class="speed-point-small"' if point["small"] else ''
+                marks.append(f'<g{small} data-speed-tip="{key}" style="color:{color}" '
+                             f'role="img" aria-label="{label}">'
+                             + marker(slots[model], x, y, compact=True) + '</g>')
                 continue
             target = f"speed-detail-{len(rows)}"
             small = ' speed-point-small' if point["small"] else ''

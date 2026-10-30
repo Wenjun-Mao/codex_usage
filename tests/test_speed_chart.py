@@ -232,5 +232,5 @@ def test_speed_tooltips_are_script_free_without_native_point_popup_or_delay():
     overview, _ = render_plot([point(bucket)], [bucket], ['gpt-6.1-sol'], {'gpt-6.1-sol': 6}, detail, overview=True)
     root = ElementTree.fromstring(overview)
     assert root.findall('.//title') == [] and root.findall('.//a') == []
-    assert root.find('.//circle').get('data-speed-tip') == 'overview-0'
+    assert root.find('.//g[@data-speed-tip="overview-0"]').find('.//circle') is not None
     assert root.find(".//span[@data-speed-tip-for='overview-0']") is not None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 
 _GPT_GENERATION = re.compile(
@@ -22,7 +23,31 @@ _STABLE_COLOR_SLOTS = {
     "gpt-6-sol": 4,
     "gpt-6-luna": 5,
     "gpt-6.1-sol": 6,
+    "gpt-6.1-terra": 8,
 }
+# Slot 7 belongs to neutral Other aggregates, never an individual model.
+MODEL_COLOR_SLOTS = (0, 1, 2, 3, 4, 5, 6, 8)
+# Cross-release contract: this fallback domain is frozen, even when the known
+# registry or MODEL_COLOR_SLOTS grows. Never change its order or length.
+_FALLBACK_COLOR_SLOTS = (0, 1, 2, 3, 4, 5, 6, 8)
+
+
+def model_color_slot(model: str) -> int:
+    """Presentation identity only; labels and accounting model keys are untouched.
+
+    Unknown names share a finite palette (and its marker shapes). Hash collisions
+    are intentional: resolving them from visible peers would change identity on
+    filtering. SHA-256 is stable across processes, unlike Python's hash().
+    """
+    normalized = model.casefold()
+    if normalized in _STABLE_COLOR_SLOTS:
+        return _STABLE_COLOR_SLOTS[normalized]
+    index = int.from_bytes(hashlib.sha256(normalized.encode()).digest()[:8])
+    return _FALLBACK_COLOR_SLOTS[index % len(_FALLBACK_COLOR_SLOTS)]
+
+
+def model_color(model: str) -> str:
+    return f"var(--model-{model_color_slot(model)})"
 
 
 def model_display_sort_key(model: str) -> tuple[object, ...]:
@@ -41,18 +66,5 @@ def model_display_sort_key(model: str) -> tuple[object, ...]:
 
 
 def assign_model_color_slots(models: tuple[str, ...]) -> dict[str, int]:
-    """Keep known model colors stable and allocate remaining chart slots deterministically."""
-    assigned: dict[str, int] = {}
-    used: set[int] = set()
-
-    for model in models:
-        preferred = _STABLE_COLOR_SLOTS.get(model.casefold())
-        if preferred is not None and preferred not in used:
-            assigned[model] = preferred
-            used.add(preferred)
-
-    remaining_slots = (slot for slot in range(7) if slot not in used)
-    for model in models:
-        if model not in assigned:
-            assigned[model] = next(remaining_slots)
-    return assigned
+    """Assign each name independently of visible membership and order."""
+    return {model: model_color_slot(model) for model in models}

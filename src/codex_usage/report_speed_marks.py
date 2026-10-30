@@ -14,14 +14,17 @@ MARKERS = (
     '<path d="M0 -5 4 -2 3 4 -3 4 -4 -2Z"/>',
     '<path d="M0 -5 5 4 -5 4Z"/>',
     '<circle cx="0" cy="0" r="4"/>',
+    '<circle cx="0" cy="0" r="4"/>',  # Neutral aggregate slot; not a model.
+    '<path d="M-5 0 -2.5 -4.3 2.5 -4.3 5 0 2.5 4.3 -2.5 4.3Z"/>',
 )
 
 
-def marker(slot, x, y):
+def marker(slot, x, y, *, compact=False):
     # Direct primitives avoid SVG use-instance hover differences across engines.
+    shape = f'<g transform="scale(.65)">{MARKERS[slot]}</g>' if compact else MARKERS[slot]
     return (f'<g class="speed-marker" data-model-slot="{slot}" '
             f'style="transform:translate({x:.4f}%,{y:.2f}px);transform-box:view-box">'
-            f'{MARKERS[slot]}</g>')
+            f'{shape}</g>')
 
 
 def legend_marker(slot):

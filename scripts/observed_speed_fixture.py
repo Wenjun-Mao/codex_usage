@@ -72,13 +72,13 @@ def legacy_speed_home(home):
     return db, baseline
 
 
-def chart_home(home):
+def chart_home(home, *, models=(("gpt-6-astra", 18), ("gpt-6.1-sol", 12), ("gpt-6-luna", 5))):
     """Three exact models, sparse dates, varied efforts and normal/small samples."""
     from codex_usage.agent_paths import ledger_database_path
     from codex_usage.ledger_schema import open_ledger
     from codex_usage.ledger_sync import synchronize_parser_workset
     from codex_usage.session_cache import refresh_cached_session_data
-    for model, seconds in (("gpt-6-astra", 18), ("gpt-6.1-sol", 12), ("gpt-6-luna", 5)):
+    for model, seconds in models:
         path = write_source(home, task=model, count=0, at=AT - timedelta(days=8))
         index = 0
         for day in range(9):

@@ -10,6 +10,7 @@ _MODEL_COLOR_CSS = """
       --model-5: #bb477d;
       --model-6: #c74f37;
       --model-7: #8b949f;
+      --model-8: #727327;
       --model-separator: var(--surface);
       --model-focus-inner: var(--text);
       --model-focus-outer: var(--accent-strong);
@@ -23,6 +24,7 @@ _MODEL_COLOR_CSS = """
       --model-5: #ee7aaa;
       --model-6: #ef806b;
       --model-7: #a5adb8;
+      --model-8: #c6c76a;
     }
     .model-color-slot-0 { background: var(--model-0); }
     .model-color-slot-1 { background: var(--model-1); }
@@ -32,6 +34,20 @@ _MODEL_COLOR_CSS = """
     .model-color-slot-5 { background: var(--model-5); }
     .model-color-slot-6 { background: var(--model-6); }
     .model-color-slot-7 { background: var(--model-7); }
+    .model-color-slot-8 { background: var(--model-8); }
+    @media (forced-colors: active) {
+      :root, html[data-codex-theme="night"] {
+        --model-0: CanvasText;
+        --model-1: CanvasText;
+        --model-2: CanvasText;
+        --model-3: CanvasText;
+        --model-4: CanvasText;
+        --model-5: CanvasText;
+        --model-6: CanvasText;
+        --model-7: GrayText;
+        --model-8: CanvasText;
+      }
+    }
 """
 
 _PROJECT_BREAKDOWN_CSS = """
@@ -212,6 +228,7 @@ _PROJECT_BREAKDOWN_CSS = """
       --model-5: var(--text);
       --model-6: var(--text);
       --model-7: var(--text);
+      --model-8: var(--text);
       --model-separator: var(--bg);
       --model-focus-inner: var(--bg);
       --model-focus-outer: var(--accent);

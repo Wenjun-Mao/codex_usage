@@ -6,7 +6,8 @@ from urllib.parse import quote
 from codex_usage.breakdown_aggregation import ranked_projects, total
 from codex_usage.report_breakdown_numbers import compact_decimal
 from codex_usage.report_numbers import decimal_text
-from codex_usage.report_usage_breakdown_chart import COLORS, css
+from codex_usage.report_usage_breakdown_chart import css
+from codex_usage.model_presentation import model_color
 from codex_usage.report_breakdown_time import time_view
 
 
@@ -79,13 +80,12 @@ def render_breakdown(metadata, info, state, nav, reason, timezone, partition, *,
         maximum = max((total(p["models"].values())[state["metric"]] for _, p in ranking), default=0) or 1
         for key, project in ranking:
             value = total(project["models"].values())
-            segments = ''.join(f'<span style="width:{v[state["metric"]] / maximum * 100:.6f}%;background:{COLORS[models.index(m) % len(COLORS)]}" title="{html.escape(project["label"] + " | " + m)}: {compact_decimal(v[state["metric"]], unit=state["metric"])} {state["metric"]}"></span>' for m, v in project["models"].items())
+            segments = ''.join(f'<span style="width:{v[state["metric"]] / maximum * 100:.6f}%;background:{model_color(m)}" title="{html.escape(project["label"] + " | " + m)}: {compact_decimal(v[state["metric"]], unit=state["metric"])} {state["metric"]}"></span>' for m, v in project["models"].items())
             label = command(nav, state, project["label"], detail="other" if key is None else "", project=key or "", view="time" if key is not None else "project")
             unknown = value["credit_unknown"] if state["metric"] == "credits" else value["unknown"] if state["metric"] == "cost" else 0
             content += f'<div class="ub-rank">{label}<div class="ub-stack">{segments}</div><strong title="{decimal_text(value[state["metric"]])}">{compact_decimal(value[state["metric"]], unit=state["metric"])}{" + unknown" if unknown else ""}{" + excluded" if state["metric"] == "cost" and value["api_excluded"] else ""}</strong></div>'
     if state["view"] == "project":
-        legend = [(m, i) for i, m in enumerate(models)]
-        content += '<div class="ub-legend">' + ''.join(f'<span><i style="background:{COLORS[i % len(COLORS)]}"></i>{html.escape(label)}</span>' for label, i in legend) + '</div>'
+        content += '<div class="ub-legend">' + ''.join(f'<span><i style="background:{model_color(model)}"></i>{html.escape(model)}</span>' for model in models) + '</div>'
     rows = [dict(v, project=p, label=project["label"], model=m) for p, project in info["projects"].items() for m, v in project["models"].items()]
     if state["detail"] == "other":
         members = next((p["members"] for key, p in ranking if key is None), [])
