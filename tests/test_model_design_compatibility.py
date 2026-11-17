@@ -18,6 +18,8 @@ BASELINE = {
     'gpt-6-luna': (5, '#bb477d', '#ee7aaa', '<path d="M0 -5 5 4 -5 4Z"/>'),
     'gpt-6.1-sol': (6, '#c74f37', '#ef806b', '<circle cx="0" cy="0" r="4"/>'),
     'gpt-6.1-terra': (8, '#727327', '#c6c76a', '<path d="M-5 0 -2.5 -4.3 2.5 -4.3 5 0 2.5 4.3 -2.5 4.3Z"/>'),
+    'gpt-6.2-astra': (9, '#84478f', '#dfa1f0', '<path d="M0 -5 1.5 -1.5 5 0 1.5 1.5 0 5 -1.5 1.5 -5 0 -1.5 -1.5Z"/>'),
+    'gpt-6.2-sol': (10, '#98562b', '#f0a370', '<path d="M-2 -5 2 -5 2 -2 5 -2 5 2 2 2 2 5 -2 5 -2 2 -5 2 -5 -2 -2 -2Z"/>'),
 }
 
 
@@ -59,8 +61,8 @@ def test_fallback_is_frozen_when_known_registry_and_palette_expand():
     expected = {'custom-one': 1, 'custom-two': 6, 'custom-three': 1,
                 'GPT-FUTURE': 8, 'custom-<unsafe>"&': 6}
     assert identity.assign_model_color_slots(unknowns) == expected
-    with patch.dict(identity._STABLE_COLOR_SLOTS, {'new-known-model': 9}), \
-         patch.object(identity, 'MODEL_COLOR_SLOTS', (*identity.MODEL_COLOR_SLOTS, 9, 10)):
+    with patch.dict(identity._STABLE_COLOR_SLOTS, {'new-known-model': 11}), \
+         patch.object(identity, 'MODEL_COLOR_SLOTS', (*identity.MODEL_COLOR_SLOTS, 11)):
         assert identity.assign_model_color_slots(unknowns) == expected
         for model, (slot, *_rest) in BASELINE.items():
             assert identity.model_color_slot(model) == slot

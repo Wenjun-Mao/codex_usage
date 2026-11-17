@@ -136,6 +136,12 @@ point legends use the slot's geometry from `report_speed_marks.MARKERS`.
 | GPT-6 Luna | 5 | `#bb477d` | `#ee7aaa` | Up triangle |
 | GPT-6.1 Sol | 6 | `#c74f37` | `#ef806b` | Circle |
 | GPT-6.1 Terra | 8 | `#727327` | `#c6c76a` | Hexagon |
+| GPT-6.2 Astra | 9 | `#84478f` | `#dfa1f0` | Four-point star |
+| GPT-6.2 Sol | 10 | `#98562b` | `#f0a370` | Plus |
+
+The 2.13.7 launch assigns distinct slots to the two GPT-6.2 models, which
+otherwise shared the same fallback slot. This intentional launch assignment
+does not change any other model's registered or fallback identity.
 
 New known identities append slots without renumbering or restyling existing
 ones. Promoting an already-used fallback name into the explicit model registry

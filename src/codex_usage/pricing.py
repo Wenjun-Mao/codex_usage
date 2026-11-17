@@ -21,7 +21,7 @@ from codex_usage.pricing_schedule import (
 )
 
 
-PRICING_AS_OF = "2026-10-26"
+PRICING_AS_OF = "2026-11-17"
 PRICING_METHOD = "effective_dated"
 BASELINE_EFFECTIVE_FROM = datetime(1970, 1, 1, tzinfo=UTC)
 GPT_5_6_API_EFFECTIVE_FROM = datetime(2026, 6, 26, tzinfo=UTC)
@@ -42,6 +42,7 @@ GPT_6_ASTRA_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
 GPT_6_SOL_LUNA_API_EFFECTIVE_FROM = datetime(2026, 9, 22, tzinfo=UTC)
 GPT_6_1_SOL_PRICING_EFFECTIVE_FROM = datetime(2026, 9, 29, tzinfo=UTC)
 GPT_6_1_TERRA_PRICING_EFFECTIVE_FROM = datetime(2026, 10, 26, tzinfo=UTC)
+GPT_6_2_PRICING_EFFECTIVE_FROM = datetime(2026, 11, 17, tzinfo=UTC)
 GPT_5_6_CURRENT_CREDIT_EFFECTIVE_FROM = datetime(2026, 9, 4, tzinfo=UTC)
 
 
@@ -83,6 +84,24 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = tuple(
     )
     for row in BEDROCK_API_RATE_ROWS
 ) + (
+    _effective_rate(
+        "gpt-6.2-astra",
+        input_per_1m=8.00,
+        cached_input_per_1m=0.40,
+        output_per_1m=40.00,
+        cache_write_input_per_1m=10.00,
+        effective_from=GPT_6_2_PRICING_EFFECTIVE_FROM,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
+    ),
+    _effective_rate(
+        "gpt-6.2-sol",
+        input_per_1m=2.00,
+        cached_input_per_1m=0.10,
+        output_per_1m=10.00,
+        cache_write_input_per_1m=2.50,
+        effective_from=GPT_6_2_PRICING_EFFECTIVE_FROM,
+        request_pricing_contract=LARGE_CONTEXT_API_PRICING,
+    ),
     _effective_rate(
         "gpt-6.1-terra",
         input_per_1m=1.00,
@@ -205,6 +224,20 @@ API_PRICING_USD_SCHEDULE: tuple[EffectiveModelRate, ...] = tuple(
 )
 
 CODEX_CREDIT_RATE_SCHEDULE: tuple[EffectiveModelRate, ...] = (
+    _effective_rate(
+        "gpt-6.2-astra",
+        input_per_1m=200.0,
+        cached_input_per_1m=10.0,
+        output_per_1m=1_000.0,
+        effective_from=GPT_6_2_PRICING_EFFECTIVE_FROM,
+    ),
+    _effective_rate(
+        "gpt-6.2-sol",
+        input_per_1m=50.0,
+        cached_input_per_1m=2.5,
+        output_per_1m=250.0,
+        effective_from=GPT_6_2_PRICING_EFFECTIVE_FROM,
+    ),
     _effective_rate(
         "gpt-6.1-terra",
         input_per_1m=25.0,

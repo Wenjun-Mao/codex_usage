@@ -74,6 +74,26 @@ def test_overview_points_use_the_same_model_shapes_as_detail_and_legend():
         assert primitive is not None
 
 
+def test_gpt_6_2_has_distinct_identities_across_usage_and_speed_charts():
+    models = ('gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6-astra', 'gpt-6.1-sol')
+    usage = plot([{model: 10 for model in models}], metric='cost', labels=models,
+                 incomplete=[False], color_domain='model')
+    speed = speed_document(models, hourly=True)
+    root = ET.fromstring(('<main>'+usage+speed+'</main>').replace('&middot;', '&#183;'))
+    for model, slot in (('gpt-6.2-astra', 9), ('gpt-6.2-sol', 10)):
+        assert assign_model_color_slots((model,)) == {model: slot}
+        color = f'var(--model-{slot})'
+        assert any(model in bar.find('desc').text for bar in root.findall(f'.//rect[@fill="{color}"]'))
+        assert f'background:{color}' in usage
+        legend = next(e for e in root.findall('.//div[@class="speed-legend"]/span')
+                      if ''.join(e.itertext()) == model)
+        assert legend.find('svg').get('style') == f'color:{color}'
+        markers = root.findall(f'.//g[@data-model-slot="{slot}"]')
+        assert len(markers) >= 2
+        shape = ET.tostring(legend.find('svg')[0])
+        assert all(any(ET.tostring(node) == shape for node in mark.iter()) for mark in markers)
+
+
 def test_project_color_domain_keeps_its_separate_palette():
     from codex_usage.report_usage_breakdown_chart import COLORS
     document = plot([{'project': 10}], metric='tokens', labels=['project'], color_domain='project')

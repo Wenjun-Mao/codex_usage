@@ -24,9 +24,11 @@ _STABLE_COLOR_SLOTS = {
     "gpt-6-luna": 5,
     "gpt-6.1-sol": 6,
     "gpt-6.1-terra": 8,
+    "gpt-6.2-astra": 9,
+    "gpt-6.2-sol": 10,
 }
 # Slot 7 belongs to neutral Other aggregates, never an individual model.
-MODEL_COLOR_SLOTS = (0, 1, 2, 3, 4, 5, 6, 8)
+MODEL_COLOR_SLOTS = (0, 1, 2, 3, 4, 5, 6, 8, 9, 10)
 # Cross-release contract: this fallback domain is frozen, even when the known
 # registry or MODEL_COLOR_SLOTS grows. Never change its order or length.
 _FALLBACK_COLOR_SLOTS = (0, 1, 2, 3, 4, 5, 6, 8)

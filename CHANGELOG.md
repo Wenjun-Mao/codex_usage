@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.13.7 - 2026-11-17
+
+- Add GPT-6.2 Astra and Sol with launch-date Standard API-equivalent prices,
+  long-context API pricing and Standard Codex credit estimates.
+- Give both models distinct, stable chart colors and point markers without
+  changing existing model styles, capture or subscription allowance readings.
+
 ## 2.13.6 - 2026-10-29
 
 - Keep each model's colors and point-marker shapes consistent across usage,
