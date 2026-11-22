@@ -58,7 +58,8 @@ from codex_usage.session_replica_selection import select_replicas
 from codex_usage.replica_accounting import reconcile_accounting
 from codex_usage.history_upgrade_discovery import DISCOVERY_BYTES, discover_accounting_upgrades, defer_upgrade_dependency
 from codex_usage.session_history import source_identity
-from codex_usage.session_history_invalidation import pending_repair_guards
+from codex_usage.session_history_invalidation import mark_history_invalidations, pending_repair_guards
+from codex_usage.history_gap_recovery import find_restored_openings
 
 _COMMIT_GROUP_SIZE = 8
 
@@ -75,6 +76,7 @@ def refresh_files(
     defer_full_fallback: bool = False,
     preferred_paths: tuple[str, ...] = (),
     history_inventory: list[SessionFileInventoryEntry] | None = None,
+    allow_missing_history: bool = False,
 ) -> CacheRefreshOutcome:
     cached_rows = _load_cached_rows(connection)
     _reconcile_fallback_file_keys(inventory, cached_rows)
@@ -85,6 +87,9 @@ def refresh_files(
     selection = select_replicas(connection, inventory, cached_rows,
         max_bytes=session_history_requests.HISTORY_EXTRA_READ_BUDGET-discovery.bytes_read,
         protected_keys=discovery.blocked)
+    history_budget = session_history_requests.HISTORY_EXTRA_READ_BUDGET - discovery.bytes_read - selection.bytes_read
+    restored, restoration_bytes = (find_restored_openings(connection, physical_inventory, budget=history_budget)
+                                   if allow_missing_history else ((), 0))
     cached_rows = _load_cached_rows(connection)
     parse_entries, reused, missing_marked, affected_task_ids = _commit_preflight(
         connection,
@@ -92,6 +97,7 @@ def refresh_files(
         cached_rows,
         rebuilt=rebuilt,
         discovery=discovery,
+        restored_openings=restored,
     )
     affected_task_ids.update(selection.affected_task_ids)
     refreshed_rows = _load_cached_rows(connection)
@@ -100,12 +106,13 @@ def refresh_files(
         preferred_paths=preferred_paths, blocked_sources=selection.blocked,
         max_total_parse_bytes=max_total_parse_bytes,
         max_parse_bytes=max_parse_bytes,
+        allow_missing_history=allow_missing_history,
     )
     requests, history_metadata_bytes = session_history_requests.prepare_history_requests(
         physical_inventory,
         requests,
         refreshed_rows,
-        extra_read_budget=session_history_requests.HISTORY_EXTRA_READ_BUDGET-selection.bytes_read-discovery.bytes_read,
+        extra_read_budget=history_budget-restoration_bytes,
     )
 
     worker_spans: list[WorkerSpan] = []
@@ -173,7 +180,8 @@ def refresh_files(
             result.outcome in {"full_fallback", "stale"}
             for result in all_results
         ),
-        source_bytes_read=discovery.bytes_read + selection.bytes_read + history_metadata_bytes + sum(result.bytes_read for result in all_results),
+        source_bytes_read=(discovery.bytes_read + selection.bytes_read + restoration_bytes
+                           + history_metadata_bytes + sum(result.bytes_read for result in all_results)),
         pending_files=sum(
             1
             for entry in inventory
@@ -241,6 +249,7 @@ def _commit_preflight(
     *,
     rebuilt: bool,
     discovery,
+    restored_openings=(),
 ) -> tuple[list[tuple[int, SessionFileInventoryEntry]], int, int, set[str]]:
     now = datetime.now(UTC).isoformat()
     current_keys = {entry.file_key for entry in inventory}
@@ -251,6 +260,7 @@ def _commit_preflight(
 
     connection.execute("begin immediate")
     try:
+        mark_history_invalidations(connection, restored_openings)
         affected_task_ids.update(
             promote_cached_session_owners(
                 connection,

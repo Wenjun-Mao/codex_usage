@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.13.8 - 2026-11-21
+
+- Keep verified later token usage when a continuation's opening history file is
+  missing. Report the unknown opening separately and replace partial accounting
+  without double-counting once the original boundary can be verified.
+
 ## 2.13.7 - 2026-11-17
 
 - Add GPT-6.2 Astra and Sol with launch-date Standard API-equivalent prices,

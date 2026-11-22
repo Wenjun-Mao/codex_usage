@@ -43,6 +43,7 @@ from codex_usage.session_inventory import (
     SessionFileInventoryEntry,
     collect_session_file_inventory,
 )
+from codex_usage.session_history_gap import OPENING_GAP
 
 
 STALE_ERROR_PREFIX = "stale append checkpoint:"
@@ -66,9 +67,9 @@ def stale_source_keys(ledger_path: Path) -> tuple[str, ...]:
         rows = connection.execute(
             """
             select source_key, is_missing from ledger_sources
-            where is_stale = 1
+            where is_stale = 1 and stale_reason != ?
             order by size_bytes, source_key
-            """
+            """, (OPENING_GAP,)
         ).fetchall()
         return tuple(str(row["source_key"]) for row in rows if str(row["source_key"]) not in excluded
                      and (not row["is_missing"] or load_rebuild_source(connection, row["source_key"]) is not None))
@@ -84,10 +85,10 @@ def pending_incremental_source_count(ledger_path: Path) -> int:
               on ledger_generations.source_id = ledger_sources.source_id
              and ledger_generations.status = 'trusted'
             where ledger_sources.is_missing = 0
-              and ledger_sources.is_stale = 0
+              and (ledger_sources.is_stale = 0 or ledger_sources.stale_reason = ?)
               and coalesce(ledger_generations.captured_size, 0)
                   < ledger_sources.size_bytes
-            """
+            """, (OPENING_GAP,)
         ).fetchone()
         discovery_pending = len(pending_upgrade_keys(connection, budget_only=True))
     return int(row[0]) + discovery_pending

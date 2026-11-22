@@ -35,6 +35,7 @@ class SessionParserState:
     history_boundary_digest: str = ""
     root_inline_replay_possible: bool = True
     history_dependencies: tuple[HistoryBoundary, ...] = ()
+    history_gap_ordinal: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +77,9 @@ def parser_state_to_json(state: SessionParserState) -> str:
             "speed_state": state.speed_state,
             "row_drain": state.row_drain,
             "history_baseline_pending": state.history_baseline_pending,
-            "history_boundary_digest": state.history_boundary_digest,
+            # Older writers reject a null digest for append and replica authority.
+            "history_boundary_digest": (None if state.history_gap_ordinal is not None else state.history_boundary_digest),
+            **({"history_gap_ordinal": state.history_gap_ordinal} if state.history_gap_ordinal is not None else {}),
             "root_inline_replay_possible": state.root_inline_replay_possible,
             "history_dependencies": [reference.to_dict() for reference in state.history_dependencies],
         },
@@ -93,6 +96,17 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
     usage_value = parsed.get("previous_usage")
     root = None if root_value is None else _metadata_from_dict(_mapping(root_value), path)
     dependencies = _history_dependencies(parsed.get("history_dependencies", []))
+    gap = parsed.get("history_gap_ordinal")
+    if "history_gap_ordinal" in parsed and (
+        type(gap) is not int or root is None or root.history_base is None
+        or gap < root.history_base.end_ordinal_exclusive
+        or parsed.get("history_boundary_digest", "") is not None
+        or parsed.get("history_baseline_pending") is not False
+        or dependencies != (root.history_base,)
+    ):
+        raise ValueError("invalid checkpoint history opening gap")
+    if "history_gap_ordinal" not in parsed and parsed.get("history_boundary_digest", "") is None:
+        raise ValueError("missing checkpoint history opening gap")
     if "history_dependencies" in parsed:
         reference = root.history_base if root else None
         if (reference is None and dependencies) or (reference is not None and (not dependencies or dependencies[0] != reference)):
@@ -122,6 +136,7 @@ def parser_state_from_json(value: str, path: Path) -> SessionParserState:
         history_boundary_digest=_text(parsed.get("history_boundary_digest")),
         root_inline_replay_possible=bool(parsed.get("root_inline_replay_possible", True)),
         history_dependencies=dependencies,
+        history_gap_ordinal=gap,
     )
 
 

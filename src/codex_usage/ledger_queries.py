@@ -26,6 +26,7 @@ from codex_usage.parser import parse_timestamp
 from codex_usage.project_transitions import ProjectTransition
 from codex_usage.speed_recovery import speed_status
 from codex_usage.ledger_usage_ranges import usage_union_clause
+from codex_usage.session_history_gap import OPENING_GAP
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +38,7 @@ class LedgerCoverage:
     pending_bytes: int
     total_bytes: int
     captured_bytes: int
+    history_gap_sources: int = 0
 
     @property
     def complete(self) -> bool:
@@ -44,6 +46,7 @@ class LedgerCoverage:
             self.total_sources == self.captured_sources
             and self.stale_sources == 0
             and self.pending_files == 0
+            and self.history_gap_sources == 0
         )
 
     @property
@@ -63,6 +66,7 @@ class LedgerCoverage:
             "pending_bytes": self.pending_bytes,
             "total_bytes": self.total_bytes,
             "captured_bytes": self.captured_bytes,
+            "history_gap_sources": self.history_gap_sources,
         }
 
 
@@ -438,6 +442,10 @@ def _coverage(connection: sqlite3.Connection) -> LedgerCoverage:
         select count(*) as total_sources,
                sum(case when ledger_generations.generation_id is not null then 1 else 0 end) captured_sources,
                sum(ledger_sources.is_stale) stale_sources,
+               sum(case when ledger_sources.stale_reason = ? or
+                    (case when json_valid(p.state_json)
+                          then json_type(p.state_json,'$.history_gap_ordinal')='integer' end)
+                    then 1 else 0 end) history_gap_sources,
                sum(case when ledger_sources.is_missing = 0 and
                     coalesce(ledger_generations.captured_size, 0) < ledger_sources.size_bytes
                     then 1 else 0 end) pending_files,
@@ -451,10 +459,11 @@ def _coverage(connection: sqlite3.Connection) -> LedgerCoverage:
         from ledger_sources
         left join ledger_generations on ledger_generations.source_id = ledger_sources.source_id
           and ledger_generations.status = 'trusted'
+        left join parser_checkpoints p on p.file_key = ledger_sources.source_key
         where not (ledger_sources.is_missing = 1 and not exists (
             select 1 from ledger_generations retained where retained.source_id=ledger_sources.source_id
               and retained.status in ('trusted', 'staging')))
-        """
+        """, (OPENING_GAP,)
     ).fetchone()
     return LedgerCoverage(
         total_sources=int(row["total_sources"] or 0),
@@ -464,4 +473,5 @@ def _coverage(connection: sqlite3.Connection) -> LedgerCoverage:
         pending_bytes=int(row["pending_bytes"] or 0),
         total_bytes=int(row["total_bytes"] or 0),
         captured_bytes=int(row["captured_bytes"] or 0),
+        history_gap_sources=int(row["history_gap_sources"] or 0),
     )

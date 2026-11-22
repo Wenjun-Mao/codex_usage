@@ -39,7 +39,7 @@ from codex_usage.reporting import render_html_report
 
 
 PRICING_REVISION = pricing_revision()
-REPORT_RENDER_REVISION = 47
+REPORT_RENDER_REVISION = 48
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,6 +296,11 @@ def _status_banner(status: LedgerStatus) -> str:
             f"Baseline capture is {percentage:.1f}% complete. Language totals are partial; "
             f"{status.coverage.pending_files:,} source files and "
             f"{status.coverage.pending_bytes:,} bytes remain."
+        )
+    if status.coverage.history_gap_sources:
+        details.append(
+            f"Missing opening history in {status.coverage.history_gap_sources:,} continuation sources. "
+            "Verified later usage is included; usage before the first verifiable counter is unknown."
         )
     if not status.image_backfill.complete:
         image = status.image_backfill

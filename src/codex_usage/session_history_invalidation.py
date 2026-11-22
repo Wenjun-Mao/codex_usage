@@ -145,6 +145,13 @@ def invalidate_dependents(connection, paths, *, exclude=()):
             affected.add(key)
             if key in physical_by_key:
                 pending.append(physical_by_key[key])
+    mark_history_invalidations(connection, affected, quarantined=quarantined)
+    return affected
+
+
+def mark_history_invalidations(connection, affected, *, quarantined=()):
+    if not connection.in_transaction:
+        raise RuntimeError("history invalidation requires the accounting transaction")
     for key in sorted(affected):
         epoch = invalidation_epoch(connection, key) + 1
         connection.execute("insert or replace into schema_meta(key,value) values (?,?)", (EPOCH_PREFIX+key, str(epoch)))
@@ -155,4 +162,3 @@ def invalidate_dependents(connection, paths, *, exclude=()):
         connection.execute("""update ledger_sources set is_stale=1,
             stale_reason=(select error from files where file_key=?),
             error=(select error from files where file_key=?) where source_key=?""", (key, key, key))
-    return affected

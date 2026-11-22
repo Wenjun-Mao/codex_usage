@@ -58,6 +58,7 @@ from codex_usage.session_history import (
     HistorySource, inline_replay_possible, resolve_baseline, validate_page_metadata,
 )
 from codex_usage.session_history_models import PaginatedHistoryError
+from codex_usage.session_history_gap import observe_gap_counter, opening_baseline
 from codex_usage.session_usage_record import usage_record
 from codex_usage.session_project_identity import ParseProjectIdentity
 
@@ -89,6 +90,7 @@ def _parse_session_chunk(
     max_bytes: int | None,
     strict_byte_budget: bool = False,
     history_sources: tuple[HistorySource, ...] = (),
+    allow_missing_history: bool = False,
 ) -> _ParsedChunk:
     metadata = initial_state.metadata
     root_metadata = initial_state.root_metadata
@@ -110,6 +112,7 @@ def _parse_session_chunk(
     history_baseline_pending = initial_state.history_baseline_pending
     history_boundary_digest = initial_state.history_boundary_digest
     history_dependencies = initial_state.history_dependencies
+    history_gap_ordinal = initial_state.history_gap_ordinal
     image_operations = []
     quota_points = []
     bytes_read = 0
@@ -201,6 +204,8 @@ def _parse_session_chunk(
                         break
                     checkpoint_offset = line_end
                     speed.dirty()
+                    if history_gap_ordinal is not None:
+                        previous_usage = None
                     continue
 
                 event_timestamp = parse_timestamp(obj.get("timestamp"))
@@ -222,14 +227,18 @@ def _parse_session_chunk(
                             metadata.is_subagent and root_session_is_fork and root_inline_replay_possible
                         )
                         if metadata.history_base is not None:
-                            baseline = resolve_baseline(metadata, history_sources)
-                            previous_usage = baseline.usage
-                            bytes_read += baseline.bytes_read
-                            history_baseline_pending = True
-                            history_boundary_digest = baseline.boundary_digest
-                            history_dependencies = baseline.dependencies
-                            # Paginated inheritance is external to this physical
-                            # page, unlike legacy inline imported-parent replay.
+                            baseline = opening_baseline(metadata, history_sources, resolve_baseline,
+                                                        allow_missing=allow_missing_history)
+                            if baseline is None:
+                                history_gap_ordinal = metadata.history_base.end_ordinal_exclusive
+                                history_dependencies = (metadata.history_base,)
+                            else:
+                                previous_usage = baseline.usage
+                                bytes_read += baseline.bytes_read
+                                history_baseline_pending = True
+                                history_boundary_digest = baseline.boundary_digest
+                                history_dependencies = baseline.dependencies
+                            # Paginated inheritance is external, unlike legacy inline replay.
                             subagent_own_activity_started = True
                     checkpoint_offset = line_end
                     continue
@@ -341,7 +350,18 @@ def _parse_session_chunk(
                     checkpoint_offset = line_end
                     continue
 
-                total_usage = TokenUsage.from_mapping(info.get("total_token_usage"))
+                if history_gap_ordinal is not None:
+                    prior = previous_usage
+                    previous_usage, history_gap_ordinal, recovered = observe_gap_counter(
+                        info.get("total_token_usage"), obj.get("ordinal"), history_gap_ordinal, prior)
+                    if recovered is None or event_timestamp is None:
+                        if previous_usage != prior or previous_usage is None or event_timestamp is None:
+                            speed.dirty()
+                        checkpoint_offset = line_end
+                        continue
+                    total_usage = previous_usage
+                else:
+                    total_usage = TokenUsage.from_mapping(info.get("total_token_usage"))
                 if history_baseline_pending:
                     if any(total_usage.to_dict()[key] < previous_usage.to_dict()[key]
                            for key in total_usage.__dataclass_fields__):
@@ -351,7 +371,7 @@ def _parse_session_chunk(
                     if speed.matched is not None:
                         speed.matched["reason"] = "nonmonotonic_usage"
                 had_previous_usage = previous_usage is not None
-                delta = total_usage.positive_delta(previous_usage)
+                delta = recovered if history_gap_ordinal is not None else total_usage.positive_delta(previous_usage)
                 previous_usage = total_usage
                 if delta is None:
                     checkpoint_offset = line_end
@@ -430,6 +450,7 @@ def _parse_session_chunk(
                 history_boundary_digest=history_boundary_digest,
                 root_inline_replay_possible=root_inline_replay_possible,
                 history_dependencies=history_dependencies,
+                history_gap_ordinal=history_gap_ordinal,
             )
             head_sha256, head_bytes = _digest_range(
                 handle, 0, min(CHECKPOINT_DIGEST_BYTES, checkpoint_offset)

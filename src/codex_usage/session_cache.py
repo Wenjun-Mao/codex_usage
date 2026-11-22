@@ -200,6 +200,9 @@ def _refresh_files_with_stale_checkpoint_retry(
     defer_full_fallback: bool = False,
     preferred_paths: tuple[str, ...] = (),
 ) -> _refresh.CacheRefreshOutcome:
+    ledger_backed = connection.execute(
+        "select 1 from sqlite_master where type='table' and name='ledger_sources'"
+    ).fetchone() is not None
     for attempt in range(_STALE_CHECKPOINT_RETRY_COUNT + 1):
         try:
             return _refresh.refresh_files(
@@ -212,6 +215,7 @@ def _refresh_files_with_stale_checkpoint_retry(
                 max_total_parse_bytes=max_total_parse_bytes,
                 defer_full_fallback=defer_full_fallback,
                 preferred_paths=preferred_paths,
+                allow_missing_history=ledger_backed,
             )
         except StaleAppendCheckpointError:
             if attempt == _STALE_CHECKPOINT_RETRY_COUNT:

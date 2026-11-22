@@ -5,11 +5,13 @@ from dataclasses import replace
 from codex_usage.parallel.usage import UsageParseRequest
 from codex_usage.session_cache_requests import eligible_append_checkpoint
 from codex_usage.session_history_invalidation import pending_invalidation
+from codex_usage.session_history import PAGE_KEY_PREFIX
+from codex_usage.session_rollout_identity import rollout_identity
 
 
 def prepare_requests(connection, parse_entries, cached_rows, *, rebuilt,
                      max_parse_bytes, max_total_parse_bytes, defer_full_fallback,
-                     preferred_paths, blocked_sources):
+                     preferred_paths, blocked_sources, allow_missing_history=False):
     plans = []
     preferred = {_normalized_path(path) for path in preferred_paths}
     for ordinal, entry in parse_entries:
@@ -24,7 +26,10 @@ def prepare_requests(connection, parse_entries, cached_rows, *, rebuilt,
         request = UsageParseRequest(ordinal=ordinal, file_key=entry.file_key,
             path=entry.path, size_bytes=entry.size_bytes, mtime_ns=entry.mtime_ns,
             checkpoint=checkpoint, max_bytes=max_parse_bytes,
-            defer_full_fallback=defer_full_fallback, deferred_full_parse_reason=reason)
+            defer_full_fallback=defer_full_fallback, deferred_full_parse_reason=reason,
+            allow_missing_history=(allow_missing_history and not reason
+                and (cached is None or cached["checkpoint_offset"] is None)
+                and _uncaptured_page(connection, entry)))
         plans.append((_request_priority(request, cached,
             preferred=_normalized_path(entry.path) in preferred), request))
     return apply_total_parse_budget(plans, max_total_parse_bytes=max_total_parse_bytes,
@@ -69,3 +74,13 @@ def apply_total_parse_budget(request_plans, *, max_total_parse_bytes, max_parse_
 
 def _normalized_path(path):
     return os.path.normcase(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def _uncaptured_page(connection, entry):
+    identity = rollout_identity(entry.path)
+    if identity is None or identity.thread_id == identity.rollout_id:
+        return False
+    return connection.execute("""select 1 from ledger_sources s
+        join ledger_generations g using(source_id)
+        where (s.source_key in (?,?) or s.path=?) and g.status='trusted' limit 1""",
+        (entry.file_key, PAGE_KEY_PREFIX+identity.rollout_id, str(entry.path))).fetchone() is None

@@ -23,6 +23,7 @@ from codex_usage.replica_accounting_selection import source_selection, receipts,
 from codex_usage.replica_accounting_proof import AccountingProofError
 from codex_usage.ledger_transition_sync import sync_transitions as _sync_transitions
 from codex_usage.session_history_invalidation import invalidate_dependents, pending_report_row
+from codex_usage.session_history_gap import OPENING_GAP
 
 
 _NORMALIZED_OWNERSHIP_VERSION = 3
@@ -89,6 +90,9 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
                parser_checkpoints.source_inode,
                parser_checkpoints.head_sha256,
                parser_checkpoints.boundary_sha256,
+               case when json_valid(parser_checkpoints.state_json)
+                    then json_type(parser_checkpoints.state_json, '$.history_gap_ordinal')='integer'
+                    else 0 end as opening_gap,
                (select path from ledger_sources where source_key=files.file_key) previous_source_path,
                (select value from schema_meta where key='history-invalidation-pending:'||files.file_key) pending_history_invalidation,
                (select count(*) from usage_records
@@ -114,7 +118,8 @@ def _sync_sources(connection: sqlite3.Connection) -> bool:
         observed_keys.add(source_key)
         row = pending_report_row(connection, row, invalidated)
         reported = dict(row)
-        reported["error"] = accounting_errors.get(row["path"], row["error"])
+        reported["error"] = accounting_errors.get(row["path"], row["error"]) or (
+            OPENING_GAP if row["opening_gap"] else "")
         source_id, source_changed, inode_changed = _upsert_source(connection, reported)
         changed |= source_changed
         if source_key in accounting_members and source_key not in accounting_selected:

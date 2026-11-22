@@ -20,7 +20,14 @@ def history_contract_sql(alias="p"):
     return f"""case when json_valid({state}) then
         json_type({state}, '$')='object'
         and json_type({state}, '$.history_baseline_pending') in ('true','false')
-        and json_type({state}, '$.history_boundary_digest')='text'
+        and ((json_type({state}, '$.history_boundary_digest')='text'
+              and json_type({state}, '$.history_gap_ordinal') is null)
+          or (json_type({state}, '$.history_boundary_digest')='null'
+              and json_type({state}, '$.history_gap_ordinal')='integer'
+              and json_type({state}, '$.history_baseline_pending')='false'
+              and json_array_length({state}, '$.history_dependencies')=1
+              and json_extract({state}, '$.history_gap_ordinal') >=
+                  json_extract({state}, '$.root_metadata.history_base.end_ordinal_exclusive')))
         and json_type({state}, '$.root_inline_replay_possible') in ('true','false')
         and json_type({state}, '$.history_dependencies')='array'
         and json_array_length({state}, '$.history_dependencies')<=32

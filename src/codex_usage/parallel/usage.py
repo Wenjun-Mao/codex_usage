@@ -42,6 +42,7 @@ class UsageParseRequest:
     defer_full_fallback: bool = False
     deferred_full_parse_reason: str = ""
     history_sources: tuple[HistorySource, ...] = ()
+    allow_missing_history: bool = False
 
     @property
     def estimated_bytes(self) -> int:
@@ -166,5 +167,6 @@ def _parse_usage_request_with_retry(
         stop_offset=request.size_bytes,
         max_bytes=request.max_bytes,
         history_sources=request.history_sources,
+        allow_missing_history=request.allow_missing_history,
     )
     return generation, None, "full", ""

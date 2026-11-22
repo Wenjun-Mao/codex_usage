@@ -40,6 +40,7 @@ def parse_session_generation(
     _capture_partial_candidates: bool = False,
     strict_byte_budget: bool = False,
     history_sources: tuple[HistorySource, ...] = (),
+    allow_missing_history: bool = False,
 ) -> ParsedSessionGeneration:
     initial_metadata = SessionMetadata(session_id=path.stem, file_path=path)
     initial_state = SessionParserState(
@@ -68,6 +69,7 @@ def parse_session_generation(
             max_bytes=max_bytes,
             strict_byte_budget=strict_byte_budget,
             history_sources=history_sources,
+            allow_missing_history=allow_missing_history,
         )
     except _PartialSessionGenerationReadError as error:
         if _capture_partial_candidates:

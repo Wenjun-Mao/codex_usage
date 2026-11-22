@@ -113,6 +113,17 @@ row of a multi-gigabyte source. Missing required sources and unsupported replay
 conditions remain visible coverage gaps. A missing base means an empty external
 history, not authority to import an unrelated logical parent's counters.
 
+When the direct predecessor is absent from the owned inventory, a new
+physical continuation may contribute strictly verified on-page deltas to the
+ledger. The first usable cumulative counter is an anchor, not a charge;
+malformed or nonmonotone counters break continuity rather than bridge a gap.
+The checkpoint retains the unverified opening and its declared dependency,
+not a fabricated boundary digest. The report flags coverage as incomplete
+even if all available bytes were captured. Existing trusted accounting is
+not demoted to this fallback after a source rewrite. A returned predecessor
+must pass the bounded boundary resolver before the collector schedules
+an exact staged replacement, not an additive backfill.
+
 Context-window-full events can synthesize a cumulative total with zero input and
 output components; they are not necessarily billed responses. No magnitude-based
 filter is introduced here. Universal response/billing reconstruction and usable
