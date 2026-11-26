@@ -2,14 +2,12 @@
 from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from codex_usage.allowance_models import QuotaObservation
-from codex_usage.allowance_captures import CaptureDirectory
-from codex_usage.allowance_pace_evidence import prepare_pace_evidence
+from codex_usage.allowance_preparation import AllowancePreparation
 from codex_usage.allowance_queries import _build_from_costs
 from codex_usage.allowance_report_codec import decode_report, encode_report
 
@@ -25,13 +23,13 @@ def point(hour, used, deadline=6, plan="pro"):
 def report(live, tasks=(), events=()):
     points = [*live, *tasks]
     provenance = {p: {"Live probe" if p in live else "Task snapshot"} for p in points}
-    preparation = SimpleNamespace(raw=(points, provenance, set(live)),
-        captures=CaptureDirectory(points, provenance),
-        pace=lambda keys: prepare_pace_evidence(points, set(live), series_keys=keys))
     costs = [(AT.timestamp()+hour*3600, cost, 0) for hour, cost in events]
-    with patch("codex_usage.allowance_queries.credit_history", return_value=[]):
+    with (
+        patch("codex_usage.allowance_queries.credit_history", return_value=[]),
+        patch("codex_usage.allowance_queries.load_quota_evidence", return_value=(points, provenance, set(live))),
+    ):
         return _build_from_costs(None, costs, status={"active_buckets": [live[-1].to_dict()]},
-                                 preparation=preparation)
+                                 preparation=AllowancePreparation(None, reuse_history=False))
 
 
 def test_missing_clock_at_plan_change_cannot_retroactively_overlap_periods():

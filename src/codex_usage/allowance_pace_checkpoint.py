@@ -30,7 +30,7 @@ class PaceCheckpoint:
     def __init__(self, cache, groups, first_known):
         self.cache, self.groups, self.first_known = cache, groups, first_known
         point = groups[0].point
-        self.slot = "pace-1:" + encode([point.limit_id, point.duration_minutes])
+        self.slot = "pace-2:" + encode([point.limit_id, point.duration_minutes])
 
     def restore(self):
         saved = self.cache.read(self.slot)

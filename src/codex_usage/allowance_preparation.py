@@ -41,8 +41,13 @@ class AllowancePreparation:
             MappingProxyType({k: v for k, v in self._series.items() if k in series_keys}), live)
 
     @cached_property
+    def calibration_points(self):
+        from codex_usage.allowance_calibration_evidence import calibration_points
+        return calibration_points(*self.raw)
+
+    @cached_property
     def _pace_inputs(self):
-        return PaceInputs(self.raw[0], cache=self.history_cache if self.reuse_history else None)
+        return PaceInputs(self.calibration_points, cache=self.history_cache if self.reuse_history else None)
 
     @cached_property
     def captures(self):

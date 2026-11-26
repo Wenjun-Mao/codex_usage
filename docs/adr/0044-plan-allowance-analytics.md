@@ -71,6 +71,15 @@ High/Medium confidence; resolving continuity does not strengthen evidence.
 No cost or percentage delta crosses a segment.
 No weekly duration is hard-coded.
 
+For fits and pace only, exclude a task snapshot at least five percentage
+points below a live observation in the preceding 30 minutes if both report
+the same known plan, duration, and unexpired reset deadline, and the task
+reports no change to the live observation's known reset credits. Ambiguous
+live evidence, live observations themselves, and task readings with
+contrary or insufficient reset evidence retain the original continuity
+rules. The exclusion is causal and leaves stored readings, the active quota
+meter, and raw history evidence unchanged.
+
 For each segment, fit the median cumulative priced ledger API-equivalent cost
 per integer percentage bin against used percentage, with a free intercept.
 The estimated full-allowance value is 100 times the positive slope. At least

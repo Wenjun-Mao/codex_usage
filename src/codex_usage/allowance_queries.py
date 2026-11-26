@@ -135,7 +135,8 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
         times.append(timestamp)
         costs.append(costs[-1] + cost)
         unpriced.append(unpriced[-1] + unpriced_tokens)
-    windows = _cost_windows(points, provenance, times, costs, unpriced, coverage_complete,
+    fit_points = preparation.calibration_points
+    windows = _cost_windows(fit_points, provenance, times, costs, unpriced, coverage_complete,
                             cache=window_cache, captures=preparation.captures)
     from codex_usage.allowance_cost_pace import CostPrefix, PaceReferences, calibrated_paces
     prefix = CostPrefix(times, costs, unpriced)
@@ -148,7 +149,7 @@ def _build_from_costs(connection, priced_events, *, coverage_complete=True, stat
             # reference for this captured origin. Normal snapshots reuse fits.
             available = windows
             if latest_evidence > origin:
-                causal = [p for p in points if datetime.fromisoformat(p.timestamp).timestamp() <= origin]
+                causal = [p for p in fit_points if p.timestamp_seconds <= origin]
                 available = _cost_windows(causal, provenance, times, costs, unpriced, coverage_complete,
                                           cache=window_cache, scope=origin, references_only=True)
             references[origin] = PaceReferences(available)
