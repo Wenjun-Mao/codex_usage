@@ -30,7 +30,7 @@ wheels = [
 
 [[package]]
 name = "codex-usage"
-version = "2.13.8"
+version = "2.13.9"
 source = { editable = "." }
 dependencies = [
     { name = "filelock" },

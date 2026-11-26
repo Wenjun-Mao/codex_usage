@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 2.13.9 - 2026-11-25
+
+- Prevent a stale task reading from falsely splitting an allowance cycle and
+  understating its API-equivalent value. Raw readings remain in history.
+
 ## 2.13.8 - 2026-11-21
 
 - Keep verified later token usage when a continuation's opening history file is
